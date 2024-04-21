@@ -1,0 +1,13 @@
+[package]
+name = "client"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libmdns = "=0.8.0"
+tokio = { version = "1.37.0", features = ["full"] }
+rodio = "0.17.3"
+tokio-stream = "0.1.15"
+tokio-util = { version = "0.7.10", features = ["codec"] }
