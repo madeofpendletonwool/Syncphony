@@ -36,6 +36,7 @@ server/                 Go module
   cmd/syncphony/        entrypoint
   internal/config/      SYNCPHONY_* env config
   internal/httpapi/     API handlers (+ api.gen.go, generated)
+  internal/store/       SQLite: goose migrations, sqlc queries (+ *.gen.go, generated)
   internal/provider/    provider interface, canonical types, registry
     fake/               in-memory provider for tests and UI development
     providertest/       conformance suite every provider runs
@@ -65,7 +66,7 @@ make dev     # Navidrome + Go server (live reload) + Vite dev server
 - API: http://localhost:8080/api/healthz (if 8080 is taken: `make dev DEV_API_PORT=8099`)
 - Dev Navidrome: http://localhost:4533, user `admin`, password `syncphony`. It's preloaded with a small synthetic library, so you don't need real music or accounts.
 
-Other tasks: `make gen` (after editing `api/openapi.yaml`), `make test`, `make lint`, `make build` (single binary at `server/bin/syncphony`), `make docker`. Run `make help` for the full list.
+Other tasks: `make gen` (after editing `api/openapi.yaml`, or the SQL in `server/internal/store`), `make test`, `make lint`, `make build` (single binary at `server/bin/syncphony`), `make docker`. Run `make help` for the full list.
 
 Configuration is via `SYNCPHONY_*` environment variables. See [`.env.example`](.env.example).
 

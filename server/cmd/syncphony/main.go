@@ -11,11 +11,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/config"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
+	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 	"github.com/madeofpendletonwool/syncphony/server/internal/webui"
 )
 
@@ -36,6 +38,18 @@ func run() error {
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: cfg.LogLevel})))
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
+		return err
+	}
+	db, err := store.Open(ctx, filepath.Join(cfg.DataDir, "syncphony.db"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
 	api := &httpapi.Server{Version: version}
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api.Handler())
@@ -46,9 +60,6 @@ func run() error {
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	ln, err := net.Listen("tcp", cfg.Addr)
 	if err != nil {

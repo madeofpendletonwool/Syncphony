@@ -39,7 +39,7 @@ dev-down: ## Stop dev services
 	docker compose -f deploy/dev/compose.yml down
 
 .PHONY: gen
-gen: ## Regenerate Go and TypeScript code from api/openapi.yaml
+gen: ## Regenerate code from api/openapi.yaml and the store SQL
 	cd server && go generate ./...
 	cd web && pnpm gen
 
