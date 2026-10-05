@@ -9,122 +9,273 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as DesignRouteImport } from './routes/design'
-import { Route as MeRouteImport } from './routes/me'
-import { Route as RoomRouteImport } from './routes/room'
-import { Route as SearchRouteImport } from './routes/search'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as AppAuthedRouteImport } from './routes/_app/_authed'
+import { Route as AppDesignRouteImport } from './routes/_app/design'
+import { Route as InviteCodeRouteImport } from './routes/invite.$code'
+import { Route as AppAuthedIndexRouteImport } from './routes/_app/_authed/index'
+import { Route as AppAuthedMeRouteImport } from './routes/_app/_authed/me'
+import { Route as AppAuthedRoomRouteImport } from './routes/_app/_authed/room'
+import { Route as AppAuthedSearchRouteImport } from './routes/_app/_authed/search'
+import { Route as AppAuthedSettingsPeopleRouteImport } from './routes/_app/_authed/settings.people'
+import { Route as AppAuthedSettingsServicesRouteImport } from './routes/_app/_authed/settings.services'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DesignRoute = DesignRouteImport.update({
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppAuthedRoute = AppAuthedRouteImport.update({
+  id: '/_authed',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDesignRoute = AppDesignRouteImport.update({
   id: '/design',
   path: '/design',
+  getParentRoute: () => AppRoute,
+} as any)
+const InviteCodeRoute = InviteCodeRouteImport.update({
+  id: '/invite/$code',
+  path: '/invite/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MeRoute = MeRouteImport.update({
+const AppAuthedIndexRoute = AppAuthedIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppAuthedRoute,
+} as any)
+const AppAuthedMeRoute = AppAuthedMeRouteImport.update({
   id: '/me',
   path: '/me',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppAuthedRoute,
 } as any)
-const RoomRoute = RoomRouteImport.update({
+const AppAuthedRoomRoute = AppAuthedRoomRouteImport.update({
   id: '/room',
   path: '/room',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppAuthedRoute,
 } as any)
-const SearchRoute = SearchRouteImport.update({
+const AppAuthedSearchRoute = AppAuthedSearchRouteImport.update({
   id: '/search',
   path: '/search',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppAuthedRoute,
 } as any)
+const AppAuthedSettingsPeopleRoute = AppAuthedSettingsPeopleRouteImport.update({
+  id: '/settings/people',
+  path: '/settings/people',
+  getParentRoute: () => AppAuthedRoute,
+} as any)
+const AppAuthedSettingsServicesRoute =
+  AppAuthedSettingsServicesRouteImport.update({
+    id: '/settings/services',
+    path: '/settings/services',
+    getParentRoute: () => AppAuthedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/design': typeof DesignRoute
-  '/me': typeof MeRoute
-  '/room': typeof RoomRoute
-  '/search': typeof SearchRoute
+  '/': typeof AppAuthedIndexRoute
+  '/login': typeof LoginRoute
+  '/design': typeof AppDesignRoute
+  '/invite/$code': typeof InviteCodeRoute
+  '/me': typeof AppAuthedMeRoute
+  '/room': typeof AppAuthedRoomRoute
+  '/search': typeof AppAuthedSearchRoute
+  '/settings/people': typeof AppAuthedSettingsPeopleRoute
+  '/settings/services': typeof AppAuthedSettingsServicesRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/design': typeof DesignRoute
-  '/me': typeof MeRoute
-  '/room': typeof RoomRoute
-  '/search': typeof SearchRoute
+  '/': typeof AppAuthedIndexRoute
+  '/login': typeof LoginRoute
+  '/design': typeof AppDesignRoute
+  '/invite/$code': typeof InviteCodeRoute
+  '/me': typeof AppAuthedMeRoute
+  '/room': typeof AppAuthedRoomRoute
+  '/search': typeof AppAuthedSearchRoute
+  '/settings/people': typeof AppAuthedSettingsPeopleRoute
+  '/settings/services': typeof AppAuthedSettingsServicesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/design': typeof DesignRoute
-  '/me': typeof MeRoute
-  '/room': typeof RoomRoute
-  '/search': typeof SearchRoute
+  '/_app': typeof AppRouteWithChildren
+  '/login': typeof LoginRoute
+  '/_app/_authed': typeof AppAuthedRouteWithChildren
+  '/_app/design': typeof AppDesignRoute
+  '/invite/$code': typeof InviteCodeRoute
+  '/_app/_authed/me': typeof AppAuthedMeRoute
+  '/_app/_authed/room': typeof AppAuthedRoomRoute
+  '/_app/_authed/search': typeof AppAuthedSearchRoute
+  '/_app/_authed/': typeof AppAuthedIndexRoute
+  '/_app/_authed/settings/people': typeof AppAuthedSettingsPeopleRoute
+  '/_app/_authed/settings/services': typeof AppAuthedSettingsServicesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/design' | '/me' | '/room' | '/search'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/design'
+    | '/invite/$code'
+    | '/me'
+    | '/room'
+    | '/search'
+    | '/settings/people'
+    | '/settings/services'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/design' | '/me' | '/room' | '/search'
-  id: '__root__' | '/' | '/design' | '/me' | '/room' | '/search'
+  to:
+    | '/'
+    | '/login'
+    | '/design'
+    | '/invite/$code'
+    | '/me'
+    | '/room'
+    | '/search'
+    | '/settings/people'
+    | '/settings/services'
+  id:
+    | '__root__'
+    | '/_app'
+    | '/login'
+    | '/_app/_authed'
+    | '/_app/design'
+    | '/invite/$code'
+    | '/_app/_authed/me'
+    | '/_app/_authed/room'
+    | '/_app/_authed/search'
+    | '/_app/_authed/'
+    | '/_app/_authed/settings/people'
+    | '/_app/_authed/settings/services'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  DesignRoute: typeof DesignRoute
-  MeRoute: typeof MeRoute
-  RoomRoute: typeof RoomRoute
-  SearchRoute: typeof SearchRoute
+  AppRoute: typeof AppRouteWithChildren
+  LoginRoute: typeof LoginRoute
+  InviteCodeRoute: typeof InviteCodeRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
+    '/_app': {
+      id: '/_app'
+      path: ''
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+      preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/design': {
-      id: '/design'
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/_authed': {
+      id: '/_app/_authed'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppAuthedRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/design': {
+      id: '/_app/design'
       path: '/design'
       fullPath: '/design'
-      preLoaderRoute: typeof DesignRouteImport
+      preLoaderRoute: typeof AppDesignRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/invite/$code': {
+      id: '/invite/$code'
+      path: '/invite/$code'
+      fullPath: '/invite/$code'
+      preLoaderRoute: typeof InviteCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/me': {
-      id: '/me'
+    '/_app/_authed/': {
+      id: '/_app/_authed/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof AppAuthedIndexRouteImport
+      parentRoute: typeof AppAuthedRoute
+    }
+    '/_app/_authed/me': {
+      id: '/_app/_authed/me'
       path: '/me'
       fullPath: '/me'
-      preLoaderRoute: typeof MeRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppAuthedMeRouteImport
+      parentRoute: typeof AppAuthedRoute
     }
-    '/room': {
-      id: '/room'
+    '/_app/_authed/room': {
+      id: '/_app/_authed/room'
       path: '/room'
       fullPath: '/room'
-      preLoaderRoute: typeof RoomRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppAuthedRoomRouteImport
+      parentRoute: typeof AppAuthedRoute
     }
-    '/search': {
-      id: '/search'
+    '/_app/_authed/search': {
+      id: '/_app/_authed/search'
       path: '/search'
       fullPath: '/search'
-      preLoaderRoute: typeof SearchRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppAuthedSearchRouteImport
+      parentRoute: typeof AppAuthedRoute
+    }
+    '/_app/_authed/settings/people': {
+      id: '/_app/_authed/settings/people'
+      path: '/settings/people'
+      fullPath: '/settings/people'
+      preLoaderRoute: typeof AppAuthedSettingsPeopleRouteImport
+      parentRoute: typeof AppAuthedRoute
+    }
+    '/_app/_authed/settings/services': {
+      id: '/_app/_authed/settings/services'
+      path: '/settings/services'
+      fullPath: '/settings/services'
+      preLoaderRoute: typeof AppAuthedSettingsServicesRouteImport
+      parentRoute: typeof AppAuthedRoute
     }
   }
 }
 
+interface AppAuthedRouteChildren {
+  AppAuthedMeRoute: typeof AppAuthedMeRoute
+  AppAuthedRoomRoute: typeof AppAuthedRoomRoute
+  AppAuthedSearchRoute: typeof AppAuthedSearchRoute
+  AppAuthedIndexRoute: typeof AppAuthedIndexRoute
+  AppAuthedSettingsPeopleRoute: typeof AppAuthedSettingsPeopleRoute
+  AppAuthedSettingsServicesRoute: typeof AppAuthedSettingsServicesRoute
+}
+
+const AppAuthedRouteChildren: AppAuthedRouteChildren = {
+  AppAuthedMeRoute: AppAuthedMeRoute,
+  AppAuthedRoomRoute: AppAuthedRoomRoute,
+  AppAuthedSearchRoute: AppAuthedSearchRoute,
+  AppAuthedIndexRoute: AppAuthedIndexRoute,
+  AppAuthedSettingsPeopleRoute: AppAuthedSettingsPeopleRoute,
+  AppAuthedSettingsServicesRoute: AppAuthedSettingsServicesRoute,
+}
+
+const AppAuthedRouteWithChildren = AppAuthedRoute._addFileChildren(
+  AppAuthedRouteChildren,
+)
+
+interface AppRouteChildren {
+  AppAuthedRoute: typeof AppAuthedRouteWithChildren
+  AppDesignRoute: typeof AppDesignRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppAuthedRoute: AppAuthedRouteWithChildren,
+  AppDesignRoute: AppDesignRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  DesignRoute: DesignRoute,
-  MeRoute: MeRoute,
-  RoomRoute: RoomRoute,
-  SearchRoute: SearchRoute,
+  AppRoute: AppRouteWithChildren,
+  LoginRoute: LoginRoute,
+  InviteCodeRoute: InviteCodeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

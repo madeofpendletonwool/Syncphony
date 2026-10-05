@@ -10,7 +10,7 @@ import { LaneDot, UserAvatar } from '@/components/user-avatar'
 import { LANE_PALETTE, laneStyle } from '@/lib/lane'
 import { player, positionAt, usePlayer, type NowPlaying } from '@/lib/now-playing'
 
-export const Route = createFileRoute('/design')({
+export const Route = createFileRoute('/_app/design')({
   component: Design,
 })
 

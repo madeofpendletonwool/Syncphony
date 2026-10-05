@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { fadeUp, stagger } from '@/lib/motion'
 
-export const Route = createFileRoute('/room')({
+export const Route = createFileRoute('/_app/_authed/room')({
   component: Room,
 })
 

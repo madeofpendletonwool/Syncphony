@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { PageHeader } from '@/components/page-header'
 import { Input } from '@/components/ui/input'
 
-export const Route = createFileRoute('/search')({
+export const Route = createFileRoute('/_app/_authed/search')({
   component: Search,
 })
 
