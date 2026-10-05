@@ -1,0 +1,18 @@
+# Local services for development. Started by `make dev`.
+name: syncphony-dev
+
+services:
+  navidrome:
+    image: deluan/navidrome:latest
+    ports:
+      - "4533:4533"
+    environment:
+      ND_MUSICFOLDER: /music
+      ND_DATAFOLDER: /data
+      ND_SCANSCHEDULE: 1m
+      ND_LOGLEVEL: warn
+      # Creates user "admin" with this password on first start (dev only).
+      ND_DEVAUTOCREATEADMINPASSWORD: syncphony
+    volumes:
+      - ./music:/music:ro
+      - ./navidrome-data:/data
