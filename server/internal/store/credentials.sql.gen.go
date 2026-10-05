@@ -11,6 +11,17 @@ import (
 	"time"
 )
 
+const countPasskeys = `-- name: CountPasskeys :one
+SELECT count(*) FROM credentials_passkey WHERE user_id = ?
+`
+
+func (q *Queries) CountPasskeys(ctx context.Context, userID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPasskeys, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createPasskey = `-- name: CreatePasskey :one
 INSERT INTO credentials_passkey (id, user_id, name, data, created_at)
 VALUES (?, ?, ?, ?, ?)
@@ -91,6 +102,20 @@ func (q *Queries) DeleteExpiredSessions(ctx context.Context, expiresAt time.Time
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const deleteOtherSessions = `-- name: DeleteOtherSessions :exec
+DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?
+`
+
+type DeleteOtherSessionsParams struct {
+	UserID    string
+	TokenHash []byte
+}
+
+func (q *Queries) DeleteOtherSessions(ctx context.Context, arg DeleteOtherSessionsParams) error {
+	_, err := q.db.ExecContext(ctx, deleteOtherSessions, arg.UserID, arg.TokenHash)
+	return err
 }
 
 const deletePasskey = `-- name: DeletePasskey :exec

@@ -55,6 +55,17 @@ func (q *Queries) DeleteInvite(ctx context.Context, code string) error {
 	return err
 }
 
+const deleteUnusedBootstrapInvites = `-- name: DeleteUnusedBootstrapInvites :exec
+DELETE FROM invites WHERE created_by IS NULL AND used_by IS NULL
+`
+
+// Bootstrap invites have no creator. The server replaces any unused ones
+// at startup while there are no users.
+func (q *Queries) DeleteUnusedBootstrapInvites(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteUnusedBootstrapInvites)
+	return err
+}
+
 const getInvite = `-- name: GetInvite :one
 SELECT code, created_by, role, created_at, expires_at, used_by, used_at FROM invites WHERE code = ?
 `

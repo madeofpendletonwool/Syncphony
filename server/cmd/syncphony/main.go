@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/config"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
@@ -50,7 +51,18 @@ func run() error {
 	}
 	defer db.Close()
 
-	api := &httpapi.Server{Version: version}
+	accounts, err := auth.New(db, auth.Config{BaseURL: cfg.BaseURL})
+	if err != nil {
+		return err
+	}
+	if link, err := accounts.Bootstrap(ctx); err != nil {
+		return err
+	} else if link != "" {
+		slog.Warn("no accounts yet: open this one-time link to create the admin account (valid 24h, renewed on restart)", "url", link)
+	}
+	go sweepSessions(ctx, db)
+
+	api := &httpapi.Server{Version: version, Auth: accounts, BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies}
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api.Handler())
 	mux.Handle("/", webui.Handler())
@@ -83,4 +95,22 @@ func run() error {
 		return err
 	}
 	return nil
+}
+
+// sweepSessions deletes expired sessions every hour until ctx is done.
+func sweepSessions(ctx context.Context, db *store.Store) {
+	t := time.NewTicker(time.Hour)
+	defer t.Stop()
+	for {
+		if n, err := db.DeleteExpiredSessions(ctx, store.Now()); err != nil {
+			slog.Warn("sweeping expired sessions", "err", err)
+		} else if n > 0 {
+			slog.Debug("swept expired sessions", "count", n)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
 }
