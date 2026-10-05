@@ -8,6 +8,7 @@ import { Artwork } from '@/components/artwork'
 import { PageHeader } from '@/components/page-header'
 import { MyLane } from '@/components/room/my-lane'
 import { QueueRow } from '@/components/room/queue-row'
+import { SpeakerPanel } from '@/components/room/speaker-panel'
 import { TransportControls } from '@/components/shell/player-controls'
 import { StartRoom } from '@/components/start-room'
 import { Badge } from '@/components/ui/badge'
@@ -72,7 +73,7 @@ function Room() {
       <RoomHeader room={room} rooms={rooms.data ?? []} />
 
       <motion.div variants={stagger} initial="hidden" animate="show" className="flex flex-col gap-6">
-        <NowPlayingCard roomId={room.id} waiting={upNext.length} />
+        <NowPlayingCard room={room} waiting={upNext.length} />
 
         {before !== undefined && (
           <motion.p
@@ -210,7 +211,8 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
   )
 }
 
-function NowPlayingCard({ roomId, waiting }: { roomId: string; waiting: number }) {
+function NowPlayingCard({ room, waiting }: { room: RoomInfo; waiting: number }) {
+  const roomId = room.id
   const { nowPlaying: np, commands } = usePlayer()
   const playback = useQuery({ ...playbackQuery(roomId), enabled: false })
   const position = usePosition(np)
@@ -228,9 +230,12 @@ function NowPlayingCard({ roomId, waiting }: { roomId: string; waiting: number }
           {waiting > 0
             ? speaker
               ? `Waiting to start on ${speaker.name}.`
-              : 'Songs are waiting. Open Syncphony on the phone connected to the speaker to start.'
+              : 'Songs are waiting. Start playing on the phone connected to the speaker.'
             : 'Be the first to put something on.'}
         </p>
+        <div className="mt-2 w-full max-w-xs">
+          <SpeakerPanel room={room} prominent={waiting > 0 && !speaker} />
+        </div>
         {waiting === 0 && (
           <Button asChild size="lg" className="mt-2">
             <Link to="/search">
@@ -301,10 +306,9 @@ function NowPlayingCard({ roomId, waiting }: { roomId: string; waiting: number }
       <div className="mt-3">
         <TransportControls paused={np.paused} commands={commands} />
       </div>
-      <p className="mt-3 flex items-center justify-center gap-1.5 text-caption text-muted-foreground">
-        <Speaker className="size-3.5" />
-        {speaker ? `Playing on ${speaker.name}` : 'No speaker connected'}
-      </p>
+      <div className="mt-4">
+        <SpeakerPanel room={room} />
+      </div>
     </motion.section>
   )
 }

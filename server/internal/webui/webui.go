@@ -10,6 +10,7 @@ package webui
 import (
 	"embed"
 	"io/fs"
+	"mime"
 	"net/http"
 	"path"
 	"strings"
@@ -17,6 +18,11 @@ import (
 
 //go:embed all:dist
 var dist embed.FS
+
+func init() {
+	// Not in Go's built-in table; the web app's manifest needs it.
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+}
 
 // Handler serves static assets and falls back to index.html so client-side
 // routes work on reload.

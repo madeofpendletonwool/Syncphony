@@ -4,7 +4,7 @@ One shared music queue for a group of friends, across everyone's streaming servi
 
 Each friend links their own service (self-hosted Navidrome, Spotify, and more later). Everyone searches and adds songs. Syncphony plays them in **fair turns** from whichever service each song came from, through one player: usually a phone running the web app, connected to a Bluetooth speaker.
 
-> **Status:** early. Phases 0 (foundation) and 1 (core platform) are in place. See the roadmap below.
+> **Status:** early. Phases 0–2 are in place: you can host a hangout with Navidrome and a phone on a Bluetooth speaker. See the roadmap below.
 
 ## How it fits together
 
@@ -89,11 +89,19 @@ This serves on port 8080, ready for your existing reverse proxy. If you don't ha
 
 Images are published to `ghcr.io/madeofpendletonwool/syncphony`: `:main` tracks the main branch, and `v*` tags publish `:X.Y.Z` and `:latest`. Pick one with `SYNCPHONY_TAG` (e.g. `SYNCPHONY_TAG=main`).
 
+## Playing at a hangout
+
+1. Pair a phone with the Bluetooth speaker and open Syncphony on it. On iPhone, add it to the Home Screen first (Share → Add to Home Screen).
+2. On the Room screen, tap **Play on this phone**. That phone is now the speaker: it plays the queue, and its lock screen and the speaker's buttons control the room.
+3. Everyone else opens Syncphony on their own phone, searches, and adds songs to their lane.
+
+What works where (and what doesn't yet) is in [docs/player-mode.md](docs/player-mode.md).
+
 ## Roadmap
 
 0. **Foundation:** repo, tooling, CI, image ✅
 1. **Core platform:** data model, invite-only accounts, credential vault, provider interface, realtime ✅
-2. **Navidrome MVP:** Navidrome provider, fair queue, playback engine, web app and phone player
+2. **Navidrome MVP:** Navidrome provider, fair queue, playback engine, web app and phone player ✅
 3. **Spotify provider**
 4. **Party features:** vote-skip, fairness policies, history, cross-service track matching
 5. **Native app and beyond:** Capacitor app, more providers, multiple rooms

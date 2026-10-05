@@ -2,7 +2,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import type { components } from '@/api/schema.gen'
 import { meQuery } from './auth'
-import { playbackQuery, type Playback } from './playback'
+import { newer, playbackQuery, type Playback } from './playback'
 import { queueQuery, type QueueSnapshot } from './room'
 import { linksQuery } from './services'
 import { createStore } from './store'
@@ -101,7 +101,7 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
     }
     case 'nowplaying.updated': {
       const np = ev.data as Playback
-      queryClient.setQueryData(playbackQuery(roomId).queryKey, (old) => (old && old.revision > np.revision ? old : np))
+      queryClient.setQueryData(playbackQuery(roomId).queryKey, (old) => newer(old, np))
       break
     }
     case 'playback.notice':
