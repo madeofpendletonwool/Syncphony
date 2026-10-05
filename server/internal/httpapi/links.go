@@ -27,6 +27,7 @@ func toProviderInfo(p provider.Provider) ProviderInfo {
 	}
 	c := info.Capabilities
 	out.Capabilities.Artwork, out.Capabilities.Isrc, out.Capabilities.Lyrics, out.Capabilities.Playlists = c.Artwork, c.ISRC, c.Lyrics, c.Playlists
+	out.Capabilities.Shareable = c.Shareable
 	out.Capabilities.Search = []ProviderInfoCapabilitiesSearch{}
 	for _, k := range c.Search {
 		out.Capabilities.Search = append(out.Capabilities.Search, ProviderInfoCapabilitiesSearch(k))
@@ -61,8 +62,8 @@ func linkStatus(s string) ServiceLinkStatus {
 // meaning: it copies only display fields.
 func toServiceLink(l store.ServiceLink) ServiceLink {
 	out := ServiceLink{
-		Id: l.ID, Provider: l.Provider, AccountLabel: l.AccountLabel, Status: linkStatus(l.Status),
-		CreatedAt: l.CreatedAt, LastOkAt: timePtr(l.LastOkAt.Time, l.LastOkAt.Valid),
+		Id: l.ID, OwnerId: l.UserID, Provider: l.Provider, AccountLabel: l.AccountLabel, Status: linkStatus(l.Status),
+		Shared: l.Shared, CreatedAt: l.CreatedAt, LastOkAt: timePtr(l.LastOkAt.Time, l.LastOkAt.Valid),
 	}
 	if l.StatusDetail != "" {
 		out.StatusDetail = &l.StatusDetail
@@ -80,9 +81,15 @@ func (s *Server) ListProviders(context.Context, ListProvidersRequestObject) (Lis
 	return out, nil
 }
 
-// ListLinks lists the user's links.
-func (s *Server) ListLinks(ctx context.Context, _ ListLinksRequestObject) (ListLinksResponseObject, error) {
-	rows, err := s.Links.List(ctx, sessionFrom(ctx).User.ID)
+// ListLinks lists the user's links, and with include=shared everyone
+// else's shared ones.
+func (s *Server) ListLinks(ctx context.Context, req ListLinksRequestObject) (ListLinksResponseObject, error) {
+	userID := sessionFrom(ctx).User.ID
+	list := s.Links.List
+	if req.Params.Include != nil && *req.Params.Include == Shared {
+		list = s.Links.Usable
+	}
+	rows, err := list(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -109,6 +116,15 @@ func (s *Server) Relink(ctx context.Context, req RelinkRequestObject) (RelinkRes
 		return nil, err
 	}
 	return Relink200JSONResponse(toServiceLink(l)), nil
+}
+
+// UpdateLink shares or unshares one of the user's links.
+func (s *Server) UpdateLink(ctx context.Context, req UpdateLinkRequestObject) (UpdateLinkResponseObject, error) {
+	l, err := s.Links.SetShared(ctx, sessionFrom(ctx).User.ID, req.Id, req.Body.Shared)
+	if err != nil {
+		return nil, err
+	}
+	return UpdateLink200JSONResponse(toServiceLink(l)), nil
 }
 
 // Unlink deletes a link.

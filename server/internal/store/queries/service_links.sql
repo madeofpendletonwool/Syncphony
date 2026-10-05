@@ -47,3 +47,18 @@ SELECT * FROM service_links ORDER BY id;
 -- RewrapServiceLink replaces the ciphertext only (vault key rotation).
 -- name: RewrapServiceLink :exec
 UPDATE service_links SET encrypted_credentials = ? WHERE id = ?;
+
+-- name: SetServiceLinkShared :exec
+UPDATE service_links SET shared = ?, updated_at = ? WHERE id = ? AND user_id = ?;
+
+-- ListUsableServiceLinks is every link user_id can search and queue from:
+-- their own first, then everyone else's shared ones. (sqlc doesn't rewrite
+-- sqlc.arg in ORDER BY, so the second use is ?1, the same parameter.)
+-- name: ListUsableServiceLinks :many
+SELECT * FROM service_links
+WHERE user_id = sqlc.arg(user_id) OR shared
+ORDER BY user_id != ?1, created_at;
+
+-- GetUsableServiceLink is one link user_id may use: their own, or shared.
+-- name: GetUsableServiceLink :one
+SELECT * FROM service_links WHERE id = sqlc.arg(id) AND (user_id = sqlc.arg(user_id) OR shared);

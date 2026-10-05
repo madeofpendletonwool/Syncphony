@@ -4,9 +4,11 @@ import { ChevronRight, LoaderCircle, Search as SearchIcon, Waypoints, X } from '
 import { motion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { errorMessage } from '@/api/errors'
+import type { components } from '@/api/schema.gen'
 import { AlbumCard, ArtistCard } from '@/components/album-card'
 import { Notice } from '@/components/notice'
 import { PageHeader } from '@/components/page-header'
+import { ProviderIcon } from '@/components/provider-icon'
 import { JoinRoomPrompt } from '@/components/start-room'
 import { TrackRow } from '@/components/track-row'
 import { Button } from '@/components/ui/button'
@@ -14,10 +16,14 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useAddToLane } from '@/hooks/use-add-to-lane'
+import { useMe } from '@/lib/auth'
 import { interleave, searchQuery, trackKey, type SearchGroup } from '@/lib/browse'
 import { fadeUp, stagger } from '@/lib/motion'
-import { linksQuery, providersQuery } from '@/lib/services'
+import { providersQuery, sourceName, usableLinksQuery } from '@/lib/services'
+import { usersQuery } from '@/lib/users'
 import { cn } from '@/lib/utils'
+
+type ServiceLink = components['schemas']['ServiceLink']
 
 const tabs = ['all', 'songs', 'albums', 'artists'] as const
 type Tab = (typeof tabs)[number]
@@ -45,7 +51,7 @@ function Search() {
     return () => clearTimeout(t)
   }, [text, q, navigate])
 
-  const links = useQuery(linksQuery)
+  const links = useQuery(usableLinksQuery)
   const results = useQuery({ ...searchQuery(q), enabled: q !== '', placeholderData: keepPreviousData })
 
   return (
@@ -109,6 +115,7 @@ function Search() {
       </div>
 
       <JoinRoomPrompt className="mt-4" />
+      {links.data && <Sources links={links.data} />}
 
       {links.data && links.data.length === 0 ? (
         <NoLinks />
@@ -130,6 +137,7 @@ function Search() {
 }
 
 function Results({ groups, tab }: { groups: SearchGroup[]; tab: Tab }) {
+  const me = useMe()
   const navigate = useNavigate({ from: Route.fullPath })
   const { add, status } = useAddToLane()
   const providers = useQuery(providersQuery)
@@ -179,7 +187,9 @@ function Results({ groups, tab }: { groups: SearchGroup[]; tab: Tab }) {
       {failed.map((g) => (
         <Notice key={g.linkId}>
           <span className="font-medium">{nameOf(g.provider)}</span> ({g.accountLabel}){' '}
-          {g.error?.code === 'needs_relink' ? (
+          {g.ownerId !== me.id ? (
+            'is shared with you but isn\u2019t available right now.'
+          ) : g.error?.code === 'needs_relink' ? (
             <>
               needs linking again.{' '}
               <Link to="/settings/services" className="font-medium underline underline-offset-2">
@@ -289,6 +299,29 @@ function ResultsSkeleton() {
   )
 }
 
+/** Which libraries a search covers, when some are shared by others. */
+function Sources({ links }: { links: ServiceLink[] }) {
+  const me = useMe()
+  const providers = useQuery(providersQuery)
+  const users = useQuery(usersQuery)
+  if (!links.some((l) => l.ownerId !== me.id)) return null
+  return (
+    <p className="mt-3 flex flex-wrap items-center gap-1.5 px-1 text-caption text-muted-foreground">
+      Searching
+      {links.map((l) => {
+        const p = providers.data?.find((p) => p.id === l.provider)
+        const owner = users.data?.find((u) => u.id === l.ownerId)
+        return (
+          <span key={l.id} className="glass inline-flex items-center gap-1 rounded-full py-0.5 pr-2 pl-1">
+            <ProviderIcon icon={p?.icon ?? l.provider} className="size-4 rounded-full [&_svg]:size-2.5" />
+            {sourceName(p?.name ?? l.provider, owner?.displayName, l.ownerId === me.id)}
+          </span>
+        )
+      })}
+    </p>
+  )
+}
+
 function NoLinks() {
   return (
     <motion.section
@@ -302,7 +335,7 @@ function NoLinks() {
       </motion.div>
       <motion.div variants={fadeUp}>
         <h2 className="text-headline">Link a service to search</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Search goes through your own music accounts.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Search goes through your own music accounts, and ones others share with you.</p>
       </motion.div>
       <motion.div variants={fadeUp}>
         <Button asChild>

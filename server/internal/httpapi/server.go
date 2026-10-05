@@ -284,6 +284,7 @@ var errorCodes = []struct {
 	{links.ErrNotFound, http.StatusNotFound, "not_found"},
 	{links.ErrWrongMethod, http.StatusBadRequest, "wrong_link_method"},
 	{links.ErrDifferentAccount, http.StatusConflict, "different_account"},
+	{links.ErrNotShareable, http.StatusBadRequest, "not_shareable"},
 	{links.ErrOAuthState, http.StatusBadRequest, "oauth_state"},
 	{rooms.ErrNotFound, http.StatusNotFound, "not_found"},
 	{rooms.ErrForbidden, http.StatusForbidden, "forbidden"},

@@ -26,7 +26,7 @@ const searchTimeout = 8 * time.Second
 // searched, for now.
 var searchKinds = []provider.EntityKind{provider.KindTrack, provider.KindAlbum, provider.KindArtist}
 
-// Search searches every one of the caller's links at once.
+// Search searches every one of the caller's links, and every shared one, at once.
 func (s *Server) Search(ctx context.Context, req SearchRequestObject) (SearchResponseObject, error) {
 	text := strings.TrimSpace(req.Params.Q)
 	if text == "" {
@@ -37,7 +37,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequestObject) (SearchRes
 		limit = *req.Params.Limit
 	}
 	userID := sessionFrom(ctx).User.ID
-	ls, err := s.Links.List(ctx, userID)
+	ls, err := s.Links.Usable(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequestObject) (SearchRes
 	var wg sync.WaitGroup
 	for i, l := range ls {
 		groups[i] = SearchGroup{
-			LinkId: l.ID, Provider: l.Provider, AccountLabel: l.AccountLabel,
+			LinkId: l.ID, OwnerId: l.UserID, Provider: l.Provider, AccountLabel: l.AccountLabel,
 			Tracks: []TrackResult{}, Albums: []AlbumResult{}, Artists: []ArtistResult{},
 		}
 		wg.Go(func() {
@@ -96,9 +96,9 @@ func (s *Server) searchLink(ctx context.Context, linkID, text string, limit int,
 	return nil
 }
 
-// GetAlbum returns an album and its tracks through one of the caller's links.
+// GetAlbum returns an album and its tracks through a link the caller may use.
 func (s *Server) GetAlbum(ctx context.Context, req GetAlbumRequestObject) (GetAlbumResponseObject, error) {
-	l, sess, err := s.openOwn(ctx, req.Id)
+	l, sess, err := s.openUsable(ctx, req.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -114,9 +114,9 @@ func (s *Server) GetAlbum(ctx context.Context, req GetAlbumRequestObject) (GetAl
 	return GetAlbum200JSONResponse(out), nil
 }
 
-// GetArtist returns an artist and their albums through one of the caller's links.
+// GetArtist returns an artist and their albums through a link the caller may use.
 func (s *Server) GetArtist(ctx context.Context, req GetArtistRequestObject) (GetArtistResponseObject, error) {
-	l, sess, err := s.openOwn(ctx, req.Id)
+	l, sess, err := s.openUsable(ctx, req.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -135,9 +135,9 @@ func (s *Server) GetArtist(ctx context.Context, req GetArtistRequestObject) (Get
 	return GetArtist200JSONResponse(out), nil
 }
 
-// openOwn opens one of the caller's links.
-func (s *Server) openOwn(ctx context.Context, linkID string) (store.ServiceLink, provider.Session, error) {
-	l, err := s.Links.Get(ctx, sessionFrom(ctx).User.ID, linkID)
+// openUsable opens one of the caller's links, or a shared one.
+func (s *Server) openUsable(ctx context.Context, linkID string) (store.ServiceLink, provider.Session, error) {
+	l, err := s.Links.GetUsable(ctx, sessionFrom(ctx).User.ID, linkID)
 	if err != nil {
 		return l, nil, err
 	}
@@ -145,9 +145,9 @@ func (s *Server) openOwn(ctx context.Context, linkID string) (store.ServiceLink,
 	return l, sess, err
 }
 
-// GetLinkArtwork proxies an image through one of the caller's links.
+// GetLinkArtwork proxies an image through a link the caller may use.
 func (s *Server) GetLinkArtwork(ctx context.Context, req GetLinkArtworkRequestObject) (GetLinkArtworkResponseObject, error) {
-	_, sess, err := s.openOwn(ctx, req.Id)
+	_, sess, err := s.openUsable(ctx, req.Id)
 	if err != nil {
 		return nil, err
 	}

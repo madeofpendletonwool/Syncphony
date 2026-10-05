@@ -2,15 +2,15 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Fragment } from 'react'
 import type { Track } from '@/lib/now-playing'
-import { linksQuery } from '@/lib/services'
+import { usableLinksQuery } from '@/lib/services'
 import { cn } from '@/lib/utils'
 
 // Albums and artists open through the link the song was queued with. That
-// only works for your own links, so someone else's song searches your
-// services for the name instead.
+// works for your own links and shared ones; for anyone else's, it searches
+// your services for the name instead.
 
 function useOwnLink(track: Track) {
-  const links = useQuery(linksQuery)
+  const links = useQuery(usableLinksQuery)
   return track.linkId && links.data?.some((l) => l.id === track.linkId) ? track.linkId : undefined
 }
 

@@ -30,6 +30,9 @@ func TestProviders(t *testing.T) {
 	if len(ps[1].Fields) != 0 || len(ps[0].Capabilities.Search) != 4 || ps[0].Playback != httpapi.ProviderInfoPlaybackStream {
 		t.Fatalf("oauth provider: %+v", ps[1])
 	}
+	if !ps[0].Capabilities.Shareable || ps[1].Capabilities.Shareable {
+		t.Fatalf("shareable: %v, %v", ps[0].Capabilities.Shareable, ps[1].Capabilities.Shareable)
+	}
 	if r := e.client().do("GET", "/providers", nil); r.status != http.StatusUnauthorized {
 		t.Fatalf("anonymous: %d", r.status)
 	}
@@ -165,7 +168,85 @@ func TestOAuthLink(t *testing.T) {
 	if len(list) != 1 || list[0].Id != got.Get("linked") || list[0].Provider != "oauthy" {
 		t.Fatalf("links: %+v", list)
 	}
+	// A personal subscription can't be shared.
+	if r := alice.do("PATCH", "/links/"+list[0].Id, httpapi.UpdateLinkRequest{Shared: true}); r.status != http.StatusBadRequest || r.code() != "not_shareable" {
+		t.Fatalf("sharing oauthy: %d %s", r.status, r.body)
+	}
 	// Re-linking by link ID.
 	var out httpapi.BeginOAuthLink200JSONResponse
 	alice.want(http.StatusOK, "POST", "/links/oauth", httpapi.BeginOAuthLinkRequest{LinkId: &list[0].Id}).decode(t, &out)
+}
+
+func TestSharedLinks(t *testing.T) {
+	e := newEnv(t)
+	alice := e.admin()
+	bob := e.member(alice, "bob")
+	aliceID := me(t, alice).Id
+	l := linkFake(t, alice)
+	room := e.room(t, aliceID)
+	queuePath := "/rooms/" + room.ID + "/queue"
+
+	var link httpapi.ServiceLink
+	listed := func(c *client, query string) []httpapi.ServiceLink {
+		t.Helper()
+		var ls []httpapi.ServiceLink
+		c.want(http.StatusOK, "GET", "/links"+query, nil).decode(t, &ls)
+		return ls
+	}
+	if ls := listed(alice, ""); len(ls) != 1 || ls[0].Shared || ls[0].OwnerId != aliceID {
+		t.Fatalf("alice's links: %+v", ls)
+	}
+
+	// Not shared: bob can't see, browse or queue from it.
+	if ls := listed(bob, "?include=shared"); len(ls) != 0 {
+		t.Fatalf("bob sees an unshared link: %+v", ls)
+	}
+	if res := search(t, bob, "null"); len(res.Groups) != 0 {
+		t.Fatalf("bob searches an unshared link: %+v", res.Groups)
+	}
+	if r := bob.do("POST", queuePath, addReq(l, "t01")); r.status != http.StatusNotFound {
+		t.Fatalf("bob queues from an unshared link: %d %s", r.status, r.body)
+	}
+	// Nor share it himself.
+	if r := bob.do("PATCH", "/links/"+l, httpapi.UpdateLinkRequest{Shared: true}); r.status != http.StatusNotFound {
+		t.Fatalf("bob shares alice's link: %d %s", r.status, r.body)
+	}
+
+	// Shared: bob gets all of it, and the link still belongs to alice.
+	alice.want(http.StatusOK, "PATCH", "/links/"+l, httpapi.UpdateLinkRequest{Shared: true}).decode(t, &link)
+	if !link.Shared {
+		t.Fatalf("shared: %+v", link)
+	}
+	if ls := listed(bob, ""); len(ls) != 0 {
+		t.Fatalf("bob's own links include alice's: %+v", ls)
+	}
+	if ls := listed(bob, "?include=shared"); len(ls) != 1 || ls[0].Id != l || ls[0].OwnerId != aliceID || !ls[0].Shared {
+		t.Fatalf("bob's usable links: %+v", ls)
+	}
+	res := search(t, bob, "null")
+	if len(res.Groups) != 1 || res.Groups[0].LinkId != l || res.Groups[0].OwnerId != aliceID || len(res.Groups[0].Tracks) == 0 {
+		t.Fatalf("bob's search: %+v", res.Groups)
+	}
+	tr := res.Groups[0].Tracks[0]
+	bob.want(http.StatusOK, "GET", "/links/"+l+"/albums/"+*tr.Album.Id, nil)
+	bob.want(http.StatusOK, "GET", "/links/"+l+"/artists/"+*tr.Artists[0].Id, nil)
+	bob.want(http.StatusOK, "GET", "/links/"+l+"/artwork?ref="+url.QueryEscape(*tr.Artwork), nil)
+	var snap httpapi.QueueSnapshot
+	bob.want(http.StatusOK, "POST", queuePath, addReq(l, tr.TrackId)).decode(t, &snap)
+	if len(snap.Items) != 1 || snap.Items[0].AddedBy == aliceID || snap.Items[0].Track.LinkId == nil || *snap.Items[0].Track.LinkId != l {
+		t.Fatalf("bob's queued song: %+v", snap.Items)
+	}
+	if r := bob.do("DELETE", "/links/"+l, nil); r.status != http.StatusNotFound {
+		t.Fatalf("bob unlinks alice's shared link: %d", r.status)
+	}
+
+	// Unshared again: gone for bob, but what he queued stays.
+	alice.want(http.StatusOK, "PATCH", "/links/"+l, httpapi.UpdateLinkRequest{Shared: false})
+	if res := search(t, bob, "null"); len(res.Groups) != 0 {
+		t.Fatalf("bob searches an unshared link: %+v", res.Groups)
+	}
+	bob.want(http.StatusOK, "GET", queuePath, nil).decode(t, &snap)
+	if len(snap.Items) != 1 {
+		t.Fatalf("queue after unsharing: %+v", snap.Items)
+	}
 }

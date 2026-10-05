@@ -394,7 +394,13 @@ export interface paths {
         delete: operations["unlink"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Share a link with everyone, or stop sharing it
+         * @description Only services whose `shareable` capability is set can be shared
+         *     (`not_shareable` otherwise). Songs already queued from a link keep
+         *     playing after it's unshared.
+         */
+        patch: operations["updateLink"];
         trace?: never;
     };
     "/links/oauth": {
@@ -449,8 +455,9 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Search every service you've linked
-         * @description Searches each of your links at once for tracks, albums and artists.
+         * Search every service you've linked, and shared ones
+         * @description Searches each of your links, and every link someone has shared, at
+         *     once for tracks, albums and artists.
          *     Each link's results come back as a group, in link order. A link that
          *     fails (offline, needs re-linking, too slow) gets a group with
          *     `error` set instead of failing the whole search.
@@ -474,7 +481,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** An album and its tracks, through one of your links */
+        /** An album and its tracks, through one of your links or a shared one */
         get: operations["getAlbum"];
         put?: never;
         post?: never;
@@ -494,7 +501,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** An artist and their albums, through one of your links */
+        /** An artist and their albums, through one of your links or a shared one */
         get: operations["getArtist"];
         put?: never;
         post?: never;
@@ -514,7 +521,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * An image from one of your links
+         * An image from one of your links or a shared one
          * @description For `artwork` refs in search and browse results. Cacheable.
          */
         get: operations["getLinkArtwork"];
@@ -917,6 +924,8 @@ export interface components {
                 artwork: boolean;
                 lyrics: boolean;
                 isrc: boolean;
+                /** @description Links to this service can be shared with everyone on the server. */
+                shareable: boolean;
             };
         };
         LinkField: {
@@ -933,6 +942,8 @@ export interface components {
         };
         ServiceLink: {
             id: string;
+            /** @description The user who linked it. Not you when it's someone's shared link. */
+            ownerId: string;
             provider: string;
             /** @example alice on music.example.com */
             accountLabel: string;
@@ -942,6 +953,8 @@ export interface components {
              */
             status: "ok" | "needs_relink" | "error";
             statusDetail?: string;
+            /** @description Everyone on the server can search and queue from it. */
+            shared: boolean;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -992,6 +1005,8 @@ export interface components {
         /** @description One link's search results. */
         SearchGroup: {
             linkId: string;
+            /** @description Who linked it; someone else when it's a shared link. */
+            ownerId: string;
             provider: string;
             accountLabel: string;
             tracks: components["schemas"]["TrackResult"][];
@@ -1029,6 +1044,9 @@ export interface components {
         MoveQueueItemRequest: {
             /** @description Where in your lane to put the song; 0 is the front. Past the end means the end. */
             position: number;
+        };
+        UpdateLinkRequest: {
+            shared: boolean;
         };
         RelinkRequest: {
             fields: {
@@ -1753,7 +1771,10 @@ export interface operations {
     };
     listLinks: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description `shared`: also list links others have shared, after yours. */
+                include?: "shared";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1841,6 +1862,33 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description The link */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceLink"];
+                };
             };
             default: components["responses"]["Error"];
         };

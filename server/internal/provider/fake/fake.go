@@ -35,6 +35,8 @@ type Options struct {
 	Name     string // default "Fake"
 	Playback provider.PlaybackMode
 	Link     provider.LinkMethod
+	// Private makes links unshareable, like a personal subscription.
+	Private bool
 	// Now is the clock, for token expiry and remote playback position.
 	Now func() time.Time
 	// TokenTTL is how long OAuth2 access tokens last before the session
@@ -90,6 +92,7 @@ func (p *Provider) Info() provider.Info {
 			Artwork:   true,
 			Lyrics:    true,
 			ISRC:      true,
+			Shareable: !p.opts.Private,
 		},
 	}
 }

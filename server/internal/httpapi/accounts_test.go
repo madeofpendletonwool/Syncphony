@@ -75,7 +75,8 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	e.fake = fake.New(fake.Options{})
-	e.oauth = fake.New(fake.Options{ID: "oauthy", Name: "OAuthy", Link: provider.LinkOAuth2, Now: e.clock})
+	// OAuthy stands in for a personal subscription: its links can't be shared.
+	e.oauth = fake.New(fake.Options{ID: "oauthy", Name: "OAuthy", Link: provider.LinkOAuth2, Private: true, Now: e.clock})
 	reg, err := provider.NewRegistry(e.fake, e.oauth)
 	if err != nil {
 		t.Fatal(err)

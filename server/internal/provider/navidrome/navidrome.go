@@ -89,6 +89,8 @@ func (p *Provider) Info() provider.Info {
 			Artwork:  true,
 			// OpenSubsonic servers (Navidrome 0.53+) report ISRCs from tags.
 			ISRC: true,
+			// It's the owner's own server; they decide who listens.
+			Shareable: true,
 		},
 	}
 }

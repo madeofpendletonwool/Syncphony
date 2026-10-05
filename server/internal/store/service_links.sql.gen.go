@@ -14,7 +14,7 @@ const createServiceLink = `-- name: CreateServiceLink :one
 
 INSERT INTO service_links (id, user_id, provider, account_id, account_label, encrypted_credentials, created_at, updated_at, last_ok_at)
 VALUES (?, ?, ?, ?, ?, ?, ?7, ?7, ?7)
-RETURNING id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at
+RETURNING id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at, shared
 `
 
 type CreateServiceLinkParams struct {
@@ -52,6 +52,7 @@ func (q *Queries) CreateServiceLink(ctx context.Context, arg CreateServiceLinkPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.LastOkAt,
+		&i.Shared,
 	)
 	return i, err
 }
@@ -71,7 +72,7 @@ func (q *Queries) DeleteServiceLink(ctx context.Context, arg DeleteServiceLinkPa
 }
 
 const findServiceLink = `-- name: FindServiceLink :one
-SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at FROM service_links WHERE user_id = ? AND provider = ? AND account_id = ?
+SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at, shared FROM service_links WHERE user_id = ? AND provider = ? AND account_id = ?
 `
 
 type FindServiceLinkParams struct {
@@ -95,12 +96,13 @@ func (q *Queries) FindServiceLink(ctx context.Context, arg FindServiceLinkParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.LastOkAt,
+		&i.Shared,
 	)
 	return i, err
 }
 
 const getServiceLink = `-- name: GetServiceLink :one
-SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at FROM service_links WHERE id = ?
+SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at, shared FROM service_links WHERE id = ?
 `
 
 func (q *Queries) GetServiceLink(ctx context.Context, id string) (ServiceLink, error) {
@@ -118,12 +120,43 @@ func (q *Queries) GetServiceLink(ctx context.Context, id string) (ServiceLink, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.LastOkAt,
+		&i.Shared,
+	)
+	return i, err
+}
+
+const getUsableServiceLink = `-- name: GetUsableServiceLink :one
+SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at, shared FROM service_links WHERE id = ?1 AND (user_id = ?2 OR shared)
+`
+
+type GetUsableServiceLinkParams struct {
+	ID     string
+	UserID string
+}
+
+// GetUsableServiceLink is one link user_id may use: their own, or shared.
+func (q *Queries) GetUsableServiceLink(ctx context.Context, arg GetUsableServiceLinkParams) (ServiceLink, error) {
+	row := q.db.QueryRowContext(ctx, getUsableServiceLink, arg.ID, arg.UserID)
+	var i ServiceLink
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Provider,
+		&i.AccountID,
+		&i.AccountLabel,
+		&i.EncryptedCredentials,
+		&i.Status,
+		&i.StatusDetail,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastOkAt,
+		&i.Shared,
 	)
 	return i, err
 }
 
 const getUserServiceLink = `-- name: GetUserServiceLink :one
-SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at FROM service_links WHERE id = ? AND user_id = ?
+SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at, shared FROM service_links WHERE id = ? AND user_id = ?
 `
 
 type GetUserServiceLinkParams struct {
@@ -146,12 +179,13 @@ func (q *Queries) GetUserServiceLink(ctx context.Context, arg GetUserServiceLink
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.LastOkAt,
+		&i.Shared,
 	)
 	return i, err
 }
 
 const listAllServiceLinks = `-- name: ListAllServiceLinks :many
-SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at FROM service_links ORDER BY id
+SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at, shared FROM service_links ORDER BY id
 `
 
 func (q *Queries) ListAllServiceLinks(ctx context.Context) ([]ServiceLink, error) {
@@ -175,6 +209,7 @@ func (q *Queries) ListAllServiceLinks(ctx context.Context) ([]ServiceLink, error
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.LastOkAt,
+			&i.Shared,
 		); err != nil {
 			return nil, err
 		}
@@ -190,7 +225,7 @@ func (q *Queries) ListAllServiceLinks(ctx context.Context) ([]ServiceLink, error
 }
 
 const listServiceLinks = `-- name: ListServiceLinks :many
-SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at FROM service_links WHERE user_id = ? ORDER BY created_at
+SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at, shared FROM service_links WHERE user_id = ? ORDER BY created_at
 `
 
 func (q *Queries) ListServiceLinks(ctx context.Context, userID string) ([]ServiceLink, error) {
@@ -214,6 +249,52 @@ func (q *Queries) ListServiceLinks(ctx context.Context, userID string) ([]Servic
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.LastOkAt,
+			&i.Shared,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsableServiceLinks = `-- name: ListUsableServiceLinks :many
+SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at, shared FROM service_links
+WHERE user_id = ?1 OR shared
+ORDER BY user_id != ?1, created_at
+`
+
+// ListUsableServiceLinks is every link user_id can search and queue from:
+// their own first, then everyone else's shared ones. (sqlc doesn't rewrite
+// sqlc.arg in ORDER BY, so the second use is ?1, the same parameter.)
+func (q *Queries) ListUsableServiceLinks(ctx context.Context, userID string) ([]ServiceLink, error) {
+	rows, err := q.db.QueryContext(ctx, listUsableServiceLinks, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ServiceLink{}
+	for rows.Next() {
+		var i ServiceLink
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Provider,
+			&i.AccountID,
+			&i.AccountLabel,
+			&i.EncryptedCredentials,
+			&i.Status,
+			&i.StatusDetail,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastOkAt,
+			&i.Shared,
 		); err != nil {
 			return nil, err
 		}
@@ -279,6 +360,27 @@ type RewrapServiceLinkParams struct {
 // RewrapServiceLink replaces the ciphertext only (vault key rotation).
 func (q *Queries) RewrapServiceLink(ctx context.Context, arg RewrapServiceLinkParams) error {
 	_, err := q.db.ExecContext(ctx, rewrapServiceLink, arg.EncryptedCredentials, arg.ID)
+	return err
+}
+
+const setServiceLinkShared = `-- name: SetServiceLinkShared :exec
+UPDATE service_links SET shared = ?, updated_at = ? WHERE id = ? AND user_id = ?
+`
+
+type SetServiceLinkSharedParams struct {
+	Shared    bool
+	UpdatedAt time.Time
+	ID        string
+	UserID    string
+}
+
+func (q *Queries) SetServiceLinkShared(ctx context.Context, arg SetServiceLinkSharedParams) error {
+	_, err := q.db.ExecContext(ctx, setServiceLinkShared,
+		arg.Shared,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.UserID,
+	)
 	return err
 }
 

@@ -80,6 +80,7 @@ type ServiceLink struct {
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	LastOkAt             sql.NullTime
+	Shared               bool
 }
 
 type Session struct {

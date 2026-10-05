@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { MonitorSmartphone, Speaker, Volume2 } from 'lucide-react'
-import { motion } from 'motion/react'
 import { useState } from 'react'
 import { Equalizer } from '@/components/equalizer'
+import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { useMe } from '@/lib/auth'
 import { canControl, playbackQuery } from '@/lib/playback'
@@ -69,7 +69,7 @@ export function SpeakerPanel({ room, prominent }: { room: Room; prominent?: bool
             <MonitorSmartphone className="size-4" />
             Keep the screen on
           </span>
-          <Toggle checked={state.keepAwake} onChange={(on) => speaker.setKeepAwake(on)} label="Keep the screen on" />
+          <Switch checked={state.keepAwake} onChange={(on) => speaker.setKeepAwake(on)} label="Keep the screen on" />
         </label>
       </div>
     )
@@ -100,28 +100,6 @@ export function SpeakerPanel({ room, prominent }: { room: Room; prominent?: bool
         {other ? `Playing on ${other.name}` : 'Use the device connected to the speaker'}
       </p>
     </div>
-  )
-}
-
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (on: boolean) => void; label: string }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={() => onChange(!checked)}
-      className={cn(
-        'relative h-7 w-12 shrink-0 rounded-full transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
-        checked ? 'bg-primary' : 'bg-muted',
-      )}
-    >
-      <motion.span
-        layout
-        transition={{ type: 'spring', stiffness: 600, damping: 35 }}
-        className={cn('absolute top-1 size-5 rounded-full bg-white shadow', checked ? 'right-1' : 'left-1')}
-      />
-    </button>
   )
 }
 

@@ -4,7 +4,7 @@ import type { components } from '@/api/schema.gen'
 import { meQuery } from './auth'
 import { newer, playbackQuery, type Playback } from './playback'
 import { queueQuery, type QueueSnapshot } from './room'
-import { linksQuery } from './services'
+import { linksQuery, usableLinksQuery } from './services'
 import { createStore } from './store'
 import { toast } from './toast'
 import { usersQuery } from './users'
@@ -121,6 +121,7 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
     case 'link.status': {
       const link = ev.data as ServiceLink
       queryClient.setQueryData(linksQuery.queryKey, (ls) => ls?.map((l) => (l.id === link.id ? link : l)))
+      queryClient.setQueryData(usableLinksQuery.queryKey, (ls) => ls?.map((l) => (l.id === link.id ? link : l)))
       break
     }
   }

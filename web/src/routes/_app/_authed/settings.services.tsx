@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { ArrowRight, ExternalLink, LoaderCircle, Plus, RefreshCw, Unlink } from 'lucide-react'
+import { ArrowRight, ExternalLink, LoaderCircle, Plus, RefreshCw, Unlink, Users } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { api } from '@/api/client'
@@ -12,9 +12,13 @@ import { PageHeader } from '@/components/page-header'
 import { ProviderIcon } from '@/components/provider-icon'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
+import { UserAvatar } from '@/components/user-avatar'
+import { useMe } from '@/lib/auth'
 import { easeOutExpo, fadeUp, stagger } from '@/lib/motion'
-import { linksQuery, providersQuery } from '@/lib/services'
+import { linksQuery, providersQuery, sourceName, usableLinksQuery } from '@/lib/services'
 import { relativeTime } from '@/lib/time'
+import { usersQuery } from '@/lib/users'
 import { cn } from '@/lib/utils'
 
 type Provider = components['schemas']['ProviderInfo']
@@ -53,7 +57,10 @@ function Services() {
 
   return (
     <>
-      <PageHeader title="Services" subtitle="Link the accounts you play music from. Your passwords stay on the server." />
+      <PageHeader
+        title="Services"
+        subtitle="Link the accounts you play music from, and share your own libraries with everyone here. Your passwords stay on the server."
+      />
 
       <motion.div variants={stagger} initial="hidden" animate="show" className="flex flex-col gap-4">
         <Notice tone="success">{outcome.linked && (linkedLabel ? `Linked ${linkedLabel}.` : 'Linked.')}</Notice>
@@ -95,6 +102,7 @@ function Services() {
               />
             ))}
             <OrphanLinks links={links.data.filter((l) => !providers.data.some((p) => p.id === l.provider))} />
+            <SharedWithYou providers={providers.data} />
           </>
         )}
       </motion.div>
@@ -241,6 +249,8 @@ function LinkRow({ link, provider, highlighted }: { link: ServiceLink; provider?
         )}
       </div>
 
+      {provider?.capabilities.shareable && <ShareSwitch link={link} />}
+
       <Notice className="mt-3">{(oauth.error || unlink.error) && errorMessage(oauth.error ?? unlink.error)}</Notice>
 
       <AnimatePresence initial={false}>
@@ -340,6 +350,76 @@ function LinkForm({
         </Button>
       </div>
     </form>
+  )
+}
+
+/** Lets everyone on the server search and queue from one of your links. */
+function ShareSwitch({ link }: { link: ServiceLink }) {
+  const queryClient = useQueryClient()
+  const share = useMutation({
+    mutationFn: (shared: boolean) => unwrap(api.PATCH('/links/{id}', { params: { path: { id: link.id } }, body: { shared } })),
+    onMutate: (shared) => {
+      queryClient.setQueryData(linksQuery.queryKey, (ls) => ls?.map((l) => (l.id === link.id ? { ...l, shared } : l)))
+    },
+    onSuccess: (saved) => {
+      queryClient.setQueryData(linksQuery.queryKey, (ls) => ls?.map((l) => (l.id === saved.id ? saved : l)))
+    },
+    onError: () => void queryClient.invalidateQueries({ queryKey: linksQuery.queryKey, exact: true }),
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: usableLinksQuery.queryKey }),
+  })
+
+  return (
+    <div className="mt-3 border-t border-foreground/8 pt-3">
+      <label className="flex cursor-pointer items-center justify-between gap-3">
+        <span className="min-w-0">
+          <span className="flex items-center gap-1.5 text-sm font-medium">
+            <Users className="size-4 text-muted-foreground" />
+            Share with everyone here
+          </span>
+          <span className="block text-caption text-muted-foreground">
+            {link.shared
+              ? 'Everyone on this server can search it and add songs from it.'
+              : 'Let others search it and add songs from it. They never see your login.'}
+          </span>
+        </span>
+        <Switch checked={link.shared} onChange={(on) => share.mutate(on)} label={`Share ${link.accountLabel} with everyone`} />
+      </label>
+      <Notice className="mt-2">{share.error && errorMessage(share.error)}</Notice>
+    </div>
+  )
+}
+
+/** Links other people shared: you can search and queue from them too. */
+function SharedWithYou({ providers }: { providers: Provider[] }) {
+  const me = useMe()
+  const usable = useQuery(usableLinksQuery)
+  const users = useQuery(usersQuery)
+  const shared = usable.data?.filter((l) => l.ownerId !== me.id) ?? []
+  if (shared.length === 0) return null
+  return (
+    <motion.section variants={fadeUp} className="glass flex flex-col rounded-3xl p-5">
+      <h2 className="text-headline">Shared with you</h2>
+      <p className="text-sm text-muted-foreground">Search and add songs from these as if they were yours.</p>
+      <ul className="mt-4 flex flex-col gap-2">
+        {shared.map((l) => {
+          const p = providers.find((p) => p.id === l.provider)
+          const owner = users.data?.find((u) => u.id === l.ownerId)
+          return (
+            <li key={l.id} className="flex items-center gap-3 rounded-2xl bg-muted/60 p-3">
+              <ProviderIcon icon={p?.icon ?? l.provider} className="size-9 rounded-xl" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{sourceName(p?.name ?? l.provider, owner?.displayName, false)}</p>
+                <p className="flex items-center gap-1.5 truncate text-caption text-muted-foreground">
+                  {owner && <UserAvatar user={owner} className="size-4 text-[0.5rem]" />}
+                  Shared by {owner?.displayName ?? 'someone'}
+                  {l.status !== 'ok' && ` · ${statusText[l.status].toLowerCase()}`}
+                </p>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </motion.section>
   )
 }
 

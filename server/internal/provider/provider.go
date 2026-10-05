@@ -57,6 +57,10 @@ type Capabilities struct {
 	Lyrics bool
 	// ISRC means tracks carry ISRCs, for matching across services.
 	ISRC bool
+	// Shareable means a link's owner may let everyone on the server search
+	// and queue from it. Say yes for libraries the owner runs (Navidrome),
+	// no for personal subscriptions whose terms forbid sharing (Spotify).
+	Shareable bool
 }
 
 // CanSearch reports whether Search can return entities of kind k.

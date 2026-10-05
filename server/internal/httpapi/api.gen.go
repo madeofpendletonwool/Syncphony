@@ -366,6 +366,21 @@ func (e ServiceLinkStatus) Valid() bool {
 	}
 }
 
+// Defines values for ListLinksParamsInclude.
+const (
+	Shared ListLinksParamsInclude = "shared"
+)
+
+// Valid indicates whether the value is a known member of the ListLinksParamsInclude enum.
+func (e ListLinksParamsInclude) Valid() bool {
+	switch e {
+	case Shared:
+		return true
+	default:
+		return false
+	}
+}
+
 // AddToQueueRequest defines model for AddToQueueRequest.
 type AddToQueueRequest struct {
 	Items []TrackToQueue `json:"items"`
@@ -693,6 +708,9 @@ type ProviderInfo struct {
 		Lyrics    bool                             `json:"lyrics"`
 		Playlists bool                             `json:"playlists"`
 		Search    []ProviderInfoCapabilitiesSearch `json:"search"`
+
+		// Shareable Links to this service can be shared with everyone on the server.
+		Shareable bool `json:"shareable"`
 	} `json:"capabilities"`
 
 	// Fields The form to show for `credentials` providers. Empty for `oauth2`.
@@ -836,8 +854,11 @@ type SearchGroup struct {
 	Artists      []ArtistResult `json:"artists"`
 	Error        *Error         `json:"error,omitempty"`
 	LinkId       string         `json:"linkId"`
-	Provider     string         `json:"provider"`
-	Tracks       []TrackResult  `json:"tracks"`
+
+	// OwnerId Who linked it; someone else when it's a shared link.
+	OwnerId  string        `json:"ownerId"`
+	Provider string        `json:"provider"`
+	Tracks   []TrackResult `json:"tracks"`
 }
 
 // SearchResults defines model for SearchResults.
@@ -854,7 +875,13 @@ type ServiceLink struct {
 	CreatedAt    time.Time  `json:"createdAt"`
 	Id           string     `json:"id"`
 	LastOkAt     *time.Time `json:"lastOkAt,omitempty"`
-	Provider     string     `json:"provider"`
+
+	// OwnerId The user who linked it. Not you when it's someone's shared link.
+	OwnerId  string `json:"ownerId"`
+	Provider string `json:"provider"`
+
+	// Shared Everyone on the server can search and queue from it.
+	Shared bool `json:"shared"`
 
 	// Status `needs_relink`: the service stopped accepting the credentials; link again.
 	Status       ServiceLinkStatus `json:"status"`
@@ -904,6 +931,11 @@ type TrackToQueue struct {
 	TrackId string `json:"trackId"`
 }
 
+// UpdateLinkRequest defines model for UpdateLinkRequest.
+type UpdateLinkRequest struct {
+	Shared bool `json:"shared"`
+}
+
 // UpdateRoomRequest defines model for UpdateRoomRequest.
 type UpdateRoomRequest struct {
 	// Controls Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
@@ -939,6 +971,15 @@ type RoomId = string
 
 // SignedIn defines model for SignedIn.
 type SignedIn = Me
+
+// ListLinksParams defines parameters for ListLinks.
+type ListLinksParams struct {
+	// Include `shared`: also list links others have shared, after yours.
+	Include *ListLinksParamsInclude `form:"include,omitempty" json:"include,omitempty"`
+}
+
+// ListLinksParamsInclude defines parameters for ListLinks.
+type ListLinksParamsInclude string
 
 // CompleteOAuthLinkParams defines parameters for CompleteOAuthLink.
 type CompleteOAuthLinkParams struct {
@@ -1020,6 +1061,9 @@ type CreateLinkJSONRequestBody = CreateLinkRequest
 // BeginOAuthLinkJSONRequestBody defines body for BeginOAuthLink for application/json ContentType.
 type BeginOAuthLinkJSONRequestBody = BeginOAuthLinkRequest
 
+// UpdateLinkJSONRequestBody defines body for UpdateLink for application/json ContentType.
+type UpdateLinkJSONRequestBody = UpdateLinkRequest
+
 // RelinkJSONRequestBody defines body for Relink for application/json ContentType.
 type RelinkJSONRequestBody = RelinkRequest
 
@@ -1096,7 +1140,7 @@ type ServerInterface interface {
 	GetInvite(w http.ResponseWriter, r *http.Request, code InviteCode)
 	// ListLinks Your linked service accounts
 	// (GET /links)
-	ListLinks(w http.ResponseWriter, r *http.Request)
+	ListLinks(w http.ResponseWriter, r *http.Request, params ListLinksParams)
 	// CreateLink Link an account with a form (credentials providers)
 	// (POST /links)
 	CreateLink(w http.ResponseWriter, r *http.Request)
@@ -1109,16 +1153,19 @@ type ServerInterface interface {
 	// Unlink Unlink and delete the stored credentials
 	// (DELETE /links/{id})
 	Unlink(w http.ResponseWriter, r *http.Request, id string)
+	// UpdateLink Share a link with everyone, or stop sharing it
+	// (PATCH /links/{id})
+	UpdateLink(w http.ResponseWriter, r *http.Request, id string)
 	// Relink Re-link with new credentials (credentials providers)
 	// (PUT /links/{id})
 	Relink(w http.ResponseWriter, r *http.Request, id string)
-	// GetAlbum An album and its tracks, through one of your links
+	// GetAlbum An album and its tracks, through one of your links or a shared one
 	// (GET /links/{id}/albums/{albumId})
 	GetAlbum(w http.ResponseWriter, r *http.Request, id string, albumId string)
-	// GetArtist An artist and their albums, through one of your links
+	// GetArtist An artist and their albums, through one of your links or a shared one
 	// (GET /links/{id}/artists/{artistId})
 	GetArtist(w http.ResponseWriter, r *http.Request, id string, artistId string)
-	// GetLinkArtwork An image from one of your links
+	// GetLinkArtwork An image from one of your links or a shared one
 	// (GET /links/{id}/artwork)
 	GetLinkArtwork(w http.ResponseWriter, r *http.Request, id string, params GetLinkArtworkParams)
 	// GetMe The signed-in user
@@ -1199,7 +1246,7 @@ type ServerInterface interface {
 	// StreamQueueItem A song's audio
 	// (GET /rooms/{roomId}/stream/{itemId})
 	StreamQueueItem(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params StreamQueueItemParams)
-	// Search Search every service you've linked
+	// Search Search every service you've linked, and shared ones
 	// (GET /search)
 	Search(w http.ResponseWriter, r *http.Request, params SearchParams)
 	// ListUsers Everyone on this server
@@ -1411,8 +1458,27 @@ func (siw *ServerInterfaceWrapper) GetInvite(w http.ResponseWriter, r *http.Requ
 // ListLinks operation middleware
 func (siw *ServerInterfaceWrapper) ListLinks(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListLinksParams
+
+	// ------------- Optional query parameter "include" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "include", r.URL.Query(), &params.Include, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "include"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "include", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListLinks(w, r)
+		siw.Handler.ListLinks(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1526,6 +1592,32 @@ func (siw *ServerInterfaceWrapper) Unlink(w http.ResponseWriter, r *http.Request
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Unlink(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateLink operation middleware
+func (siw *ServerInterfaceWrapper) UpdateLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateLink(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2582,6 +2674,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links", wrapper.ListLinks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/links", wrapper.CreateLink)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/links/{id}", wrapper.Unlink)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/links/{id}", wrapper.UpdateLink)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/links/{id}", wrapper.Relink)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/links/oauth", wrapper.BeginOAuthLink)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/oauth/callback", wrapper.CompleteOAuthLink)
@@ -3078,6 +3171,7 @@ func (response GetInvitedefaultJSONResponse) VisitGetInviteResponse(w http.Respo
 }
 
 type ListLinksRequestObject struct {
+	Params ListLinksParams
 }
 
 type ListLinksResponseObject interface {
@@ -3241,6 +3335,46 @@ type UnlinkdefaultJSONResponse struct {
 }
 
 func (response UnlinkdefaultJSONResponse) VisitUnlinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateLinkRequestObject struct {
+	Id   string `json:"id"`
+	Body *UpdateLinkJSONRequestBody
+}
+
+type UpdateLinkResponseObject interface {
+	VisitUpdateLinkResponse(w http.ResponseWriter) error
+}
+
+type UpdateLink200JSONResponse ServiceLink
+
+func (response UpdateLink200JSONResponse) VisitUpdateLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateLinkdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateLinkdefaultJSONResponse) VisitUpdateLinkResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -4583,16 +4717,19 @@ type StrictServerInterface interface {
 	// Unlink Unlink and delete the stored credentials
 	// (DELETE /links/{id})
 	Unlink(ctx context.Context, request UnlinkRequestObject) (UnlinkResponseObject, error)
+	// UpdateLink Share a link with everyone, or stop sharing it
+	// (PATCH /links/{id})
+	UpdateLink(ctx context.Context, request UpdateLinkRequestObject) (UpdateLinkResponseObject, error)
 	// Relink Re-link with new credentials (credentials providers)
 	// (PUT /links/{id})
 	Relink(ctx context.Context, request RelinkRequestObject) (RelinkResponseObject, error)
-	// GetAlbum An album and its tracks, through one of your links
+	// GetAlbum An album and its tracks, through one of your links or a shared one
 	// (GET /links/{id}/albums/{albumId})
 	GetAlbum(ctx context.Context, request GetAlbumRequestObject) (GetAlbumResponseObject, error)
-	// GetArtist An artist and their albums, through one of your links
+	// GetArtist An artist and their albums, through one of your links or a shared one
 	// (GET /links/{id}/artists/{artistId})
 	GetArtist(ctx context.Context, request GetArtistRequestObject) (GetArtistResponseObject, error)
-	// GetLinkArtwork An image from one of your links
+	// GetLinkArtwork An image from one of your links or a shared one
 	// (GET /links/{id}/artwork)
 	GetLinkArtwork(ctx context.Context, request GetLinkArtworkRequestObject) (GetLinkArtworkResponseObject, error)
 	// GetMe The signed-in user
@@ -4673,7 +4810,7 @@ type StrictServerInterface interface {
 	// StreamQueueItem A song's audio
 	// (GET /rooms/{roomId}/stream/{itemId})
 	StreamQueueItem(ctx context.Context, request StreamQueueItemRequestObject) (StreamQueueItemResponseObject, error)
-	// Search Search every service you've linked
+	// Search Search every service you've linked, and shared ones
 	// (GET /search)
 	Search(ctx context.Context, request SearchRequestObject) (SearchResponseObject, error)
 	// ListUsers Everyone on this server
@@ -5055,8 +5192,10 @@ func (sh *strictHandler) GetInvite(w http.ResponseWriter, r *http.Request, code 
 }
 
 // ListLinks operation middleware
-func (sh *strictHandler) ListLinks(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) ListLinks(w http.ResponseWriter, r *http.Request, params ListLinksParams) {
 	var request ListLinksRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.ListLinks(ctx, request.(ListLinksRequestObject))
@@ -5185,6 +5324,39 @@ func (sh *strictHandler) Unlink(w http.ResponseWriter, r *http.Request, id strin
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UnlinkResponseObject); ok {
 		if err := validResponse.VisitUnlinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateLink operation middleware
+func (sh *strictHandler) UpdateLink(w http.ResponseWriter, r *http.Request, id string) {
+	var request UpdateLinkRequestObject
+
+	request.Id = id
+
+	var body UpdateLinkJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateLink(ctx, request.(UpdateLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateLinkResponseObject); ok {
+		if err := validResponse.VisitUpdateLinkResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

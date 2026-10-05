@@ -3,6 +3,7 @@ import { artworkUrl, interleave, totalDuration, trackKey, type SearchGroup } fro
 
 const group = (linkId: string, titles: string[]): SearchGroup => ({
   linkId,
+  ownerId: 'me',
   provider: 'fake',
   accountLabel: linkId,
   tracks: titles.map((title) => ({

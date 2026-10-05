@@ -33,6 +33,7 @@ var (
 	ErrWrongMethod      = errors.New("this service links a different way")
 	ErrDifferentAccount = errors.New("that's a different account; unlink this one and link the new one instead")
 	ErrOAuthState       = errors.New("the authorization request expired or isn't yours; try linking again")
+	ErrNotShareable     = errors.New("this service doesn't allow sharing an account")
 )
 
 // InvalidInputError is a bad link form field.
@@ -122,6 +123,44 @@ func (s *Service) Providers() []provider.Provider { return s.reg.All() }
 // List returns u's links.
 func (s *Service) List(ctx context.Context, userID string) ([]store.ServiceLink, error) {
 	return s.db.ListServiceLinks(ctx, userID)
+}
+
+// Usable returns every link userID can search and queue from: their own,
+// then the ones others have shared.
+func (s *Service) Usable(ctx context.Context, userID string) ([]store.ServiceLink, error) {
+	return s.db.ListUsableServiceLinks(ctx, userID)
+}
+
+// GetUsable returns a link userID owns or that's shared. Anything else is
+// ErrNotFound.
+func (s *Service) GetUsable(ctx context.Context, userID, linkID string) (store.ServiceLink, error) {
+	row, err := s.db.GetUsableServiceLink(ctx, store.GetUsableServiceLinkParams{ID: linkID, UserID: userID})
+	if store.IsNotFound(err) {
+		return row, ErrNotFound
+	}
+	return row, err
+}
+
+// SetShared shares one of userID's links with everyone on the server, or
+// stops sharing it. Songs already queued from it keep playing either way.
+func (s *Service) SetShared(ctx context.Context, userID, linkID string, shared bool) (store.ServiceLink, error) {
+	row, err := s.userLink(ctx, userID, linkID)
+	if err != nil {
+		return row, err
+	}
+	if shared {
+		p, err := s.provider(row.Provider)
+		if err != nil {
+			return row, err
+		}
+		if !p.Info().Capabilities.Shareable {
+			return row, ErrNotShareable
+		}
+	}
+	if err := s.db.SetServiceLinkShared(ctx, store.SetServiceLinkSharedParams{Shared: shared, UpdatedAt: s.now(), ID: linkID, UserID: userID}); err != nil {
+		return row, err
+	}
+	return s.userLink(ctx, userID, linkID)
 }
 
 // Provider returns a registered provider, or ErrUnknownProvider.
@@ -407,10 +446,10 @@ func (s *Service) Open(ctx context.Context, linkID string) (provider.Session, er
 	return wrap(&watcher{s: s, row: row, inner: sess}), nil
 }
 
-// OpenFor is Open for one of userID's own links. Someone else's link is
-// ErrNotFound.
+// OpenFor is Open for a link userID may use: their own, or a shared one.
+// Anyone else's link is ErrNotFound.
 func (s *Service) OpenFor(ctx context.Context, userID, linkID string) (provider.Session, error) {
-	if _, err := s.userLink(ctx, userID, linkID); err != nil {
+	if _, err := s.GetUsable(ctx, userID, linkID); err != nil {
 		return nil, err
 	}
 	return s.Open(ctx, linkID)
