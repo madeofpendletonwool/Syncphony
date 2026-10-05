@@ -192,7 +192,7 @@ func TestRoomSocket(t *testing.T) {
 
 	// Queue changes push a new snapshot with a higher version.
 	e.queue(t, room, aliceMe.Id, "Tuning Fork")
-	if err := e.rooms.QueueChanged(t.Context(), room.ID); err != nil {
+	if _, err := e.rooms.QueueChanged(t.Context(), room.ID); err != nil {
 		t.Fatal(err)
 	}
 	if ev := a.expect("queue.updated", &snap); ev.Version != 1 || snap.Version != 1 || len(snap.Items) != 2 {
@@ -255,7 +255,7 @@ func TestRoomSocketResume(t *testing.T) {
 	alice := e.admin()
 	room := e.room(t, me(t, alice).Id)
 	for range 3 {
-		if err := e.rooms.QueueChanged(t.Context(), room.ID); err != nil {
+		if _, err := e.rooms.QueueChanged(t.Context(), room.ID); err != nil {
 			t.Fatal(err)
 		}
 	}

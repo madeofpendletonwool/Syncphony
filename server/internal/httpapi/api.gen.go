@@ -209,6 +209,11 @@ func (e ServiceLinkStatus) Valid() bool {
 	}
 }
 
+// AddToQueueRequest defines model for AddToQueueRequest.
+type AddToQueueRequest struct {
+	Items []TrackToQueue `json:"items"`
+}
+
 // BeginOAuthLinkRequest Set `provider` to link a new account, or `linkId` to re-link one.
 type BeginOAuthLinkRequest struct {
 	LinkId   *string `json:"linkId,omitempty"`
@@ -330,6 +335,12 @@ type Me struct {
 	Username     string    `json:"username"`
 }
 
+// MoveQueueItemRequest defines model for MoveQueueItemRequest.
+type MoveQueueItemRequest struct {
+	// Position Where in your lane to put the song; 0 is the front. Past the end means the end.
+	Position int `json:"position"`
+}
+
 // NowPlaying defines model for NowPlaying.
 type NowPlaying struct {
 	Item   *QueueItem `json:"item,omitempty"`
@@ -416,9 +427,13 @@ type QueueItemState string
 type QueueSnapshot struct {
 	// Items The playing item and everything queued, grouped by who added it,
 	// each lane in order.
-	Items   []QueueItem `json:"items"`
-	RoomId  string      `json:"roomId"`
-	Version int64       `json:"version"`
+	Items  []QueueItem `json:"items"`
+	RoomId string      `json:"roomId"`
+
+	// UpNext IDs of the queued items in the order they will play, as the room's
+	// fairness mode interleaves the lanes. The playing item isn't included.
+	UpNext  []string `json:"upNext"`
+	Version int64    `json:"version"`
 }
 
 // QueuedTrack The track as it was when queued; still shown if its service is offline.
@@ -515,6 +530,15 @@ type SignupRequest struct {
 	Username Username `json:"username"`
 }
 
+// TrackToQueue defines model for TrackToQueue.
+type TrackToQueue struct {
+	// LinkId One of your links.
+	LinkId string `json:"linkId"`
+
+	// TrackId The track's ID on that service, from search.
+	TrackId string `json:"trackId"`
+}
+
 // User defines model for User.
 type User struct {
 	// Avatar Image URL. Absent means show initials on `color`.
@@ -536,6 +560,9 @@ type Username = string
 
 // InviteCode defines model for InviteCode.
 type InviteCode = string
+
+// RoomId defines model for RoomId.
+type RoomId = string
 
 // SignedIn defines model for SignedIn.
 type SignedIn = Me
@@ -592,6 +619,12 @@ type RenamePasskeyJSONRequestBody RenamePasskeyJSONBody
 
 // SetPasswordJSONRequestBody defines body for SetPassword for application/json ContentType.
 type SetPasswordJSONRequestBody = SetPasswordRequest
+
+// AddToQueueJSONRequestBody defines body for AddToQueue for application/json ContentType.
+type AddToQueueJSONRequestBody = AddToQueueRequest
+
+// MoveQueueItemJSONRequestBody defines body for MoveQueueItem for application/json ContentType.
+type MoveQueueItemJSONRequestBody = MoveQueueItemRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -679,6 +712,18 @@ type ServerInterface interface {
 	// ListProviders Services that can be linked
 	// (GET /providers)
 	ListProviders(w http.ResponseWriter, r *http.Request)
+	// GetQueue The room's queue and its fair play order
+	// (GET /rooms/{roomId}/queue)
+	GetQueue(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// AddToQueue Add songs to the end of your lane
+	// (POST /rooms/{roomId}/queue)
+	AddToQueue(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// RemoveQueueItem Remove a queued song
+	// (DELETE /rooms/{roomId}/queue/{itemId})
+	RemoveQueueItem(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
+	// MoveQueueItem Move one of your queued songs within your lane
+	// (PATCH /rooms/{roomId}/queue/{itemId})
+	MoveQueueItem(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
 	// ListUsers Everyone on this server
 	// (GET /users)
 	ListUsers(w http.ResponseWriter, r *http.Request)
@@ -1202,6 +1247,128 @@ func (siw *ServerInterfaceWrapper) ListProviders(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetQueue operation middleware
+func (siw *ServerInterfaceWrapper) GetQueue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetQueue(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddToQueue operation middleware
+func (siw *ServerInterfaceWrapper) AddToQueue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddToQueue(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveQueueItem operation middleware
+func (siw *ServerInterfaceWrapper) RemoveQueueItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveQueueItem(w, r, roomId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MoveQueueItem operation middleware
+func (siw *ServerInterfaceWrapper) MoveQueueItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MoveQueueItem(w, r, roomId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListUsers operation middleware
 func (siw *ServerInterfaceWrapper) ListUsers(w http.ResponseWriter, r *http.Request) {
 
@@ -1365,6 +1532,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/links/{id}", wrapper.Relink)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/links/oauth", wrapper.BeginOAuthLink)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/oauth/callback", wrapper.CompleteOAuthLink)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.GetQueue)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.AddToQueue)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.RemoveQueueItem)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.MoveQueueItem)
 
 	return m
 }
@@ -2414,6 +2585,166 @@ func (response ListProvidersdefaultJSONResponse) VisitListProvidersResponse(w ht
 	return err
 }
 
+type GetQueueRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type GetQueueResponseObject interface {
+	VisitGetQueueResponse(w http.ResponseWriter) error
+}
+
+type GetQueue200JSONResponse QueueSnapshot
+
+func (response GetQueue200JSONResponse) VisitGetQueueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQueuedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetQueuedefaultJSONResponse) VisitGetQueueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddToQueueRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Body   *AddToQueueJSONRequestBody
+}
+
+type AddToQueueResponseObject interface {
+	VisitAddToQueueResponse(w http.ResponseWriter) error
+}
+
+type AddToQueue200JSONResponse QueueSnapshot
+
+func (response AddToQueue200JSONResponse) VisitAddToQueueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddToQueuedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response AddToQueuedefaultJSONResponse) VisitAddToQueueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveQueueItemRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	ItemId string `json:"itemId"`
+}
+
+type RemoveQueueItemResponseObject interface {
+	VisitRemoveQueueItemResponse(w http.ResponseWriter) error
+}
+
+type RemoveQueueItem200JSONResponse QueueSnapshot
+
+func (response RemoveQueueItem200JSONResponse) VisitRemoveQueueItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveQueueItemdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RemoveQueueItemdefaultJSONResponse) VisitRemoveQueueItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveQueueItemRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	ItemId string `json:"itemId"`
+	Body   *MoveQueueItemJSONRequestBody
+}
+
+type MoveQueueItemResponseObject interface {
+	VisitMoveQueueItemResponse(w http.ResponseWriter) error
+}
+
+type MoveQueueItem200JSONResponse QueueSnapshot
+
+func (response MoveQueueItem200JSONResponse) VisitMoveQueueItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveQueueItemdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response MoveQueueItemdefaultJSONResponse) VisitMoveQueueItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListUsersRequestObject struct {
 }
 
@@ -2538,6 +2869,18 @@ type StrictServerInterface interface {
 	// ListProviders Services that can be linked
 	// (GET /providers)
 	ListProviders(ctx context.Context, request ListProvidersRequestObject) (ListProvidersResponseObject, error)
+	// GetQueue The room's queue and its fair play order
+	// (GET /rooms/{roomId}/queue)
+	GetQueue(ctx context.Context, request GetQueueRequestObject) (GetQueueResponseObject, error)
+	// AddToQueue Add songs to the end of your lane
+	// (POST /rooms/{roomId}/queue)
+	AddToQueue(ctx context.Context, request AddToQueueRequestObject) (AddToQueueResponseObject, error)
+	// RemoveQueueItem Remove a queued song
+	// (DELETE /rooms/{roomId}/queue/{itemId})
+	RemoveQueueItem(ctx context.Context, request RemoveQueueItemRequestObject) (RemoveQueueItemResponseObject, error)
+	// MoveQueueItem Move one of your queued songs within your lane
+	// (PATCH /rooms/{roomId}/queue/{itemId})
+	MoveQueueItem(ctx context.Context, request MoveQueueItemRequestObject) (MoveQueueItemResponseObject, error)
 	// ListUsers Everyone on this server
 	// (GET /users)
 	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
@@ -3352,6 +3695,126 @@ func (sh *strictHandler) ListProviders(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListProvidersResponseObject); ok {
 		if err := validResponse.VisitListProvidersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetQueue operation middleware
+func (sh *strictHandler) GetQueue(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request GetQueueRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetQueue(ctx, request.(GetQueueRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetQueue")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetQueueResponseObject); ok {
+		if err := validResponse.VisitGetQueueResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddToQueue operation middleware
+func (sh *strictHandler) AddToQueue(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request AddToQueueRequestObject
+
+	request.RoomId = roomId
+
+	var body AddToQueueJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddToQueue(ctx, request.(AddToQueueRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddToQueue")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddToQueueResponseObject); ok {
+		if err := validResponse.VisitAddToQueueResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveQueueItem operation middleware
+func (sh *strictHandler) RemoveQueueItem(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string) {
+	var request RemoveQueueItemRequestObject
+
+	request.RoomId = roomId
+	request.ItemId = itemId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveQueueItem(ctx, request.(RemoveQueueItemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveQueueItem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveQueueItemResponseObject); ok {
+		if err := validResponse.VisitRemoveQueueItemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MoveQueueItem operation middleware
+func (sh *strictHandler) MoveQueueItem(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string) {
+	var request MoveQueueItemRequestObject
+
+	request.RoomId = roomId
+	request.ItemId = itemId
+
+	var body MoveQueueItemJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MoveQueueItem(ctx, request.(MoveQueueItemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MoveQueueItem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MoveQueueItemResponseObject); ok {
+		if err := validResponse.VisitMoveQueueItemResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

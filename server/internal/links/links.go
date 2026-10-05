@@ -399,6 +399,15 @@ func (s *Service) Open(ctx context.Context, linkID string) (provider.Session, er
 	return wrap(&watcher{s: s, row: row, inner: sess}), nil
 }
 
+// OpenFor is Open for one of userID's own links. Someone else's link is
+// ErrNotFound.
+func (s *Service) OpenFor(ctx context.Context, userID, linkID string) (provider.Session, error) {
+	if _, err := s.userLink(ctx, userID, linkID); err != nil {
+		return nil, err
+	}
+	return s.Open(ctx, linkID)
+}
+
 // sink saves credentials a session rotated (e.g. after an OAuth2 refresh).
 func (s *Service) sink(row store.ServiceLink) provider.CredentialSink {
 	return func(ctx context.Context, c provider.Credentials) error {

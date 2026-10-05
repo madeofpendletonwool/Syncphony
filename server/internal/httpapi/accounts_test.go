@@ -22,6 +22,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
+	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
@@ -82,7 +83,7 @@ func newEnv(t *testing.T) *env {
 	e.rooms = rooms.New(db, e.bus)
 	e.links = links.New(db, vault.New(key), reg, links.Config{BaseURL: e.base, Now: e.clock, Notifier: links.BusNotifier{Bus: e.bus}})
 	api := &httpapi.Server{
-		Version: "test", Auth: e.svc, Links: e.links, Rooms: e.rooms, Bus: e.bus, Presence: realtime.NewPresence(),
+		Version: "test", Auth: e.svc, Links: e.links, Rooms: e.rooms, Queue: queue.New(db, e.rooms, e.links), Bus: e.bus, Presence: realtime.NewPresence(),
 		BaseURL: e.base, PingEvery: 50 * time.Millisecond,
 	}
 	mux := http.NewServeMux()

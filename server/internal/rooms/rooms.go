@@ -8,7 +8,9 @@ package rooms
 import (
 	"context"
 	"errors"
+	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/fairness"
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 )
@@ -26,12 +28,14 @@ type Service struct {
 func New(db *store.Store, bus realtime.Bus) *Service { return &Service{db: db, bus: bus} }
 
 // QueueSnapshot is a room's queue at a version: the playing item and the
-// queued items, each user's lane in order. The fairness engine decides the
-// play order across lanes.
+// queued items, each user's lane in order, and the play order the room's
+// fairness policy makes of them.
 type QueueSnapshot struct {
 	RoomID  string
 	Version int64
 	Items   []store.QueueItem
+	// UpNext is the IDs of the queued items, in the order they will play.
+	UpNext []string
 }
 
 // NowPlaying is what a room is playing. Item is nil when nothing is.
@@ -71,7 +75,34 @@ func queueSnapshot(ctx context.Context, q *store.Queries, id string) (QueueSnaps
 	if err != nil {
 		return QueueSnapshot{}, err
 	}
-	return QueueSnapshot{RoomID: id, Version: r.QueueVersion, Items: items}, nil
+	history, err := q.LastPlayedByUser(ctx, id)
+	if err != nil {
+		return QueueSnapshot{}, err
+	}
+	order := fairness.ForMode(r.FairnessMode).Order(fairnessState(items, history))
+	upNext := make([]string, len(order))
+	for i, it := range order {
+		upNext[i] = it.ID
+	}
+	return QueueSnapshot{RoomID: id, Version: r.QueueVersion, Items: items, UpNext: upNext}, nil
+}
+
+// fairnessState builds the fairness engine's input from the upcoming items
+// (lanes in order, as ListUpcoming returns them) and each user's last play.
+func fairnessState(items []store.QueueItem, history []store.LastPlayedByUserRow) fairness.State {
+	s := fairness.State{Lanes: map[string][]fairness.Item{}, LastPlayed: map[string]time.Time{}}
+	for _, it := range items {
+		switch it.State {
+		case store.ItemPlaying:
+			s.Playing = it.AddedBy
+		case store.ItemQueued:
+			s.Lanes[it.AddedBy] = append(s.Lanes[it.AddedBy], fairness.Item{ID: it.ID, User: it.AddedBy, AddedAt: it.AddedAt})
+		}
+	}
+	for _, h := range history {
+		s.LastPlayed[h.UserID] = h.StartedAt
+	}
+	return s
 }
 
 // NowPlaying reads what a room is playing.
@@ -86,8 +117,9 @@ func (s *Service) NowPlaying(ctx context.Context, id string) (NowPlaying, error)
 }
 
 // QueueChanged bumps the room's queue version and pushes the new snapshot
-// to everyone in the room. Call it after committing a queue change.
-func (s *Service) QueueChanged(ctx context.Context, id string) error {
+// to everyone in the room, and returns it. Call it after committing a queue
+// change.
+func (s *Service) QueueChanged(ctx context.Context, id string) (QueueSnapshot, error) {
 	var snap QueueSnapshot
 	err := s.db.Tx(ctx, func(q *store.Queries) error {
 		if _, err := q.BumpQueueVersion(ctx, id); store.IsNotFound(err) {
@@ -100,10 +132,10 @@ func (s *Service) QueueChanged(ctx context.Context, id string) error {
 		return err
 	})
 	if err != nil {
-		return err
+		return QueueSnapshot{}, err
 	}
 	s.bus.Publish(realtime.RoomTopic(id), realtime.Event{Type: realtime.QueueUpdated, Version: snap.Version, Data: snap})
-	return nil
+	return snap, nil
 }
 
 // NowPlayingChanged pushes what's playing to everyone in the room.

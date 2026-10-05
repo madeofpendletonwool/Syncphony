@@ -22,6 +22,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/navidrome"
+	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
@@ -116,9 +117,10 @@ func run() error {
 	}
 	go sweepSessions(ctx, db)
 
+	roomSvc := rooms.New(db, a.bus)
 	api := &httpapi.Server{
 		Version: version, Auth: accounts, Links: a.links,
-		Rooms: rooms.New(db, a.bus), Bus: a.bus, Presence: realtime.NewPresence(),
+		Rooms: roomSvc, Queue: queue.New(db, roomSvc, a.links), Bus: a.bus, Presence: realtime.NewPresence(),
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	}
 	mux := http.NewServeMux()

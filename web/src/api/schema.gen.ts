@@ -441,6 +441,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The room's queue and its fair play order
+         * @description The same snapshot `queue.updated` pushes over the room WebSocket.
+         */
+        get: operations["getQueue"];
+        put?: never;
+        /**
+         * Add songs to the end of your lane
+         * @description Each song is looked up on its service through one of your links, and
+         *     its metadata is kept with the queue item. All are added, in order, or
+         *     none are.
+         */
+        post: operations["addToQueue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/queue/{itemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a queued song
+         * @description Your own songs, or anyone's if you own the room. The playing song
+         *     can't be removed (`not_queued`); skip it instead.
+         */
+        delete: operations["removeQueueItem"];
+        options?: never;
+        head?: never;
+        /** Move one of your queued songs within your lane */
+        patch: operations["moveQueueItem"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -616,6 +669,19 @@ export interface components {
                 [key: string]: string;
             };
         };
+        AddToQueueRequest: {
+            items: components["schemas"]["TrackToQueue"][];
+        };
+        TrackToQueue: {
+            /** @description One of your links. */
+            linkId: string;
+            /** @description The track's ID on that service, from search. */
+            trackId: string;
+        };
+        MoveQueueItemRequest: {
+            /** @description Where in your lane to put the song; 0 is the front. Past the end means the end. */
+            position: number;
+        };
         RelinkRequest: {
             fields: {
                 [key: string]: string;
@@ -671,6 +737,11 @@ export interface components {
              *     each lane in order.
              */
             items: components["schemas"]["QueueItem"][];
+            /**
+             * @description IDs of the queued items in the order they will play, as the room's
+             *     fairness mode interleaves the lanes. The playing item isn't included.
+             */
+            upNext: string[];
         };
         QueueItem: {
             id: string;
@@ -739,6 +810,7 @@ export interface components {
     };
     parameters: {
         InviteCode: string;
+        RoomId: string;
     };
     requestBodies: never;
     headers: never;
@@ -1356,6 +1428,108 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    getQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The queue */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueSnapshot"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    addToQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddToQueueRequest"];
+            };
+        };
+        responses: {
+            /** @description The queue after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueSnapshot"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    removeQueueItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The queue after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueSnapshot"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    moveQueueItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveQueueItemRequest"];
+            };
+        };
+        responses: {
+            /** @description The queue after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueSnapshot"];
+                };
+            };
+            default: components["responses"]["Error"];
         };
     };
 }

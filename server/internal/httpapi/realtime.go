@@ -233,7 +233,10 @@ func (rc *roomConn) fail(err error) {
 }
 
 func toQueueSnapshot(s rooms.QueueSnapshot) QueueSnapshot {
-	out := QueueSnapshot{RoomId: s.RoomID, Version: s.Version, Items: make([]QueueItem, len(s.Items))}
+	out := QueueSnapshot{RoomId: s.RoomID, Version: s.Version, Items: make([]QueueItem, len(s.Items)), UpNext: s.UpNext}
+	if out.UpNext == nil {
+		out.UpNext = []string{}
+	}
 	for i, it := range s.Items {
 		out.Items[i] = toQueueItem(it)
 	}
