@@ -19,7 +19,11 @@ import (
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
+	"github.com/madeofpendletonwool/syncphony/server/internal/links"
+	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
+	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
+	"github.com/madeofpendletonwool/syncphony/server/internal/vault"
 )
 
 // env is a running API server with a fresh database.
@@ -28,6 +32,9 @@ type env struct {
 	srv      *httptest.Server
 	base     string // the public base URL the server believes it has
 	svc      *auth.Service
+	links    *links.Service
+	fake     *fake.Provider // links with a form
+	oauth    *fake.Provider // links with OAuth2
 	setupURL string
 
 	mu  sync.Mutex
@@ -59,7 +66,15 @@ func newEnv(t *testing.T) *env {
 	if e.setupURL, err = e.svc.Bootstrap(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	h = (&httpapi.Server{Version: "test", Auth: e.svc, BaseURL: e.base}).Handler()
+	e.fake = fake.New(fake.Options{})
+	e.oauth = fake.New(fake.Options{ID: "oauthy", Name: "OAuthy", Link: provider.LinkOAuth2, Now: e.clock})
+	reg, err := provider.NewRegistry(e.fake, e.oauth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, _ := vault.ParseKey(vault.GenerateKey())
+	e.links = links.New(db, vault.New(key), reg, links.Config{BaseURL: e.base, Now: e.clock})
+	h = (&httpapi.Server{Version: "test", Auth: e.svc, Links: e.links, BaseURL: e.base}).Handler()
 	return e
 }
 
@@ -187,7 +202,7 @@ func TestHealth(t *testing.T) {
 	e := newEnv(t)
 	var h httpapi.Health
 	e.client().want(http.StatusOK, "GET", "/healthz", nil).decode(t, &h)
-	if h.Status != httpapi.Ok || h.Version != "test" {
+	if h.Status != httpapi.HealthStatusOk || h.Version != "test" {
 		t.Fatalf("got %+v", h)
 	}
 }

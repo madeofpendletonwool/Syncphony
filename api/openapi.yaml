@@ -392,6 +392,164 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  # --- Linked services ------------------------------------------------------
+
+  /providers:
+    get:
+      operationId: listProviders
+      summary: Services that can be linked
+      tags: [links]
+      responses:
+        "200":
+          description: Providers, in registration order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProviderInfo"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /links:
+    get:
+      operationId: listLinks
+      summary: Your linked service accounts
+      description: Credentials are never returned.
+      tags: [links]
+      responses:
+        "200":
+          description: Links, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ServiceLink"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: createLink
+      summary: Link an account with a form (credentials providers)
+      description: |
+        Validates the fields with the service. Linking an account you've
+        already linked updates that link.
+      tags: [links]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLinkRequest"
+      responses:
+        "201":
+          description: The link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceLink"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /links/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      operationId: relink
+      summary: Re-link with new credentials (credentials providers)
+      description: Must be the same account. Clears `needs_relink`.
+      tags: [links]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RelinkRequest"
+      responses:
+        "200":
+          description: The link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceLink"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: unlink
+      summary: Unlink and delete the stored credentials
+      description: Queued tracks from this link stay in the queue but can't play.
+      tags: [links]
+      responses:
+        "204":
+          description: Unlinked
+        default:
+          $ref: "#/components/responses/Error"
+
+  /links/oauth:
+    post:
+      operationId: beginOAuthLink
+      summary: Start linking (or re-linking) an OAuth2 provider
+      description: |
+        Send the browser to `authUrl`. The service redirects back to
+        `/api/links/oauth/callback`, which lands on the web app's
+        `/settings/services` page.
+      tags: [links]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BeginOAuthLinkRequest"
+      responses:
+        "200":
+          description: Where to send the browser
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authUrl]
+                properties:
+                  authUrl:
+                    type: string
+        default:
+          $ref: "#/components/responses/Error"
+
+  /links/oauth/callback:
+    get:
+      operationId: completeOAuthLink
+      summary: OAuth2 redirect target (browser navigation)
+      description: |
+        Finishes linking and redirects to `/settings/services?linked=<link id>`,
+        or `/settings/services?link_error=<error code>` on failure. Needs the
+        session cookie, but always redirects rather than returning an error.
+      tags: [links]
+      security: []
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: error
+          in: query
+          description: Set by the service when the user declined.
+          schema:
+            type: string
+      responses:
+        "303":
+          description: Back to the web app
+          headers:
+            Location:
+              schema:
+                type: string
+
 components:
   securitySchemes:
     session:
@@ -662,3 +820,115 @@ components:
           minimum: 1
           maximum: 720
           default: 168
+
+    ProviderInfo:
+      type: object
+      required: [id, name, icon, playback, linkMethod, fields, capabilities]
+      properties:
+        id:
+          type: string
+          example: navidrome
+        name:
+          type: string
+        icon:
+          type: string
+        playback:
+          type: string
+          enum: [stream, remote]
+        linkMethod:
+          type: string
+          enum: [credentials, oauth2]
+        fields:
+          type: array
+          description: The form to show for `credentials` providers. Empty for `oauth2`.
+          items:
+            $ref: "#/components/schemas/LinkField"
+        capabilities:
+          type: object
+          required: [search, playlists, artwork, lyrics, isrc]
+          properties:
+            search:
+              type: array
+              items:
+                type: string
+                enum: [track, album, artist, playlist]
+            playlists:
+              type: boolean
+            artwork:
+              type: boolean
+            lyrics:
+              type: boolean
+            isrc:
+              type: boolean
+
+    LinkField:
+      type: object
+      required: [name, label, kind, required]
+      properties:
+        name:
+          type: string
+        label:
+          type: string
+        kind:
+          type: string
+          enum: [text, url, secret]
+          description: "`secret` fields must be masked."
+        required:
+          type: boolean
+        placeholder:
+          type: string
+        help:
+          type: string
+
+    ServiceLink:
+      type: object
+      required: [id, provider, accountLabel, status, createdAt]
+      properties:
+        id:
+          type: string
+        provider:
+          type: string
+        accountLabel:
+          type: string
+          example: alice on music.example.com
+        status:
+          type: string
+          enum: [ok, needs_relink, error]
+          description: "`needs_relink`: the service stopped accepting the credentials; link again."
+        statusDetail:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        lastOkAt:
+          type: string
+          format: date-time
+
+    CreateLinkRequest:
+      type: object
+      required: [provider, fields]
+      properties:
+        provider:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+
+    RelinkRequest:
+      type: object
+      required: [fields]
+      properties:
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+
+    BeginOAuthLinkRequest:
+      type: object
+      description: Set `provider` to link a new account, or `linkId` to re-link one.
+      properties:
+        provider:
+          type: string
+        linkId:
+          type: string

@@ -28,7 +28,7 @@ dev-deps:
 
 .PHONY: dev-server
 dev-server:
-	cd server && SYNCPHONY_ADDR=:$(DEV_API_PORT) SYNCPHONY_BASE_URL=http://localhost:5173 go tool air
+	cd server && SYNCPHONY_ADDR=:$(DEV_API_PORT) SYNCPHONY_BASE_URL=http://localhost:5173 SYNCPHONY_FAKE_PROVIDER=true go tool air
 
 .PHONY: dev-web
 dev-web:

@@ -9,6 +9,8 @@ import (
 	"net/netip"
 	"os"
 	"strings"
+
+	"github.com/madeofpendletonwool/syncphony/server/internal/vault"
 )
 
 // Config is the server configuration.
@@ -25,6 +27,12 @@ type Config struct {
 	// TrustedProxies are reverse proxies whose X-Forwarded-For header is
 	// believed when working out a client's IP (for login rate limits).
 	TrustedProxies []netip.Prefix
+	// Vault says where the credential vault's master key comes from. With
+	// nothing set, a key file is generated in DataDir.
+	Vault vault.KeySource
+	// FakeProvider registers the in-memory "fake" provider, for UI
+	// development without real services.
+	FakeProvider bool
 }
 
 // defaultTrustedProxies are loopback and private networks, where a
@@ -43,6 +51,19 @@ func Load() (Config, error) {
 	}
 	if !strings.HasPrefix(c.BaseURL, "http://") && !strings.HasPrefix(c.BaseURL, "https://") {
 		return Config{}, fmt.Errorf("SYNCPHONY_BASE_URL %q: must start with http:// or https://", c.BaseURL)
+	}
+	c.Vault = vault.KeySource{Key: os.Getenv("SYNCPHONY_VAULT_KEY"), KeyFile: os.Getenv("SYNCPHONY_VAULT_KEY_FILE")}
+	for k := range strings.SplitSeq(os.Getenv("SYNCPHONY_VAULT_OLD_KEYS"), ",") {
+		if k = strings.TrimSpace(k); k != "" {
+			c.Vault.OldKeys = append(c.Vault.OldKeys, k)
+		}
+	}
+	switch v := env("SYNCPHONY_FAKE_PROVIDER", "false"); v {
+	case "true", "1":
+		c.FakeProvider = true
+	case "false", "0":
+	default:
+		return Config{}, fmt.Errorf("SYNCPHONY_FAKE_PROVIDER %q: want true or false", v)
 	}
 	proxies := env("SYNCPHONY_TRUSTED_PROXIES", defaultTrustedProxies)
 	if proxies != "none" {

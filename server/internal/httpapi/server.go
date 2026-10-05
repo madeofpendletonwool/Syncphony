@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
+	"github.com/madeofpendletonwool/syncphony/server/internal/links"
+	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 )
 
 // SessionCookie is the session cookie's name. It must match the "session"
@@ -28,6 +30,7 @@ const SessionCookie = "syncphony_session"
 type Server struct {
 	Version string
 	Auth    *auth.Service
+	Links   *links.Service
 	// BaseURL is the public URL of the web app. Mutating requests must come
 	// from its origin, and session cookies are Secure when it's HTTPS.
 	BaseURL string
@@ -71,7 +74,7 @@ func origin(baseURL string) string {
 
 // GetHealth reports liveness and the build version.
 func (s *Server) GetHealth(context.Context, GetHealthRequestObject) (GetHealthResponseObject, error) {
-	return GetHealth200JSONResponse{Status: Ok, Version: s.Version}, nil
+	return GetHealth200JSONResponse{Status: HealthStatusOk, Version: s.Version}, nil
 }
 
 // --- Request context ----------------------------------------------------------
@@ -89,6 +92,7 @@ var publicOps = map[string]bool{
 	"BeginPasskeyLogin":   true,
 	"FinishPasskeyLogin":  true,
 	"Logout":              true,
+	"CompleteOAuthLink":   true,
 }
 
 type ctxKey int
@@ -215,10 +219,13 @@ func badRequest(w http.ResponseWriter, _ *http.Request, err error) {
 // and reported as 500 without details.
 func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var invalid *auth.InvalidInputError
+	var invalidField *links.InvalidInputError
 	var limited *auth.RateLimitError
 	switch {
 	case errors.As(err, &invalid):
 		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalid.Error())
+	case errors.As(err, &invalidField):
+		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidField.Error())
 	case errors.As(err, &limited):
 		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(limited.RetryAfter.Seconds()))))
 		writeJSONError(w, http.StatusTooManyRequests, "rate_limited", limited.Error())
@@ -249,6 +256,18 @@ var errorCodes = []struct {
 	{auth.ErrLastCredential, http.StatusConflict, "last_credential"},
 	{auth.ErrCeremonyExpired, http.StatusBadRequest, "ceremony_expired"},
 	{auth.ErrPasskeyFailed, http.StatusBadRequest, "passkey_failed"},
+
+	{links.ErrUnknownProvider, http.StatusNotFound, "unknown_provider"},
+	{links.ErrNotFound, http.StatusNotFound, "not_found"},
+	{links.ErrWrongMethod, http.StatusBadRequest, "wrong_link_method"},
+	{links.ErrDifferentAccount, http.StatusConflict, "different_account"},
+	{links.ErrOAuthState, http.StatusBadRequest, "oauth_state"},
+	// Errors from a service, while linking or using a link.
+	{provider.ErrInvalidCredentials, http.StatusBadRequest, "service_rejected_credentials"},
+	{provider.ErrAuthExpired, http.StatusConflict, "needs_relink"},
+	{provider.ErrUnavailable, http.StatusBadGateway, "service_unavailable"},
+	{provider.ErrRateLimited, http.StatusServiceUnavailable, "service_rate_limited"},
+	{provider.ErrNotFound, http.StatusNotFound, "not_found"},
 }
 
 func writeJSONError(w http.ResponseWriter, status int, code, message string) {

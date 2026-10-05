@@ -11,6 +11,7 @@ import (
 )
 
 const createServiceLink = `-- name: CreateServiceLink :one
+
 INSERT INTO service_links (id, user_id, provider, account_id, account_label, encrypted_credentials, created_at, updated_at, last_ok_at)
 VALUES (?, ?, ?, ?, ?, ?, ?7, ?7, ?7)
 RETURNING id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at
@@ -26,6 +27,8 @@ type CreateServiceLinkParams struct {
 	Now                  time.Time
 }
 
+// Queries that repeat a sqlc.arg must name every parameter: sqlc numbers
+// repeated args (?N), and a plain ? after one would get the wrong index.
 func (q *Queries) CreateServiceLink(ctx context.Context, arg CreateServiceLinkParams) (ServiceLink, error) {
 	row := q.db.QueryRowContext(ctx, createServiceLink,
 		arg.ID,
@@ -67,6 +70,35 @@ func (q *Queries) DeleteServiceLink(ctx context.Context, arg DeleteServiceLinkPa
 	return err
 }
 
+const findServiceLink = `-- name: FindServiceLink :one
+SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at FROM service_links WHERE user_id = ? AND provider = ? AND account_id = ?
+`
+
+type FindServiceLinkParams struct {
+	UserID    string
+	Provider  string
+	AccountID string
+}
+
+func (q *Queries) FindServiceLink(ctx context.Context, arg FindServiceLinkParams) (ServiceLink, error) {
+	row := q.db.QueryRowContext(ctx, findServiceLink, arg.UserID, arg.Provider, arg.AccountID)
+	var i ServiceLink
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Provider,
+		&i.AccountID,
+		&i.AccountLabel,
+		&i.EncryptedCredentials,
+		&i.Status,
+		&i.StatusDetail,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastOkAt,
+	)
+	return i, err
+}
+
 const getServiceLink = `-- name: GetServiceLink :one
 SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at FROM service_links WHERE id = ?
 `
@@ -88,6 +120,73 @@ func (q *Queries) GetServiceLink(ctx context.Context, id string) (ServiceLink, e
 		&i.LastOkAt,
 	)
 	return i, err
+}
+
+const getUserServiceLink = `-- name: GetUserServiceLink :one
+SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at FROM service_links WHERE id = ? AND user_id = ?
+`
+
+type GetUserServiceLinkParams struct {
+	ID     string
+	UserID string
+}
+
+func (q *Queries) GetUserServiceLink(ctx context.Context, arg GetUserServiceLinkParams) (ServiceLink, error) {
+	row := q.db.QueryRowContext(ctx, getUserServiceLink, arg.ID, arg.UserID)
+	var i ServiceLink
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Provider,
+		&i.AccountID,
+		&i.AccountLabel,
+		&i.EncryptedCredentials,
+		&i.Status,
+		&i.StatusDetail,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastOkAt,
+	)
+	return i, err
+}
+
+const listAllServiceLinks = `-- name: ListAllServiceLinks :many
+SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at FROM service_links ORDER BY id
+`
+
+func (q *Queries) ListAllServiceLinks(ctx context.Context) ([]ServiceLink, error) {
+	rows, err := q.db.QueryContext(ctx, listAllServiceLinks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ServiceLink{}
+	for rows.Next() {
+		var i ServiceLink
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Provider,
+			&i.AccountID,
+			&i.AccountLabel,
+			&i.EncryptedCredentials,
+			&i.Status,
+			&i.StatusDetail,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastOkAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listServiceLinks = `-- name: ListServiceLinks :many
@@ -130,7 +229,7 @@ func (q *Queries) ListServiceLinks(ctx context.Context, userID string) ([]Servic
 }
 
 const markServiceLinkOK = `-- name: MarkServiceLinkOK :exec
-UPDATE service_links SET status = 'ok', status_detail = '', updated_at = ?2, last_ok_at = ?2 WHERE id = ?
+UPDATE service_links SET status = 'ok', status_detail = '', updated_at = ?1, last_ok_at = ?1 WHERE id = ?2
 `
 
 type MarkServiceLinkOKParams struct {
@@ -140,6 +239,46 @@ type MarkServiceLinkOKParams struct {
 
 func (q *Queries) MarkServiceLinkOK(ctx context.Context, arg MarkServiceLinkOKParams) error {
 	_, err := q.db.ExecContext(ctx, markServiceLinkOK, arg.Now, arg.ID)
+	return err
+}
+
+const relinkServiceLink = `-- name: RelinkServiceLink :exec
+UPDATE service_links
+SET encrypted_credentials = ?1, account_label = ?2, status = 'ok', status_detail = '',
+    updated_at = ?3, last_ok_at = ?3
+WHERE id = ?4
+`
+
+type RelinkServiceLinkParams struct {
+	EncryptedCredentials []byte
+	AccountLabel         string
+	Now                  time.Time
+	ID                   string
+}
+
+// RelinkServiceLink stores fresh credentials from linking again.
+func (q *Queries) RelinkServiceLink(ctx context.Context, arg RelinkServiceLinkParams) error {
+	_, err := q.db.ExecContext(ctx, relinkServiceLink,
+		arg.EncryptedCredentials,
+		arg.AccountLabel,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
+const rewrapServiceLink = `-- name: RewrapServiceLink :exec
+UPDATE service_links SET encrypted_credentials = ? WHERE id = ?
+`
+
+type RewrapServiceLinkParams struct {
+	EncryptedCredentials []byte
+	ID                   string
+}
+
+// RewrapServiceLink replaces the ciphertext only (vault key rotation).
+func (q *Queries) RewrapServiceLink(ctx context.Context, arg RewrapServiceLinkParams) error {
+	_, err := q.db.ExecContext(ctx, rewrapServiceLink, arg.EncryptedCredentials, arg.ID)
 	return err
 }
 
@@ -166,8 +305,8 @@ func (q *Queries) SetServiceLinkStatus(ctx context.Context, arg SetServiceLinkSt
 
 const updateServiceLinkCredentials = `-- name: UpdateServiceLinkCredentials :exec
 UPDATE service_links
-SET encrypted_credentials = ?, status = 'ok', status_detail = '', updated_at = ?3, last_ok_at = ?3
-WHERE id = ?
+SET encrypted_credentials = ?1, status = 'ok', status_detail = '', updated_at = ?2, last_ok_at = ?2
+WHERE id = ?3
 `
 
 type UpdateServiceLinkCredentialsParams struct {

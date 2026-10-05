@@ -329,6 +329,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Services that can be linked */
+        get: operations["listProviders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your linked service accounts
+         * @description Credentials are never returned.
+         */
+        get: operations["listLinks"];
+        put?: never;
+        /**
+         * Link an account with a form (credentials providers)
+         * @description Validates the fields with the service. Linking an account you've
+         *     already linked updates that link.
+         */
+        post: operations["createLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Re-link with new credentials (credentials providers)
+         * @description Must be the same account. Clears `needs_relink`.
+         */
+        put: operations["relink"];
+        post?: never;
+        /**
+         * Unlink and delete the stored credentials
+         * @description Queued tracks from this link stay in the queue but can't play.
+         */
+        delete: operations["unlink"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links/oauth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start linking (or re-linking) an OAuth2 provider
+         * @description Send the browser to `authUrl`. The service redirects back to
+         *     `/api/links/oauth/callback`, which lands on the web app's
+         *     `/settings/services` page.
+         */
+        post: operations["beginOAuthLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links/oauth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * OAuth2 redirect target (browser navigation)
+         * @description Finishes linking and redirects to `/settings/services?linked=<link id>`,
+         *     or `/settings/services?link_error=<error code>` on failure. Needs the
+         *     session cookie, but always redirects rather than returning an error.
+         */
+        get: operations["completeOAuthLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -450,6 +562,69 @@ export interface components {
             role?: components["schemas"]["Role"];
             /** @default 168 */
             expiresInHours: number;
+        };
+        ProviderInfo: {
+            /** @example navidrome */
+            id: string;
+            name: string;
+            icon: string;
+            /** @enum {string} */
+            playback: "stream" | "remote";
+            /** @enum {string} */
+            linkMethod: "credentials" | "oauth2";
+            /** @description The form to show for `credentials` providers. Empty for `oauth2`. */
+            fields: components["schemas"]["LinkField"][];
+            capabilities: {
+                search: ("track" | "album" | "artist" | "playlist")[];
+                playlists: boolean;
+                artwork: boolean;
+                lyrics: boolean;
+                isrc: boolean;
+            };
+        };
+        LinkField: {
+            name: string;
+            label: string;
+            /**
+             * @description `secret` fields must be masked.
+             * @enum {string}
+             */
+            kind: "text" | "url" | "secret";
+            required: boolean;
+            placeholder?: string;
+            help?: string;
+        };
+        ServiceLink: {
+            id: string;
+            provider: string;
+            /** @example alice on music.example.com */
+            accountLabel: string;
+            /**
+             * @description `needs_relink`: the service stopped accepting the credentials; link again.
+             * @enum {string}
+             */
+            status: "ok" | "needs_relink" | "error";
+            statusDetail?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastOkAt?: string;
+        };
+        CreateLinkRequest: {
+            provider: string;
+            fields: {
+                [key: string]: string;
+            };
+        };
+        RelinkRequest: {
+            fields: {
+                [key: string]: string;
+            };
+        };
+        /** @description Set `provider` to link a new account, or `linkId` to re-link one. */
+        BeginOAuthLinkRequest: {
+            provider?: string;
+            linkId?: string;
         };
     };
     responses: {
@@ -939,6 +1114,172 @@ export interface operations {
                 };
             };
             default: components["responses"]["Error"];
+        };
+    };
+    listProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Providers, in registration order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderInfo"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Links, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceLink"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description The link */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceLink"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    relink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelinkRequest"];
+            };
+        };
+        responses: {
+            /** @description The link */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceLink"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    unlink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unlinked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    beginOAuthLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BeginOAuthLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Where to send the browser */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        authUrl: string;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    completeOAuthLink: {
+        parameters: {
+            query?: {
+                state?: string;
+                code?: string;
+                /** @description Set by the service when the user declined. */
+                error?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Back to the web app */
+            303: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
 }
