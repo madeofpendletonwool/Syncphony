@@ -14,8 +14,10 @@ import (
 	"github.com/coder/websocket/wsjson"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
+	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
+	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 )
 
@@ -93,6 +95,25 @@ func (s *socket) expect(typ string, data any) event {
 		}
 	}
 	return e
+}
+
+// await reads events until one of type typ, skipping others, and decodes
+// its data. For tests where the order of different event types doesn't
+// matter (the playback engine reacts to queue changes asynchronously).
+func (s *socket) await(typ string, data any) event {
+	s.t.Helper()
+	for {
+		e := s.next()
+		if e.Type != typ {
+			continue
+		}
+		if data != nil {
+			if err := json.Unmarshal(e.Data, data); err != nil {
+				s.t.Fatal(err)
+			}
+		}
+		return e
+	}
 }
 
 // closeStatus waits for the server to close the socket.
@@ -203,11 +224,10 @@ func TestRoomSocket(t *testing.T) {
 	if err := e.db.SetQueueItemState(t.Context(), store.SetQueueItemStateParams{State: store.ItemPlaying, UpdatedAt: store.Now(), ID: item.ID}); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.rooms.NowPlayingChanged(t.Context(), room.ID); err != nil {
-		t.Fatal(err)
-	}
+	item.State = store.ItemPlaying
+	e.rooms.PublishNowPlaying(rooms.NowPlaying{RoomID: room.ID, State: playback.StatePlaying, Item: &item})
 	a.expect("nowplaying.updated", &np)
-	if np.Item == nil || np.Item.Id != item.ID || np.Item.State != httpapi.Playing {
+	if np.Item == nil || np.Item.Id != item.ID || np.Item.State != httpapi.QueueItemStatePlaying {
 		t.Fatalf("now playing: %+v", np)
 	}
 

@@ -172,7 +172,7 @@ func (rc *roomConn) hello(ctx context.Context) error {
 	if err := rc.send(ctx, realtime.Event{Type: realtime.QueueUpdated, Version: snap.Version, Data: snap}); err != nil {
 		return err
 	}
-	np, err := s.Rooms.NowPlaying(ctx, rc.room.ID)
+	np, err := s.Playback.NowPlaying(ctx, rc.room.ID)
 	if err != nil {
 		return err
 	}
@@ -192,11 +192,13 @@ func (rc *roomConn) send(ctx context.Context, e realtime.Event) error {
 		rc.sent = d.Version
 		data = toQueueSnapshot(d)
 	case rooms.NowPlaying:
-		np := NowPlaying{RoomId: d.RoomID}
-		if d.Item != nil {
-			np.Item = ptr(toQueueItem(*d.Item))
+		data = toNowPlaying(d)
+	case rooms.Notice:
+		n := PlaybackNotice{RoomId: d.RoomID, Message: d.Message}
+		if d.ItemID != "" {
+			n.ItemId = &d.ItemID
 		}
-		data = np
+		data = n
 	case store.User:
 		if e.Type == realtime.MemberJoined && d.ID == rc.user.ID {
 			return nil // the client knows it joined

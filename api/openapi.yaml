@@ -635,6 +635,249 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /rooms:
+    get:
+      operationId: listRooms
+      summary: Every room
+      tags: [rooms]
+      responses:
+        "200":
+          description: Rooms, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Room"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: createRoom
+      summary: Create a room you own
+      tags: [rooms]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoomRequest"
+      responses:
+        "201":
+          description: The new room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: getRoom
+      summary: A room
+      tags: [rooms]
+      responses:
+        "200":
+          description: The room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      operationId: updateRoom
+      summary: Change a room you own
+      description: A new fairness mode reorders the queue at once.
+      tags: [rooms]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRoomRequest"
+      responses:
+        "200":
+          description: The room after the change
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/playback:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: getPlayback
+      summary: What the room is playing
+      description: The same state `nowplaying.updated` pushes over the room WebSocket.
+      tags: [playback]
+      responses:
+        "200":
+          description: The playback state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NowPlaying"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: controlPlayback
+      summary: Play, pause, skip or seek
+      description: |
+        Allowed for the room's owner, for everyone when the room's
+        `controls` is `everyone`, and for skipping your own song.
+        `play` needs a speaker (`no_player`); pausing, skipping or seeking
+        with nothing playing is `nothing_playing`.
+      tags: [playback]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaybackCommand"
+      responses:
+        "200":
+          description: The playback state after the command
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NowPlaying"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/player:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    put:
+      operationId: claimPlayer
+      summary: Become the room's speaker
+      description: |
+        The device takes over playback from any other speaker. If the room
+        is idle and songs are waiting, the first one starts. Needs playback
+        control (see `controlPlayback`) unless the device already is the
+        speaker.
+      tags: [playback]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimPlayerRequest"
+      responses:
+        "200":
+          description: The playback state with this device as the speaker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NowPlaying"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: releasePlayer
+      summary: Stop being the room's speaker
+      description: The song pauses. The speaker's user or the room's owner may do this.
+      tags: [playback]
+      parameters:
+        - name: deviceId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The playback state without a speaker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NowPlaying"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/player/report:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    post:
+      operationId: reportPlayback
+      summary: The speaker reports on the song it's streaming
+      description: |
+        Send `playing` once audio starts, `progress` every few seconds,
+        `paused` if playback stopped on its own, then `ended` or `error`.
+        Only the speaker may report (`not_player`). Reports about a song
+        that's no longer current are ignored; the reply is the current
+        state either way.
+      tags: [playback]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlayerReport"
+      responses:
+        "200":
+          description: The current playback state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NowPlaying"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/stream/{itemId}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: streamQueueItem
+      summary: A song's audio
+      description: |
+        For the playing song, or a queued one to preload. Streamed from the
+        song's service through the link of whoever queued it. Supports
+        byte ranges when the service does. If the format isn't in `accept`
+        it's transcoded (if the server can), and the result isn't seekable.
+      tags: [playback]
+      parameters:
+        - name: Range
+          in: header
+          schema:
+            type: string
+          example: bytes=0-
+        - name: accept
+          in: query
+          description: Comma-separated content types the player can decode, e.g. `audio/mpeg,audio/aac,audio/flac`. Empty means any.
+          schema:
+            type: string
+        - name: maxBitrate
+          in: query
+          description: Bitrate cap in kbit/s, for services or transcodes that can lower it.
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: The whole song
+          content:
+            audio/*:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: Part of the song (see Content-Range)
+          content:
+            audio/*:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
+
 components:
   securitySchemes:
     session:
@@ -1072,6 +1315,8 @@ components:
         - `queue.updated`: QueueSnapshot. Sent after hello unless `since`
           equals the current version, then on every change.
         - `nowplaying.updated`: NowPlaying. Sent after hello, then on change.
+        - `playback.notice`: PlaybackNotice. Something to tell members, like
+          a song skipped because it couldn't play.
         - `member.joined`, `member.left`: User. Someone's first connection to
           the room opened, or their last one closed.
         - `link.status`: ServiceLink. One of your links changed status.
@@ -1083,7 +1328,7 @@ components:
       properties:
         type:
           type: string
-          enum: [hello, queue.updated, nowplaying.updated, member.joined, member.left, link.status]
+          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status]
         version:
           type: integer
           format: int64
@@ -1183,9 +1428,174 @@ components:
 
     NowPlaying:
       type: object
-      required: [roomId]
+      description: |
+        A room's playback, as the server sees it. While `playing`, the
+        position is `positionMs` at `at` and advances with the clock.
+      required: [roomId, state, positionMs, at, revision]
       properties:
         roomId:
           type: string
+        state:
+          $ref: "#/components/schemas/PlaybackState"
         item:
           $ref: "#/components/schemas/QueueItem"
+        driver:
+          type: string
+          enum: [stream, remote]
+          description: |
+            How `item` plays. `stream`: the speaker plays it from
+            `/rooms/{roomId}/stream/{itemId}`. `remote`: the song's service
+            plays it on its own device, and the speaker just shows it.
+        positionMs:
+          type: integer
+          format: int64
+        at:
+          type: string
+          format: date-time
+          description: Server time `positionMs` was true at.
+        revision:
+          type: integer
+          format: int64
+          description: |
+            Increases whenever the speaker must act: a new song, play,
+            pause, or seek. Apply each revision once.
+        player:
+          $ref: "#/components/schemas/Player"
+        next:
+          $ref: "#/components/schemas/QueueItem"
+
+    PlaybackState:
+      type: string
+      enum: [idle, loading, playing, paused]
+      description: |
+        `idle`: nothing to play, or no speaker. `loading`: waiting for the
+        speaker to start the song.
+
+    Player:
+      type: object
+      description: The device a room plays through.
+      required: [deviceId, userId, name, lastSeen]
+      properties:
+        deviceId:
+          type: string
+        userId:
+          type: string
+        name:
+          type: string
+        lastSeen:
+          type: string
+          format: date-time
+
+    PlaybackCommand:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [play, pause, skip, seek]
+        positionMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Where to seek to.
+        itemId:
+          type: string
+          description: Skip only if this is still the current song, so two people tapping skip skip one song.
+
+    ClaimPlayerRequest:
+      type: object
+      required: [deviceId, name]
+      properties:
+        deviceId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: A stable ID the device makes up and keeps.
+        name:
+          type: string
+          maxLength: 64
+          example: Collin's phone
+
+    PlayerReport:
+      type: object
+      required: [deviceId, itemId, event, positionMs]
+      properties:
+        deviceId:
+          type: string
+        itemId:
+          type: string
+        event:
+          type: string
+          enum: [playing, progress, paused, ended, error]
+        positionMs:
+          type: integer
+          format: int64
+          minimum: 0
+        error:
+          type: string
+          maxLength: 500
+          description: What went wrong, for `error`.
+
+    PlaybackNotice:
+      type: object
+      description: Something members should hear about, like a song skipped because its service failed.
+      required: [roomId, message]
+      properties:
+        roomId:
+          type: string
+        itemId:
+          type: string
+        message:
+          type: string
+
+    FairnessMode:
+      type: string
+      enum: [round_robin, fifo]
+
+    RoomControls:
+      type: string
+      enum: [everyone, owner]
+      description: Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
+
+    Room:
+      type: object
+      required: [id, name, ownerId, fairnessMode, controls, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        ownerId:
+          type: string
+        fairnessMode:
+          $ref: "#/components/schemas/FairnessMode"
+        controls:
+          $ref: "#/components/schemas/RoomControls"
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateRoomRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        fairnessMode:
+          $ref: "#/components/schemas/FairnessMode"
+        controls:
+          $ref: "#/components/schemas/RoomControls"
+
+    UpdateRoomRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        fairnessMode:
+          $ref: "#/components/schemas/FairnessMode"
+        controls:
+          $ref: "#/components/schemas/RoomControls"

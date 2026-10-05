@@ -20,6 +20,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
+	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
@@ -39,6 +40,7 @@ type env struct {
 	db       *store.Store
 	bus      *realtime.Local
 	rooms    *rooms.Service
+	playback *playback.Engine
 	fake     *fake.Provider // links with a form
 	oauth    *fake.Provider // links with OAuth2
 	setupURL string
@@ -82,8 +84,11 @@ func newEnv(t *testing.T) *env {
 	e.db, e.bus = db, realtime.NewLocal()
 	e.rooms = rooms.New(db, e.bus)
 	e.links = links.New(db, vault.New(key), reg, links.Config{BaseURL: e.base, Now: e.clock, Notifier: links.BusNotifier{Bus: e.bus}})
+	qs := queue.New(db, e.rooms, e.links)
+	e.playback = playback.New(db, e.rooms, qs, e.links, playback.Config{Now: e.clock})
+	t.Cleanup(e.playback.Close)
 	api := &httpapi.Server{
-		Version: "test", Auth: e.svc, Links: e.links, Rooms: e.rooms, Queue: queue.New(db, e.rooms, e.links), Bus: e.bus, Presence: realtime.NewPresence(),
+		Version: "test", Auth: e.svc, Links: e.links, Rooms: e.rooms, Queue: qs, Playback: e.playback, Bus: e.bus, Presence: realtime.NewPresence(),
 		BaseURL: e.base, PingEvery: 50 * time.Millisecond,
 	}
 	mux := http.NewServeMux()

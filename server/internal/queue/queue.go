@@ -54,6 +54,10 @@ type Service struct {
 	tracks Tracks
 	// Now is the clock. Default store.Now.
 	Now func() time.Time
+	// OnChange, if set, is called with the room's ID after every committed
+	// change. The playback engine uses it to start playing when songs
+	// arrive. It runs on the caller's goroutine and must not block.
+	OnChange func(roomID string)
 
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex
@@ -94,7 +98,11 @@ func (s *Service) Change(ctx context.Context, roomID string, fn func(q *store.Qu
 	if err != nil {
 		return rooms.QueueSnapshot{}, err
 	}
-	return s.rooms.QueueChanged(ctx, roomID)
+	snap, err := s.rooms.QueueChanged(ctx, roomID)
+	if err == nil && s.OnChange != nil {
+		s.OnChange(roomID)
+	}
+	return snap, err
 }
 
 // TrackRef names a song to queue: a track ID on one of the user's links.

@@ -19,6 +19,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/config"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
+	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/navidrome"
@@ -26,6 +27,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
+	"github.com/madeofpendletonwool/syncphony/server/internal/transcode"
 	"github.com/madeofpendletonwool/syncphony/server/internal/vault"
 	"github.com/madeofpendletonwool/syncphony/server/internal/webui"
 )
@@ -118,9 +120,19 @@ func run() error {
 	go sweepSessions(ctx, db)
 
 	roomSvc := rooms.New(db, a.bus)
+	queueSvc := queue.New(db, roomSvc, a.links)
+	var transcoder transcode.Transcoder
+	if ff := (transcode.FFmpeg{}); ff.Available() {
+		transcoder = ff
+	} else {
+		slog.Warn("ffmpeg not found: songs in formats the player can't decode won't play")
+	}
+	player := playback.New(db, roomSvc, queueSvc, a.links, playback.Config{Transcoder: transcoder})
+	defer player.Close()
+	go player.Run(ctx)
 	api := &httpapi.Server{
 		Version: version, Auth: accounts, Links: a.links,
-		Rooms: roomSvc, Queue: queue.New(db, roomSvc, a.links), Bus: a.bus, Presence: realtime.NewPresence(),
+		Rooms: roomSvc, Queue: queueSvc, Playback: player, Bus: a.bus, Presence: realtime.NewPresence(),
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	}
 	mux := http.NewServeMux()

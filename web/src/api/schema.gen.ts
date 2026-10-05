@@ -494,6 +494,157 @@ export interface paths {
         patch: operations["moveQueueItem"];
         trace?: never;
     };
+    "/rooms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every room */
+        get: operations["listRooms"];
+        put?: never;
+        /** Create a room you own */
+        post: operations["createRoom"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /** A room */
+        get: operations["getRoom"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change a room you own
+         * @description A new fairness mode reorders the queue at once.
+         */
+        patch: operations["updateRoom"];
+        trace?: never;
+    };
+    "/rooms/{roomId}/playback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What the room is playing
+         * @description The same state `nowplaying.updated` pushes over the room WebSocket.
+         */
+        get: operations["getPlayback"];
+        put?: never;
+        /**
+         * Play, pause, skip or seek
+         * @description Allowed for the room's owner, for everyone when the room's
+         *     `controls` is `everyone`, and for skipping your own song.
+         *     `play` needs a speaker (`no_player`); pausing, skipping or seeking
+         *     with nothing playing is `nothing_playing`.
+         */
+        post: operations["controlPlayback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/player": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Become the room's speaker
+         * @description The device takes over playback from any other speaker. If the room
+         *     is idle and songs are waiting, the first one starts. Needs playback
+         *     control (see `controlPlayback`) unless the device already is the
+         *     speaker.
+         */
+        put: operations["claimPlayer"];
+        post?: never;
+        /**
+         * Stop being the room's speaker
+         * @description The song pauses. The speaker's user or the room's owner may do this.
+         */
+        delete: operations["releasePlayer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/player/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The speaker reports on the song it's streaming
+         * @description Send `playing` once audio starts, `progress` every few seconds,
+         *     `paused` if playback stopped on its own, then `ended` or `error`.
+         *     Only the speaker may report (`not_player`). Reports about a song
+         *     that's no longer current are ignored; the reply is the current
+         *     state either way.
+         */
+        post: operations["reportPlayback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/stream/{itemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A song's audio
+         * @description For the playing song, or a queued one to preload. Streamed from the
+         *     song's service through the link of whoever queued it. Supports
+         *     byte ranges when the service does. If the format isn't in `accept`
+         *     it's transcoded (if the server can), and the result isn't seekable.
+         */
+        get: operations["streamQueueItem"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -702,6 +853,8 @@ export interface components {
          *     - `queue.updated`: QueueSnapshot. Sent after hello unless `since`
          *       equals the current version, then on every change.
          *     - `nowplaying.updated`: NowPlaying. Sent after hello, then on change.
+         *     - `playback.notice`: PlaybackNotice. Something to tell members, like
+         *       a song skipped because it couldn't play.
          *     - `member.joined`, `member.left`: User. Someone's first connection to
          *       the room opened, or their last one closed.
          *     - `link.status`: ServiceLink. One of your links changed status.
@@ -712,7 +865,7 @@ export interface components {
          */
         RoomEvent: {
             /** @enum {string} */
-            type: "hello" | "queue.updated" | "nowplaying.updated" | "member.joined" | "member.left" | "link.status";
+            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status";
             /**
              * Format: int64
              * @description Queue version, on `queue.updated` only.
@@ -769,9 +922,109 @@ export interface components {
             explicit: boolean;
             artwork?: string;
         };
+        /**
+         * @description A room's playback, as the server sees it. While `playing`, the
+         *     position is `positionMs` at `at` and advances with the clock.
+         */
         NowPlaying: {
             roomId: string;
+            state: components["schemas"]["PlaybackState"];
             item?: components["schemas"]["QueueItem"];
+            /**
+             * @description How `item` plays. `stream`: the speaker plays it from
+             *     `/rooms/{roomId}/stream/{itemId}`. `remote`: the song's service
+             *     plays it on its own device, and the speaker just shows it.
+             * @enum {string}
+             */
+            driver?: "stream" | "remote";
+            /** Format: int64 */
+            positionMs: number;
+            /**
+             * Format: date-time
+             * @description Server time `positionMs` was true at.
+             */
+            at: string;
+            /**
+             * Format: int64
+             * @description Increases whenever the speaker must act: a new song, play,
+             *     pause, or seek. Apply each revision once.
+             */
+            revision: number;
+            player?: components["schemas"]["Player"];
+            next?: components["schemas"]["QueueItem"];
+        };
+        /**
+         * @description `idle`: nothing to play, or no speaker. `loading`: waiting for the
+         *     speaker to start the song.
+         * @enum {string}
+         */
+        PlaybackState: "idle" | "loading" | "playing" | "paused";
+        /** @description The device a room plays through. */
+        Player: {
+            deviceId: string;
+            userId: string;
+            name: string;
+            /** Format: date-time */
+            lastSeen: string;
+        };
+        PlaybackCommand: {
+            /** @enum {string} */
+            action: "play" | "pause" | "skip" | "seek";
+            /**
+             * Format: int64
+             * @description Where to seek to.
+             */
+            positionMs?: number;
+            /** @description Skip only if this is still the current song, so two people tapping skip skip one song. */
+            itemId?: string;
+        };
+        ClaimPlayerRequest: {
+            /** @description A stable ID the device makes up and keeps. */
+            deviceId: string;
+            /** @example Collin's phone */
+            name: string;
+        };
+        PlayerReport: {
+            deviceId: string;
+            itemId: string;
+            /** @enum {string} */
+            event: "playing" | "progress" | "paused" | "ended" | "error";
+            /** Format: int64 */
+            positionMs: number;
+            /** @description What went wrong, for `error`. */
+            error?: string;
+        };
+        /** @description Something members should hear about, like a song skipped because its service failed. */
+        PlaybackNotice: {
+            roomId: string;
+            itemId?: string;
+            message: string;
+        };
+        /** @enum {string} */
+        FairnessMode: "round_robin" | "fifo";
+        /**
+         * @description Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
+         * @enum {string}
+         */
+        RoomControls: "everyone" | "owner";
+        Room: {
+            id: string;
+            name: string;
+            ownerId: string;
+            fairnessMode: components["schemas"]["FairnessMode"];
+            controls: components["schemas"]["RoomControls"];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CreateRoomRequest: {
+            name: string;
+            fairnessMode?: components["schemas"]["FairnessMode"];
+            controls?: components["schemas"]["RoomControls"];
+        };
+        UpdateRoomRequest: {
+            name?: string;
+            fairnessMode?: components["schemas"]["FairnessMode"];
+            controls?: components["schemas"]["RoomControls"];
         };
     };
     responses: {
@@ -1527,6 +1780,272 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QueueSnapshot"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listRooms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rooms, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Room"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createRoom: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRoomRequest"];
+            };
+        };
+        responses: {
+            /** @description The new room */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Room"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getRoom: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The room */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Room"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateRoom: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRoomRequest"];
+            };
+        };
+        responses: {
+            /** @description The room after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Room"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getPlayback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The playback state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NowPlaying"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    controlPlayback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybackCommand"];
+            };
+        };
+        responses: {
+            /** @description The playback state after the command */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NowPlaying"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    claimPlayer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimPlayerRequest"];
+            };
+        };
+        responses: {
+            /** @description The playback state with this device as the speaker */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NowPlaying"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    releasePlayer: {
+        parameters: {
+            query: {
+                deviceId: string;
+            };
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The playback state without a speaker */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NowPlaying"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    reportPlayback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlayerReport"];
+            };
+        };
+        responses: {
+            /** @description The current playback state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NowPlaying"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    streamQueueItem: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated content types the player can decode, e.g. `audio/mpeg,audio/aac,audio/flac`. Empty means any. */
+                accept?: string;
+                /** @description Bitrate cap in kbit/s, for services or transcodes that can lower it. */
+                maxBitrate?: number;
+            };
+            header?: {
+                /** @example bytes=0- */
+                Range?: string;
+            };
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The whole song */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/*": string;
+                };
+            };
+            /** @description Part of the song (see Content-Range) */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/*": string;
                 };
             };
             default: components["responses"]["Error"];
