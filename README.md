@@ -67,10 +67,12 @@ Configuration is via `SYNCPHONY_*` environment variables. See [`.env.example`](.
 ## Deployment
 
 ```sh
-SYNCPHONY_DOMAIN=syncphony.example.com docker compose -f deploy/compose.yml up -d
+SYNCPHONY_BASE_URL=https://syncphony.example.com docker compose -f deploy/compose.yml up -d
 ```
 
-Images are published to `ghcr.io/madeofpendletonwool/syncphony` on `v*` tags.
+This serves on port 8080, ready for your existing reverse proxy. If you don't have one, add `--profile caddy` and Caddy handles HTTPS for the host in `SYNCPHONY_BASE_URL`.
+
+Images are published to `ghcr.io/madeofpendletonwool/syncphony`: `:main` tracks the main branch, and `v*` tags publish `:X.Y.Z` and `:latest`. Pick one with `SYNCPHONY_TAG` (e.g. `SYNCPHONY_TAG=main`).
 
 ## Roadmap
 
