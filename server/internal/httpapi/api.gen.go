@@ -347,6 +347,54 @@ type AddToQueueRequest struct {
 	Items []TrackToQueue `json:"items"`
 }
 
+// AlbumCredit defines model for AlbumCredit.
+type AlbumCredit struct {
+	Id    *string `json:"id,omitempty"`
+	Title string  `json:"title"`
+}
+
+// AlbumDetail defines model for AlbumDetail.
+type AlbumDetail struct {
+	Album    AlbumResult `json:"album"`
+	LinkId   string      `json:"linkId"`
+	Provider string      `json:"provider"`
+
+	// Tracks In album order.
+	Tracks []TrackResult `json:"tracks"`
+}
+
+// AlbumResult defines model for AlbumResult.
+type AlbumResult struct {
+	Artists    []ArtistCredit `json:"artists"`
+	Artwork    *string        `json:"artwork,omitempty"`
+	Id         string         `json:"id"`
+	Title      string         `json:"title"`
+	TrackCount *int           `json:"trackCount,omitempty"`
+	Year       *int           `json:"year,omitempty"`
+}
+
+// ArtistCredit defines model for ArtistCredit.
+type ArtistCredit struct {
+	// Id The artist's ID on the same link, if known.
+	Id   *string `json:"id,omitempty"`
+	Name string  `json:"name"`
+}
+
+// ArtistDetail defines model for ArtistDetail.
+type ArtistDetail struct {
+	Albums   []AlbumResult `json:"albums"`
+	Artist   ArtistResult  `json:"artist"`
+	LinkId   string        `json:"linkId"`
+	Provider string        `json:"provider"`
+}
+
+// ArtistResult defines model for ArtistResult.
+type ArtistResult struct {
+	Artwork *string `json:"artwork,omitempty"`
+	Id      string  `json:"id"`
+	Name    string  `json:"name"`
+}
+
 // BeginOAuthLinkRequest Set `provider` to link a new account, or `linkId` to re-link one.
 type BeginOAuthLinkRequest struct {
 	LinkId   *string `json:"linkId,omitempty"`
@@ -739,6 +787,24 @@ type RoomHello struct {
 	You string `json:"you"`
 }
 
+// SearchGroup One link's search results.
+type SearchGroup struct {
+	AccountLabel string         `json:"accountLabel"`
+	Albums       []AlbumResult  `json:"albums"`
+	Artists      []ArtistResult `json:"artists"`
+	Error        *Error         `json:"error,omitempty"`
+	LinkId       string         `json:"linkId"`
+	Provider     string         `json:"provider"`
+	Tracks       []TrackResult  `json:"tracks"`
+}
+
+// SearchResults defines model for SearchResults.
+type SearchResults struct {
+	// Groups Empty if you have no links.
+	Groups []SearchGroup `json:"groups"`
+	Query  string        `json:"query"`
+}
+
 // ServiceLink defines model for ServiceLink.
 type ServiceLink struct {
 	// AccountLabel Example: alice on music.example.com
@@ -770,6 +836,21 @@ type SignupRequest struct {
 
 	// Username 2 to 32 characters: lowercase letters, digits, `.`, `_` and `-`.
 	Username Username `json:"username"`
+}
+
+// TrackResult A track you can queue with `linkId` and `trackId`.
+type TrackResult struct {
+	Album   *AlbumCredit   `json:"album,omitempty"`
+	Artists []ArtistCredit `json:"artists"`
+
+	// Artwork Load with `/links/{linkId}/artwork?ref=`.
+	Artwork    *string `json:"artwork,omitempty"`
+	DurationMs int64   `json:"durationMs"`
+	Explicit   bool    `json:"explicit"`
+	LinkId     string  `json:"linkId"`
+	Provider   string  `json:"provider"`
+	Title      string  `json:"title"`
+	TrackId    string  `json:"trackId"`
 }
 
 // TrackToQueue defines model for TrackToQueue.
@@ -826,6 +907,14 @@ type CompleteOAuthLinkParams struct {
 	Error *string `form:"error,omitempty" json:"error,omitempty"`
 }
 
+// GetLinkArtworkParams defines parameters for GetLinkArtwork.
+type GetLinkArtworkParams struct {
+	Ref string `form:"ref" json:"ref"`
+
+	// Size Wanted width in pixels; a hint.
+	Size *int `form:"size,omitempty" json:"size,omitempty"`
+}
+
 // RenamePasskeyJSONBody defines parameters for RenamePasskey.
 type RenamePasskeyJSONBody struct {
 	Name string `json:"name"`
@@ -844,6 +933,14 @@ type StreamQueueItemParams struct {
 	// MaxBitrate Bitrate cap in kbit/s, for services or transcodes that can lower it.
 	MaxBitrate *int    `form:"maxBitrate,omitempty" json:"maxBitrate,omitempty"`
 	Range      *string `json:"Range,omitempty"`
+}
+
+// SearchParams defines parameters for Search.
+type SearchParams struct {
+	Q string `form:"q" json:"q"`
+
+	// Limit Most results per kind, per link.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
@@ -962,6 +1059,15 @@ type ServerInterface interface {
 	// Relink Re-link with new credentials (credentials providers)
 	// (PUT /links/{id})
 	Relink(w http.ResponseWriter, r *http.Request, id string)
+	// GetAlbum An album and its tracks, through one of your links
+	// (GET /links/{id}/albums/{albumId})
+	GetAlbum(w http.ResponseWriter, r *http.Request, id string, albumId string)
+	// GetArtist An artist and their albums, through one of your links
+	// (GET /links/{id}/artists/{artistId})
+	GetArtist(w http.ResponseWriter, r *http.Request, id string, artistId string)
+	// GetLinkArtwork An image from one of your links
+	// (GET /links/{id}/artwork)
+	GetLinkArtwork(w http.ResponseWriter, r *http.Request, id string, params GetLinkArtworkParams)
 	// GetMe The signed-in user
 	// (GET /me)
 	GetMe(w http.ResponseWriter, r *http.Request)
@@ -1034,6 +1140,9 @@ type ServerInterface interface {
 	// StreamQueueItem A song's audio
 	// (GET /rooms/{roomId}/stream/{itemId})
 	StreamQueueItem(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params StreamQueueItemParams)
+	// Search Search every service you've linked
+	// (GET /search)
+	Search(w http.ResponseWriter, r *http.Request, params SearchParams)
 	// ListUsers Everyone on this server
 	// (GET /users)
 	ListUsers(w http.ResponseWriter, r *http.Request)
@@ -1384,6 +1493,131 @@ func (siw *ServerInterfaceWrapper) Relink(w http.ResponseWriter, r *http.Request
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Relink(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAlbum operation middleware
+func (siw *ServerInterfaceWrapper) GetAlbum(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", r.PathValue("albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAlbum(w, r, id, albumId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetArtist operation middleware
+func (siw *ServerInterfaceWrapper) GetArtist(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "artistId" -------------
+	var artistId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "artistId", r.PathValue("artistId"), &artistId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "artistId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetArtist(w, r, id, artistId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetLinkArtwork operation middleware
+func (siw *ServerInterfaceWrapper) GetLinkArtwork(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetLinkArtworkParams
+
+	// ------------- Required query parameter "ref" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "ref", r.URL.Query(), &params.Ref, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "ref"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ref", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "size", r.URL.Query(), &params.Size, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetLinkArtwork(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1990,6 +2224,52 @@ func (siw *ServerInterfaceWrapper) StreamQueueItem(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// Search operation middleware
+func (siw *ServerInterfaceWrapper) Search(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchParams
+
+	// ------------- Required query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Search(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListUsers operation middleware
 func (siw *ServerInterfaceWrapper) ListUsers(w http.ResponseWriter, r *http.Request) {
 
@@ -2153,6 +2433,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/links/{id}", wrapper.Relink)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/links/oauth", wrapper.BeginOAuthLink)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/oauth/callback", wrapper.CompleteOAuthLink)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/search", wrapper.Search)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/albums/{albumId}", wrapper.GetAlbum)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artists/{artistId}", wrapper.GetArtist)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artwork", wrapper.GetLinkArtwork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.GetQueue)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.AddToQueue)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.RemoveQueueItem)
@@ -2843,6 +3127,133 @@ type RelinkdefaultJSONResponse struct {
 }
 
 func (response RelinkdefaultJSONResponse) VisitRelinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAlbumRequestObject struct {
+	Id      string `json:"id"`
+	AlbumId string `json:"albumId"`
+}
+
+type GetAlbumResponseObject interface {
+	VisitGetAlbumResponse(w http.ResponseWriter) error
+}
+
+type GetAlbum200JSONResponse AlbumDetail
+
+func (response GetAlbum200JSONResponse) VisitGetAlbumResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAlbumdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetAlbumdefaultJSONResponse) VisitGetAlbumResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetArtistRequestObject struct {
+	Id       string `json:"id"`
+	ArtistId string `json:"artistId"`
+}
+
+type GetArtistResponseObject interface {
+	VisitGetArtistResponse(w http.ResponseWriter) error
+}
+
+type GetArtist200JSONResponse ArtistDetail
+
+func (response GetArtist200JSONResponse) VisitGetArtistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetArtistdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetArtistdefaultJSONResponse) VisitGetArtistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLinkArtworkRequestObject struct {
+	Id     string `json:"id"`
+	Params GetLinkArtworkParams
+}
+
+type GetLinkArtworkResponseObject interface {
+	VisitGetLinkArtworkResponse(w http.ResponseWriter) error
+}
+
+type GetLinkArtwork200ImageResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetLinkArtwork200ImageResponse) VisitGetLinkArtworkResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetLinkArtworkdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetLinkArtworkdefaultJSONResponse) VisitGetLinkArtworkResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -3800,6 +4211,45 @@ func (response StreamQueueItemdefaultJSONResponse) VisitStreamQueueItemResponse(
 	return err
 }
 
+type SearchRequestObject struct {
+	Params SearchParams
+}
+
+type SearchResponseObject interface {
+	VisitSearchResponse(w http.ResponseWriter) error
+}
+
+type Search200JSONResponse SearchResults
+
+func (response Search200JSONResponse) VisitSearchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SearchdefaultJSONResponse) VisitSearchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListUsersRequestObject struct {
 }
 
@@ -3894,6 +4344,15 @@ type StrictServerInterface interface {
 	// Relink Re-link with new credentials (credentials providers)
 	// (PUT /links/{id})
 	Relink(ctx context.Context, request RelinkRequestObject) (RelinkResponseObject, error)
+	// GetAlbum An album and its tracks, through one of your links
+	// (GET /links/{id}/albums/{albumId})
+	GetAlbum(ctx context.Context, request GetAlbumRequestObject) (GetAlbumResponseObject, error)
+	// GetArtist An artist and their albums, through one of your links
+	// (GET /links/{id}/artists/{artistId})
+	GetArtist(ctx context.Context, request GetArtistRequestObject) (GetArtistResponseObject, error)
+	// GetLinkArtwork An image from one of your links
+	// (GET /links/{id}/artwork)
+	GetLinkArtwork(ctx context.Context, request GetLinkArtworkRequestObject) (GetLinkArtworkResponseObject, error)
 	// GetMe The signed-in user
 	// (GET /me)
 	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
@@ -3966,6 +4425,9 @@ type StrictServerInterface interface {
 	// StreamQueueItem A song's audio
 	// (GET /rooms/{roomId}/stream/{itemId})
 	StreamQueueItem(ctx context.Context, request StreamQueueItemRequestObject) (StreamQueueItemResponseObject, error)
+	// Search Search every service you've linked
+	// (GET /search)
+	Search(ctx context.Context, request SearchRequestObject) (SearchResponseObject, error)
 	// ListUsers Everyone on this server
 	// (GET /users)
 	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
@@ -4508,6 +4970,87 @@ func (sh *strictHandler) Relink(w http.ResponseWriter, r *http.Request, id strin
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RelinkResponseObject); ok {
 		if err := validResponse.VisitRelinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAlbum operation middleware
+func (sh *strictHandler) GetAlbum(w http.ResponseWriter, r *http.Request, id string, albumId string) {
+	var request GetAlbumRequestObject
+
+	request.Id = id
+	request.AlbumId = albumId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAlbum(ctx, request.(GetAlbumRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAlbum")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAlbumResponseObject); ok {
+		if err := validResponse.VisitGetAlbumResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetArtist operation middleware
+func (sh *strictHandler) GetArtist(w http.ResponseWriter, r *http.Request, id string, artistId string) {
+	var request GetArtistRequestObject
+
+	request.Id = id
+	request.ArtistId = artistId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetArtist(ctx, request.(GetArtistRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetArtist")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetArtistResponseObject); ok {
+		if err := validResponse.VisitGetArtistResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetLinkArtwork operation middleware
+func (sh *strictHandler) GetLinkArtwork(w http.ResponseWriter, r *http.Request, id string, params GetLinkArtworkParams) {
+	var request GetLinkArtworkRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetLinkArtwork(ctx, request.(GetLinkArtworkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetLinkArtwork")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetLinkArtworkResponseObject); ok {
+		if err := validResponse.VisitGetLinkArtworkResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -5194,6 +5737,32 @@ func (sh *strictHandler) StreamQueueItem(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(StreamQueueItemResponseObject); ok {
 		if err := validResponse.VisitStreamQueueItemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// Search operation middleware
+func (sh *strictHandler) Search(w http.ResponseWriter, r *http.Request, params SearchParams) {
+	var request SearchRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Search(ctx, request.(SearchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Search")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SearchResponseObject); ok {
+		if err := validResponse.VisitSearchResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

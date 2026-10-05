@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useAlbumAccent } from '@/hooks/use-album-accent'
 import { easeOutExpo } from '@/lib/motion'
 import { usePlayer } from '@/lib/now-playing'
+import { Toaster } from '@/components/toaster'
 import { AlbumBackdrop } from './album-backdrop'
 import { BottomNav } from './bottom-nav'
 import { MiniPlayer } from './mini-player'
@@ -37,6 +38,7 @@ export function AppShell() {
 
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40">
           <div className="pointer-events-auto mx-auto flex max-w-2xl flex-col gap-2 px-3 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+            <Toaster />
             <MiniPlayer expanded={expanded} onExpand={() => setExpanded(true)} />
             <BottomNav />
           </div>

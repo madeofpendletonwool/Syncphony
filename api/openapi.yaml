@@ -550,6 +550,132 @@ paths:
               schema:
                 type: string
 
+  # --- Browsing your services ----------------------------------------------
+
+  /search:
+    get:
+      operationId: search
+      summary: Search every service you've linked
+      description: |
+        Searches each of your links at once for tracks, albums and artists.
+        Each link's results come back as a group, in link order. A link that
+        fails (offline, needs re-linking, too slow) gets a group with
+        `error` set instead of failing the whole search.
+      tags: [browse]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+        - name: limit
+          in: query
+          description: Most results per kind, per link.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Results, one group per link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResults"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /links/{id}/albums/{albumId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: albumId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getAlbum
+      summary: An album and its tracks, through one of your links
+      tags: [browse]
+      responses:
+        "200":
+          description: The album
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlbumDetail"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /links/{id}/artists/{artistId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: artistId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getArtist
+      summary: An artist and their albums, through one of your links
+      tags: [browse]
+      responses:
+        "200":
+          description: The artist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArtistDetail"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /links/{id}/artwork:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getLinkArtwork
+      summary: An image from one of your links
+      description: For `artwork` refs in search and browse results. Cacheable.
+      tags: [browse]
+      parameters:
+        - name: ref
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: size
+          in: query
+          description: Wanted width in pixels; a hint.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 2048
+      responses:
+        "200":
+          description: The image
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
+
   /rooms/{roomId}/queue:
     parameters:
       - $ref: "#/components/parameters/RoomId"
@@ -1249,6 +1375,154 @@ components:
           type: object
           additionalProperties:
             type: string
+
+    # --- Browsing ---------------------------------------------------------------
+
+    ArtistCredit:
+      type: object
+      required: [name]
+      properties:
+        id:
+          type: string
+          description: The artist's ID on the same link, if known.
+        name:
+          type: string
+
+    AlbumCredit:
+      type: object
+      required: [title]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+
+    TrackResult:
+      type: object
+      description: A track you can queue with `linkId` and `trackId`.
+      required: [linkId, provider, trackId, title, artists, durationMs, explicit]
+      properties:
+        linkId:
+          type: string
+        provider:
+          type: string
+        trackId:
+          type: string
+        title:
+          type: string
+        artists:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArtistCredit"
+        album:
+          $ref: "#/components/schemas/AlbumCredit"
+        durationMs:
+          type: integer
+          format: int64
+        explicit:
+          type: boolean
+        artwork:
+          type: string
+          description: Load with `/links/{linkId}/artwork?ref=`.
+
+    AlbumResult:
+      type: object
+      required: [id, title, artists]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        artists:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArtistCredit"
+        year:
+          type: integer
+        trackCount:
+          type: integer
+        artwork:
+          type: string
+
+    ArtistResult:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        artwork:
+          type: string
+
+    SearchGroup:
+      type: object
+      description: One link's search results.
+      required: [linkId, provider, accountLabel, tracks, albums, artists]
+      properties:
+        linkId:
+          type: string
+        provider:
+          type: string
+        accountLabel:
+          type: string
+        tracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrackResult"
+        albums:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlbumResult"
+        artists:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArtistResult"
+        error:
+          $ref: "#/components/schemas/Error"
+
+    SearchResults:
+      type: object
+      required: [query, groups]
+      properties:
+        query:
+          type: string
+        groups:
+          type: array
+          description: Empty if you have no links.
+          items:
+            $ref: "#/components/schemas/SearchGroup"
+
+    AlbumDetail:
+      type: object
+      required: [linkId, provider, album, tracks]
+      properties:
+        linkId:
+          type: string
+        provider:
+          type: string
+        album:
+          $ref: "#/components/schemas/AlbumResult"
+        tracks:
+          type: array
+          description: In album order.
+          items:
+            $ref: "#/components/schemas/TrackResult"
+
+    ArtistDetail:
+      type: object
+      required: [linkId, provider, artist, albums]
+      properties:
+        linkId:
+          type: string
+        provider:
+          type: string
+        artist:
+          $ref: "#/components/schemas/ArtistResult"
+        albums:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlbumResult"
 
     AddToQueueRequest:
       type: object
