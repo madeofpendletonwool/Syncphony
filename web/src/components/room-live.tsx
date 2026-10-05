@@ -1,11 +1,12 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { useRoomControls } from '@/hooks/use-room-controls'
 import { useMe } from '@/lib/auth'
 import { player } from '@/lib/now-playing'
-import { playbackQuery, toNowPlaying } from '@/lib/playback'
+import { newer, playbackQuery, toNowPlaying } from '@/lib/playback'
 import { useCurrentRoom } from '@/lib/room'
 import { useRoomSocket } from '@/lib/room-socket'
+import { speaker, speakerState } from '@/lib/speaker'
 import { usersQuery } from '@/lib/users'
 
 /**
@@ -19,6 +20,19 @@ export function RoomLive() {
   const playback = useQuery({ ...playbackQuery(room?.id ?? ''), enabled: !!room })
   const users = useQuery(usersQuery)
   const commands = useRoomControls(room, playback.data, me.id)
+  const queryClient = useQueryClient()
+
+  // Player mode: whatever the server says, the speaker (if this device is
+  // one) applies; its reports' replies flow back into the cache.
+  useEffect(() => {
+    speaker.onState = (np) => queryClient.setQueryData(playbackQuery(np.roomId).queryKey, (old) => newer(old, np))
+  }, [queryClient])
+  useEffect(() => speaker.apply(playback.data), [playback.data])
+  useEffect(() => {
+    if (speaker.active && room && speakerRoom() !== room.id) void speaker.stop()
+  }, [room])
+  // Signing out stops the speaker.
+  useEffect(() => () => void speaker.stop(), [])
 
   useEffect(() => {
     const np = playback.data && room ? toNowPlaying(room.id, playback.data, users.data) : null
@@ -30,3 +44,5 @@ export function RoomLive() {
 
   return null
 }
+
+const speakerRoom = () => speakerState.get().roomId

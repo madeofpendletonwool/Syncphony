@@ -20,6 +20,13 @@ export function sendCommand(roomId: string, body: PlaybackCommand) {
   return unwrap(api.POST('/rooms/{roomId}/playback', { params: { path: { roomId } }, body }))
 }
 
+/** The newer of two playback states, by revision (then server time). */
+export function newer(old: Playback | undefined, np: Playback) {
+  if (!old || old.roomId !== np.roomId) return np
+  if (old.revision !== np.revision) return old.revision > np.revision ? old : np
+  return Date.parse(old.at) > Date.parse(np.at) ? old : np
+}
+
 /** A queued song's artwork, loaded through whoever queued it. */
 export function queueArtworkUrl(roomId: string, item: QueueItem, size = 300) {
   if (!item.track.artwork || !item.track.linkId) return undefined

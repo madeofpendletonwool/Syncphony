@@ -39,6 +39,9 @@ export function useRoomControls(room: Room | undefined, playback: Playback | und
               ? send({ action: 'pause' }, (p) => ({ ...p, state: 'paused', positionMs: currentPosition(p), at: new Date().toISOString() }))
               : send({ action: 'play' })
         : undefined,
+      // There's no going back in a fair queue; "previous" restarts the song,
+      // like most players do past the first few seconds.
+      previous: full ? () => send({ action: 'seek', positionMs: 0 }, (p) => ({ ...p, positionMs: 0, at: new Date().toISOString() })) : undefined,
       next: full || item.addedBy === userId ? () => send({ action: 'skip', itemId: item.id }) : undefined,
       seek: full
         ? (positionMs: number) => send({ action: 'seek', positionMs }, (p) => ({ ...p, positionMs, at: new Date().toISOString() }))
