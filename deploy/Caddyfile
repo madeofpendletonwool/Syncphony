@@ -1,4 +1,6 @@
-{$SYNCPHONY_DOMAIN} {
+# Caddy accepts a full URL as the site address, so the same
+# SYNCPHONY_BASE_URL drives both the app and the certificate.
+{$SYNCPHONY_BASE_URL} {
 	encode zstd gzip
 	reverse_proxy syncphony:8080
 }

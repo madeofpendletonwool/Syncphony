@@ -1,26 +1,35 @@
-# Example production deployment: Syncphony behind Caddy with automatic HTTPS.
-#   SYNCPHONY_DOMAIN=syncphony.example.com docker compose -f deploy/compose.yml up -d
+# Example production deployment.
+#
+#   SYNCPHONY_BASE_URL=https://syncphony.example.com docker compose -f deploy/compose.yml up -d
+#
+# Already have a reverse proxy (Traefik, nginx, NPM...)? Point it at port 8080.
+# Want this file to handle HTTPS too? Add `--profile caddy`. Caddy gets a
+# certificate for the host in SYNCPHONY_BASE_URL automatically.
 name: syncphony
 
 services:
   syncphony:
-    image: ghcr.io/madeofpendletonwool/syncphony:latest
+    image: ghcr.io/madeofpendletonwool/syncphony:${SYNCPHONY_TAG:-latest}
     restart: unless-stopped
+    ports:
+      - "8080:8080"
     environment:
-      SYNCPHONY_BASE_URL: https://${SYNCPHONY_DOMAIN:?set SYNCPHONY_DOMAIN}
+      # The public URL people (and OAuth redirects) use to reach Syncphony.
+      SYNCPHONY_BASE_URL: ${SYNCPHONY_BASE_URL:-http://localhost:8080}
       # SYNCPHONY_VAULT_KEY: ${SYNCPHONY_VAULT_KEY}
     volumes:
       - syncphony-data:/data
 
   caddy:
     image: caddy:2-alpine
+    profiles: [caddy]
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
       - "443:443/udp"
     environment:
-      SYNCPHONY_DOMAIN: ${SYNCPHONY_DOMAIN}
+      SYNCPHONY_BASE_URL: ${SYNCPHONY_BASE_URL:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
