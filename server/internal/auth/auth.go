@@ -179,6 +179,16 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Session, err
 	return out, nil
 }
 
+// Check reports whether token is still a live session, without extending
+// it. Long-lived connections use it to notice sign-outs.
+func (s *Service) Check(ctx context.Context, token string) error {
+	_, err := s.db.GetSession(ctx, store.GetSessionParams{TokenHash: hashToken(token), Now: s.now()})
+	if store.IsNotFound(err) {
+		return ErrUnauthenticated
+	}
+	return err
+}
+
 // Logout ends the session for token. Unknown tokens are ignored.
 func (s *Service) Logout(ctx context.Context, token string) error {
 	if token == "" {

@@ -9,6 +9,7 @@ tool (
 )
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/fxamacker/cbor/v2 v2.9.4
 	github.com/getkin/kin-openapi v0.142.0
 	github.com/go-webauthn/webauthn v0.18.2

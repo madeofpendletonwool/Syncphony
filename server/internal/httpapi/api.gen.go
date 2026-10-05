@@ -113,6 +113,33 @@ func (e ProviderInfoPlayback) Valid() bool {
 	}
 }
 
+// Defines values for QueueItemState.
+const (
+	Played  QueueItemState = "played"
+	Playing QueueItemState = "playing"
+	Queued  QueueItemState = "queued"
+	Removed QueueItemState = "removed"
+	Skipped QueueItemState = "skipped"
+)
+
+// Valid indicates whether the value is a known member of the QueueItemState enum.
+func (e QueueItemState) Valid() bool {
+	switch e {
+	case Played:
+		return true
+	case Playing:
+		return true
+	case Queued:
+		return true
+	case Removed:
+		return true
+	case Skipped:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Role.
 const (
 	Admin  Role = "admin"
@@ -125,6 +152,36 @@ func (e Role) Valid() bool {
 	case Admin:
 		return true
 	case Member:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoomEventType.
+const (
+	Hello             RoomEventType = "hello"
+	LinkStatus        RoomEventType = "link.status"
+	MemberJoined      RoomEventType = "member.joined"
+	MemberLeft        RoomEventType = "member.left"
+	NowplayingUpdated RoomEventType = "nowplaying.updated"
+	QueueUpdated      RoomEventType = "queue.updated"
+)
+
+// Valid indicates whether the value is a known member of the RoomEventType enum.
+func (e RoomEventType) Valid() bool {
+	switch e {
+	case Hello:
+		return true
+	case LinkStatus:
+		return true
+	case MemberJoined:
+		return true
+	case MemberLeft:
+		return true
+	case NowplayingUpdated:
+		return true
+	case QueueUpdated:
 		return true
 	default:
 		return false
@@ -273,6 +330,12 @@ type Me struct {
 	Username     string    `json:"username"`
 }
 
+// NowPlaying defines model for NowPlaying.
+type NowPlaying struct {
+	Item   *QueueItem `json:"item,omitempty"`
+	RoomId string     `json:"roomId"`
+}
+
 // Passkey defines model for Passkey.
 type Passkey struct {
 	CreatedAt time.Time `json:"createdAt"`
@@ -332,6 +395,47 @@ type ProviderInfoLinkMethod string
 // ProviderInfoPlayback defines model for ProviderInfo.Playback.
 type ProviderInfoPlayback string
 
+// QueueItem defines model for QueueItem.
+type QueueItem struct {
+	AddedAt time.Time `json:"addedAt"`
+
+	// AddedBy User ID.
+	AddedBy      string         `json:"addedBy"`
+	Id           string         `json:"id"`
+	LanePosition int64          `json:"lanePosition"`
+	State        QueueItemState `json:"state"`
+
+	// Track The track as it was when queued; still shown if its service is offline.
+	Track QueuedTrack `json:"track"`
+}
+
+// QueueItemState defines model for QueueItem.State.
+type QueueItemState string
+
+// QueueSnapshot defines model for QueueSnapshot.
+type QueueSnapshot struct {
+	// Items The playing item and everything queued, grouped by who added it,
+	// each lane in order.
+	Items   []QueueItem `json:"items"`
+	RoomId  string      `json:"roomId"`
+	Version int64       `json:"version"`
+}
+
+// QueuedTrack The track as it was when queued; still shown if its service is offline.
+type QueuedTrack struct {
+	Album      *string  `json:"album,omitempty"`
+	Artists    []string `json:"artists"`
+	Artwork    *string  `json:"artwork,omitempty"`
+	DurationMs int64    `json:"durationMs"`
+	Explicit   bool     `json:"explicit"`
+
+	// LinkId Absent if the link was removed; the track can't play then.
+	LinkId   *string `json:"linkId,omitempty"`
+	Provider string  `json:"provider"`
+	Title    string  `json:"title"`
+	TrackId  string  `json:"trackId"`
+}
+
 // RelinkRequest defines model for RelinkRequest.
 type RelinkRequest struct {
 	Fields map[string]string `json:"fields"`
@@ -339,6 +443,44 @@ type RelinkRequest struct {
 
 // Role defines model for Role.
 type Role string
+
+// RoomEvent A message on the room WebSocket, `GET /ws/rooms/{roomId}?since=<version>`.
+// The socket needs the session cookie and is server-push only: send
+// changes over the REST API.
+//
+// `data` by `type`:
+//   - `hello`: RoomHello. Always first.
+//   - `queue.updated`: QueueSnapshot. Sent after hello unless `since`
+//     equals the current version, then on every change.
+//   - `nowplaying.updated`: NowPlaying. Sent after hello, then on change.
+//   - `member.joined`, `member.left`: User. Someone's first connection to
+//     the room opened, or their last one closed.
+//   - `link.status`: ServiceLink. One of your links changed status.
+//
+// Close code 1013 (try again later) means the client fell behind and
+// missed events: reconnect with `since` set to the last version seen.
+// Close code 4001 means the session ended; sign in again.
+type RoomEvent struct {
+	Data map[string]interface{} `json:"data"`
+	Type RoomEventType          `json:"type"`
+
+	// Version Queue version, on `queue.updated` only.
+	Version *int64 `json:"version,omitempty"`
+}
+
+// RoomEventType defines model for RoomEvent.Type.
+type RoomEventType string
+
+// RoomHello defines model for RoomHello.
+type RoomHello struct {
+	// Members Everyone connected to the room right now, you included.
+	Members  []User `json:"members"`
+	RoomId   string `json:"roomId"`
+	RoomName string `json:"roomName"`
+
+	// You Your user ID.
+	You string `json:"you"`
+}
 
 // ServiceLink defines model for ServiceLink.
 type ServiceLink struct {

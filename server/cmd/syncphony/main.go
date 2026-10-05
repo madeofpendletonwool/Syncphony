@@ -21,6 +21,8 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
+	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
+	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 	"github.com/madeofpendletonwool/syncphony/server/internal/vault"
 	"github.com/madeofpendletonwool/syncphony/server/internal/webui"
@@ -46,6 +48,7 @@ func main() {
 type app struct {
 	cfg   config.Config
 	db    *store.Store
+	bus   realtime.Bus
 	links *links.Service
 }
 
@@ -74,7 +77,11 @@ func setup(ctx context.Context) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &app{cfg: cfg, db: db, links: links.New(db, v, reg, links.Config{BaseURL: cfg.BaseURL})}, nil
+	bus := realtime.NewLocal()
+	return &app{
+		cfg: cfg, db: db, bus: bus,
+		links: links.New(db, v, reg, links.Config{BaseURL: cfg.BaseURL, Notifier: links.BusNotifier{Bus: bus}}),
+	}, nil
 }
 
 // providers builds the registry of linkable services.
@@ -108,9 +115,14 @@ func run() error {
 	}
 	go sweepSessions(ctx, db)
 
-	api := &httpapi.Server{Version: version, Auth: accounts, Links: a.links, BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies}
+	api := &httpapi.Server{
+		Version: version, Auth: accounts, Links: a.links,
+		Rooms: rooms.New(db, a.bus), Bus: a.bus, Presence: realtime.NewPresence(),
+		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
+	}
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api.Handler())
+	mux.Handle("GET /ws/rooms/{id}", api.RoomSocket())
 	mux.Handle("/", webui.Handler())
 
 	srv := &http.Server{

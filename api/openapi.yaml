@@ -932,3 +932,130 @@ components:
           type: string
         linkId:
           type: string
+
+    # --- Realtime ---------------------------------------------------------------
+    # These are pushed over the WebSocket at /ws/rooms/{roomId}, not served
+    # from a path here.
+
+    RoomEvent:
+      type: object
+      description: |
+        A message on the room WebSocket, `GET /ws/rooms/{roomId}?since=<version>`.
+        The socket needs the session cookie and is server-push only: send
+        changes over the REST API.
+
+        `data` by `type`:
+        - `hello`: RoomHello. Always first.
+        - `queue.updated`: QueueSnapshot. Sent after hello unless `since`
+          equals the current version, then on every change.
+        - `nowplaying.updated`: NowPlaying. Sent after hello, then on change.
+        - `member.joined`, `member.left`: User. Someone's first connection to
+          the room opened, or their last one closed.
+        - `link.status`: ServiceLink. One of your links changed status.
+
+        Close code 1013 (try again later) means the client fell behind and
+        missed events: reconnect with `since` set to the last version seen.
+        Close code 4001 means the session ended; sign in again.
+      required: [type, data]
+      properties:
+        type:
+          type: string
+          enum: [hello, queue.updated, nowplaying.updated, member.joined, member.left, link.status]
+        version:
+          type: integer
+          format: int64
+          description: Queue version, on `queue.updated` only.
+        data:
+          type: object
+
+    RoomHello:
+      type: object
+      required: [roomId, roomName, you, members]
+      properties:
+        roomId:
+          type: string
+        roomName:
+          type: string
+        you:
+          type: string
+          description: Your user ID.
+        members:
+          type: array
+          description: Everyone connected to the room right now, you included.
+          items:
+            $ref: "#/components/schemas/User"
+
+    QueueSnapshot:
+      type: object
+      required: [roomId, version, items]
+      properties:
+        roomId:
+          type: string
+        version:
+          type: integer
+          format: int64
+        items:
+          type: array
+          description: |
+            The playing item and everything queued, grouped by who added it,
+            each lane in order.
+          items:
+            $ref: "#/components/schemas/QueueItem"
+
+    QueueItem:
+      type: object
+      required: [id, addedBy, state, lanePosition, addedAt, track]
+      properties:
+        id:
+          type: string
+        addedBy:
+          type: string
+          description: User ID.
+        state:
+          type: string
+          enum: [queued, playing, played, skipped, removed]
+        lanePosition:
+          type: integer
+          format: int64
+        addedAt:
+          type: string
+          format: date-time
+        track:
+          $ref: "#/components/schemas/QueuedTrack"
+
+    QueuedTrack:
+      type: object
+      description: The track as it was when queued; still shown if its service is offline.
+      required: [provider, trackId, title, artists, durationMs, explicit]
+      properties:
+        provider:
+          type: string
+        linkId:
+          type: string
+          description: Absent if the link was removed; the track can't play then.
+        trackId:
+          type: string
+        title:
+          type: string
+        artists:
+          type: array
+          items:
+            type: string
+        album:
+          type: string
+        durationMs:
+          type: integer
+          format: int64
+        explicit:
+          type: boolean
+        artwork:
+          type: string
+
+    NowPlaying:
+      type: object
+      required: [roomId]
+      properties:
+        roomId:
+          type: string
+        item:
+          $ref: "#/components/schemas/QueueItem"

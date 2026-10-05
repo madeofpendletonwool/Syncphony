@@ -5,3 +5,6 @@ generate:
   models: true
   std-http-server: true
   strict-server: true
+output-options:
+  # Keep schemas no path references: the realtime event payloads.
+  skip-prune: true

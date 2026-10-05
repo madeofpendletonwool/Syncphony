@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
+	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 	"github.com/madeofpendletonwool/syncphony/server/internal/vault"
 )
@@ -41,18 +42,29 @@ type InvalidInputError struct {
 
 func (e *InvalidInputError) Error() string { return e.Field + ": " + e.Message }
 
-// Notifier is told when a link needs its owner's attention.
+// Notifier is told when a link's status changes: once when its credentials
+// stop working, and whenever it's linked or re-linked.
 type Notifier interface {
-	// NeedsRelink is called once when a link's credentials stop working.
-	NeedsRelink(ctx context.Context, link store.ServiceLink)
+	LinkStatusChanged(ctx context.Context, link store.ServiceLink)
 }
 
-// LogNotifier logs instead of notifying.
+// LogNotifier only logs.
 type LogNotifier struct{}
 
-// NeedsRelink implements Notifier.
-func (LogNotifier) NeedsRelink(_ context.Context, l store.ServiceLink) {
-	slog.Warn("service link needs relinking", "link", l.ID, "user", l.UserID, "provider", l.Provider, "account", l.AccountLabel)
+// LinkStatusChanged implements Notifier.
+func (LogNotifier) LinkStatusChanged(_ context.Context, l store.ServiceLink) {
+	if l.Status == store.LinkExpired {
+		slog.Warn("service link needs relinking", "link", l.ID, "user", l.UserID, "provider", l.Provider, "account", l.AccountLabel)
+	}
+}
+
+// BusNotifier pushes status changes to the link owner's connections, and logs.
+type BusNotifier struct{ Bus realtime.Bus }
+
+// LinkStatusChanged implements Notifier.
+func (n BusNotifier) LinkStatusChanged(ctx context.Context, l store.ServiceLink) {
+	LogNotifier{}.LinkStatusChanged(ctx, l)
+	n.Bus.Publish(realtime.UserTopic(l.UserID), realtime.Event{Type: realtime.LinkStatus, Data: l})
 }
 
 // Config configures a Service.
@@ -302,7 +314,11 @@ func (s *Service) save(ctx context.Context, userID, providerID, relinkID string,
 		return store.ServiceLink{}, err
 	}
 	s.lastOK.Store(id, now)
-	return s.db.GetServiceLink(ctx, id)
+	row, err := s.db.GetServiceLink(ctx, id)
+	if err == nil {
+		s.notifier.LinkStatusChanged(ctx, row)
+	}
+	return row, err
 }
 
 func (s *Service) userLink(ctx context.Context, userID, linkID string) (store.ServiceLink, error) {
@@ -427,7 +443,7 @@ func (s *Service) observe(ctx context.Context, row store.ServiceLink, err error)
 			return err
 		}
 		cur.Status = store.LinkExpired
-		s.notifier.NeedsRelink(ctx, cur)
+		s.notifier.LinkStatusChanged(ctx, cur)
 	}
 	return err
 }

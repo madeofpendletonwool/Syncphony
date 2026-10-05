@@ -20,6 +20,8 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
+	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
+	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 )
 
 // SessionCookie is the session cookie's name. It must match the "session"
@@ -31,6 +33,13 @@ type Server struct {
 	Version string
 	Auth    *auth.Service
 	Links   *links.Service
+	// Realtime: room state, the event bus, and who's connected.
+	Rooms    *rooms.Service
+	Bus      realtime.Bus
+	Presence *realtime.Presence
+	// PingEvery is how often room sockets are pinged and their session
+	// re-checked. Default 30s.
+	PingEvery time.Duration
 	// BaseURL is the public URL of the web app. Mutating requests must come
 	// from its origin, and session cookies are Secure when it's HTTPS.
 	BaseURL string

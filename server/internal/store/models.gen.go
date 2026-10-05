@@ -65,6 +65,7 @@ type Room struct {
 	FairnessMode   string
 	Settings       string
 	CreatedAt      time.Time
+	QueueVersion   int64
 }
 
 type ServiceLink struct {
