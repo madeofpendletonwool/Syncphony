@@ -48,6 +48,10 @@ test: ## Run all tests
 	cd server && go test -race ./...
 	cd web && pnpm test
 
+.PHONY: test-navidrome
+test-navidrome: dev-deps ## Run the provider conformance suite against the dev Navidrome
+	cd server && SYNCPHONY_TEST_NAVIDROME_URL=$${SYNCPHONY_TEST_NAVIDROME_URL:-http://localhost:4533} go test -race -count=1 -run Conformance ./internal/provider/navidrome/
+
 .PHONY: lint
 lint: ## Lint and type-check everything
 	cd server && golangci-lint run ./...

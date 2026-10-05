@@ -23,6 +23,9 @@ type Session interface {
 	Track(ctx context.Context, id string) (Track, error)
 	// Album returns an album and its tracks in order.
 	Album(ctx context.Context, id string) (Album, []Track, error)
+	// Artist returns an artist and their albums. Providers that can't
+	// search artists return ErrUnsupported.
+	Artist(ctx context.Context, id string) (Artist, []Album, error)
 	// Artwork returns an image and its content type. size is the wanted
 	// width in pixels, a hint; 0 means the provider's default. Providers
 	// without the Artwork capability return ErrUnsupported.

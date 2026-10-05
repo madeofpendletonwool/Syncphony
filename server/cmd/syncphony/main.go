@@ -21,6 +21,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
+	"github.com/madeofpendletonwool/syncphony/server/internal/provider/navidrome"
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
@@ -86,7 +87,7 @@ func setup(ctx context.Context) (*app, error) {
 
 // providers builds the registry of linkable services.
 func providers(cfg config.Config) (*provider.Registry, error) {
-	var ps []provider.Provider
+	ps := []provider.Provider{navidrome.New(navidrome.Options{})}
 	if cfg.FakeProvider {
 		ps = append(ps, fake.New(fake.Options{}))
 	}

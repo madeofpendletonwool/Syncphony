@@ -231,6 +231,30 @@ func (s *suite) testSearch(t *testing.T) {
 		}
 	}
 
+	if c.CanSearch(provider.KindArtist) {
+		page, err := sess.Search(ctx, provider.SearchQuery{Text: s.Query, Kinds: []provider.EntityKind{provider.KindArtist}, Limit: 5})
+		if err != nil {
+			t.Fatalf("Search artists: %v", err)
+		}
+		for _, a := range page.Artists {
+			got, albums, err := sess.Artist(ctx, a.ID)
+			if err != nil {
+				t.Errorf("Artist(%q) from search: %v", a.ID, err)
+				continue
+			}
+			if got.ID != a.ID || got.Name == "" {
+				t.Errorf("Artist(%q) = %+v", a.ID, got)
+			}
+			for _, al := range albums {
+				if al.ID == "" || al.Title == "" {
+					t.Errorf("Artist(%q) album %+v needs an ID and title", a.ID, al)
+				}
+			}
+		}
+	} else if _, _, err := sess.Artist(ctx, s.MissingID); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("Artist without artist search: got %v, want ErrUnsupported", err)
+	}
+
 	for _, k := range []provider.EntityKind{provider.KindAlbum, provider.KindArtist, provider.KindPlaylist} {
 		if c.CanSearch(k) {
 			continue
@@ -280,6 +304,11 @@ func (s *suite) testNotFound(t *testing.T) {
 	}
 	if _, _, err := sess.Album(ctx, s.MissingID); !errors.Is(err, provider.ErrNotFound) {
 		t.Errorf("Album(missing): got %v, want ErrNotFound", err)
+	}
+	if s.info.Capabilities.CanSearch(provider.KindArtist) {
+		if _, _, err := sess.Artist(ctx, s.MissingID); !errors.Is(err, provider.ErrNotFound) {
+			t.Errorf("Artist(missing): got %v, want ErrNotFound", err)
+		}
 	}
 	if st, ok := sess.(provider.Streamer); ok {
 		a, err := st.Stream(ctx, s.MissingID, provider.StreamOpts{})
