@@ -58,6 +58,23 @@ func (q *Queries) AddQueueItem(ctx context.Context, arg AddQueueItemParams) (Que
 	return i, err
 }
 
+const endOpenPlays = `-- name: EndOpenPlays :exec
+UPDATE play_history SET ended_at = ?, end_reason = ? WHERE room_id = ? AND ended_at IS NULL
+`
+
+type EndOpenPlaysParams struct {
+	EndedAt   sql.NullTime
+	EndReason sql.NullString
+	RoomID    string
+}
+
+// EndOpenPlays closes a room's unfinished play_history rows. There is at
+// most one: the playing item's.
+func (q *Queries) EndOpenPlays(ctx context.Context, arg EndOpenPlaysParams) error {
+	_, err := q.db.ExecContext(ctx, endOpenPlays, arg.EndedAt, arg.EndReason, arg.RoomID)
+	return err
+}
+
 const endPlay = `-- name: EndPlay :exec
 UPDATE play_history SET ended_at = ?, end_reason = ? WHERE id = ? AND ended_at IS NULL
 `

@@ -18,8 +18,11 @@ const (
 	Hello = "hello"
 	// QueueUpdated carries a full queue snapshot and its version.
 	QueueUpdated = "queue.updated"
-	// NowPlayingUpdated carries what's playing.
+	// NowPlayingUpdated carries the room's playback state.
 	NowPlayingUpdated = "nowplaying.updated"
+	// PlaybackNotice carries something members should hear about, such as
+	// a song skipped because its service failed.
+	PlaybackNotice = "playback.notice"
 	// MemberJoined and MemberLeft carry a user whose first connection to
 	// the room opened, or whose last one closed.
 	MemberJoined = "member.joined"

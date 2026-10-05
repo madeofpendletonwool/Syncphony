@@ -27,7 +27,7 @@ func TestProviders(t *testing.T) {
 	if len(ps[0].Fields) != 2 || ps[0].Fields[1].Kind != httpapi.Secret || !ps[0].Fields[1].Required {
 		t.Fatalf("fields: %+v", ps[0].Fields)
 	}
-	if len(ps[1].Fields) != 0 || len(ps[0].Capabilities.Search) != 4 || ps[0].Playback != httpapi.Stream {
+	if len(ps[1].Fields) != 0 || len(ps[0].Capabilities.Search) != 4 || ps[0].Playback != httpapi.ProviderInfoPlaybackStream {
 		t.Fatalf("oauth provider: %+v", ps[1])
 	}
 	if r := e.client().do("GET", "/providers", nil); r.status != http.StatusUnauthorized {

@@ -65,3 +65,8 @@ WHERE play_history.room_id = sqlc.arg(room_id)
       AND later_item.added_by = queue_items.added_by
       AND later.started_at > play_history.started_at
   );
+
+-- EndOpenPlays closes a room's unfinished play_history rows. There is at
+-- most one: the playing item's.
+-- name: EndOpenPlays :exec
+UPDATE play_history SET ended_at = ?, end_reason = ? WHERE room_id = ? AND ended_at IS NULL;

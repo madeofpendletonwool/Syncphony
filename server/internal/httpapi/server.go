@@ -19,10 +19,12 @@ import (
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
+	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
+	"github.com/madeofpendletonwool/syncphony/server/internal/transcode"
 )
 
 // SessionCookie is the session cookie's name. It must match the "session"
@@ -37,6 +39,7 @@ type Server struct {
 	// Realtime: room state, the event bus, and who's connected.
 	Rooms    *rooms.Service
 	Queue    *queue.Service
+	Playback *playback.Engine
 	Bus      realtime.Bus
 	Presence *realtime.Presence
 	// PingEvery is how often room sockets are pinged and their session
@@ -233,7 +236,13 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var invalidField *links.InvalidInputError
 	var limited *auth.RateLimitError
 	var invalidQueue *queue.InvalidInputError
+	var invalidRoom *rooms.InvalidInputError
+	var invalidPlayback *playback.InvalidInputError
 	switch {
+	case errors.As(err, &invalidRoom):
+		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidRoom.Error())
+	case errors.As(err, &invalidPlayback):
+		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidPlayback.Error())
 	case errors.As(err, &invalidQueue):
 		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidQueue.Error())
 	case errors.As(err, &invalid):
@@ -277,6 +286,14 @@ var errorCodes = []struct {
 	{links.ErrDifferentAccount, http.StatusConflict, "different_account"},
 	{links.ErrOAuthState, http.StatusBadRequest, "oauth_state"},
 	{rooms.ErrNotFound, http.StatusNotFound, "not_found"},
+	{rooms.ErrForbidden, http.StatusForbidden, "forbidden"},
+	{playback.ErrForbidden, http.StatusForbidden, "forbidden"},
+	{playback.ErrNoPlayer, http.StatusConflict, "no_player"},
+	{playback.ErrNotPlayer, http.StatusConflict, "not_player"},
+	{playback.ErrNothingPlaying, http.StatusConflict, "nothing_playing"},
+	{playback.ErrNotStreamable, http.StatusConflict, "not_streamable"},
+	{transcode.ErrNoTranscoder, http.StatusUnsupportedMediaType, "unsupported_format"},
+	{provider.ErrRange, http.StatusRequestedRangeNotSatisfiable, "range_not_satisfiable"},
 	{queue.ErrNotFound, http.StatusNotFound, "not_found"},
 	{queue.ErrForbidden, http.StatusForbidden, "forbidden"},
 	{queue.ErrNotQueued, http.StatusConflict, "not_queued"},

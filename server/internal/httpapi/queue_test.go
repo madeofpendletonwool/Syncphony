@@ -63,8 +63,8 @@ func TestQueueAPI(t *testing.T) {
 	}
 	// Bob's socket sees each change, with the order.
 	var pushed httpapi.QueueSnapshot
-	sock.expect("queue.updated", &pushed)
-	if ev := sock.expect("queue.updated", &pushed); ev.Version != 2 || len(pushed.UpNext) != 4 {
+	sock.await("queue.updated", &pushed)
+	if ev := sock.await("queue.updated", &pushed); ev.Version != 2 || len(pushed.UpNext) != 4 {
 		t.Fatalf("pushed: version %d, %+v", ev.Version, pushed)
 	}
 

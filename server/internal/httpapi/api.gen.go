@@ -11,11 +11,30 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
 	"github.com/oapi-codegen/runtime"
 )
+
+// Defines values for FairnessMode.
+const (
+	Fifo       FairnessMode = "fifo"
+	RoundRobin FairnessMode = "round_robin"
+)
+
+// Valid indicates whether the value is a known member of the FairnessMode enum.
+func (e FairnessMode) Valid() bool {
+	switch e {
+	case Fifo:
+		return true
+	case RoundRobin:
+		return true
+	default:
+		return false
+	}
+}
 
 // Defines values for HealthStatus.
 const (
@@ -47,6 +66,99 @@ func (e LinkFieldKind) Valid() bool {
 	case Text:
 		return true
 	case Url:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NowPlayingDriver.
+const (
+	NowPlayingDriverRemote NowPlayingDriver = "remote"
+	NowPlayingDriverStream NowPlayingDriver = "stream"
+)
+
+// Valid indicates whether the value is a known member of the NowPlayingDriver enum.
+func (e NowPlayingDriver) Valid() bool {
+	switch e {
+	case NowPlayingDriverRemote:
+		return true
+	case NowPlayingDriverStream:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlaybackCommandAction.
+const (
+	Pause PlaybackCommandAction = "pause"
+	Play  PlaybackCommandAction = "play"
+	Seek  PlaybackCommandAction = "seek"
+	Skip  PlaybackCommandAction = "skip"
+)
+
+// Valid indicates whether the value is a known member of the PlaybackCommandAction enum.
+func (e PlaybackCommandAction) Valid() bool {
+	switch e {
+	case Pause:
+		return true
+	case Play:
+		return true
+	case Seek:
+		return true
+	case Skip:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlaybackState.
+const (
+	PlaybackStateIdle    PlaybackState = "idle"
+	PlaybackStateLoading PlaybackState = "loading"
+	PlaybackStatePaused  PlaybackState = "paused"
+	PlaybackStatePlaying PlaybackState = "playing"
+)
+
+// Valid indicates whether the value is a known member of the PlaybackState enum.
+func (e PlaybackState) Valid() bool {
+	switch e {
+	case PlaybackStateIdle:
+		return true
+	case PlaybackStateLoading:
+		return true
+	case PlaybackStatePaused:
+		return true
+	case PlaybackStatePlaying:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlayerReportEvent.
+const (
+	PlayerReportEventEnded    PlayerReportEvent = "ended"
+	PlayerReportEventError    PlayerReportEvent = "error"
+	PlayerReportEventPaused   PlayerReportEvent = "paused"
+	PlayerReportEventPlaying  PlayerReportEvent = "playing"
+	PlayerReportEventProgress PlayerReportEvent = "progress"
+)
+
+// Valid indicates whether the value is a known member of the PlayerReportEvent enum.
+func (e PlayerReportEvent) Valid() bool {
+	switch e {
+	case PlayerReportEventEnded:
+		return true
+	case PlayerReportEventError:
+		return true
+	case PlayerReportEventPaused:
+		return true
+	case PlayerReportEventPlaying:
+		return true
+	case PlayerReportEventProgress:
 		return true
 	default:
 		return false
@@ -97,16 +209,16 @@ func (e ProviderInfoLinkMethod) Valid() bool {
 
 // Defines values for ProviderInfoPlayback.
 const (
-	Remote ProviderInfoPlayback = "remote"
-	Stream ProviderInfoPlayback = "stream"
+	ProviderInfoPlaybackRemote ProviderInfoPlayback = "remote"
+	ProviderInfoPlaybackStream ProviderInfoPlayback = "stream"
 )
 
 // Valid indicates whether the value is a known member of the ProviderInfoPlayback enum.
 func (e ProviderInfoPlayback) Valid() bool {
 	switch e {
-	case Remote:
+	case ProviderInfoPlaybackRemote:
 		return true
-	case Stream:
+	case ProviderInfoPlaybackStream:
 		return true
 	default:
 		return false
@@ -115,25 +227,25 @@ func (e ProviderInfoPlayback) Valid() bool {
 
 // Defines values for QueueItemState.
 const (
-	Played  QueueItemState = "played"
-	Playing QueueItemState = "playing"
-	Queued  QueueItemState = "queued"
-	Removed QueueItemState = "removed"
-	Skipped QueueItemState = "skipped"
+	QueueItemStatePlayed  QueueItemState = "played"
+	QueueItemStatePlaying QueueItemState = "playing"
+	QueueItemStateQueued  QueueItemState = "queued"
+	QueueItemStateRemoved QueueItemState = "removed"
+	QueueItemStateSkipped QueueItemState = "skipped"
 )
 
 // Valid indicates whether the value is a known member of the QueueItemState enum.
 func (e QueueItemState) Valid() bool {
 	switch e {
-	case Played:
+	case QueueItemStatePlayed:
 		return true
-	case Playing:
+	case QueueItemStatePlaying:
 		return true
-	case Queued:
+	case QueueItemStateQueued:
 		return true
-	case Removed:
+	case QueueItemStateRemoved:
 		return true
-	case Skipped:
+	case QueueItemStateSkipped:
 		return true
 	default:
 		return false
@@ -158,30 +270,51 @@ func (e Role) Valid() bool {
 	}
 }
 
+// Defines values for RoomControls.
+const (
+	Everyone RoomControls = "everyone"
+	Owner    RoomControls = "owner"
+)
+
+// Valid indicates whether the value is a known member of the RoomControls enum.
+func (e RoomControls) Valid() bool {
+	switch e {
+	case Everyone:
+		return true
+	case Owner:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RoomEventType.
 const (
-	Hello             RoomEventType = "hello"
-	LinkStatus        RoomEventType = "link.status"
-	MemberJoined      RoomEventType = "member.joined"
-	MemberLeft        RoomEventType = "member.left"
-	NowplayingUpdated RoomEventType = "nowplaying.updated"
-	QueueUpdated      RoomEventType = "queue.updated"
+	RoomEventTypeHello             RoomEventType = "hello"
+	RoomEventTypeLinkStatus        RoomEventType = "link.status"
+	RoomEventTypeMemberJoined      RoomEventType = "member.joined"
+	RoomEventTypeMemberLeft        RoomEventType = "member.left"
+	RoomEventTypeNowplayingUpdated RoomEventType = "nowplaying.updated"
+	RoomEventTypePlaybackNotice    RoomEventType = "playback.notice"
+	RoomEventTypeQueueUpdated      RoomEventType = "queue.updated"
 )
 
 // Valid indicates whether the value is a known member of the RoomEventType enum.
 func (e RoomEventType) Valid() bool {
 	switch e {
-	case Hello:
+	case RoomEventTypeHello:
 		return true
-	case LinkStatus:
+	case RoomEventTypeLinkStatus:
 		return true
-	case MemberJoined:
+	case RoomEventTypeMemberJoined:
 		return true
-	case MemberLeft:
+	case RoomEventTypeMemberLeft:
 		return true
-	case NowplayingUpdated:
+	case RoomEventTypeNowplayingUpdated:
 		return true
-	case QueueUpdated:
+	case RoomEventTypePlaybackNotice:
+		return true
+	case RoomEventTypeQueueUpdated:
 		return true
 	default:
 		return false
@@ -231,6 +364,15 @@ type Ceremony struct {
 	Options map[string]interface{} `json:"options"`
 }
 
+// ClaimPlayerRequest defines model for ClaimPlayerRequest.
+type ClaimPlayerRequest struct {
+	// DeviceId A stable ID the device makes up and keeps.
+	DeviceId string `json:"deviceId"`
+
+	// Name Example: Collin's phone
+	Name string `json:"name"`
+}
+
 // CreateInviteRequest defines model for CreateInviteRequest.
 type CreateInviteRequest struct {
 	ExpiresInHours *int  `json:"expiresInHours,omitempty"`
@@ -243,6 +385,14 @@ type CreateLinkRequest struct {
 	Provider string            `json:"provider"`
 }
 
+// CreateRoomRequest defines model for CreateRoomRequest.
+type CreateRoomRequest struct {
+	// Controls Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
+	Controls     *RoomControls `json:"controls,omitempty"`
+	FairnessMode *FairnessMode `json:"fairnessMode,omitempty"`
+	Name         string        `json:"name"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	// Code Stable, machine-readable error code.
@@ -253,6 +403,9 @@ type Error struct {
 	// Message Human-readable explanation.
 	Message string `json:"message"`
 }
+
+// FairnessMode defines model for FairnessMode.
+type FairnessMode string
 
 // FinishCeremony defines model for FinishCeremony.
 type FinishCeremony struct {
@@ -341,11 +494,37 @@ type MoveQueueItemRequest struct {
 	Position int `json:"position"`
 }
 
-// NowPlaying defines model for NowPlaying.
+// NowPlaying A room's playback, as the server sees it. While `playing`, the
+// position is `positionMs` at `at` and advances with the clock.
 type NowPlaying struct {
-	Item   *QueueItem `json:"item,omitempty"`
-	RoomId string     `json:"roomId"`
+	// At Server time `positionMs` was true at.
+	At time.Time `json:"at"`
+
+	// Driver How `item` plays. `stream`: the speaker plays it from
+	// `/rooms/{roomId}/stream/{itemId}`. `remote`: the song's service
+	// plays it on its own device, and the speaker just shows it.
+	Driver *NowPlayingDriver `json:"driver,omitempty"`
+	Item   *QueueItem        `json:"item,omitempty"`
+	Next   *QueueItem        `json:"next,omitempty"`
+
+	// Player The device a room plays through.
+	Player     *Player `json:"player,omitempty"`
+	PositionMs int64   `json:"positionMs"`
+
+	// Revision Increases whenever the speaker must act: a new song, play,
+	// pause, or seek. Apply each revision once.
+	Revision int64  `json:"revision"`
+	RoomId   string `json:"roomId"`
+
+	// State `idle`: nothing to play, or no speaker. `loading`: waiting for the
+	// speaker to start the song.
+	State PlaybackState `json:"state"`
 }
+
+// NowPlayingDriver How `item` plays. `stream`: the speaker plays it from
+// `/rooms/{roomId}/stream/{itemId}`. `remote`: the song's service
+// plays it on its own device, and the speaker just shows it.
+type NowPlayingDriver string
 
 // Passkey defines model for Passkey.
 type Passkey struct {
@@ -368,6 +547,53 @@ type PasskeySignupRequest struct {
 
 // Password defines model for Password.
 type Password = string
+
+// PlaybackCommand defines model for PlaybackCommand.
+type PlaybackCommand struct {
+	Action PlaybackCommandAction `json:"action"`
+
+	// ItemId Skip only if this is still the current song, so two people tapping skip skip one song.
+	ItemId *string `json:"itemId,omitempty"`
+
+	// PositionMs Where to seek to.
+	PositionMs *int64 `json:"positionMs,omitempty"`
+}
+
+// PlaybackCommandAction defines model for PlaybackCommand.Action.
+type PlaybackCommandAction string
+
+// PlaybackNotice Something members should hear about, like a song skipped because its service failed.
+type PlaybackNotice struct {
+	ItemId  *string `json:"itemId,omitempty"`
+	Message string  `json:"message"`
+	RoomId  string  `json:"roomId"`
+}
+
+// PlaybackState `idle`: nothing to play, or no speaker. `loading`: waiting for the
+// speaker to start the song.
+type PlaybackState string
+
+// Player The device a room plays through.
+type Player struct {
+	DeviceId string    `json:"deviceId"`
+	LastSeen time.Time `json:"lastSeen"`
+	Name     string    `json:"name"`
+	UserId   string    `json:"userId"`
+}
+
+// PlayerReport defines model for PlayerReport.
+type PlayerReport struct {
+	DeviceId string `json:"deviceId"`
+
+	// Error What went wrong, for `error`.
+	Error      *string           `json:"error,omitempty"`
+	Event      PlayerReportEvent `json:"event"`
+	ItemId     string            `json:"itemId"`
+	PositionMs int64             `json:"positionMs"`
+}
+
+// PlayerReportEvent defines model for PlayerReport.Event.
+type PlayerReportEvent string
 
 // ProfileUpdate Fields to change. Send `avatar` as "" to remove it.
 type ProfileUpdate struct {
@@ -459,6 +685,20 @@ type RelinkRequest struct {
 // Role defines model for Role.
 type Role string
 
+// Room defines model for Room.
+type Room struct {
+	// Controls Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
+	Controls     RoomControls `json:"controls"`
+	CreatedAt    time.Time    `json:"createdAt"`
+	FairnessMode FairnessMode `json:"fairnessMode"`
+	Id           string       `json:"id"`
+	Name         string       `json:"name"`
+	OwnerId      string       `json:"ownerId"`
+}
+
+// RoomControls Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
+type RoomControls string
+
 // RoomEvent A message on the room WebSocket, `GET /ws/rooms/{roomId}?since=<version>`.
 // The socket needs the session cookie and is server-push only: send
 // changes over the REST API.
@@ -468,6 +708,8 @@ type Role string
 //   - `queue.updated`: QueueSnapshot. Sent after hello unless `since`
 //     equals the current version, then on every change.
 //   - `nowplaying.updated`: NowPlaying. Sent after hello, then on change.
+//   - `playback.notice`: PlaybackNotice. Something to tell members, like
+//     a song skipped because it couldn't play.
 //   - `member.joined`, `member.left`: User. Someone's first connection to
 //     the room opened, or their last one closed.
 //   - `link.status`: ServiceLink. One of your links changed status.
@@ -539,6 +781,14 @@ type TrackToQueue struct {
 	TrackId string `json:"trackId"`
 }
 
+// UpdateRoomRequest defines model for UpdateRoomRequest.
+type UpdateRoomRequest struct {
+	// Controls Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
+	Controls     *RoomControls `json:"controls,omitempty"`
+	FairnessMode *FairnessMode `json:"fairnessMode,omitempty"`
+	Name         *string       `json:"name,omitempty"`
+}
+
 // User defines model for User.
 type User struct {
 	// Avatar Image URL. Absent means show initials on `color`.
@@ -581,6 +831,21 @@ type RenamePasskeyJSONBody struct {
 	Name string `json:"name"`
 }
 
+// ReleasePlayerParams defines parameters for ReleasePlayer.
+type ReleasePlayerParams struct {
+	DeviceId string `form:"deviceId" json:"deviceId"`
+}
+
+// StreamQueueItemParams defines parameters for StreamQueueItem.
+type StreamQueueItemParams struct {
+	// Accept Comma-separated content types the player can decode, e.g. `audio/mpeg,audio/aac,audio/flac`. Empty means any.
+	Accept *string `form:"accept,omitempty" json:"accept,omitempty"`
+
+	// MaxBitrate Bitrate cap in kbit/s, for services or transcodes that can lower it.
+	MaxBitrate *int    `form:"maxBitrate,omitempty" json:"maxBitrate,omitempty"`
+	Range      *string `json:"Range,omitempty"`
+}
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
@@ -619,6 +884,21 @@ type RenamePasskeyJSONRequestBody RenamePasskeyJSONBody
 
 // SetPasswordJSONRequestBody defines body for SetPassword for application/json ContentType.
 type SetPasswordJSONRequestBody = SetPasswordRequest
+
+// CreateRoomJSONRequestBody defines body for CreateRoom for application/json ContentType.
+type CreateRoomJSONRequestBody = CreateRoomRequest
+
+// UpdateRoomJSONRequestBody defines body for UpdateRoom for application/json ContentType.
+type UpdateRoomJSONRequestBody = UpdateRoomRequest
+
+// ControlPlaybackJSONRequestBody defines body for ControlPlayback for application/json ContentType.
+type ControlPlaybackJSONRequestBody = PlaybackCommand
+
+// ClaimPlayerJSONRequestBody defines body for ClaimPlayer for application/json ContentType.
+type ClaimPlayerJSONRequestBody = ClaimPlayerRequest
+
+// ReportPlaybackJSONRequestBody defines body for ReportPlayback for application/json ContentType.
+type ReportPlaybackJSONRequestBody = PlayerReport
 
 // AddToQueueJSONRequestBody defines body for AddToQueue for application/json ContentType.
 type AddToQueueJSONRequestBody = AddToQueueRequest
@@ -712,6 +992,33 @@ type ServerInterface interface {
 	// ListProviders Services that can be linked
 	// (GET /providers)
 	ListProviders(w http.ResponseWriter, r *http.Request)
+	// ListRooms Every room
+	// (GET /rooms)
+	ListRooms(w http.ResponseWriter, r *http.Request)
+	// CreateRoom Create a room you own
+	// (POST /rooms)
+	CreateRoom(w http.ResponseWriter, r *http.Request)
+	// GetRoom A room
+	// (GET /rooms/{roomId})
+	GetRoom(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// UpdateRoom Change a room you own
+	// (PATCH /rooms/{roomId})
+	UpdateRoom(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// GetPlayback What the room is playing
+	// (GET /rooms/{roomId}/playback)
+	GetPlayback(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// ControlPlayback Play, pause, skip or seek
+	// (POST /rooms/{roomId}/playback)
+	ControlPlayback(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// ReleasePlayer Stop being the room's speaker
+	// (DELETE /rooms/{roomId}/player)
+	ReleasePlayer(w http.ResponseWriter, r *http.Request, roomId RoomId, params ReleasePlayerParams)
+	// ClaimPlayer Become the room's speaker
+	// (PUT /rooms/{roomId}/player)
+	ClaimPlayer(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// ReportPlayback The speaker reports on the song it's streaming
+	// (POST /rooms/{roomId}/player/report)
+	ReportPlayback(w http.ResponseWriter, r *http.Request, roomId RoomId)
 	// GetQueue The room's queue and its fair play order
 	// (GET /rooms/{roomId}/queue)
 	GetQueue(w http.ResponseWriter, r *http.Request, roomId RoomId)
@@ -724,6 +1031,9 @@ type ServerInterface interface {
 	// MoveQueueItem Move one of your queued songs within your lane
 	// (PATCH /rooms/{roomId}/queue/{itemId})
 	MoveQueueItem(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
+	// StreamQueueItem A song's audio
+	// (GET /rooms/{roomId}/stream/{itemId})
+	StreamQueueItem(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params StreamQueueItemParams)
 	// ListUsers Everyone on this server
 	// (GET /users)
 	ListUsers(w http.ResponseWriter, r *http.Request)
@@ -1247,6 +1557,232 @@ func (siw *ServerInterfaceWrapper) ListProviders(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListRooms operation middleware
+func (siw *ServerInterfaceWrapper) ListRooms(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRooms(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateRoom operation middleware
+func (siw *ServerInterfaceWrapper) CreateRoom(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateRoom(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRoom operation middleware
+func (siw *ServerInterfaceWrapper) GetRoom(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRoom(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateRoom operation middleware
+func (siw *ServerInterfaceWrapper) UpdateRoom(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateRoom(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPlayback operation middleware
+func (siw *ServerInterfaceWrapper) GetPlayback(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPlayback(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ControlPlayback operation middleware
+func (siw *ServerInterfaceWrapper) ControlPlayback(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ControlPlayback(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReleasePlayer operation middleware
+func (siw *ServerInterfaceWrapper) ReleasePlayer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ReleasePlayerParams
+
+	// ------------- Required query parameter "deviceId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "deviceId", r.URL.Query(), &params.DeviceId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "deviceId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "deviceId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReleasePlayer(w, r, roomId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ClaimPlayer operation middleware
+func (siw *ServerInterfaceWrapper) ClaimPlayer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClaimPlayer(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReportPlayback operation middleware
+func (siw *ServerInterfaceWrapper) ReportPlayback(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReportPlayback(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetQueue operation middleware
 func (siw *ServerInterfaceWrapper) GetQueue(w http.ResponseWriter, r *http.Request) {
 
@@ -1360,6 +1896,91 @@ func (siw *ServerInterfaceWrapper) MoveQueueItem(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MoveQueueItem(w, r, roomId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StreamQueueItem operation middleware
+func (siw *ServerInterfaceWrapper) StreamQueueItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params StreamQueueItemParams
+
+	// ------------- Optional query parameter "accept" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "accept", r.URL.Query(), &params.Accept, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "accept"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "accept", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "maxBitrate" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxBitrate", r.URL.Query(), &params.MaxBitrate, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxBitrate"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxBitrate", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Range" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Range")]; found {
+		var Range string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Range", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Range", valueList[0], &Range, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Range", Err: err})
+			return
+		}
+
+		params.Range = &Range
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StreamQueueItem(w, r, roomId, itemId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1536,6 +2157,16 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.AddToQueue)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.RemoveQueueItem)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.MoveQueueItem)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms", wrapper.ListRooms)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms", wrapper.CreateRoom)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}", wrapper.GetRoom)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/rooms/{roomId}", wrapper.UpdateRoom)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/playback", wrapper.GetPlayback)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/playback", wrapper.ControlPlayback)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/player", wrapper.ReleasePlayer)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/rooms/{roomId}/player", wrapper.ClaimPlayer)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/player/report", wrapper.ReportPlayback)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/stream/{itemId}", wrapper.StreamQueueItem)
 
 	return m
 }
@@ -2585,6 +3216,361 @@ func (response ListProvidersdefaultJSONResponse) VisitListProvidersResponse(w ht
 	return err
 }
 
+type ListRoomsRequestObject struct {
+}
+
+type ListRoomsResponseObject interface {
+	VisitListRoomsResponse(w http.ResponseWriter) error
+}
+
+type ListRooms200JSONResponse []Room
+
+func (response ListRooms200JSONResponse) VisitListRoomsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRoomsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListRoomsdefaultJSONResponse) VisitListRoomsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRoomRequestObject struct {
+	Body *CreateRoomJSONRequestBody
+}
+
+type CreateRoomResponseObject interface {
+	VisitCreateRoomResponse(w http.ResponseWriter) error
+}
+
+type CreateRoom201JSONResponse Room
+
+func (response CreateRoom201JSONResponse) VisitCreateRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRoomdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateRoomdefaultJSONResponse) VisitCreateRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoomRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type GetRoomResponseObject interface {
+	VisitGetRoomResponse(w http.ResponseWriter) error
+}
+
+type GetRoom200JSONResponse Room
+
+func (response GetRoom200JSONResponse) VisitGetRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoomdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetRoomdefaultJSONResponse) VisitGetRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRoomRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Body   *UpdateRoomJSONRequestBody
+}
+
+type UpdateRoomResponseObject interface {
+	VisitUpdateRoomResponse(w http.ResponseWriter) error
+}
+
+type UpdateRoom200JSONResponse Room
+
+func (response UpdateRoom200JSONResponse) VisitUpdateRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRoomdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateRoomdefaultJSONResponse) VisitUpdateRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlaybackRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type GetPlaybackResponseObject interface {
+	VisitGetPlaybackResponse(w http.ResponseWriter) error
+}
+
+type GetPlayback200JSONResponse NowPlaying
+
+func (response GetPlayback200JSONResponse) VisitGetPlaybackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlaybackdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetPlaybackdefaultJSONResponse) VisitGetPlaybackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ControlPlaybackRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Body   *ControlPlaybackJSONRequestBody
+}
+
+type ControlPlaybackResponseObject interface {
+	VisitControlPlaybackResponse(w http.ResponseWriter) error
+}
+
+type ControlPlayback200JSONResponse NowPlaying
+
+func (response ControlPlayback200JSONResponse) VisitControlPlaybackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ControlPlaybackdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ControlPlaybackdefaultJSONResponse) VisitControlPlaybackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleasePlayerRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Params ReleasePlayerParams
+}
+
+type ReleasePlayerResponseObject interface {
+	VisitReleasePlayerResponse(w http.ResponseWriter) error
+}
+
+type ReleasePlayer200JSONResponse NowPlaying
+
+func (response ReleasePlayer200JSONResponse) VisitReleasePlayerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleasePlayerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ReleasePlayerdefaultJSONResponse) VisitReleasePlayerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClaimPlayerRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Body   *ClaimPlayerJSONRequestBody
+}
+
+type ClaimPlayerResponseObject interface {
+	VisitClaimPlayerResponse(w http.ResponseWriter) error
+}
+
+type ClaimPlayer200JSONResponse NowPlaying
+
+func (response ClaimPlayer200JSONResponse) VisitClaimPlayerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClaimPlayerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ClaimPlayerdefaultJSONResponse) VisitClaimPlayerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportPlaybackRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Body   *ReportPlaybackJSONRequestBody
+}
+
+type ReportPlaybackResponseObject interface {
+	VisitReportPlaybackResponse(w http.ResponseWriter) error
+}
+
+type ReportPlayback200JSONResponse NowPlaying
+
+func (response ReportPlayback200JSONResponse) VisitReportPlaybackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportPlaybackdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ReportPlaybackdefaultJSONResponse) VisitReportPlaybackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetQueueRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 }
@@ -2745,6 +3731,75 @@ func (response MoveQueueItemdefaultJSONResponse) VisitMoveQueueItemResponse(w ht
 	return err
 }
 
+type StreamQueueItemRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	ItemId string `json:"itemId"`
+	Params StreamQueueItemParams
+}
+
+type StreamQueueItemResponseObject interface {
+	VisitStreamQueueItemResponse(w http.ResponseWriter) error
+}
+
+type StreamQueueItem200AudioResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response StreamQueueItem200AudioResponse) VisitStreamQueueItemResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type StreamQueueItem206AudioResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response StreamQueueItem206AudioResponse) VisitStreamQueueItemResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(206)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type StreamQueueItemdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response StreamQueueItemdefaultJSONResponse) VisitStreamQueueItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListUsersRequestObject struct {
 }
 
@@ -2869,6 +3924,33 @@ type StrictServerInterface interface {
 	// ListProviders Services that can be linked
 	// (GET /providers)
 	ListProviders(ctx context.Context, request ListProvidersRequestObject) (ListProvidersResponseObject, error)
+	// ListRooms Every room
+	// (GET /rooms)
+	ListRooms(ctx context.Context, request ListRoomsRequestObject) (ListRoomsResponseObject, error)
+	// CreateRoom Create a room you own
+	// (POST /rooms)
+	CreateRoom(ctx context.Context, request CreateRoomRequestObject) (CreateRoomResponseObject, error)
+	// GetRoom A room
+	// (GET /rooms/{roomId})
+	GetRoom(ctx context.Context, request GetRoomRequestObject) (GetRoomResponseObject, error)
+	// UpdateRoom Change a room you own
+	// (PATCH /rooms/{roomId})
+	UpdateRoom(ctx context.Context, request UpdateRoomRequestObject) (UpdateRoomResponseObject, error)
+	// GetPlayback What the room is playing
+	// (GET /rooms/{roomId}/playback)
+	GetPlayback(ctx context.Context, request GetPlaybackRequestObject) (GetPlaybackResponseObject, error)
+	// ControlPlayback Play, pause, skip or seek
+	// (POST /rooms/{roomId}/playback)
+	ControlPlayback(ctx context.Context, request ControlPlaybackRequestObject) (ControlPlaybackResponseObject, error)
+	// ReleasePlayer Stop being the room's speaker
+	// (DELETE /rooms/{roomId}/player)
+	ReleasePlayer(ctx context.Context, request ReleasePlayerRequestObject) (ReleasePlayerResponseObject, error)
+	// ClaimPlayer Become the room's speaker
+	// (PUT /rooms/{roomId}/player)
+	ClaimPlayer(ctx context.Context, request ClaimPlayerRequestObject) (ClaimPlayerResponseObject, error)
+	// ReportPlayback The speaker reports on the song it's streaming
+	// (POST /rooms/{roomId}/player/report)
+	ReportPlayback(ctx context.Context, request ReportPlaybackRequestObject) (ReportPlaybackResponseObject, error)
 	// GetQueue The room's queue and its fair play order
 	// (GET /rooms/{roomId}/queue)
 	GetQueue(ctx context.Context, request GetQueueRequestObject) (GetQueueResponseObject, error)
@@ -2881,6 +3963,9 @@ type StrictServerInterface interface {
 	// MoveQueueItem Move one of your queued songs within your lane
 	// (PATCH /rooms/{roomId}/queue/{itemId})
 	MoveQueueItem(ctx context.Context, request MoveQueueItemRequestObject) (MoveQueueItemResponseObject, error)
+	// StreamQueueItem A song's audio
+	// (GET /rooms/{roomId}/stream/{itemId})
+	StreamQueueItem(ctx context.Context, request StreamQueueItemRequestObject) (StreamQueueItemResponseObject, error)
 	// ListUsers Everyone on this server
 	// (GET /users)
 	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
@@ -3702,6 +4787,272 @@ func (sh *strictHandler) ListProviders(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListRooms operation middleware
+func (sh *strictHandler) ListRooms(w http.ResponseWriter, r *http.Request) {
+	var request ListRoomsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRooms(ctx, request.(ListRoomsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRooms")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRoomsResponseObject); ok {
+		if err := validResponse.VisitListRoomsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateRoom operation middleware
+func (sh *strictHandler) CreateRoom(w http.ResponseWriter, r *http.Request) {
+	var request CreateRoomRequestObject
+
+	var body CreateRoomJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateRoom(ctx, request.(CreateRoomRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateRoom")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateRoomResponseObject); ok {
+		if err := validResponse.VisitCreateRoomResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRoom operation middleware
+func (sh *strictHandler) GetRoom(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request GetRoomRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRoom(ctx, request.(GetRoomRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRoom")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRoomResponseObject); ok {
+		if err := validResponse.VisitGetRoomResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateRoom operation middleware
+func (sh *strictHandler) UpdateRoom(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request UpdateRoomRequestObject
+
+	request.RoomId = roomId
+
+	var body UpdateRoomJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateRoom(ctx, request.(UpdateRoomRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateRoom")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateRoomResponseObject); ok {
+		if err := validResponse.VisitUpdateRoomResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPlayback operation middleware
+func (sh *strictHandler) GetPlayback(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request GetPlaybackRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPlayback(ctx, request.(GetPlaybackRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPlayback")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPlaybackResponseObject); ok {
+		if err := validResponse.VisitGetPlaybackResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ControlPlayback operation middleware
+func (sh *strictHandler) ControlPlayback(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request ControlPlaybackRequestObject
+
+	request.RoomId = roomId
+
+	var body ControlPlaybackJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ControlPlayback(ctx, request.(ControlPlaybackRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ControlPlayback")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ControlPlaybackResponseObject); ok {
+		if err := validResponse.VisitControlPlaybackResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReleasePlayer operation middleware
+func (sh *strictHandler) ReleasePlayer(w http.ResponseWriter, r *http.Request, roomId RoomId, params ReleasePlayerParams) {
+	var request ReleasePlayerRequestObject
+
+	request.RoomId = roomId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReleasePlayer(ctx, request.(ReleasePlayerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReleasePlayer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReleasePlayerResponseObject); ok {
+		if err := validResponse.VisitReleasePlayerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ClaimPlayer operation middleware
+func (sh *strictHandler) ClaimPlayer(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request ClaimPlayerRequestObject
+
+	request.RoomId = roomId
+
+	var body ClaimPlayerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ClaimPlayer(ctx, request.(ClaimPlayerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ClaimPlayer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ClaimPlayerResponseObject); ok {
+		if err := validResponse.VisitClaimPlayerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReportPlayback operation middleware
+func (sh *strictHandler) ReportPlayback(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request ReportPlaybackRequestObject
+
+	request.RoomId = roomId
+
+	var body ReportPlaybackJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReportPlayback(ctx, request.(ReportPlaybackRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReportPlayback")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReportPlaybackResponseObject); ok {
+		if err := validResponse.VisitReportPlaybackResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetQueue operation middleware
 func (sh *strictHandler) GetQueue(w http.ResponseWriter, r *http.Request, roomId RoomId) {
 	var request GetQueueRequestObject
@@ -3815,6 +5166,34 @@ func (sh *strictHandler) MoveQueueItem(w http.ResponseWriter, r *http.Request, r
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(MoveQueueItemResponseObject); ok {
 		if err := validResponse.VisitMoveQueueItemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StreamQueueItem operation middleware
+func (sh *strictHandler) StreamQueueItem(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params StreamQueueItemParams) {
+	var request StreamQueueItemRequestObject
+
+	request.RoomId = roomId
+	request.ItemId = itemId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StreamQueueItem(ctx, request.(StreamQueueItemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StreamQueueItem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StreamQueueItemResponseObject); ok {
+		if err := validResponse.VisitStreamQueueItemResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
