@@ -22,6 +22,8 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
+	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
+	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 	"github.com/madeofpendletonwool/syncphony/server/internal/vault"
 )
@@ -33,6 +35,9 @@ type env struct {
 	base     string // the public base URL the server believes it has
 	svc      *auth.Service
 	links    *links.Service
+	db       *store.Store
+	bus      *realtime.Local
+	rooms    *rooms.Service
 	fake     *fake.Provider // links with a form
 	oauth    *fake.Provider // links with OAuth2
 	setupURL string
@@ -73,8 +78,17 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	key, _ := vault.ParseKey(vault.GenerateKey())
-	e.links = links.New(db, vault.New(key), reg, links.Config{BaseURL: e.base, Now: e.clock})
-	h = (&httpapi.Server{Version: "test", Auth: e.svc, Links: e.links, BaseURL: e.base}).Handler()
+	e.db, e.bus = db, realtime.NewLocal()
+	e.rooms = rooms.New(db, e.bus)
+	e.links = links.New(db, vault.New(key), reg, links.Config{BaseURL: e.base, Now: e.clock, Notifier: links.BusNotifier{Bus: e.bus}})
+	api := &httpapi.Server{
+		Version: "test", Auth: e.svc, Links: e.links, Rooms: e.rooms, Bus: e.bus, Presence: realtime.NewPresence(),
+		BaseURL: e.base, PingEvery: 50 * time.Millisecond,
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/api/", api.Handler())
+	mux.Handle("GET /ws/rooms/{id}", api.RoomSocket())
+	h = mux
 	return e
 }
 

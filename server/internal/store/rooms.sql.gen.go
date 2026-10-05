@@ -11,10 +11,22 @@ import (
 	"time"
 )
 
+const bumpQueueVersion = `-- name: BumpQueueVersion :one
+UPDATE rooms SET queue_version = queue_version + 1 WHERE id = ? RETURNING queue_version
+`
+
+// BumpQueueVersion records a queue change and returns the new version.
+func (q *Queries) BumpQueueVersion(ctx context.Context, id string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, bumpQueueVersion, id)
+	var queue_version int64
+	err := row.Scan(&queue_version)
+	return queue_version, err
+}
+
 const createRoom = `-- name: CreateRoom :one
 INSERT INTO rooms (id, name, owner_id, fairness_mode, settings, created_at)
 VALUES (?, ?, ?, ?, ?, ?)
-RETURNING id, name, owner_id, player_device_id, fairness_mode, settings, created_at
+RETURNING id, name, owner_id, player_device_id, fairness_mode, settings, created_at, queue_version
 `
 
 type CreateRoomParams struct {
@@ -44,6 +56,7 @@ func (q *Queries) CreateRoom(ctx context.Context, arg CreateRoomParams) (Room, e
 		&i.FairnessMode,
 		&i.Settings,
 		&i.CreatedAt,
+		&i.QueueVersion,
 	)
 	return i, err
 }
@@ -58,7 +71,7 @@ func (q *Queries) DeleteRoom(ctx context.Context, id string) error {
 }
 
 const getRoom = `-- name: GetRoom :one
-SELECT id, name, owner_id, player_device_id, fairness_mode, settings, created_at FROM rooms WHERE id = ?
+SELECT id, name, owner_id, player_device_id, fairness_mode, settings, created_at, queue_version FROM rooms WHERE id = ?
 `
 
 func (q *Queries) GetRoom(ctx context.Context, id string) (Room, error) {
@@ -72,12 +85,13 @@ func (q *Queries) GetRoom(ctx context.Context, id string) (Room, error) {
 		&i.FairnessMode,
 		&i.Settings,
 		&i.CreatedAt,
+		&i.QueueVersion,
 	)
 	return i, err
 }
 
 const listRooms = `-- name: ListRooms :many
-SELECT id, name, owner_id, player_device_id, fairness_mode, settings, created_at FROM rooms ORDER BY created_at
+SELECT id, name, owner_id, player_device_id, fairness_mode, settings, created_at, queue_version FROM rooms ORDER BY created_at
 `
 
 func (q *Queries) ListRooms(ctx context.Context) ([]Room, error) {
@@ -97,6 +111,7 @@ func (q *Queries) ListRooms(ctx context.Context) ([]Room, error) {
 			&i.FairnessMode,
 			&i.Settings,
 			&i.CreatedAt,
+			&i.QueueVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -128,7 +143,7 @@ func (q *Queries) SetRoomPlayer(ctx context.Context, arg SetRoomPlayerParams) er
 const updateRoom = `-- name: UpdateRoom :one
 UPDATE rooms SET name = ?, fairness_mode = ?, settings = ?
 WHERE id = ?
-RETURNING id, name, owner_id, player_device_id, fairness_mode, settings, created_at
+RETURNING id, name, owner_id, player_device_id, fairness_mode, settings, created_at, queue_version
 `
 
 type UpdateRoomParams struct {
@@ -154,6 +169,7 @@ func (q *Queries) UpdateRoom(ctx context.Context, arg UpdateRoomParams) (Room, e
 		&i.FairnessMode,
 		&i.Settings,
 		&i.CreatedAt,
+		&i.QueueVersion,
 	)
 	return i, err
 }

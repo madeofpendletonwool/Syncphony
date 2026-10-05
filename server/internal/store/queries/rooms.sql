@@ -19,3 +19,7 @@ UPDATE rooms SET player_device_id = ? WHERE id = ?;
 
 -- name: DeleteRoom :exec
 DELETE FROM rooms WHERE id = ?;
+
+-- BumpQueueVersion records a queue change and returns the new version.
+-- name: BumpQueueVersion :one
+UPDATE rooms SET queue_version = queue_version + 1 WHERE id = ? RETURNING queue_version;

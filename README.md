@@ -4,7 +4,7 @@ One shared music queue for a group of friends, across everyone's streaming servi
 
 Each friend links their own service (self-hosted Navidrome, Spotify, and more later). Everyone searches and adds songs. Syncphony plays them in **fair turns** from whichever service each song came from, through one player: usually a phone running the web app, connected to a Bluetooth speaker.
 
-> **Status:** early. Phase 0 (foundation) is in place. See the roadmap below.
+> **Status:** early. Phases 0 (foundation) and 1 (core platform) are in place. See the roadmap below.
 
 ## How it fits together
 
@@ -33,9 +33,14 @@ Each friend links their own service (self-hosted Navidrome, Spotify, and more la
 ```
 api/openapi.yaml        HTTP API contract
 server/                 Go module
-  cmd/syncphony/        entrypoint
+  cmd/syncphony/        entrypoint, and the `syncphony vault` commands
   internal/config/      SYNCPHONY_* env config
-  internal/httpapi/     API handlers (+ api.gen.go, generated)
+  internal/httpapi/     API handlers and the room WebSocket (+ api.gen.go, generated)
+  internal/auth/        accounts: invites, passkeys, passwords, sessions
+  internal/vault/       envelope encryption for linked-service credentials
+  internal/links/       linking service accounts, link health
+  internal/realtime/    event bus and presence
+  internal/rooms/       room snapshots and change announcements
   internal/store/       SQLite: goose migrations, sqlc queries (+ *.gen.go, generated)
   internal/provider/    provider interface, canonical types, registry
     fake/               in-memory provider for tests and UI development
@@ -87,7 +92,7 @@ Images are published to `ghcr.io/madeofpendletonwool/syncphony`: `:main` tracks 
 ## Roadmap
 
 0. **Foundation:** repo, tooling, CI, image ✅
-1. **Core platform:** data model, invite-only accounts, credential vault, provider interface, realtime
+1. **Core platform:** data model, invite-only accounts, credential vault, provider interface, realtime ✅
 2. **Navidrome MVP:** Navidrome provider, fair queue, playback engine, web app and phone player
 3. **Spotify provider**
 4. **Party features:** vote-skip, fairness policies, history, cross-service track matching

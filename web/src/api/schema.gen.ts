@@ -626,6 +626,82 @@ export interface components {
             provider?: string;
             linkId?: string;
         };
+        /**
+         * @description A message on the room WebSocket, `GET /ws/rooms/{roomId}?since=<version>`.
+         *     The socket needs the session cookie and is server-push only: send
+         *     changes over the REST API.
+         *
+         *     `data` by `type`:
+         *     - `hello`: RoomHello. Always first.
+         *     - `queue.updated`: QueueSnapshot. Sent after hello unless `since`
+         *       equals the current version, then on every change.
+         *     - `nowplaying.updated`: NowPlaying. Sent after hello, then on change.
+         *     - `member.joined`, `member.left`: User. Someone's first connection to
+         *       the room opened, or their last one closed.
+         *     - `link.status`: ServiceLink. One of your links changed status.
+         *
+         *     Close code 1013 (try again later) means the client fell behind and
+         *     missed events: reconnect with `since` set to the last version seen.
+         *     Close code 4001 means the session ended; sign in again.
+         */
+        RoomEvent: {
+            /** @enum {string} */
+            type: "hello" | "queue.updated" | "nowplaying.updated" | "member.joined" | "member.left" | "link.status";
+            /**
+             * Format: int64
+             * @description Queue version, on `queue.updated` only.
+             */
+            version?: number;
+            data: Record<string, never>;
+        };
+        RoomHello: {
+            roomId: string;
+            roomName: string;
+            /** @description Your user ID. */
+            you: string;
+            /** @description Everyone connected to the room right now, you included. */
+            members: components["schemas"]["User"][];
+        };
+        QueueSnapshot: {
+            roomId: string;
+            /** Format: int64 */
+            version: number;
+            /**
+             * @description The playing item and everything queued, grouped by who added it,
+             *     each lane in order.
+             */
+            items: components["schemas"]["QueueItem"][];
+        };
+        QueueItem: {
+            id: string;
+            /** @description User ID. */
+            addedBy: string;
+            /** @enum {string} */
+            state: "queued" | "playing" | "played" | "skipped" | "removed";
+            /** Format: int64 */
+            lanePosition: number;
+            /** Format: date-time */
+            addedAt: string;
+            track: components["schemas"]["QueuedTrack"];
+        };
+        /** @description The track as it was when queued; still shown if its service is offline. */
+        QueuedTrack: {
+            provider: string;
+            /** @description Absent if the link was removed; the track can't play then. */
+            linkId?: string;
+            trackId: string;
+            title: string;
+            artists: string[];
+            album?: string;
+            /** Format: int64 */
+            durationMs: number;
+            explicit: boolean;
+            artwork?: string;
+        };
+        NowPlaying: {
+            roomId: string;
+            item?: components["schemas"]["QueueItem"];
+        };
     };
     responses: {
         /**

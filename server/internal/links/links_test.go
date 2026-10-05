@@ -71,10 +71,12 @@ func (h *harness) advance(d time.Duration) {
 	h.now = h.now.Add(d)
 }
 
-func (h *harness) NeedsRelink(_ context.Context, l store.ServiceLink) {
+func (h *harness) LinkStatusChanged(_ context.Context, l store.ServiceLink) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.notified = append(h.notified, l.ID)
+	if l.Status == store.LinkExpired {
+		h.notified = append(h.notified, l.ID)
+	}
 }
 
 var demo = map[string]string{"username": fake.Username, "password": fake.Password}
