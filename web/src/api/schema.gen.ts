@@ -441,6 +441,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search every service you've linked
+         * @description Searches each of your links at once for tracks, albums and artists.
+         *     Each link's results come back as a group, in link order. A link that
+         *     fails (offline, needs re-linking, too slow) gets a group with
+         *     `error` set instead of failing the whole search.
+         */
+        get: operations["search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links/{id}/albums/{albumId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                albumId: string;
+            };
+            cookie?: never;
+        };
+        /** An album and its tracks, through one of your links */
+        get: operations["getAlbum"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links/{id}/artists/{artistId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                artistId: string;
+            };
+            cookie?: never;
+        };
+        /** An artist and their albums, through one of your links */
+        get: operations["getArtist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links/{id}/artwork": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * An image from one of your links
+         * @description For `artwork` refs in search and browse results. Cacheable.
+         */
+        get: operations["getLinkArtwork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/queue": {
         parameters: {
             query?: never;
@@ -819,6 +904,70 @@ export interface components {
             fields: {
                 [key: string]: string;
             };
+        };
+        ArtistCredit: {
+            /** @description The artist's ID on the same link, if known. */
+            id?: string;
+            name: string;
+        };
+        AlbumCredit: {
+            id?: string;
+            title: string;
+        };
+        /** @description A track you can queue with `linkId` and `trackId`. */
+        TrackResult: {
+            linkId: string;
+            provider: string;
+            trackId: string;
+            title: string;
+            artists: components["schemas"]["ArtistCredit"][];
+            album?: components["schemas"]["AlbumCredit"];
+            /** Format: int64 */
+            durationMs: number;
+            explicit: boolean;
+            /** @description Load with `/links/{linkId}/artwork?ref=`. */
+            artwork?: string;
+        };
+        AlbumResult: {
+            id: string;
+            title: string;
+            artists: components["schemas"]["ArtistCredit"][];
+            year?: number;
+            trackCount?: number;
+            artwork?: string;
+        };
+        ArtistResult: {
+            id: string;
+            name: string;
+            artwork?: string;
+        };
+        /** @description One link's search results. */
+        SearchGroup: {
+            linkId: string;
+            provider: string;
+            accountLabel: string;
+            tracks: components["schemas"]["TrackResult"][];
+            albums: components["schemas"]["AlbumResult"][];
+            artists: components["schemas"]["ArtistResult"][];
+            error?: components["schemas"]["Error"];
+        };
+        SearchResults: {
+            query: string;
+            /** @description Empty if you have no links. */
+            groups: components["schemas"]["SearchGroup"][];
+        };
+        AlbumDetail: {
+            linkId: string;
+            provider: string;
+            album: components["schemas"]["AlbumResult"];
+            /** @description In album order. */
+            tracks: components["schemas"]["TrackResult"][];
+        };
+        ArtistDetail: {
+            linkId: string;
+            provider: string;
+            artist: components["schemas"]["ArtistResult"];
+            albums: components["schemas"]["AlbumResult"][];
         };
         AddToQueueRequest: {
             items: components["schemas"]["TrackToQueue"][];
@@ -1681,6 +1830,106 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    search: {
+        parameters: {
+            query: {
+                q: string;
+                /** @description Most results per kind, per link. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Results, one group per link */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResults"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAlbum: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                albumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The album */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumDetail"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getArtist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                artistId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The artist */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtistDetail"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getLinkArtwork: {
+        parameters: {
+            query: {
+                ref: string;
+                /** @description Wanted width in pixels; a hint. */
+                size?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
+                };
+            };
+            default: components["responses"]["Error"];
         };
     };
     getQueue: {

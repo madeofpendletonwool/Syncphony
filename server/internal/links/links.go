@@ -124,6 +124,14 @@ func (s *Service) List(ctx context.Context, userID string) ([]store.ServiceLink,
 	return s.db.ListServiceLinks(ctx, userID)
 }
 
+// Provider returns a registered provider, or ErrUnknownProvider.
+func (s *Service) Provider(id string) (provider.Provider, error) { return s.provider(id) }
+
+// Get returns one of userID's links. Someone else's link is ErrNotFound.
+func (s *Service) Get(ctx context.Context, userID, linkID string) (store.ServiceLink, error) {
+	return s.userLink(ctx, userID, linkID)
+}
+
 func (s *Service) provider(id string) (provider.Provider, error) {
 	p, ok := s.reg.Get(id)
 	if !ok {
