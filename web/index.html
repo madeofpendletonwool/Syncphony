@@ -3,9 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0b0b12" />
     <title>Syncphony</title>
+    <script>
+      // Apply the saved theme before first paint (see src/lib/theme.ts).
+      try {
+        var t = localStorage.getItem('syncphony-theme')
+        if (t === 'light' || (t === 'system' && matchMedia('(prefers-color-scheme: light)').matches)) {
+          document.documentElement.classList.remove('dark')
+          document.documentElement.style.colorScheme = 'light'
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#f6f5fa')
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
