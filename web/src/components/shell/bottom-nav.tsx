@@ -5,10 +5,12 @@ import { spring } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 const tabs = [
-  { to: '/room', label: 'Room', icon: Disc3 },
-  { to: '/search', label: 'Search', icon: Search },
-  { to: '/me', label: 'Me', icon: CircleUserRound },
+  { to: '/room', label: 'Room', icon: Disc3, also: [] },
+  { to: '/search', label: 'Search', icon: Search, also: [] },
+  { to: '/me', label: 'Me', icon: CircleUserRound, also: ['/settings'] },
 ] as const
+
+const under = (pathname: string, base: string) => pathname === base || pathname.startsWith(`${base}/`)
 
 export function BottomNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
@@ -16,8 +18,8 @@ export function BottomNav() {
   return (
     <nav aria-label="Main" className="glass-strong h-nav rounded-3xl p-1.5 shadow-float">
       <ul className="grid h-full grid-cols-3 gap-1">
-        {tabs.map(({ to, label, icon: Icon }) => {
-          const active = pathname === to || pathname.startsWith(`${to}/`)
+        {tabs.map(({ to, label, icon: Icon, also }) => {
+          const active = [to, ...also].some((base) => under(pathname, base))
           return (
             <li key={to} className="relative">
               {active && (

@@ -1,7 +1,11 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { createRootRouteWithContext } from '@tanstack/react-router'
-import { AppShell } from '@/components/shell/app-shell'
+import { createRootRouteWithContext, Outlet } from '@tanstack/react-router'
+import { MotionConfig } from 'motion/react'
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  component: AppShell,
+  component: () => (
+    <MotionConfig reducedMotion="user">
+      <Outlet />
+    </MotionConfig>
+  ),
 })
