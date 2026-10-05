@@ -8,6 +8,9 @@ linters:
     - misspell
     - revive
   settings:
+    gosec:
+      excludes:
+        - G104 # unchecked errors: errcheck covers this, with our exclusions
     errcheck:
       exclude-functions:
         - (io.Closer).Close

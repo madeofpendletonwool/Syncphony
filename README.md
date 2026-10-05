@@ -36,11 +36,16 @@ server/                 Go module
   cmd/syncphony/        entrypoint
   internal/config/      SYNCPHONY_* env config
   internal/httpapi/     API handlers (+ api.gen.go, generated)
+  internal/provider/    provider interface, canonical types, registry
+    fake/               in-memory provider for tests and UI development
+    providertest/       conformance suite every provider runs
+  internal/transcode/   ffmpeg fallback for formats the player can't decode
   internal/webui/       embedded web app (production builds)
 web/                    React app
   src/routes/           file-based routes (TanStack Router)
   src/api/              typed API client (+ schema.gen.ts, generated)
   src/components/ui/    shadcn/ui components
+docs/adr/               architecture decision records
 deploy/
   Dockerfile            production image
   compose.yml           example deployment behind Caddy (HTTPS)
