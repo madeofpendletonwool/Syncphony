@@ -1,0 +1,4 @@
+server/internal/httpapi/api.gen.go linguist-generated=true
+web/src/api/schema.gen.ts linguist-generated=true
+web/src/routeTree.gen.ts linguist-generated=true
+web/pnpm-lock.yaml linguist-generated=true

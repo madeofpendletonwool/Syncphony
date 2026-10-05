@@ -1,0 +1,14 @@
+# Live reload for `make dev`. See https://github.com/air-verse/air
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/syncphony ./cmd/syncphony"
+entrypoint = ["./tmp/syncphony"]
+include_ext = ["go"]
+exclude_dir = ["tmp", "bin", "internal/webui/dist"]
+exclude_regex = ["_test\\.go$"]
+delay = 200
+
+[log]
+main_only = true

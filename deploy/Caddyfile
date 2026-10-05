@@ -1,0 +1,4 @@
+{$SYNCPHONY_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy syncphony:8080
+}

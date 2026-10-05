@@ -1,0 +1,30 @@
+# Example production deployment: Syncphony behind Caddy with automatic HTTPS.
+#   SYNCPHONY_DOMAIN=syncphony.example.com docker compose -f deploy/compose.yml up -d
+name: syncphony
+
+services:
+  syncphony:
+    image: ghcr.io/madeofpendletonwool/syncphony:latest
+    restart: unless-stopped
+    environment:
+      SYNCPHONY_BASE_URL: https://${SYNCPHONY_DOMAIN:?set SYNCPHONY_DOMAIN}
+      # SYNCPHONY_VAULT_KEY: ${SYNCPHONY_VAULT_KEY}
+    volumes:
+      - syncphony-data:/data
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SYNCPHONY_DOMAIN: ${SYNCPHONY_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+
+volumes:
+  syncphony-data:
+  caddy-data:
