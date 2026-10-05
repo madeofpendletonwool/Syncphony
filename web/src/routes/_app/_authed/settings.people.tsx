@@ -16,6 +16,7 @@ import { UserAvatar } from '@/components/user-avatar'
 import { meQuery, useMe } from '@/lib/auth'
 import { easeOutExpo, fadeUp, spring, stagger } from '@/lib/motion'
 import { relativeTime } from '@/lib/time'
+import { usersQuery } from '@/lib/users'
 import { cn } from '@/lib/utils'
 
 type Invite = components['schemas']['Invite']
@@ -30,7 +31,6 @@ export const Route = createFileRoute('/_app/_authed/settings/people')({
 })
 
 const invitesQuery = { queryKey: ['invites'], queryFn: () => unwrap(api.GET('/invites')) }
-const usersQuery = { queryKey: ['users'], queryFn: () => unwrap(api.GET('/users')) }
 
 function People() {
   return (

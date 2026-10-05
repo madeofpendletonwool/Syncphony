@@ -1,23 +1,21 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { ChevronRight, Disc3, LoaderCircle, Search as SearchIcon, Waypoints, X } from 'lucide-react'
+import { ChevronRight, LoaderCircle, Search as SearchIcon, Waypoints, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { api } from '@/api/client'
-import { errorMessage, unwrap } from '@/api/errors'
+import { errorMessage } from '@/api/errors'
 import { AlbumCard, ArtistCard } from '@/components/album-card'
 import { Notice } from '@/components/notice'
 import { PageHeader } from '@/components/page-header'
+import { StartRoom } from '@/components/start-room'
 import { TrackRow } from '@/components/track-row'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useAddToLane } from '@/hooks/use-add-to-lane'
-import { useMe } from '@/lib/auth'
 import { interleave, searchQuery, trackKey, type SearchGroup } from '@/lib/browse'
 import { fadeUp, stagger } from '@/lib/motion'
-import { chooseRoom, roomsQuery, useCurrentRoom } from '@/lib/room'
 import { linksQuery, providersQuery } from '@/lib/services'
 import { cn } from '@/lib/utils'
 
@@ -110,7 +108,7 @@ function Search() {
         )}
       </div>
 
-      <RoomCheck />
+      <StartRoom className="mt-4" />
 
       {links.data && links.data.length === 0 ? (
         <NoLinks />
@@ -312,37 +310,5 @@ function NoLinks() {
         </Button>
       </motion.div>
     </motion.section>
-  )
-}
-
-/** Songs go into a room; offer to start one if the server has none. */
-function RoomCheck() {
-  const me = useMe()
-  const { room, rooms } = useCurrentRoom()
-  const queryClient = useQueryClient()
-  const create = useMutation({
-    mutationFn: () => unwrap(api.POST('/rooms', { body: { name: `${me.displayName.split(' ')[0]}'s room` } })),
-    onSuccess: (r) => {
-      queryClient.setQueryData(roomsQuery.queryKey, (rs = []) => [...rs, r])
-      chooseRoom(r.id)
-    },
-  })
-  if (!rooms.isSuccess || room) return null
-  return (
-    <section className="glass mt-4 flex items-center gap-3 rounded-3xl p-4">
-      <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
-        <Disc3 className="size-5" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium">No room yet</p>
-        <p className="text-caption text-muted-foreground">
-          {create.error ? errorMessage(create.error) : 'Start one so everyone can add songs.'}
-        </p>
-      </div>
-      <Button size="sm" onClick={() => create.mutate()} disabled={create.isPending}>
-        {create.isPending && <LoaderCircle className="animate-spin" />}
-        Start a room
-      </Button>
-    </section>
   )
 }

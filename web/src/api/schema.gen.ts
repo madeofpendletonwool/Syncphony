@@ -579,6 +579,30 @@ export interface paths {
         patch: operations["moveQueueItem"];
         trace?: never;
     };
+    "/rooms/{roomId}/queue/{itemId}/artwork": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A queued song's artwork
+         * @description Loaded through the link of whoever queued the song, so everyone in
+         *     the room can see it. 404 if the song has none or its link is gone.
+         */
+        get: operations["getQueueItemArtwork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms": {
         parameters: {
             query?: never;
@@ -2029,6 +2053,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QueueSnapshot"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getQueueItemArtwork: {
+        parameters: {
+            query?: {
+                /** @description Wanted width in pixels; a hint. */
+                size?: number;
+            };
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
                 };
             };
             default: components["responses"]["Error"];

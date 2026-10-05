@@ -761,6 +761,40 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /rooms/{roomId}/queue/{itemId}/artwork:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getQueueItemArtwork
+      summary: A queued song's artwork
+      description: |
+        Loaded through the link of whoever queued the song, so everyone in
+        the room can see it. 404 if the song has none or its link is gone.
+      tags: [queue]
+      parameters:
+        - name: size
+          in: query
+          description: Wanted width in pixels; a hint.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 2048
+      responses:
+        "200":
+          description: The image
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
+
   /rooms:
     get:
       operationId: listRooms
