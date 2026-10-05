@@ -18,7 +18,11 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/config"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
+	"github.com/madeofpendletonwool/syncphony/server/internal/links"
+	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
+	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
+	"github.com/madeofpendletonwool/syncphony/server/internal/vault"
 	"github.com/madeofpendletonwool/syncphony/server/internal/webui"
 )
 
@@ -26,29 +30,71 @@ import (
 var version = "dev"
 
 func main() {
-	if err := run(); err != nil {
+	var err error
+	if len(os.Args) > 1 && os.Args[1] == "vault" {
+		err = vaultCommand(os.Args[2:])
+	} else {
+		err = run()
+	}
+	if err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+// app is what both the server and the CLI commands need.
+type app struct {
+	cfg   config.Config
+	db    *store.Store
+	links *links.Service
+}
+
+func setup(ctx context.Context) (*app, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: cfg.LogLevel})))
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
-		return err
+		return nil, err
+	}
+	keyFile := filepath.Join(cfg.DataDir, "vault.key")
+	v, created, err := vault.Load(cfg.Vault, keyFile)
+	if err != nil {
+		return nil, err
+	}
+	if created {
+		slog.Warn("generated a vault key for linked-service credentials; back it up, and for better protection move it out of the data directory (SYNCPHONY_VAULT_KEY or SYNCPHONY_VAULT_KEY_FILE)", "file", keyFile)
+	}
+	reg, err := providers(cfg)
+	if err != nil {
+		return nil, err
 	}
 	db, err := store.Open(ctx, filepath.Join(cfg.DataDir, "syncphony.db"))
 	if err != nil {
+		return nil, err
+	}
+	return &app{cfg: cfg, db: db, links: links.New(db, v, reg, links.Config{BaseURL: cfg.BaseURL})}, nil
+}
+
+// providers builds the registry of linkable services.
+func providers(cfg config.Config) (*provider.Registry, error) {
+	var ps []provider.Provider
+	if cfg.FakeProvider {
+		ps = append(ps, fake.New(fake.Options{}))
+	}
+	return provider.NewRegistry(ps...)
+}
+
+func run() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	a, err := setup(ctx)
+	if err != nil {
 		return err
 	}
+	cfg, db := a.cfg, a.db
 	defer db.Close()
 
 	accounts, err := auth.New(db, auth.Config{BaseURL: cfg.BaseURL})
@@ -62,7 +108,7 @@ func run() error {
 	}
 	go sweepSessions(ctx, db)
 
-	api := &httpapi.Server{Version: version, Auth: accounts, BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies}
+	api := &httpapi.Server{Version: version, Auth: accounts, Links: a.links, BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies}
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api.Handler())
 	mux.Handle("/", webui.Handler())

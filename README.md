@@ -80,6 +80,8 @@ This serves on port 8080, ready for your existing reverse proxy. If you don't ha
 
 **First run:** there are no accounts yet, so the server logs a one-time setup link (`docker compose logs syncphony`). Whoever opens it becomes the admin. The link lasts 24 hours, and restarting while there are still no accounts prints a new one. After that, Syncphony is invite-only: admins create invite links for friends. Everyone can sign in with a passkey, a password, or both.
 
+**Credential vault:** linked-service credentials are encrypted at rest with a master key. If you don't set one, the server generates `vault.key` in the data directory on first run. That's convenient, but a backup of the data directory then holds both the key and the credentials it protects. For better protection, set `SYNCPHONY_VAULT_KEY` (or `SYNCPHONY_VAULT_KEY_FILE`, e.g. a Docker secret) and keep the key somewhere else. To rotate the key, run `syncphony vault` for the steps (`docker compose exec syncphony syncphony vault rotate`). Losing the key means everyone links their services again; nothing else is lost.
+
 Images are published to `ghcr.io/madeofpendletonwool/syncphony`: `:main` tracks the main branch, and `v*` tags publish `:X.Y.Z` and `:latest`. Pick one with `SYNCPHONY_TAG` (e.g. `SYNCPHONY_TAG=main`).
 
 ## Roadmap

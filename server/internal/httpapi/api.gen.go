@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -18,13 +19,94 @@ import (
 
 // Defines values for HealthStatus.
 const (
-	Ok HealthStatus = "ok"
+	HealthStatusOk HealthStatus = "ok"
 )
 
 // Valid indicates whether the value is a known member of the HealthStatus enum.
 func (e HealthStatus) Valid() bool {
 	switch e {
-	case Ok:
+	case HealthStatusOk:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LinkFieldKind.
+const (
+	Secret LinkFieldKind = "secret"
+	Text   LinkFieldKind = "text"
+	Url    LinkFieldKind = "url"
+)
+
+// Valid indicates whether the value is a known member of the LinkFieldKind enum.
+func (e LinkFieldKind) Valid() bool {
+	switch e {
+	case Secret:
+		return true
+	case Text:
+		return true
+	case Url:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProviderInfoCapabilitiesSearch.
+const (
+	Album    ProviderInfoCapabilitiesSearch = "album"
+	Artist   ProviderInfoCapabilitiesSearch = "artist"
+	Playlist ProviderInfoCapabilitiesSearch = "playlist"
+	Track    ProviderInfoCapabilitiesSearch = "track"
+)
+
+// Valid indicates whether the value is a known member of the ProviderInfoCapabilitiesSearch enum.
+func (e ProviderInfoCapabilitiesSearch) Valid() bool {
+	switch e {
+	case Album:
+		return true
+	case Artist:
+		return true
+	case Playlist:
+		return true
+	case Track:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProviderInfoLinkMethod.
+const (
+	Credentials ProviderInfoLinkMethod = "credentials"
+	Oauth2      ProviderInfoLinkMethod = "oauth2"
+)
+
+// Valid indicates whether the value is a known member of the ProviderInfoLinkMethod enum.
+func (e ProviderInfoLinkMethod) Valid() bool {
+	switch e {
+	case Credentials:
+		return true
+	case Oauth2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProviderInfoPlayback.
+const (
+	Remote ProviderInfoPlayback = "remote"
+	Stream ProviderInfoPlayback = "stream"
+)
+
+// Valid indicates whether the value is a known member of the ProviderInfoPlayback enum.
+func (e ProviderInfoPlayback) Valid() bool {
+	switch e {
+	case Remote:
+		return true
+	case Stream:
 		return true
 	default:
 		return false
@@ -49,6 +131,33 @@ func (e Role) Valid() bool {
 	}
 }
 
+// Defines values for ServiceLinkStatus.
+const (
+	ServiceLinkStatusError       ServiceLinkStatus = "error"
+	ServiceLinkStatusNeedsRelink ServiceLinkStatus = "needs_relink"
+	ServiceLinkStatusOk          ServiceLinkStatus = "ok"
+)
+
+// Valid indicates whether the value is a known member of the ServiceLinkStatus enum.
+func (e ServiceLinkStatus) Valid() bool {
+	switch e {
+	case ServiceLinkStatusError:
+		return true
+	case ServiceLinkStatusNeedsRelink:
+		return true
+	case ServiceLinkStatusOk:
+		return true
+	default:
+		return false
+	}
+}
+
+// BeginOAuthLinkRequest Set `provider` to link a new account, or `linkId` to re-link one.
+type BeginOAuthLinkRequest struct {
+	LinkId   *string `json:"linkId,omitempty"`
+	Provider *string `json:"provider,omitempty"`
+}
+
 // Ceremony defines model for Ceremony.
 type Ceremony struct {
 	// CeremonyId Pass back to the matching finish endpoint within 5 minutes.
@@ -64,6 +173,12 @@ type Ceremony struct {
 type CreateInviteRequest struct {
 	ExpiresInHours *int  `json:"expiresInHours,omitempty"`
 	Role           *Role `json:"role,omitempty"`
+}
+
+// CreateLinkRequest defines model for CreateLinkRequest.
+type CreateLinkRequest struct {
+	Fields   map[string]string `json:"fields"`
+	Provider string            `json:"provider"`
 }
 
 // Error defines model for Error.
@@ -119,6 +234,21 @@ type InviteInfo struct {
 	Role      Role      `json:"role"`
 }
 
+// LinkField defines model for LinkField.
+type LinkField struct {
+	Help *string `json:"help,omitempty"`
+
+	// Kind `secret` fields must be masked.
+	Kind        LinkFieldKind `json:"kind"`
+	Label       string        `json:"label"`
+	Name        string        `json:"name"`
+	Placeholder *string       `json:"placeholder,omitempty"`
+	Required    bool          `json:"required"`
+}
+
+// LinkFieldKind `secret` fields must be masked.
+type LinkFieldKind string
+
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
 	Password string `json:"password"`
@@ -172,8 +302,60 @@ type ProfileUpdate struct {
 	DisplayName *string `json:"displayName,omitempty"`
 }
 
+// ProviderInfo defines model for ProviderInfo.
+type ProviderInfo struct {
+	Capabilities struct {
+		Artwork   bool                             `json:"artwork"`
+		Isrc      bool                             `json:"isrc"`
+		Lyrics    bool                             `json:"lyrics"`
+		Playlists bool                             `json:"playlists"`
+		Search    []ProviderInfoCapabilitiesSearch `json:"search"`
+	} `json:"capabilities"`
+
+	// Fields The form to show for `credentials` providers. Empty for `oauth2`.
+	Fields []LinkField `json:"fields"`
+	Icon   string      `json:"icon"`
+
+	// Id Example: navidrome
+	Id         string                 `json:"id"`
+	LinkMethod ProviderInfoLinkMethod `json:"linkMethod"`
+	Name       string                 `json:"name"`
+	Playback   ProviderInfoPlayback   `json:"playback"`
+}
+
+// ProviderInfoCapabilitiesSearch defines model for ProviderInfo.Capabilities.Search.
+type ProviderInfoCapabilitiesSearch string
+
+// ProviderInfoLinkMethod defines model for ProviderInfo.LinkMethod.
+type ProviderInfoLinkMethod string
+
+// ProviderInfoPlayback defines model for ProviderInfo.Playback.
+type ProviderInfoPlayback string
+
+// RelinkRequest defines model for RelinkRequest.
+type RelinkRequest struct {
+	Fields map[string]string `json:"fields"`
+}
+
 // Role defines model for Role.
 type Role string
+
+// ServiceLink defines model for ServiceLink.
+type ServiceLink struct {
+	// AccountLabel Example: alice on music.example.com
+	AccountLabel string     `json:"accountLabel"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	Id           string     `json:"id"`
+	LastOkAt     *time.Time `json:"lastOkAt,omitempty"`
+	Provider     string     `json:"provider"`
+
+	// Status `needs_relink`: the service stopped accepting the credentials; link again.
+	Status       ServiceLinkStatus `json:"status"`
+	StatusDetail *string           `json:"statusDetail,omitempty"`
+}
+
+// ServiceLinkStatus `needs_relink`: the service stopped accepting the credentials; link again.
+type ServiceLinkStatus string
 
 // SetPasswordRequest defines model for SetPasswordRequest.
 type SetPasswordRequest struct {
@@ -216,6 +398,15 @@ type InviteCode = string
 // SignedIn defines model for SignedIn.
 type SignedIn = Me
 
+// CompleteOAuthLinkParams defines parameters for CompleteOAuthLink.
+type CompleteOAuthLinkParams struct {
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+	Code  *string `form:"code,omitempty" json:"code,omitempty"`
+
+	// Error Set by the service when the user declined.
+	Error *string `form:"error,omitempty" json:"error,omitempty"`
+}
+
 // RenamePasskeyJSONBody defines parameters for RenamePasskey.
 type RenamePasskeyJSONBody struct {
 	Name string `json:"name"`
@@ -238,6 +429,15 @@ type FinishPasskeySignupJSONRequestBody = FinishCeremony
 
 // CreateInviteJSONRequestBody defines body for CreateInvite for application/json ContentType.
 type CreateInviteJSONRequestBody = CreateInviteRequest
+
+// CreateLinkJSONRequestBody defines body for CreateLink for application/json ContentType.
+type CreateLinkJSONRequestBody = CreateLinkRequest
+
+// BeginOAuthLinkJSONRequestBody defines body for BeginOAuthLink for application/json ContentType.
+type BeginOAuthLinkJSONRequestBody = BeginOAuthLinkRequest
+
+// RelinkJSONRequestBody defines body for Relink for application/json ContentType.
+type RelinkJSONRequestBody = RelinkRequest
 
 // UpdateMeJSONRequestBody defines body for UpdateMe for application/json ContentType.
 type UpdateMeJSONRequestBody = ProfileUpdate
@@ -289,6 +489,24 @@ type ServerInterface interface {
 	// GetInvite Check an invite before signing up
 	// (GET /invites/{code})
 	GetInvite(w http.ResponseWriter, r *http.Request, code InviteCode)
+	// ListLinks Your linked service accounts
+	// (GET /links)
+	ListLinks(w http.ResponseWriter, r *http.Request)
+	// CreateLink Link an account with a form (credentials providers)
+	// (POST /links)
+	CreateLink(w http.ResponseWriter, r *http.Request)
+	// BeginOAuthLink Start linking (or re-linking) an OAuth2 provider
+	// (POST /links/oauth)
+	BeginOAuthLink(w http.ResponseWriter, r *http.Request)
+	// CompleteOAuthLink OAuth2 redirect target (browser navigation)
+	// (GET /links/oauth/callback)
+	CompleteOAuthLink(w http.ResponseWriter, r *http.Request, params CompleteOAuthLinkParams)
+	// Unlink Unlink and delete the stored credentials
+	// (DELETE /links/{id})
+	Unlink(w http.ResponseWriter, r *http.Request, id string)
+	// Relink Re-link with new credentials (credentials providers)
+	// (PUT /links/{id})
+	Relink(w http.ResponseWriter, r *http.Request, id string)
 	// GetMe The signed-in user
 	// (GET /me)
 	GetMe(w http.ResponseWriter, r *http.Request)
@@ -316,6 +534,9 @@ type ServerInterface interface {
 	// SetPassword Set or change your password
 	// (PUT /me/password)
 	SetPassword(w http.ResponseWriter, r *http.Request)
+	// ListProviders Services that can be linked
+	// (GET /providers)
+	ListProviders(w http.ResponseWriter, r *http.Request)
 	// ListUsers Everyone on this server
 	// (GET /users)
 	ListUsers(w http.ResponseWriter, r *http.Request)
@@ -522,6 +743,159 @@ func (siw *ServerInterfaceWrapper) GetInvite(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// ListLinks operation middleware
+func (siw *ServerInterfaceWrapper) ListLinks(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListLinks(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateLink operation middleware
+func (siw *ServerInterfaceWrapper) CreateLink(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateLink(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BeginOAuthLink operation middleware
+func (siw *ServerInterfaceWrapper) BeginOAuthLink(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BeginOAuthLink(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompleteOAuthLink operation middleware
+func (siw *ServerInterfaceWrapper) CompleteOAuthLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CompleteOAuthLinkParams
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "code" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "code", r.URL.Query(), &params.Code, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "code"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "error" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "error", r.URL.Query(), &params.Error, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "error"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "error", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteOAuthLink(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Unlink operation middleware
+func (siw *ServerInterfaceWrapper) Unlink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Unlink(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Relink operation middleware
+func (siw *ServerInterfaceWrapper) Relink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Relink(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMe operation middleware
 func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
 
@@ -663,6 +1037,20 @@ func (siw *ServerInterfaceWrapper) SetPassword(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetPassword(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListProviders operation middleware
+func (siw *ServerInterfaceWrapper) ListProviders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListProviders(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -828,6 +1216,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/users", wrapper.ListUsers)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/invites", wrapper.ListInvites)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/invites", wrapper.CreateInvite)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/providers", wrapper.ListProviders)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links", wrapper.ListLinks)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/links", wrapper.CreateLink)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/links/{id}", wrapper.Unlink)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/links/{id}", wrapper.Relink)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/links/oauth", wrapper.BeginOAuthLink)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/oauth/callback", wrapper.CompleteOAuthLink)
 
 	return m
 }
@@ -1300,6 +1695,221 @@ func (response GetInvitedefaultJSONResponse) VisitGetInviteResponse(w http.Respo
 	return err
 }
 
+type ListLinksRequestObject struct {
+}
+
+type ListLinksResponseObject interface {
+	VisitListLinksResponse(w http.ResponseWriter) error
+}
+
+type ListLinks200JSONResponse []ServiceLink
+
+func (response ListLinks200JSONResponse) VisitListLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListLinksdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListLinksdefaultJSONResponse) VisitListLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateLinkRequestObject struct {
+	Body *CreateLinkJSONRequestBody
+}
+
+type CreateLinkResponseObject interface {
+	VisitCreateLinkResponse(w http.ResponseWriter) error
+}
+
+type CreateLink201JSONResponse ServiceLink
+
+func (response CreateLink201JSONResponse) VisitCreateLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateLinkdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateLinkdefaultJSONResponse) VisitCreateLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginOAuthLinkRequestObject struct {
+	Body *BeginOAuthLinkJSONRequestBody
+}
+
+type BeginOAuthLinkResponseObject interface {
+	VisitBeginOAuthLinkResponse(w http.ResponseWriter) error
+}
+
+type BeginOAuthLink200JSONResponse struct {
+	AuthUrl string `json:"authUrl"`
+}
+
+func (response BeginOAuthLink200JSONResponse) VisitBeginOAuthLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginOAuthLinkdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BeginOAuthLinkdefaultJSONResponse) VisitBeginOAuthLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompleteOAuthLinkRequestObject struct {
+	Params CompleteOAuthLinkParams
+}
+
+type CompleteOAuthLinkResponseObject interface {
+	VisitCompleteOAuthLinkResponse(w http.ResponseWriter) error
+}
+
+type CompleteOAuthLink303ResponseHeaders struct {
+	Location *string
+}
+
+type CompleteOAuthLink303Response struct {
+	Headers CompleteOAuthLink303ResponseHeaders
+}
+
+func (response CompleteOAuthLink303Response) VisitCompleteOAuthLinkResponse(w http.ResponseWriter) error {
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(303)
+	return nil
+}
+
+type UnlinkRequestObject struct {
+	Id string `json:"id"`
+}
+
+type UnlinkResponseObject interface {
+	VisitUnlinkResponse(w http.ResponseWriter) error
+}
+
+type Unlink204Response struct {
+}
+
+func (response Unlink204Response) VisitUnlinkResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UnlinkdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UnlinkdefaultJSONResponse) VisitUnlinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RelinkRequestObject struct {
+	Id   string `json:"id"`
+	Body *RelinkJSONRequestBody
+}
+
+type RelinkResponseObject interface {
+	VisitRelinkResponse(w http.ResponseWriter) error
+}
+
+type Relink200JSONResponse ServiceLink
+
+func (response Relink200JSONResponse) VisitRelinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RelinkdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RelinkdefaultJSONResponse) VisitRelinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMeRequestObject struct {
 }
 
@@ -1624,6 +2234,44 @@ func (response SetPassworddefaultJSONResponse) VisitSetPasswordResponse(w http.R
 	return err
 }
 
+type ListProvidersRequestObject struct {
+}
+
+type ListProvidersResponseObject interface {
+	VisitListProvidersResponse(w http.ResponseWriter) error
+}
+
+type ListProviders200JSONResponse []ProviderInfo
+
+func (response ListProviders200JSONResponse) VisitListProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProvidersdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListProvidersdefaultJSONResponse) VisitListProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListUsersRequestObject struct {
 }
 
@@ -1700,6 +2348,24 @@ type StrictServerInterface interface {
 	// GetInvite Check an invite before signing up
 	// (GET /invites/{code})
 	GetInvite(ctx context.Context, request GetInviteRequestObject) (GetInviteResponseObject, error)
+	// ListLinks Your linked service accounts
+	// (GET /links)
+	ListLinks(ctx context.Context, request ListLinksRequestObject) (ListLinksResponseObject, error)
+	// CreateLink Link an account with a form (credentials providers)
+	// (POST /links)
+	CreateLink(ctx context.Context, request CreateLinkRequestObject) (CreateLinkResponseObject, error)
+	// BeginOAuthLink Start linking (or re-linking) an OAuth2 provider
+	// (POST /links/oauth)
+	BeginOAuthLink(ctx context.Context, request BeginOAuthLinkRequestObject) (BeginOAuthLinkResponseObject, error)
+	// CompleteOAuthLink OAuth2 redirect target (browser navigation)
+	// (GET /links/oauth/callback)
+	CompleteOAuthLink(ctx context.Context, request CompleteOAuthLinkRequestObject) (CompleteOAuthLinkResponseObject, error)
+	// Unlink Unlink and delete the stored credentials
+	// (DELETE /links/{id})
+	Unlink(ctx context.Context, request UnlinkRequestObject) (UnlinkResponseObject, error)
+	// Relink Re-link with new credentials (credentials providers)
+	// (PUT /links/{id})
+	Relink(ctx context.Context, request RelinkRequestObject) (RelinkResponseObject, error)
 	// GetMe The signed-in user
 	// (GET /me)
 	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
@@ -1727,6 +2393,9 @@ type StrictServerInterface interface {
 	// SetPassword Set or change your password
 	// (PUT /me/password)
 	SetPassword(ctx context.Context, request SetPasswordRequestObject) (SetPasswordResponseObject, error)
+	// ListProviders Services that can be linked
+	// (GET /providers)
+	ListProviders(ctx context.Context, request ListProvidersRequestObject) (ListProvidersResponseObject, error)
 	// ListUsers Everyone on this server
 	// (GET /users)
 	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
@@ -2105,6 +2774,177 @@ func (sh *strictHandler) GetInvite(w http.ResponseWriter, r *http.Request, code 
 	}
 }
 
+// ListLinks operation middleware
+func (sh *strictHandler) ListLinks(w http.ResponseWriter, r *http.Request) {
+	var request ListLinksRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListLinks(ctx, request.(ListLinksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListLinks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListLinksResponseObject); ok {
+		if err := validResponse.VisitListLinksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateLink operation middleware
+func (sh *strictHandler) CreateLink(w http.ResponseWriter, r *http.Request) {
+	var request CreateLinkRequestObject
+
+	var body CreateLinkJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateLink(ctx, request.(CreateLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateLinkResponseObject); ok {
+		if err := validResponse.VisitCreateLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BeginOAuthLink operation middleware
+func (sh *strictHandler) BeginOAuthLink(w http.ResponseWriter, r *http.Request) {
+	var request BeginOAuthLinkRequestObject
+
+	var body BeginOAuthLinkJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BeginOAuthLink(ctx, request.(BeginOAuthLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BeginOAuthLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BeginOAuthLinkResponseObject); ok {
+		if err := validResponse.VisitBeginOAuthLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CompleteOAuthLink operation middleware
+func (sh *strictHandler) CompleteOAuthLink(w http.ResponseWriter, r *http.Request, params CompleteOAuthLinkParams) {
+	var request CompleteOAuthLinkRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CompleteOAuthLink(ctx, request.(CompleteOAuthLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompleteOAuthLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CompleteOAuthLinkResponseObject); ok {
+		if err := validResponse.VisitCompleteOAuthLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// Unlink operation middleware
+func (sh *strictHandler) Unlink(w http.ResponseWriter, r *http.Request, id string) {
+	var request UnlinkRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Unlink(ctx, request.(UnlinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Unlink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnlinkResponseObject); ok {
+		if err := validResponse.VisitUnlinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// Relink operation middleware
+func (sh *strictHandler) Relink(w http.ResponseWriter, r *http.Request, id string) {
+	var request RelinkRequestObject
+
+	request.Id = id
+
+	var body RelinkJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Relink(ctx, request.(RelinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Relink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RelinkResponseObject); ok {
+		if err := validResponse.VisitRelinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetMe operation middleware
 func (sh *strictHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 	var request GetMeRequestObject
@@ -2346,6 +3186,30 @@ func (sh *strictHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetPasswordResponseObject); ok {
 		if err := validResponse.VisitSetPasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListProviders operation middleware
+func (sh *strictHandler) ListProviders(w http.ResponseWriter, r *http.Request) {
+	var request ListProvidersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListProviders(ctx, request.(ListProvidersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListProviders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListProvidersResponseObject); ok {
+		if err := validResponse.VisitListProvidersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
