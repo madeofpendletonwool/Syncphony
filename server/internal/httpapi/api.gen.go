@@ -925,6 +925,12 @@ type ReleasePlayerParams struct {
 	DeviceId string `form:"deviceId" json:"deviceId"`
 }
 
+// GetQueueItemArtworkParams defines parameters for GetQueueItemArtwork.
+type GetQueueItemArtworkParams struct {
+	// Size Wanted width in pixels; a hint.
+	Size *int `form:"size,omitempty" json:"size,omitempty"`
+}
+
 // StreamQueueItemParams defines parameters for StreamQueueItem.
 type StreamQueueItemParams struct {
 	// Accept Comma-separated content types the player can decode, e.g. `audio/mpeg,audio/aac,audio/flac`. Empty means any.
@@ -1137,6 +1143,9 @@ type ServerInterface interface {
 	// MoveQueueItem Move one of your queued songs within your lane
 	// (PATCH /rooms/{roomId}/queue/{itemId})
 	MoveQueueItem(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
+	// GetQueueItemArtwork A queued song's artwork
+	// (GET /rooms/{roomId}/queue/{itemId}/artwork)
+	GetQueueItemArtwork(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params GetQueueItemArtworkParams)
 	// StreamQueueItem A song's audio
 	// (GET /rooms/{roomId}/stream/{itemId})
 	StreamQueueItem(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params StreamQueueItemParams)
@@ -2139,6 +2148,57 @@ func (siw *ServerInterfaceWrapper) MoveQueueItem(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetQueueItemArtwork operation middleware
+func (siw *ServerInterfaceWrapper) GetQueueItemArtwork(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetQueueItemArtworkParams
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "size", r.URL.Query(), &params.Size, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetQueueItemArtwork(w, r, roomId, itemId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // StreamQueueItem operation middleware
 func (siw *ServerInterfaceWrapper) StreamQueueItem(w http.ResponseWriter, r *http.Request) {
 
@@ -2441,6 +2501,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.AddToQueue)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.RemoveQueueItem)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.MoveQueueItem)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/artwork", wrapper.GetQueueItemArtwork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms", wrapper.ListRooms)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms", wrapper.CreateRoom)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}", wrapper.GetRoom)
@@ -4142,6 +4203,54 @@ func (response MoveQueueItemdefaultJSONResponse) VisitMoveQueueItemResponse(w ht
 	return err
 }
 
+type GetQueueItemArtworkRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	ItemId string `json:"itemId"`
+	Params GetQueueItemArtworkParams
+}
+
+type GetQueueItemArtworkResponseObject interface {
+	VisitGetQueueItemArtworkResponse(w http.ResponseWriter) error
+}
+
+type GetQueueItemArtwork200ImageResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetQueueItemArtwork200ImageResponse) VisitGetQueueItemArtworkResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetQueueItemArtworkdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetQueueItemArtworkdefaultJSONResponse) VisitGetQueueItemArtworkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type StreamQueueItemRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 	ItemId string `json:"itemId"`
@@ -4422,6 +4531,9 @@ type StrictServerInterface interface {
 	// MoveQueueItem Move one of your queued songs within your lane
 	// (PATCH /rooms/{roomId}/queue/{itemId})
 	MoveQueueItem(ctx context.Context, request MoveQueueItemRequestObject) (MoveQueueItemResponseObject, error)
+	// GetQueueItemArtwork A queued song's artwork
+	// (GET /rooms/{roomId}/queue/{itemId}/artwork)
+	GetQueueItemArtwork(ctx context.Context, request GetQueueItemArtworkRequestObject) (GetQueueItemArtworkResponseObject, error)
 	// StreamQueueItem A song's audio
 	// (GET /rooms/{roomId}/stream/{itemId})
 	StreamQueueItem(ctx context.Context, request StreamQueueItemRequestObject) (StreamQueueItemResponseObject, error)
@@ -5709,6 +5821,34 @@ func (sh *strictHandler) MoveQueueItem(w http.ResponseWriter, r *http.Request, r
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(MoveQueueItemResponseObject); ok {
 		if err := validResponse.VisitMoveQueueItemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetQueueItemArtwork operation middleware
+func (sh *strictHandler) GetQueueItemArtwork(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params GetQueueItemArtworkParams) {
+	var request GetQueueItemArtworkRequestObject
+
+	request.RoomId = roomId
+	request.ItemId = itemId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetQueueItemArtwork(ctx, request.(GetQueueItemArtworkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetQueueItemArtwork")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetQueueItemArtworkResponseObject); ok {
+		if err := validResponse.VisitGetQueueItemArtworkResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

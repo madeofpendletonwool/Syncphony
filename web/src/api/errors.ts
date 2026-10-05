@@ -52,6 +52,11 @@ const messages: Record<string, string> = {
   different_account: "That's a different account. Link it separately, or unlink this one first.",
   needs_relink: 'This service needs you to link it again.',
   forbidden: "You don't have access to that.",
+  no_player: 'No speaker yet. Open Syncphony on the phone connected to the speaker.',
+  not_player: 'Another device took over as the speaker.',
+  nothing_playing: 'Nothing is playing.',
+  not_streamable: "That song can't play right now.",
+  not_queued: "That song isn't waiting in the queue anymore.",
   unauthenticated: 'Sign in to continue.',
   cross_origin: 'Blocked a request from another site.',
   // OAuth callback outcomes (?link_error=)

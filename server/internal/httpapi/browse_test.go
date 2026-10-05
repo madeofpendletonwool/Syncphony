@@ -105,6 +105,22 @@ func TestSearchAndBrowse(t *testing.T) {
 	if len(snap.Items) != 1 || snap.Items[0].Track.Title != tr.Title {
 		t.Fatalf("queued: %+v", snap.Items)
 	}
+
+	// Everyone in the room sees the song's artwork, through alice's link.
+	item := snap.Items[0].Id
+	art = bob.want(http.StatusOK, "GET", "/rooms/"+room.Id+"/queue/"+item+"/artwork?size=200", nil)
+	if !strings.HasPrefix(art.header.Get("Content-Type"), "image/") || len(art.body) == 0 {
+		t.Fatalf("room artwork: %v", art.header)
+	}
+	var other httpapi.Room
+	alice.want(http.StatusCreated, "POST", "/rooms", httpapi.CreateRoomRequest{Name: "Attic"}).decode(t, &other)
+	if r := bob.do("GET", "/rooms/"+other.Id+"/queue/"+item+"/artwork", nil); r.status != http.StatusNotFound {
+		t.Fatalf("artwork through the wrong room: %d", r.status)
+	}
+	alice.want(http.StatusNoContent, "DELETE", "/links/"+l.Id, nil)
+	if r := bob.do("GET", "/rooms/"+room.Id+"/queue/"+item+"/artwork", nil); r.status != http.StatusNotFound {
+		t.Fatalf("artwork after unlinking: %d", r.status)
+	}
 }
 
 func TestSearchReportsFailingLinks(t *testing.T) {

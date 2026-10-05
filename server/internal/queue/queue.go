@@ -183,6 +183,15 @@ func (s *Service) lookup(ctx context.Context, userID string, refs []TrackRef) ([
 	return out, nil
 }
 
+// Item returns one of a room's queue items, in any state.
+func (s *Service) Item(ctx context.Context, roomID, itemID string) (store.QueueItem, error) {
+	it, err := s.db.GetQueueItem(ctx, itemID)
+	if store.IsNotFound(err) || (err == nil && it.RoomID != roomID) {
+		return it, ErrNotFound
+	}
+	return it, err
+}
+
 // Move puts one of userID's queued songs at position (0 is the front) in
 // their lane. Positions past the end mean the end.
 func (s *Service) Move(ctx context.Context, roomID, userID, itemID string, position int) (rooms.QueueSnapshot, error) {

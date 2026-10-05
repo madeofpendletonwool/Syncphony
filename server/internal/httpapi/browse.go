@@ -4,6 +4,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -150,31 +151,73 @@ func (s *Server) GetLinkArtwork(ctx context.Context, req GetLinkArtworkRequestOb
 	if err != nil {
 		return nil, err
 	}
-	defer sess.Close()
-	size := 0
-	if req.Params.Size != nil {
-		size = *req.Params.Size
-	}
-	body, ct, err := sess.Artwork(ctx, provider.ArtworkRef(req.Params.Ref), size)
+	a, err := artwork(ctx, sess, provider.ArtworkRef(req.Params.Ref), req.Params.Size)
 	if err != nil {
 		return nil, err
 	}
-	if !strings.HasPrefix(ct, "image/") {
-		body.Close()
-		slog.Warn("artwork isn't an image", "link", req.Id, "content_type", ct)
-		return nil, provider.ErrNotFound
-	}
-	return artworkResponse{body, ct}, nil
+	return a, nil
 }
 
-// artworkResponse writes an image. Browsers may keep it: refs are stable,
-// and the response is only for the link's owner.
+// GetQueueItemArtwork loads a queued song's artwork through the link of
+// whoever queued it, so the whole room sees it.
+func (s *Server) GetQueueItemArtwork(ctx context.Context, req GetQueueItemArtworkRequestObject) (GetQueueItemArtworkResponseObject, error) {
+	it, err := s.Queue.Item(ctx, req.RoomId, req.ItemId)
+	if err != nil {
+		return nil, err
+	}
+	// metadata is the provider.Track snapshot taken when the item was queued.
+	var t provider.Track
+	if err := json.Unmarshal([]byte(it.Metadata), &t); err != nil || t.Artwork == "" || !it.LinkID.Valid {
+		return nil, provider.ErrNotFound
+	}
+	sess, err := s.Links.Open(ctx, it.LinkID.String)
+	if err != nil {
+		return nil, err
+	}
+	a, err := artwork(ctx, sess, t.Artwork, req.Params.Size)
+	if err != nil {
+		return nil, err
+	}
+	return a, nil
+}
+
+// artwork loads an image, refusing anything that isn't one. It takes over
+// sess: the response closes it once the image is sent.
+func artwork(ctx context.Context, sess provider.Session, ref provider.ArtworkRef, size *int) (artworkResponse, error) {
+	px := 0
+	if size != nil {
+		px = *size
+	}
+	body, ct, err := sess.Artwork(ctx, ref, px)
+	if err != nil {
+		sess.Close()
+		return artworkResponse{}, err
+	}
+	if !strings.HasPrefix(ct, "image/") {
+		body.Close()
+		sess.Close()
+		slog.Warn("artwork isn't an image", "content_type", ct)
+		return artworkResponse{}, provider.ErrNotFound
+	}
+	return artworkResponse{body, ct, sess}, nil
+}
+
+// artworkResponse writes an image. Browsers may keep it, privately: refs
+// are stable.
 type artworkResponse struct {
 	body io.ReadCloser
 	ct   string
+	sess provider.Session
 }
 
-func (r artworkResponse) VisitGetLinkArtworkResponse(w http.ResponseWriter) error {
+func (r artworkResponse) VisitGetLinkArtworkResponse(w http.ResponseWriter) error { return r.write(w) }
+
+func (r artworkResponse) VisitGetQueueItemArtworkResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}
+
+func (r artworkResponse) write(w http.ResponseWriter) error {
+	defer r.sess.Close()
 	defer r.body.Close()
 	h := w.Header()
 	h.Set("Content-Type", r.ct)
