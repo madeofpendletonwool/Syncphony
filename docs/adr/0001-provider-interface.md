@@ -31,6 +31,7 @@ type Session interface {                         // required for every provider
     Search(ctx, SearchQuery) (SearchPage, error)
     Track(ctx, id) (Track, error)
     Album(ctx, id) (Album, []Track, error)
+    Artist(ctx, id) (Artist, []Album, error)
     Artwork(ctx, ArtworkRef, size) (io.ReadCloser, string, error)
     Close() error
 }
@@ -44,7 +45,7 @@ type Lyricist interface { Lyrics(ctx, trackID) (Lyrics, error) }
 
 The full definitions and doc comments are in the package. These are the main choices and why we made them.
 
-**A small required core, with optional interfaces.** Every provider can search and look up tracks, so `Session` requires only that. Features that not every service has (streaming bytes, remote control, playlists, lyrics) are separate interfaces found by type assertion. This is the pattern `io.WriterTo` and `http.Flusher` use. We didn't use one large interface with `ErrUnsupported` stubs, because a missing method should be a compile-time fact and not a runtime surprise.
+**A small required core, with optional interfaces.** Every provider can search and look up tracks, so `Session` requires only that. (`Artist` was added with the Navidrome provider, MAD-689, so artist search results lead somewhere. Like `Artwork`, it returns `ErrUnsupported` when the provider doesn't declare the matching capability, here artist search.) Features that not every service has (streaming bytes, remote control, playlists, lyrics) are separate interfaces found by type assertion. This is the pattern `io.WriterTo` and `http.Flusher` use. We didn't use one large interface with `ErrUnsupported` stubs, because a missing method should be a compile-time fact and not a runtime surprise.
 
 **Capabilities are declared as well as implemented.** The UI needs to know what a provider supports before it opens a session (for example, to hide a "Playlists" tab), so `Info().Capabilities` declares it. The fact that the two can disagree is the cost of this choice. The conformance suite checks that they agree.
 

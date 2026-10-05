@@ -12,20 +12,21 @@ else
   ff() { docker run --rm -v "$PWD:/w" -w /w linuxserver/ffmpeg -hide_banner -loglevel error "$@"; }
 fi
 
-# artist|album|year|format|title:hz:seconds;title:hz:seconds;...
+# artist|album|year|format|cover color|title:hz:seconds;title:hz:seconds;...
 library=(
-  "Sine Wave Collective|First Contact|2021|mp3|Hello Hertz:220:20;Octave Up:440:25;Beat Frequency:330:30"
-  "The Square Roots|Low Pass|2023|flac|Rolloff:110:20;Resonance:165:25"
-  "DJ Nyquist|Aliasing|2025|opus|Fold Back:550:20;Sample Rate:660:20;Dither:770:25"
+  "Sine Wave Collective|First Contact|2021|mp3|teal|Hello Hertz:220:20;Octave Up:440:25;Beat Frequency:330:30"
+  "The Square Roots|Low Pass|2023|flac|darkorange|Rolloff:110:20;Resonance:165:25"
+  "DJ Nyquist|Aliasing|2025|opus|mediumpurple|Fold Back:550:20;Sample Rate:660:20;Dither:770:25"
 )
 
 tmp=$(mktemp -d "$out.XXXX")
 trap 'rm -rf "$tmp"' EXIT
 
 for entry in "${library[@]}"; do
-  IFS='|' read -r artist album year fmt tracks <<<"$entry"
+  IFS='|' read -r artist album year fmt color tracks <<<"$entry"
   dir="$tmp/$artist/$album"
   mkdir -p "$dir"
+  ff -f lavfi -i "color=c=$color:s=600x600" -frames:v 1 "$dir/cover.png"
   IFS=';' read -r -a items <<<"$tracks"
   n=0
   for item in "${items[@]}"; do

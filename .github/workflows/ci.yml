@@ -29,6 +29,25 @@ jobs:
           working-directory: server
       - run: go test -race ./...
 
+  navidrome:
+    name: navidrome provider conformance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: ./deploy/dev/make-sample-music.sh
+      - run: docker compose -f deploy/dev/compose.yml up -d
+      - name: Wait for Navidrome
+        run: timeout 120 bash -c 'until curl -sf http://localhost:4533/ping; do sleep 2; done'
+      - run: go test -race -count=1 -run Conformance -v ./internal/provider/navidrome/
+        working-directory: server
+        env:
+          SYNCPHONY_TEST_NAVIDROME_URL: http://localhost:4533
+
   web:
     runs-on: ubuntu-latest
     defaults:

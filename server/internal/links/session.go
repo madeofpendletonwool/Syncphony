@@ -37,6 +37,11 @@ func (w *watcher) Album(ctx context.Context, id string) (provider.Album, []provi
 	return a, ts, w.see(ctx, err)
 }
 
+func (w *watcher) Artist(ctx context.Context, id string) (provider.Artist, []provider.Album, error) {
+	a, as, err := w.inner.Artist(ctx, id)
+	return a, as, w.see(ctx, err)
+}
+
 func (w *watcher) Artwork(ctx context.Context, ref provider.ArtworkRef, size int) (io.ReadCloser, string, error) {
 	r, ct, err := w.inner.Artwork(ctx, ref, size)
 	return r, ct, w.see(ctx, err)

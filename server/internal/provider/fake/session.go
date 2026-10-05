@@ -106,7 +106,7 @@ func (s *session) Search(ctx context.Context, q provider.SearchQuery) (provider.
 			as := filter(library.artists, func(a *artist) bool { return match(a.name) })
 			more = window(&as, offset, limit) || more
 			for _, a := range as {
-				page.Artists = append(page.Artists, provider.Artist{ID: a.id, Name: a.name, Artwork: provider.ArtworkRef(a.id)})
+				page.Artists = append(page.Artists, toArtist(a))
 			}
 		case provider.KindPlaylist:
 			for _, pl := range playlists {
@@ -174,6 +174,10 @@ func toAlbum(a *album) provider.Album {
 	}
 }
 
+func toArtist(a *artist) provider.Artist {
+	return provider.Artist{ID: a.id, Name: a.name, Artwork: provider.ArtworkRef(a.id)}
+}
+
 func toPlaylist(id, name string, n int) provider.Playlist {
 	return provider.Playlist{ID: id, Name: name, Owner: Username, TrackCount: n, Artwork: provider.ArtworkRef(id)}
 }
@@ -202,6 +206,21 @@ func (s *session) Album(ctx context.Context, id string) (provider.Album, []provi
 		ts[i] = s.track(t)
 	}
 	return toAlbum(a), ts, nil
+}
+
+func (s *session) Artist(ctx context.Context, id string) (provider.Artist, []provider.Album, error) {
+	if err := s.begin(ctx); err != nil {
+		return provider.Artist{}, nil, err
+	}
+	a, ok := get[*artist](library, id)
+	if !ok {
+		return provider.Artist{}, nil, fmt.Errorf("fake: artist %q: %w", id, provider.ErrNotFound)
+	}
+	as := make([]provider.Album, len(a.albums))
+	for i, al := range a.albums {
+		as[i] = toAlbum(al)
+	}
+	return toArtist(a), as, nil
 }
 
 func (s *session) Artwork(ctx context.Context, ref provider.ArtworkRef, _ int) (io.ReadCloser, string, error) {
