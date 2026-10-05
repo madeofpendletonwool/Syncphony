@@ -78,6 +78,8 @@ SYNCPHONY_BASE_URL=https://syncphony.example.com docker compose -f deploy/compos
 
 This serves on port 8080, ready for your existing reverse proxy. If you don't have one, add `--profile caddy` and Caddy handles HTTPS for the host in `SYNCPHONY_BASE_URL`.
 
+**First run:** there are no accounts yet, so the server logs a one-time setup link (`docker compose logs syncphony`). Whoever opens it becomes the admin. The link lasts 24 hours, and restarting while there are still no accounts prints a new one. After that, Syncphony is invite-only: admins create invite links for friends. Everyone can sign in with a passkey, a password, or both.
+
 Images are published to `ghcr.io/madeofpendletonwool/syncphony`: `:main` tracks the main branch, and `v*` tags publish `:X.Y.Z` and `:latest`. Pick one with `SYNCPHONY_TAG` (e.g. `SYNCPHONY_TAG=main`).
 
 ## Roadmap

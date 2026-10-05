@@ -17,3 +17,8 @@ RETURNING *;
 
 -- name: DeleteInvite :exec
 DELETE FROM invites WHERE code = ?;
+
+-- Bootstrap invites have no creator. The server replaces any unused ones
+-- at startup while there are no users.
+-- name: DeleteUnusedBootstrapInvites :exec
+DELETE FROM invites WHERE created_by IS NULL AND used_by IS NULL;

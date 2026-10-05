@@ -11,6 +11,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
+
+	"github.com/oapi-codegen/runtime"
 )
 
 // Defines values for HealthStatus.
@@ -28,6 +31,63 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for Role.
+const (
+	Admin  Role = "admin"
+	Member Role = "member"
+)
+
+// Valid indicates whether the value is a known member of the Role enum.
+func (e Role) Valid() bool {
+	switch e {
+	case Admin:
+		return true
+	case Member:
+		return true
+	default:
+		return false
+	}
+}
+
+// Ceremony defines model for Ceremony.
+type Ceremony struct {
+	// CeremonyId Pass back to the matching finish endpoint within 5 minutes.
+	CeremonyId string `json:"ceremonyId"`
+
+	// Options WebAuthn options as JSON (`publicKey` inside). Decode with
+	// `PublicKeyCredential.parseCreationOptionsFromJSON` or
+	// `parseRequestOptionsFromJSON`.
+	Options map[string]interface{} `json:"options"`
+}
+
+// CreateInviteRequest defines model for CreateInviteRequest.
+type CreateInviteRequest struct {
+	ExpiresInHours *int  `json:"expiresInHours,omitempty"`
+	Role           *Role `json:"role,omitempty"`
+}
+
+// Error defines model for Error.
+type Error struct {
+	// Code Stable, machine-readable error code.
+	//
+	// Example: invalid_credentials
+	Code string `json:"code"`
+
+	// Message Human-readable explanation.
+	Message string `json:"message"`
+}
+
+// FinishCeremony defines model for FinishCeremony.
+type FinishCeremony struct {
+	CeremonyId string `json:"ceremonyId"`
+
+	// Credential The browser's `PublicKeyCredential.toJSON()`.
+	Credential map[string]interface{} `json:"credential"`
+
+	// Name Label for a new passkey, e.g. "Pixel 9". Optional.
+	Name *string `json:"name,omitempty"`
+}
+
 // Health defines model for Health.
 type Health struct {
 	Status HealthStatus `json:"status"`
@@ -39,11 +99,226 @@ type Health struct {
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
 
+// Invite defines model for Invite.
+type Invite struct {
+	Code      string    `json:"code"`
+	CreatedAt time.Time `json:"createdAt"`
+	CreatedBy *string   `json:"createdBy,omitempty"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Role      Role      `json:"role"`
+
+	// Url Link to share; opens the signup page.
+	Url    string     `json:"url"`
+	UsedAt *time.Time `json:"usedAt,omitempty"`
+	UsedBy *string    `json:"usedBy,omitempty"`
+}
+
+// InviteInfo defines model for InviteInfo.
+type InviteInfo struct {
+	ExpiresAt time.Time `json:"expiresAt"`
+	Role      Role      `json:"role"`
+}
+
+// LoginRequest defines model for LoginRequest.
+type LoginRequest struct {
+	Password string `json:"password"`
+	Username string `json:"username"`
+}
+
+// Me defines model for Me.
+type Me struct {
+	// Avatar Image URL. Absent means show initials on `color`.
+	Avatar *string `json:"avatar,omitempty"`
+
+	// Color Lane color, `#rrggbb`.
+	//
+	// Example: #7c3aed
+	Color        string    `json:"color"`
+	CreatedAt    time.Time `json:"createdAt"`
+	DisplayName  string    `json:"displayName"`
+	HasPassword  bool      `json:"hasPassword"`
+	Id           string    `json:"id"`
+	PasskeyCount int       `json:"passkeyCount"`
+	Role         Role      `json:"role"`
+	Username     string    `json:"username"`
+}
+
+// Passkey defines model for Passkey.
+type Passkey struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Id Credential ID, base64url
+	Id         string     `json:"id"`
+	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
+	Name       string     `json:"name"`
+}
+
+// PasskeySignupRequest defines model for PasskeySignupRequest.
+type PasskeySignupRequest struct {
+	DisplayName string `json:"displayName"`
+	Invite      string `json:"invite"`
+
+	// Username 2 to 32 characters: lowercase letters, digits, `.`, `_` and `-`.
+	Username Username `json:"username"`
+}
+
+// Password defines model for Password.
+type Password = string
+
+// ProfileUpdate Fields to change. Send `avatar` as "" to remove it.
+type ProfileUpdate struct {
+	Avatar      *string `json:"avatar,omitempty"`
+	Color       *string `json:"color,omitempty"`
+	DisplayName *string `json:"displayName,omitempty"`
+}
+
+// Role defines model for Role.
+type Role string
+
+// SetPasswordRequest defines model for SetPasswordRequest.
+type SetPasswordRequest struct {
+	CurrentPassword *string  `json:"currentPassword,omitempty"`
+	NewPassword     Password `json:"newPassword"`
+}
+
+// SignupRequest defines model for SignupRequest.
+type SignupRequest struct {
+	DisplayName string   `json:"displayName"`
+	Invite      string   `json:"invite"`
+	Password    Password `json:"password"`
+
+	// Username 2 to 32 characters: lowercase letters, digits, `.`, `_` and `-`.
+	Username Username `json:"username"`
+}
+
+// User defines model for User.
+type User struct {
+	// Avatar Image URL. Absent means show initials on `color`.
+	Avatar *string `json:"avatar,omitempty"`
+
+	// Color Lane color, `#rrggbb`.
+	//
+	// Example: #7c3aed
+	Color       string    `json:"color"`
+	CreatedAt   time.Time `json:"createdAt"`
+	DisplayName string    `json:"displayName"`
+	Id          string    `json:"id"`
+	Role        Role      `json:"role"`
+	Username    string    `json:"username"`
+}
+
+// Username 2 to 32 characters: lowercase letters, digits, `.`, `_` and `-`.
+type Username = string
+
+// InviteCode defines model for InviteCode.
+type InviteCode = string
+
+// SignedIn defines model for SignedIn.
+type SignedIn = Me
+
+// RenamePasskeyJSONBody defines parameters for RenamePasskey.
+type RenamePasskeyJSONBody struct {
+	Name string `json:"name"`
+}
+
+// LoginJSONRequestBody defines body for Login for application/json ContentType.
+type LoginJSONRequestBody = LoginRequest
+
+// FinishPasskeyLoginJSONRequestBody defines body for FinishPasskeyLogin for application/json ContentType.
+type FinishPasskeyLoginJSONRequestBody = FinishCeremony
+
+// SignupJSONRequestBody defines body for Signup for application/json ContentType.
+type SignupJSONRequestBody = SignupRequest
+
+// BeginPasskeySignupJSONRequestBody defines body for BeginPasskeySignup for application/json ContentType.
+type BeginPasskeySignupJSONRequestBody = PasskeySignupRequest
+
+// FinishPasskeySignupJSONRequestBody defines body for FinishPasskeySignup for application/json ContentType.
+type FinishPasskeySignupJSONRequestBody = FinishCeremony
+
+// CreateInviteJSONRequestBody defines body for CreateInvite for application/json ContentType.
+type CreateInviteJSONRequestBody = CreateInviteRequest
+
+// UpdateMeJSONRequestBody defines body for UpdateMe for application/json ContentType.
+type UpdateMeJSONRequestBody = ProfileUpdate
+
+// FinishAddPasskeyJSONRequestBody defines body for FinishAddPasskey for application/json ContentType.
+type FinishAddPasskeyJSONRequestBody = FinishCeremony
+
+// RenamePasskeyJSONRequestBody defines body for RenamePasskey for application/json ContentType.
+type RenamePasskeyJSONRequestBody RenamePasskeyJSONBody
+
+// SetPasswordJSONRequestBody defines body for SetPassword for application/json ContentType.
+type SetPasswordJSONRequestBody = SetPasswordRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Login Sign in with a username and password
+	// (POST /auth/login)
+	Login(w http.ResponseWriter, r *http.Request)
+	// Logout Sign out this session
+	// (POST /auth/logout)
+	Logout(w http.ResponseWriter, r *http.Request)
+	// BeginPasskeyLogin Start signing in with a passkey
+	// (POST /auth/passkey/begin)
+	BeginPasskeyLogin(w http.ResponseWriter, r *http.Request)
+	// FinishPasskeyLogin Finish signing in with a passkey
+	// (POST /auth/passkey/finish)
+	FinishPasskeyLogin(w http.ResponseWriter, r *http.Request)
+	// Signup Create an account with an invite and a password
+	// (POST /auth/signup)
+	Signup(w http.ResponseWriter, r *http.Request)
+	// BeginPasskeySignup Start creating an account with an invite and a passkey
+	// (POST /auth/signup/passkey/begin)
+	BeginPasskeySignup(w http.ResponseWriter, r *http.Request)
+	// FinishPasskeySignup Finish creating an account with a passkey
+	// (POST /auth/signup/passkey/finish)
+	FinishPasskeySignup(w http.ResponseWriter, r *http.Request)
 	// GetHealth Liveness and build info
 	// (GET /healthz)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// ListInvites All invites (admin)
+	// (GET /invites)
+	ListInvites(w http.ResponseWriter, r *http.Request)
+	// CreateInvite Create an invite link (admin)
+	// (POST /invites)
+	CreateInvite(w http.ResponseWriter, r *http.Request)
+	// DeleteInvite Revoke an invite (admin)
+	// (DELETE /invites/{code})
+	DeleteInvite(w http.ResponseWriter, r *http.Request, code InviteCode)
+	// GetInvite Check an invite before signing up
+	// (GET /invites/{code})
+	GetInvite(w http.ResponseWriter, r *http.Request, code InviteCode)
+	// GetMe The signed-in user
+	// (GET /me)
+	GetMe(w http.ResponseWriter, r *http.Request)
+	// UpdateMe Update your profile
+	// (PATCH /me)
+	UpdateMe(w http.ResponseWriter, r *http.Request)
+	// ListPasskeys Your passkeys
+	// (GET /me/passkeys)
+	ListPasskeys(w http.ResponseWriter, r *http.Request)
+	// BeginAddPasskey Start adding a passkey
+	// (POST /me/passkeys/begin)
+	BeginAddPasskey(w http.ResponseWriter, r *http.Request)
+	// FinishAddPasskey Finish adding a passkey
+	// (POST /me/passkeys/finish)
+	FinishAddPasskey(w http.ResponseWriter, r *http.Request)
+	// DeletePasskey Remove a passkey
+	// (DELETE /me/passkeys/{id})
+	DeletePasskey(w http.ResponseWriter, r *http.Request, id string)
+	// RenamePasskey Rename a passkey
+	// (PATCH /me/passkeys/{id})
+	RenamePasskey(w http.ResponseWriter, r *http.Request, id string)
+	// DeletePassword Remove your password (passkey-only sign-in)
+	// (DELETE /me/password)
+	DeletePassword(w http.ResponseWriter, r *http.Request)
+	// SetPassword Set or change your password
+	// (PUT /me/password)
+	SetPassword(w http.ResponseWriter, r *http.Request)
+	// ListUsers Everyone on this server
+	// (GET /users)
+	ListUsers(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -55,11 +330,353 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// Login operation middleware
+func (siw *ServerInterfaceWrapper) Login(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Login(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Logout operation middleware
+func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Logout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BeginPasskeyLogin operation middleware
+func (siw *ServerInterfaceWrapper) BeginPasskeyLogin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BeginPasskeyLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// FinishPasskeyLogin operation middleware
+func (siw *ServerInterfaceWrapper) FinishPasskeyLogin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.FinishPasskeyLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Signup operation middleware
+func (siw *ServerInterfaceWrapper) Signup(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Signup(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BeginPasskeySignup operation middleware
+func (siw *ServerInterfaceWrapper) BeginPasskeySignup(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BeginPasskeySignup(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// FinishPasskeySignup operation middleware
+func (siw *ServerInterfaceWrapper) FinishPasskeySignup(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.FinishPasskeySignup(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListInvites operation middleware
+func (siw *ServerInterfaceWrapper) ListInvites(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInvites(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateInvite operation middleware
+func (siw *ServerInterfaceWrapper) CreateInvite(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateInvite(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteInvite operation middleware
+func (siw *ServerInterfaceWrapper) DeleteInvite(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code InviteCode
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteInvite(w, r, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvite operation middleware
+func (siw *ServerInterfaceWrapper) GetInvite(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code InviteCode
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvite(w, r, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMe operation middleware
+func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateMe operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPasskeys operation middleware
+func (siw *ServerInterfaceWrapper) ListPasskeys(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPasskeys(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BeginAddPasskey operation middleware
+func (siw *ServerInterfaceWrapper) BeginAddPasskey(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BeginAddPasskey(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// FinishAddPasskey operation middleware
+func (siw *ServerInterfaceWrapper) FinishAddPasskey(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.FinishAddPasskey(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeletePasskey operation middleware
+func (siw *ServerInterfaceWrapper) DeletePasskey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeletePasskey(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenamePasskey operation middleware
+func (siw *ServerInterfaceWrapper) RenamePasskey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenamePasskey(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeletePassword operation middleware
+func (siw *ServerInterfaceWrapper) DeletePassword(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeletePassword(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetPassword operation middleware
+func (siw *ServerInterfaceWrapper) SetPassword(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetPassword(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListUsers operation middleware
+func (siw *ServerInterfaceWrapper) ListUsers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListUsers(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -190,8 +807,327 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/healthz", wrapper.GetHealth)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/invites/{code}", wrapper.DeleteInvite)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/invites/{code}", wrapper.GetInvite)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/signup", wrapper.Signup)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/signup/passkey/begin", wrapper.BeginPasskeySignup)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/signup/passkey/finish", wrapper.FinishPasskeySignup)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/login", wrapper.Login)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/passkey/begin", wrapper.BeginPasskeyLogin)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/passkey/finish", wrapper.FinishPasskeyLogin)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/logout", wrapper.Logout)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me", wrapper.GetMe)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/me", wrapper.UpdateMe)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/me/password", wrapper.DeletePassword)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/me/password", wrapper.SetPassword)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/passkeys", wrapper.ListPasskeys)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/me/passkeys/begin", wrapper.BeginAddPasskey)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/me/passkeys/finish", wrapper.FinishAddPasskey)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/me/passkeys/{id}", wrapper.DeletePasskey)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/me/passkeys/{id}", wrapper.RenamePasskey)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/users", wrapper.ListUsers)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/invites", wrapper.ListInvites)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/invites", wrapper.CreateInvite)
 
 	return m
+}
+
+type CeremonyJSONResponse Ceremony
+
+type ErrorJSONResponse Error
+
+type SignedInResponseHeaders struct {
+	SetCookie *string
+}
+type SignedInJSONResponse struct {
+	Body Me
+
+	Headers SignedInResponseHeaders
+}
+
+type LoginRequestObject struct {
+	Body *LoginJSONRequestBody
+}
+
+type LoginResponseObject interface {
+	VisitLoginResponse(w http.ResponseWriter) error
+}
+
+type Login200JSONResponse struct{ SignedInJSONResponse }
+
+func (response Login200JSONResponse) VisitLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogindefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response LogindefaultJSONResponse) VisitLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutRequestObject struct {
+}
+
+type LogoutResponseObject interface {
+	VisitLogoutResponse(w http.ResponseWriter) error
+}
+
+type Logout204ResponseHeaders struct {
+	SetCookie *string
+}
+
+type Logout204Response struct {
+	Headers Logout204ResponseHeaders
+}
+
+func (response Logout204Response) VisitLogoutResponse(w http.ResponseWriter) error {
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(204)
+	return nil
+}
+
+type LogoutdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response LogoutdefaultJSONResponse) VisitLogoutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginPasskeyLoginRequestObject struct {
+}
+
+type BeginPasskeyLoginResponseObject interface {
+	VisitBeginPasskeyLoginResponse(w http.ResponseWriter) error
+}
+
+type BeginPasskeyLogin200JSONResponse struct{ CeremonyJSONResponse }
+
+func (response BeginPasskeyLogin200JSONResponse) VisitBeginPasskeyLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginPasskeyLogindefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BeginPasskeyLogindefaultJSONResponse) VisitBeginPasskeyLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishPasskeyLoginRequestObject struct {
+	Body *FinishPasskeyLoginJSONRequestBody
+}
+
+type FinishPasskeyLoginResponseObject interface {
+	VisitFinishPasskeyLoginResponse(w http.ResponseWriter) error
+}
+
+type FinishPasskeyLogin200JSONResponse struct{ SignedInJSONResponse }
+
+func (response FinishPasskeyLogin200JSONResponse) VisitFinishPasskeyLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishPasskeyLogindefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response FinishPasskeyLogindefaultJSONResponse) VisitFinishPasskeyLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignupRequestObject struct {
+	Body *SignupJSONRequestBody
+}
+
+type SignupResponseObject interface {
+	VisitSignupResponse(w http.ResponseWriter) error
+}
+
+type Signup201JSONResponse struct{ SignedInJSONResponse }
+
+func (response Signup201JSONResponse) VisitSignupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignupdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SignupdefaultJSONResponse) VisitSignupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginPasskeySignupRequestObject struct {
+	Body *BeginPasskeySignupJSONRequestBody
+}
+
+type BeginPasskeySignupResponseObject interface {
+	VisitBeginPasskeySignupResponse(w http.ResponseWriter) error
+}
+
+type BeginPasskeySignup200JSONResponse struct{ CeremonyJSONResponse }
+
+func (response BeginPasskeySignup200JSONResponse) VisitBeginPasskeySignupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginPasskeySignupdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BeginPasskeySignupdefaultJSONResponse) VisitBeginPasskeySignupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishPasskeySignupRequestObject struct {
+	Body *FinishPasskeySignupJSONRequestBody
+}
+
+type FinishPasskeySignupResponseObject interface {
+	VisitFinishPasskeySignupResponse(w http.ResponseWriter) error
+}
+
+type FinishPasskeySignup201JSONResponse struct{ SignedInJSONResponse }
+
+func (response FinishPasskeySignup201JSONResponse) VisitFinishPasskeySignupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishPasskeySignupdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response FinishPasskeySignupdefaultJSONResponse) VisitFinishPasskeySignupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetHealthRequestObject struct {
@@ -215,11 +1151,585 @@ func (response GetHealth200JSONResponse) VisitGetHealthResponse(w http.ResponseW
 	return err
 }
 
+type ListInvitesRequestObject struct {
+}
+
+type ListInvitesResponseObject interface {
+	VisitListInvitesResponse(w http.ResponseWriter) error
+}
+
+type ListInvites200JSONResponse []Invite
+
+func (response ListInvites200JSONResponse) VisitListInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInvitesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListInvitesdefaultJSONResponse) VisitListInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInviteRequestObject struct {
+	Body *CreateInviteJSONRequestBody
+}
+
+type CreateInviteResponseObject interface {
+	VisitCreateInviteResponse(w http.ResponseWriter) error
+}
+
+type CreateInvite201JSONResponse Invite
+
+func (response CreateInvite201JSONResponse) VisitCreateInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInvitedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateInvitedefaultJSONResponse) VisitCreateInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInviteRequestObject struct {
+	Code InviteCode `json:"code"`
+}
+
+type DeleteInviteResponseObject interface {
+	VisitDeleteInviteResponse(w http.ResponseWriter) error
+}
+
+type DeleteInvite204Response struct {
+}
+
+func (response DeleteInvite204Response) VisitDeleteInviteResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteInvitedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteInvitedefaultJSONResponse) VisitDeleteInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInviteRequestObject struct {
+	Code InviteCode `json:"code"`
+}
+
+type GetInviteResponseObject interface {
+	VisitGetInviteResponse(w http.ResponseWriter) error
+}
+
+type GetInvite200JSONResponse InviteInfo
+
+func (response GetInvite200JSONResponse) VisitGetInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvitedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetInvitedefaultJSONResponse) VisitGetInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMeRequestObject struct {
+}
+
+type GetMeResponseObject interface {
+	VisitGetMeResponse(w http.ResponseWriter) error
+}
+
+type GetMe200JSONResponse Me
+
+func (response GetMe200JSONResponse) VisitGetMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetMedefaultJSONResponse) VisitGetMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMeRequestObject struct {
+	Body *UpdateMeJSONRequestBody
+}
+
+type UpdateMeResponseObject interface {
+	VisitUpdateMeResponse(w http.ResponseWriter) error
+}
+
+type UpdateMe200JSONResponse Me
+
+func (response UpdateMe200JSONResponse) VisitUpdateMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateMedefaultJSONResponse) VisitUpdateMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPasskeysRequestObject struct {
+}
+
+type ListPasskeysResponseObject interface {
+	VisitListPasskeysResponse(w http.ResponseWriter) error
+}
+
+type ListPasskeys200JSONResponse []Passkey
+
+func (response ListPasskeys200JSONResponse) VisitListPasskeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPasskeysdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListPasskeysdefaultJSONResponse) VisitListPasskeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginAddPasskeyRequestObject struct {
+}
+
+type BeginAddPasskeyResponseObject interface {
+	VisitBeginAddPasskeyResponse(w http.ResponseWriter) error
+}
+
+type BeginAddPasskey200JSONResponse struct{ CeremonyJSONResponse }
+
+func (response BeginAddPasskey200JSONResponse) VisitBeginAddPasskeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginAddPasskeydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BeginAddPasskeydefaultJSONResponse) VisitBeginAddPasskeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishAddPasskeyRequestObject struct {
+	Body *FinishAddPasskeyJSONRequestBody
+}
+
+type FinishAddPasskeyResponseObject interface {
+	VisitFinishAddPasskeyResponse(w http.ResponseWriter) error
+}
+
+type FinishAddPasskey201JSONResponse Passkey
+
+func (response FinishAddPasskey201JSONResponse) VisitFinishAddPasskeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishAddPasskeydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response FinishAddPasskeydefaultJSONResponse) VisitFinishAddPasskeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePasskeyRequestObject struct {
+	Id string `json:"id"`
+}
+
+type DeletePasskeyResponseObject interface {
+	VisitDeletePasskeyResponse(w http.ResponseWriter) error
+}
+
+type DeletePasskey204Response struct {
+}
+
+func (response DeletePasskey204Response) VisitDeletePasskeyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeletePasskeydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeletePasskeydefaultJSONResponse) VisitDeletePasskeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenamePasskeyRequestObject struct {
+	Id   string `json:"id"`
+	Body *RenamePasskeyJSONRequestBody
+}
+
+type RenamePasskeyResponseObject interface {
+	VisitRenamePasskeyResponse(w http.ResponseWriter) error
+}
+
+type RenamePasskey204Response struct {
+}
+
+func (response RenamePasskey204Response) VisitRenamePasskeyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RenamePasskeydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RenamePasskeydefaultJSONResponse) VisitRenamePasskeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePasswordRequestObject struct {
+}
+
+type DeletePasswordResponseObject interface {
+	VisitDeletePasswordResponse(w http.ResponseWriter) error
+}
+
+type DeletePassword204Response struct {
+}
+
+func (response DeletePassword204Response) VisitDeletePasswordResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeletePassworddefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeletePassworddefaultJSONResponse) VisitDeletePasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPasswordRequestObject struct {
+	Body *SetPasswordJSONRequestBody
+}
+
+type SetPasswordResponseObject interface {
+	VisitSetPasswordResponse(w http.ResponseWriter) error
+}
+
+type SetPassword204Response struct {
+}
+
+func (response SetPassword204Response) VisitSetPasswordResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SetPassworddefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetPassworddefaultJSONResponse) VisitSetPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListUsersRequestObject struct {
+}
+
+type ListUsersResponseObject interface {
+	VisitListUsersResponse(w http.ResponseWriter) error
+}
+
+type ListUsers200JSONResponse []User
+
+func (response ListUsers200JSONResponse) VisitListUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListUsersdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListUsersdefaultJSONResponse) VisitListUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Login Sign in with a username and password
+	// (POST /auth/login)
+	Login(ctx context.Context, request LoginRequestObject) (LoginResponseObject, error)
+	// Logout Sign out this session
+	// (POST /auth/logout)
+	Logout(ctx context.Context, request LogoutRequestObject) (LogoutResponseObject, error)
+	// BeginPasskeyLogin Start signing in with a passkey
+	// (POST /auth/passkey/begin)
+	BeginPasskeyLogin(ctx context.Context, request BeginPasskeyLoginRequestObject) (BeginPasskeyLoginResponseObject, error)
+	// FinishPasskeyLogin Finish signing in with a passkey
+	// (POST /auth/passkey/finish)
+	FinishPasskeyLogin(ctx context.Context, request FinishPasskeyLoginRequestObject) (FinishPasskeyLoginResponseObject, error)
+	// Signup Create an account with an invite and a password
+	// (POST /auth/signup)
+	Signup(ctx context.Context, request SignupRequestObject) (SignupResponseObject, error)
+	// BeginPasskeySignup Start creating an account with an invite and a passkey
+	// (POST /auth/signup/passkey/begin)
+	BeginPasskeySignup(ctx context.Context, request BeginPasskeySignupRequestObject) (BeginPasskeySignupResponseObject, error)
+	// FinishPasskeySignup Finish creating an account with a passkey
+	// (POST /auth/signup/passkey/finish)
+	FinishPasskeySignup(ctx context.Context, request FinishPasskeySignupRequestObject) (FinishPasskeySignupResponseObject, error)
 	// GetHealth Liveness and build info
 	// (GET /healthz)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
+	// ListInvites All invites (admin)
+	// (GET /invites)
+	ListInvites(ctx context.Context, request ListInvitesRequestObject) (ListInvitesResponseObject, error)
+	// CreateInvite Create an invite link (admin)
+	// (POST /invites)
+	CreateInvite(ctx context.Context, request CreateInviteRequestObject) (CreateInviteResponseObject, error)
+	// DeleteInvite Revoke an invite (admin)
+	// (DELETE /invites/{code})
+	DeleteInvite(ctx context.Context, request DeleteInviteRequestObject) (DeleteInviteResponseObject, error)
+	// GetInvite Check an invite before signing up
+	// (GET /invites/{code})
+	GetInvite(ctx context.Context, request GetInviteRequestObject) (GetInviteResponseObject, error)
+	// GetMe The signed-in user
+	// (GET /me)
+	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
+	// UpdateMe Update your profile
+	// (PATCH /me)
+	UpdateMe(ctx context.Context, request UpdateMeRequestObject) (UpdateMeResponseObject, error)
+	// ListPasskeys Your passkeys
+	// (GET /me/passkeys)
+	ListPasskeys(ctx context.Context, request ListPasskeysRequestObject) (ListPasskeysResponseObject, error)
+	// BeginAddPasskey Start adding a passkey
+	// (POST /me/passkeys/begin)
+	BeginAddPasskey(ctx context.Context, request BeginAddPasskeyRequestObject) (BeginAddPasskeyResponseObject, error)
+	// FinishAddPasskey Finish adding a passkey
+	// (POST /me/passkeys/finish)
+	FinishAddPasskey(ctx context.Context, request FinishAddPasskeyRequestObject) (FinishAddPasskeyResponseObject, error)
+	// DeletePasskey Remove a passkey
+	// (DELETE /me/passkeys/{id})
+	DeletePasskey(ctx context.Context, request DeletePasskeyRequestObject) (DeletePasskeyResponseObject, error)
+	// RenamePasskey Rename a passkey
+	// (PATCH /me/passkeys/{id})
+	RenamePasskey(ctx context.Context, request RenamePasskeyRequestObject) (RenamePasskeyResponseObject, error)
+	// DeletePassword Remove your password (passkey-only sign-in)
+	// (DELETE /me/password)
+	DeletePassword(ctx context.Context, request DeletePasswordRequestObject) (DeletePasswordResponseObject, error)
+	// SetPassword Set or change your password
+	// (PUT /me/password)
+	SetPassword(ctx context.Context, request SetPasswordRequestObject) (SetPasswordResponseObject, error)
+	// ListUsers Everyone on this server
+	// (GET /users)
+	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -261,6 +1771,209 @@ type strictHandler struct {
 	options     StrictHTTPServerOptions
 }
 
+// Login operation middleware
+func (sh *strictHandler) Login(w http.ResponseWriter, r *http.Request) {
+	var request LoginRequestObject
+
+	var body LoginJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Login(ctx, request.(LoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Login")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LoginResponseObject); ok {
+		if err := validResponse.VisitLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// Logout operation middleware
+func (sh *strictHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	var request LogoutRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Logout(ctx, request.(LogoutRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Logout")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LogoutResponseObject); ok {
+		if err := validResponse.VisitLogoutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BeginPasskeyLogin operation middleware
+func (sh *strictHandler) BeginPasskeyLogin(w http.ResponseWriter, r *http.Request) {
+	var request BeginPasskeyLoginRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BeginPasskeyLogin(ctx, request.(BeginPasskeyLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BeginPasskeyLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BeginPasskeyLoginResponseObject); ok {
+		if err := validResponse.VisitBeginPasskeyLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// FinishPasskeyLogin operation middleware
+func (sh *strictHandler) FinishPasskeyLogin(w http.ResponseWriter, r *http.Request) {
+	var request FinishPasskeyLoginRequestObject
+
+	var body FinishPasskeyLoginJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.FinishPasskeyLogin(ctx, request.(FinishPasskeyLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "FinishPasskeyLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(FinishPasskeyLoginResponseObject); ok {
+		if err := validResponse.VisitFinishPasskeyLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// Signup operation middleware
+func (sh *strictHandler) Signup(w http.ResponseWriter, r *http.Request) {
+	var request SignupRequestObject
+
+	var body SignupJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Signup(ctx, request.(SignupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Signup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SignupResponseObject); ok {
+		if err := validResponse.VisitSignupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BeginPasskeySignup operation middleware
+func (sh *strictHandler) BeginPasskeySignup(w http.ResponseWriter, r *http.Request) {
+	var request BeginPasskeySignupRequestObject
+
+	var body BeginPasskeySignupJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BeginPasskeySignup(ctx, request.(BeginPasskeySignupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BeginPasskeySignup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BeginPasskeySignupResponseObject); ok {
+		if err := validResponse.VisitBeginPasskeySignupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// FinishPasskeySignup operation middleware
+func (sh *strictHandler) FinishPasskeySignup(w http.ResponseWriter, r *http.Request) {
+	var request FinishPasskeySignupRequestObject
+
+	var body FinishPasskeySignupJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.FinishPasskeySignup(ctx, request.(FinishPasskeySignupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "FinishPasskeySignup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(FinishPasskeySignupResponseObject); ok {
+		if err := validResponse.VisitFinishPasskeySignupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetHealth operation middleware
 func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	var request GetHealthRequestObject
@@ -278,6 +1991,385 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
 		if err := validResponse.VisitGetHealthResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListInvites operation middleware
+func (sh *strictHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
+	var request ListInvitesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListInvites(ctx, request.(ListInvitesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListInvites")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListInvitesResponseObject); ok {
+		if err := validResponse.VisitListInvitesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateInvite operation middleware
+func (sh *strictHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
+	var request CreateInviteRequestObject
+
+	var body CreateInviteJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateInvite(ctx, request.(CreateInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateInvite")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateInviteResponseObject); ok {
+		if err := validResponse.VisitCreateInviteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteInvite operation middleware
+func (sh *strictHandler) DeleteInvite(w http.ResponseWriter, r *http.Request, code InviteCode) {
+	var request DeleteInviteRequestObject
+
+	request.Code = code
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteInvite(ctx, request.(DeleteInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteInvite")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteInviteResponseObject); ok {
+		if err := validResponse.VisitDeleteInviteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvite operation middleware
+func (sh *strictHandler) GetInvite(w http.ResponseWriter, r *http.Request, code InviteCode) {
+	var request GetInviteRequestObject
+
+	request.Code = code
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvite(ctx, request.(GetInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvite")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInviteResponseObject); ok {
+		if err := validResponse.VisitGetInviteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMe operation middleware
+func (sh *strictHandler) GetMe(w http.ResponseWriter, r *http.Request) {
+	var request GetMeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMe(ctx, request.(GetMeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMeResponseObject); ok {
+		if err := validResponse.VisitGetMeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateMe operation middleware
+func (sh *strictHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	var request UpdateMeRequestObject
+
+	var body UpdateMeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateMe(ctx, request.(UpdateMeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateMe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateMeResponseObject); ok {
+		if err := validResponse.VisitUpdateMeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPasskeys operation middleware
+func (sh *strictHandler) ListPasskeys(w http.ResponseWriter, r *http.Request) {
+	var request ListPasskeysRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPasskeys(ctx, request.(ListPasskeysRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPasskeys")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPasskeysResponseObject); ok {
+		if err := validResponse.VisitListPasskeysResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BeginAddPasskey operation middleware
+func (sh *strictHandler) BeginAddPasskey(w http.ResponseWriter, r *http.Request) {
+	var request BeginAddPasskeyRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BeginAddPasskey(ctx, request.(BeginAddPasskeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BeginAddPasskey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BeginAddPasskeyResponseObject); ok {
+		if err := validResponse.VisitBeginAddPasskeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// FinishAddPasskey operation middleware
+func (sh *strictHandler) FinishAddPasskey(w http.ResponseWriter, r *http.Request) {
+	var request FinishAddPasskeyRequestObject
+
+	var body FinishAddPasskeyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.FinishAddPasskey(ctx, request.(FinishAddPasskeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "FinishAddPasskey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(FinishAddPasskeyResponseObject); ok {
+		if err := validResponse.VisitFinishAddPasskeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeletePasskey operation middleware
+func (sh *strictHandler) DeletePasskey(w http.ResponseWriter, r *http.Request, id string) {
+	var request DeletePasskeyRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeletePasskey(ctx, request.(DeletePasskeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeletePasskey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeletePasskeyResponseObject); ok {
+		if err := validResponse.VisitDeletePasskeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RenamePasskey operation middleware
+func (sh *strictHandler) RenamePasskey(w http.ResponseWriter, r *http.Request, id string) {
+	var request RenamePasskeyRequestObject
+
+	request.Id = id
+
+	var body RenamePasskeyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RenamePasskey(ctx, request.(RenamePasskeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RenamePasskey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RenamePasskeyResponseObject); ok {
+		if err := validResponse.VisitRenamePasskeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeletePassword operation middleware
+func (sh *strictHandler) DeletePassword(w http.ResponseWriter, r *http.Request) {
+	var request DeletePasswordRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeletePassword(ctx, request.(DeletePasswordRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeletePassword")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeletePasswordResponseObject); ok {
+		if err := validResponse.VisitDeletePasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetPassword operation middleware
+func (sh *strictHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
+	var request SetPasswordRequestObject
+
+	var body SetPasswordJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetPassword(ctx, request.(SetPasswordRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetPassword")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetPasswordResponseObject); ok {
+		if err := validResponse.VisitSetPasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListUsers operation middleware
+func (sh *strictHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
+	var request ListUsersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListUsers(ctx, request.(ListUsersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListUsers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListUsersResponseObject); ok {
+		if err := validResponse.VisitListUsersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

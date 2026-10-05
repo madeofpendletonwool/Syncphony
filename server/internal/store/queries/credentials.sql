@@ -53,3 +53,9 @@ DELETE FROM sessions WHERE user_id = ?;
 
 -- name: DeleteExpiredSessions :execrows
 DELETE FROM sessions WHERE expires_at <= ?;
+
+-- name: CountPasskeys :one
+SELECT count(*) FROM credentials_passkey WHERE user_id = ?;
+
+-- name: DeleteOtherSessions :exec
+DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?;

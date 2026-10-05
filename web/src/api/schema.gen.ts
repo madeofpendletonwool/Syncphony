@@ -21,6 +21,314 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/invites/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["InviteCode"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Check an invite before signing up
+         * @description Returns 404 if the invite doesn't exist, was used, or expired.
+         */
+        get: operations["getInvite"];
+        put?: never;
+        post?: never;
+        /** Revoke an invite (admin) */
+        delete: operations["deleteInvite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create an account with an invite and a password
+         * @description Signs the new user in.
+         */
+        post: operations["signup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/signup/passkey/begin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start creating an account with an invite and a passkey
+         * @description Returns WebAuthn creation options for `navigator.credentials.create`.
+         *     The account is created when the ceremony finishes.
+         */
+        post: operations["beginPasskeySignup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/signup/passkey/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish creating an account with a passkey
+         * @description Signs the new user in.
+         */
+        post: operations["finishPasskeySignup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign in with a username and password */
+        post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkey/begin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start signing in with a passkey
+         * @description Returns WebAuthn request options for `navigator.credentials.get`. No username needed.
+         */
+        post: operations["beginPasskeyLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkey/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish signing in with a passkey */
+        post: operations["finishPasskeyLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign out this session */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The signed-in user */
+        get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update your profile */
+        patch: operations["updateMe"];
+        trace?: never;
+    };
+    "/me/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set or change your password
+         * @description `currentPassword` is required if you already have one. Other sessions
+         *     are signed out.
+         */
+        put: operations["setPassword"];
+        post?: never;
+        /**
+         * Remove your password (passkey-only sign-in)
+         * @description Fails with 409 if you have no passkey.
+         */
+        delete: operations["deletePassword"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/passkeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your passkeys */
+        get: operations["listPasskeys"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/passkeys/begin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start adding a passkey */
+        post: operations["beginAddPasskey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/passkeys/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish adding a passkey */
+        post: operations["finishAddPasskey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/passkeys/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Credential ID, base64url */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a passkey
+         * @description Fails with 409 if it's your only way to sign in.
+         */
+        delete: operations["deletePasskey"];
+        options?: never;
+        head?: never;
+        /** Rename a passkey */
+        patch: operations["renamePasskey"];
+        trace?: never;
+    };
+    "/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Everyone on this server */
+        get: operations["listUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** All invites (admin) */
+        get: operations["listInvites"];
+        put?: never;
+        /** Create an invite link (admin) */
+        post: operations["createInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -31,9 +339,156 @@ export interface components {
             /** @example 0.1.0 */
             version: string;
         };
+        Error: {
+            /**
+             * @description Stable, machine-readable error code.
+             * @example invalid_credentials
+             */
+            code: string;
+            /** @description Human-readable explanation. */
+            message: string;
+        };
+        /** @enum {string} */
+        Role: "admin" | "member";
+        User: {
+            id: string;
+            username: string;
+            displayName: string;
+            /** @description Image URL. Absent means show initials on `color`. */
+            avatar?: string;
+            /**
+             * @description Lane color, `#rrggbb`.
+             * @example #7c3aed
+             */
+            color: string;
+            role: components["schemas"]["Role"];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        Me: components["schemas"]["User"] & {
+            hasPassword: boolean;
+            passkeyCount: number;
+        };
+        /** @description Fields to change. Send `avatar` as "" to remove it. */
+        ProfileUpdate: {
+            displayName?: string;
+            avatar?: string;
+            color?: string;
+        };
+        /** @description 2 to 32 characters: lowercase letters, digits, `.`, `_` and `-`. */
+        Username: string;
+        Password: string;
+        SignupRequest: {
+            invite: string;
+            username: components["schemas"]["Username"];
+            displayName: string;
+            password: components["schemas"]["Password"];
+        };
+        PasskeySignupRequest: {
+            invite: string;
+            username: components["schemas"]["Username"];
+            displayName: string;
+        };
+        LoginRequest: {
+            username: string;
+            password: string;
+        };
+        SetPasswordRequest: {
+            currentPassword?: string;
+            newPassword: components["schemas"]["Password"];
+        };
+        Ceremony: {
+            /** @description Pass back to the matching finish endpoint within 5 minutes. */
+            ceremonyId: string;
+            /**
+             * @description WebAuthn options as JSON (`publicKey` inside). Decode with
+             *     `PublicKeyCredential.parseCreationOptionsFromJSON` or
+             *     `parseRequestOptionsFromJSON`.
+             */
+            options: {
+                [key: string]: unknown;
+            };
+        };
+        FinishCeremony: {
+            ceremonyId: string;
+            /** @description The browser's `PublicKeyCredential.toJSON()`. */
+            credential: {
+                [key: string]: unknown;
+            };
+            /** @description Label for a new passkey, e.g. "Pixel 9". Optional. */
+            name?: string;
+        };
+        Passkey: {
+            /** @description Credential ID, base64url */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastUsedAt?: string;
+        };
+        InviteInfo: {
+            role: components["schemas"]["Role"];
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        Invite: {
+            code: string;
+            /** @description Link to share; opens the signup page. */
+            url: string;
+            role: components["schemas"]["Role"];
+            createdBy?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            usedBy?: string;
+            /** Format: date-time */
+            usedAt?: string;
+        };
+        CreateInviteRequest: {
+            role?: components["schemas"]["Role"];
+            /** @default 168 */
+            expiresInHours: number;
+        };
     };
-    responses: never;
-    parameters: never;
+    responses: {
+        /**
+         * @description An error. Common statuses: 400 invalid input, 401 not signed in or
+         *     wrong credentials, 403 not allowed, 404 not found, 409 conflict,
+         *     429 too many attempts (see Retry-After).
+         */
+        Error: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Signed in; the session cookie is set */
+        SignedIn: {
+            headers: {
+                "Set-Cookie"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Me"];
+            };
+        };
+        /** @description A WebAuthn ceremony to complete in the browser */
+        Ceremony: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Ceremony"];
+            };
+        };
+    };
+    parameters: {
+        InviteCode: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -58,6 +513,432 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
+        };
+    };
+    getInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["InviteCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invite can be used */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteInfo"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["InviteCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    signup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignupRequest"];
+            };
+        };
+        responses: {
+            201: components["responses"]["SignedIn"];
+            default: components["responses"]["Error"];
+        };
+    };
+    beginPasskeySignup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasskeySignupRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Ceremony"];
+            default: components["responses"]["Error"];
+        };
+    };
+    finishPasskeySignup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishCeremony"];
+            };
+        };
+        responses: {
+            201: components["responses"]["SignedIn"];
+            default: components["responses"]["Error"];
+        };
+    };
+    login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["SignedIn"];
+            default: components["responses"]["Error"];
+        };
+    };
+    beginPasskeyLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["Ceremony"];
+            default: components["responses"]["Error"];
+        };
+    };
+    finishPasskeyLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishCeremony"];
+            };
+        };
+        responses: {
+            200: components["responses"]["SignedIn"];
+            default: components["responses"]["Error"];
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out; the session cookie is cleared */
+            204: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The signed-in user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description The updated user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Password set */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deletePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Password removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listPasskeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Passkeys, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Passkey"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    beginAddPasskey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["Ceremony"];
+            default: components["responses"]["Error"];
+        };
+    };
+    finishAddPasskey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishCeremony"];
+            };
+        };
+        responses: {
+            /** @description The new passkey */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Passkey"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deletePasskey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Credential ID, base64url */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    renamePasskey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Credential ID, base64url */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Renamed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Users, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listInvites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invites, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Invite"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInviteRequest"];
+            };
+        };
+        responses: {
+            /** @description The new invite */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Invite"];
+                };
+            };
+            default: components["responses"]["Error"];
         };
     };
 }

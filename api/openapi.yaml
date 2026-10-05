@@ -11,12 +11,15 @@ info:
     url: https://www.gnu.org/licenses/agpl-3.0.html
 servers:
   - url: /api
+security:
+  - session: []
 paths:
   /healthz:
     get:
       operationId: getHealth
       summary: Liveness and build info
       tags: [system]
+      security: []
       responses:
         "200":
           description: Server is up
@@ -24,7 +27,417 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+
+  # --- Signup and sign-in ---------------------------------------------------
+
+  /invites/{code}:
+    parameters:
+      - $ref: "#/components/parameters/InviteCode"
+    get:
+      operationId: getInvite
+      summary: Check an invite before signing up
+      description: Returns 404 if the invite doesn't exist, was used, or expired.
+      tags: [auth]
+      security: []
+      responses:
+        "200":
+          description: The invite can be used
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteInfo"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deleteInvite
+      summary: Revoke an invite (admin)
+      tags: [admin]
+      responses:
+        "204":
+          description: Revoked
+        default:
+          $ref: "#/components/responses/Error"
+
+  /auth/signup:
+    post:
+      operationId: signup
+      summary: Create an account with an invite and a password
+      description: Signs the new user in.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignupRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/SignedIn"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /auth/signup/passkey/begin:
+    post:
+      operationId: beginPasskeySignup
+      summary: Start creating an account with an invite and a passkey
+      description: |
+        Returns WebAuthn creation options for `navigator.credentials.create`.
+        The account is created when the ceremony finishes.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasskeySignupRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/Ceremony"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /auth/signup/passkey/finish:
+    post:
+      operationId: finishPasskeySignup
+      summary: Finish creating an account with a passkey
+      description: Signs the new user in.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinishCeremony"
+      responses:
+        "201":
+          $ref: "#/components/responses/SignedIn"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /auth/login:
+    post:
+      operationId: login
+      summary: Sign in with a username and password
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/SignedIn"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /auth/passkey/begin:
+    post:
+      operationId: beginPasskeyLogin
+      summary: Start signing in with a passkey
+      description: Returns WebAuthn request options for `navigator.credentials.get`. No username needed.
+      tags: [auth]
+      security: []
+      responses:
+        "200":
+          $ref: "#/components/responses/Ceremony"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /auth/passkey/finish:
+    post:
+      operationId: finishPasskeyLogin
+      summary: Finish signing in with a passkey
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinishCeremony"
+      responses:
+        "200":
+          $ref: "#/components/responses/SignedIn"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: Sign out this session
+      tags: [auth]
+      security: []
+      responses:
+        "204":
+          description: Signed out; the session cookie is cleared
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        default:
+          $ref: "#/components/responses/Error"
+
+  # --- The signed-in user ---------------------------------------------------
+
+  /me:
+    get:
+      operationId: getMe
+      summary: The signed-in user
+      tags: [account]
+      responses:
+        "200":
+          description: The signed-in user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      operationId: updateMe
+      summary: Update your profile
+      tags: [account]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileUpdate"
+      responses:
+        "200":
+          description: The updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/password:
+    put:
+      operationId: setPassword
+      summary: Set or change your password
+      description: |
+        `currentPassword` is required if you already have one. Other sessions
+        are signed out.
+      tags: [account]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPasswordRequest"
+      responses:
+        "204":
+          description: Password set
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deletePassword
+      summary: Remove your password (passkey-only sign-in)
+      description: Fails with 409 if you have no passkey.
+      tags: [account]
+      responses:
+        "204":
+          description: Password removed
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/passkeys:
+    get:
+      operationId: listPasskeys
+      summary: Your passkeys
+      tags: [account]
+      responses:
+        "200":
+          description: Passkeys, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Passkey"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/passkeys/begin:
+    post:
+      operationId: beginAddPasskey
+      summary: Start adding a passkey
+      tags: [account]
+      responses:
+        "200":
+          $ref: "#/components/responses/Ceremony"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/passkeys/finish:
+    post:
+      operationId: finishAddPasskey
+      summary: Finish adding a passkey
+      tags: [account]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinishCeremony"
+      responses:
+        "201":
+          description: The new passkey
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Passkey"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/passkeys/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Credential ID, base64url
+        schema:
+          type: string
+    patch:
+      operationId: renamePasskey
+      summary: Rename a passkey
+      tags: [account]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+      responses:
+        "204":
+          description: Renamed
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deletePasskey
+      summary: Remove a passkey
+      description: Fails with 409 if it's your only way to sign in.
+      tags: [account]
+      responses:
+        "204":
+          description: Removed
+        default:
+          $ref: "#/components/responses/Error"
+
+  # --- People and invites ---------------------------------------------------
+
+  /users:
+    get:
+      operationId: listUsers
+      summary: Everyone on this server
+      tags: [account]
+      responses:
+        "200":
+          description: Users, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /invites:
+    get:
+      operationId: listInvites
+      summary: All invites (admin)
+      tags: [admin]
+      responses:
+        "200":
+          description: Invites, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Invite"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: createInvite
+      summary: Create an invite link (admin)
+      tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInviteRequest"
+      responses:
+        "201":
+          description: The new invite
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invite"
+        default:
+          $ref: "#/components/responses/Error"
+
 components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: syncphony_session
+      description: |
+        Set by the sign-in endpoints. httpOnly, SameSite=Lax, and Secure when
+        the server is served over HTTPS. Mutating requests must come from the
+        app's own origin (checked with Sec-Fetch-Site / Origin).
+
+  parameters:
+    InviteCode:
+      name: code
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    Error:
+      description: |
+        An error. Common statuses: 400 invalid input, 401 not signed in or
+        wrong credentials, 403 not allowed, 404 not found, 409 conflict,
+        429 too many attempts (see Retry-After).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    SignedIn:
+      description: Signed in; the session cookie is set
+      headers:
+        Set-Cookie:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Me"
+    Ceremony:
+      description: A WebAuthn ceremony to complete in the browser
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Ceremony"
+
   schemas:
     Health:
       type: object
@@ -36,3 +449,216 @@ components:
         version:
           type: string
           example: 0.1.0
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Stable, machine-readable error code.
+          example: invalid_credentials
+        message:
+          type: string
+          description: Human-readable explanation.
+
+    Role:
+      type: string
+      enum: [admin, member]
+
+    User:
+      type: object
+      required: [id, username, displayName, color, role, createdAt]
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: string
+        avatar:
+          type: string
+          description: Image URL. Absent means show initials on `color`.
+        color:
+          type: string
+          description: Lane color, `#rrggbb`.
+          example: "#7c3aed"
+        role:
+          $ref: "#/components/schemas/Role"
+        createdAt:
+          type: string
+          format: date-time
+
+    Me:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          required: [hasPassword, passkeyCount]
+          properties:
+            hasPassword:
+              type: boolean
+            passkeyCount:
+              type: integer
+
+    ProfileUpdate:
+      type: object
+      description: Fields to change. Send `avatar` as "" to remove it.
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 64
+        avatar:
+          type: string
+          maxLength: 2048
+        color:
+          type: string
+          pattern: "^#[0-9a-fA-F]{6}$"
+
+    Username:
+      type: string
+      description: "2 to 32 characters: lowercase letters, digits, `.`, `_` and `-`."
+      pattern: "^[a-z0-9._-]{2,32}$"
+
+    Password:
+      type: string
+      minLength: 8
+      maxLength: 256
+
+    SignupRequest:
+      type: object
+      required: [invite, username, displayName, password]
+      properties:
+        invite:
+          type: string
+        username:
+          $ref: "#/components/schemas/Username"
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 64
+        password:
+          $ref: "#/components/schemas/Password"
+
+    PasskeySignupRequest:
+      type: object
+      required: [invite, username, displayName]
+      properties:
+        invite:
+          type: string
+        username:
+          $ref: "#/components/schemas/Username"
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 64
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    SetPasswordRequest:
+      type: object
+      required: [newPassword]
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          $ref: "#/components/schemas/Password"
+
+    Ceremony:
+      type: object
+      required: [ceremonyId, options]
+      properties:
+        ceremonyId:
+          type: string
+          description: Pass back to the matching finish endpoint within 5 minutes.
+        options:
+          type: object
+          additionalProperties: true
+          description: |
+            WebAuthn options as JSON (`publicKey` inside). Decode with
+            `PublicKeyCredential.parseCreationOptionsFromJSON` or
+            `parseRequestOptionsFromJSON`.
+
+    FinishCeremony:
+      type: object
+      required: [ceremonyId, credential]
+      properties:
+        ceremonyId:
+          type: string
+        credential:
+          type: object
+          additionalProperties: true
+          description: The browser's `PublicKeyCredential.toJSON()`.
+        name:
+          type: string
+          maxLength: 64
+          description: Label for a new passkey, e.g. "Pixel 9". Optional.
+
+    Passkey:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id:
+          type: string
+          description: Credential ID, base64url
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+
+    InviteInfo:
+      type: object
+      required: [role, expiresAt]
+      properties:
+        role:
+          $ref: "#/components/schemas/Role"
+        expiresAt:
+          type: string
+          format: date-time
+
+    Invite:
+      type: object
+      required: [code, url, role, createdAt, expiresAt]
+      properties:
+        code:
+          type: string
+        url:
+          type: string
+          description: Link to share; opens the signup page.
+        role:
+          $ref: "#/components/schemas/Role"
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        usedBy:
+          type: string
+        usedAt:
+          type: string
+          format: date-time
+
+    CreateInviteRequest:
+      type: object
+      properties:
+        role:
+          $ref: "#/components/schemas/Role"
+        expiresInHours:
+          type: integer
+          minimum: 1
+          maximum: 720
+          default: 168
