@@ -717,6 +717,37 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /rooms/{roomId}/history:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: getHistory
+      summary: Songs the room played recently, newest first
+      description: |
+        Songs that finished, were skipped or failed. The song playing now
+        isn't included until it ends. Refetch on `nowplaying.updated` when
+        the song changes.
+      tags: [queue]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Recent plays
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlayedItem"
+        default:
+          $ref: "#/components/responses/Error"
+
   /rooms/{roomId}/queue/{itemId}:
     parameters:
       - $ref: "#/components/parameters/RoomId"
@@ -1706,6 +1737,22 @@ components:
         track:
           $ref: "#/components/schemas/QueuedTrack"
 
+    PlayedItem:
+      type: object
+      required: [item, startedAt, endedAt, endReason]
+      properties:
+        item:
+          $ref: "#/components/schemas/QueueItem"
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        endReason:
+          type: string
+          enum: [finished, skipped, removed, error]
+
     QueuedTrack:
       type: object
       description: The track as it was when queued; still shown if its service is offline.
@@ -1724,8 +1771,18 @@ components:
           type: array
           items:
             type: string
+        artistIds:
+          type: array
+          description: |
+            The provider's ID for each of `artists`, in the same order, within
+            `linkId`. Empty where the provider didn't say.
+          items:
+            type: string
         album:
           type: string
+        albumId:
+          type: string
+          description: The provider's album ID within `linkId`, if known.
         durationMs:
           type: integer
           format: int64

@@ -67,7 +67,7 @@ export function useAddToLane() {
         action: added.length > 0 ? { label: 'Undo', onClick: () => void undo(snap.roomId, added) } : undefined,
       })
     },
-    onError: (err) => toast({ message: room ? errorMessage(err) : 'Start a room first.', tone: 'error' }),
+    onError: (err) => toast({ message: room ? errorMessage(err) : 'Join a room first.', tone: 'error' }),
     onSettled: (_data, _err, tracks) => setPending(tracks.map(trackKey), false),
   })
 

@@ -554,6 +554,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Songs the room played recently, newest first
+         * @description Songs that finished, were skipped or failed. The song playing now
+         *     isn't included until it ends. Refetch on `nowplaying.updated` when
+         *     the song changes.
+         */
+        get: operations["getHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/queue/{itemId}": {
         parameters: {
             query?: never;
@@ -1081,6 +1105,15 @@ export interface components {
             addedAt: string;
             track: components["schemas"]["QueuedTrack"];
         };
+        PlayedItem: {
+            item: components["schemas"]["QueueItem"];
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            endedAt: string;
+            /** @enum {string} */
+            endReason: "finished" | "skipped" | "removed" | "error";
+        };
         /** @description The track as it was when queued; still shown if its service is offline. */
         QueuedTrack: {
             provider: string;
@@ -1089,7 +1122,14 @@ export interface components {
             trackId: string;
             title: string;
             artists: string[];
+            /**
+             * @description The provider's ID for each of `artists`, in the same order, within
+             *     `linkId`. Empty where the provider didn't say.
+             */
+            artistIds?: string[];
             album?: string;
+            /** @description The provider's album ID within `linkId`, if known. */
+            albumId?: string;
             /** Format: int64 */
             durationMs: number;
             explicit: boolean;
@@ -2001,6 +2041,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QueueSnapshot"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getHistory: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recent plays */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlayedItem"][];
                 };
             };
             default: components["responses"]["Error"];

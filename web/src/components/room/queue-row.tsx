@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Artwork } from '@/components/artwork'
+import { ServiceGlyph } from '@/components/service-tag'
 import { UserAvatar } from '@/components/user-avatar'
 import { laneStyle } from '@/lib/lane'
 import { queueArtworkUrl, type QueueItem } from '@/lib/playback'
@@ -15,6 +16,7 @@ export function QueueRow({
   trailing,
   mine,
   hideAvatar,
+  byline,
   className,
 }: {
   roomId: string
@@ -26,6 +28,8 @@ export function QueueRow({
   mine?: boolean
   /** Keep the lane stripe but skip the avatar (in a lane that's all one person's). */
   hideAvatar?: boolean
+  /** Name who added it under the title, for lists without lane context. */
+  byline?: boolean
   className?: string
 }) {
   return (
@@ -42,7 +46,18 @@ export function QueueRow({
       <Artwork src={queueArtworkUrl(roomId, item, 120)} className="size-11 rounded-lg shadow-none" />
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium">{item.track.title}</p>
-        <p className="truncate text-sm text-muted-foreground">{item.track.artists.join(', ')}</p>
+        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <ServiceGlyph provider={item.track.provider} />
+          <span className="truncate">
+            {item.track.artists.join(', ')}
+            {byline && user && (
+              <>
+                {' · '}
+                <span className="text-(--lane) dark:text-[color-mix(in_oklch,var(--lane),white_30%)]">{user.displayName}</span>
+              </>
+            )}
+          </span>
+        </p>
       </div>
       {user && !hideAvatar && <UserAvatar user={user} className="size-6 text-[0.6rem]" />}
       {trailing}

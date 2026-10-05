@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Check, ChevronDown, Plus, Sparkles, Speaker } from 'lucide-react'
+import { Check, ChevronDown, LogOut, Plus, Sparkles, Speaker } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { DropdownMenu } from 'radix-ui'
 import { useState } from 'react'
@@ -10,7 +10,9 @@ import { MyLane } from '@/components/room/my-lane'
 import { QueueRow } from '@/components/room/queue-row'
 import { SpeakerPanel } from '@/components/room/speaker-panel'
 import { TransportControls } from '@/components/shell/player-controls'
-import { StartRoom } from '@/components/start-room'
+import { ServiceTag } from '@/components/service-tag'
+import { RoomLobby } from '@/components/start-room'
+import { AlbumLink, ArtistLinks } from '@/components/track-credits'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -22,7 +24,7 @@ import { laneStyle } from '@/lib/lane'
 import { fadeUp, spring, stagger } from '@/lib/motion'
 import { formatDuration, usePlayer, type User } from '@/lib/now-playing'
 import { playbackQuery, songsBeforeYours, type QueueItem } from '@/lib/playback'
-import { chooseRoom, queueQuery, useCurrentRoom, type Room as RoomInfo } from '@/lib/room'
+import { chooseRoom, leaveRoom, queueQuery, useCurrentRoom, type Room as RoomInfo } from '@/lib/room'
 import { live } from '@/lib/room-socket'
 import { useStore } from '@/lib/store'
 import { usersQuery } from '@/lib/users'
@@ -56,8 +58,8 @@ function Room() {
   if (!room) {
     return (
       <>
-        <PageHeader title="Room" subtitle="Everyone takes turns. Add a song to your lane." />
-        <StartRoom />
+        <PageHeader title="Rooms" subtitle="Join a room, or start your own. Everyone takes turns." />
+        <RoomLobby />
       </>
     )
   }
@@ -138,35 +140,40 @@ function Room() {
 
 function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
   const { members, status } = useStore(live)
-  const title =
-    rooms.length > 1 ? (
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger className="-ml-1 flex items-center gap-1.5 rounded-xl px-1 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-          <span className="truncate">{room.name}</span>
-          <ChevronDown className="size-6 shrink-0 text-muted-foreground" />
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content
-            align="start"
-            sideOffset={8}
-            className="glass-strong z-50 min-w-56 rounded-2xl p-1.5 shadow-float data-[state=open]:animate-in data-[state=open]:fade-in data-[state=open]:zoom-in-95"
-          >
-            {rooms.map((r) => (
-              <DropdownMenu.Item
-                key={r.id}
-                onSelect={() => chooseRoom(r.id)}
-                className="flex cursor-default items-center gap-2 rounded-xl px-3 py-2.5 text-sm outline-none select-none data-highlighted:bg-accent"
-              >
-                <span className="flex-1 truncate">{r.name}</span>
-                {r.id === room.id && <Check className="size-4 text-primary" />}
-              </DropdownMenu.Item>
-            ))}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
-    ) : (
-      room.name
-    )
+  const others = rooms.filter((r) => r.id !== room.id)
+  const title = (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger className="-ml-1 flex max-w-full items-center gap-1.5 rounded-xl px-1 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+        <span className="truncate">{room.name}</span>
+        <ChevronDown className="size-6 shrink-0 text-muted-foreground" />
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="start"
+          sideOffset={8}
+          className="glass-strong z-50 min-w-60 rounded-2xl p-1.5 shadow-float data-[state=open]:animate-in data-[state=open]:fade-in data-[state=open]:zoom-in-95"
+        >
+          <DropdownMenu.Item className={menuItem} disabled>
+            <span className="flex-1 truncate font-medium">{room.name}</span>
+            <Check className="size-4 text-primary" />
+          </DropdownMenu.Item>
+          {others.length > 0 && (
+            <DropdownMenu.Label className="px-3 pt-2 pb-1 text-caption text-muted-foreground">Switch to</DropdownMenu.Label>
+          )}
+          {others.map((r) => (
+            <DropdownMenu.Item key={r.id} onSelect={() => chooseRoom(r.id)} className={menuItem}>
+              <span className="flex-1 truncate">{r.name}</span>
+            </DropdownMenu.Item>
+          ))}
+          <DropdownMenu.Separator className="mx-2 my-1.5 h-px bg-border" />
+          <DropdownMenu.Item onSelect={leaveRoom} className={menuItem}>
+            <LogOut className="size-4 text-muted-foreground" />
+            <span className="flex-1">Leave room</span>
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  )
 
   return (
     <header className="flex items-end justify-between gap-4 pt-10 pb-6">
@@ -211,6 +218,9 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
   )
 }
 
+const menuItem =
+  'flex cursor-default items-center gap-2 rounded-xl px-3 py-2.5 text-sm outline-none select-none data-disabled:opacity-100 data-highlighted:bg-accent'
+
 function NowPlayingCard({ room, waiting }: { room: RoomInfo; waiting: number }) {
   const roomId = room.id
   const { nowPlaying: np, commands } = usePlayer()
@@ -230,7 +240,7 @@ function NowPlayingCard({ room, waiting }: { room: RoomInfo; waiting: number }) 
           {waiting > 0
             ? speaker
               ? `Waiting to start on ${speaker.name}.`
-              : 'Songs are waiting. Start playing on the phone connected to the speaker.'
+              : 'Songs are waiting. Start playing on the device connected to the speaker.'
             : 'Be the first to put something on.'}
         </p>
         <div className="mt-2 w-full max-w-xs">
@@ -273,14 +283,18 @@ function NowPlayingCard({ room, waiting }: { room: RoomInfo; waiting: number }) 
               {playback.data?.state === 'loading' ? 'Starting…' : np.paused ? 'Paused' : 'Now playing'}
             </p>
             <h2 className="mt-1 line-clamp-2 text-title">{np.track.title}</h2>
-            <p className="truncate text-muted-foreground">{np.track.artists.join(', ')}</p>
+            <ArtistLinks track={np.track} className="line-clamp-1 text-muted-foreground" />
+            <AlbumLink track={np.track} className="line-clamp-1 text-sm text-muted-foreground/80" />
           </div>
-          {np.requester && (
-            <Badge variant="lane" style={laneStyle(np.requester.color)} className="mt-2 gap-1.5 py-1 pl-1">
-              <UserAvatar user={np.requester} className="size-5 text-[0.6rem]" />
-              {np.requester.displayName}
-            </Badge>
-          )}
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {np.requester && (
+              <Badge variant="lane" style={laneStyle(np.requester.color)} className="gap-1.5 py-1 pl-1">
+                <UserAvatar user={np.requester} className="size-5 text-[0.6rem]" />
+                {np.requester.displayName}
+              </Badge>
+            )}
+            <ServiceTag provider={np.track.provider} className="py-1" />
+          </div>
         </div>
       </div>
 

@@ -7,7 +7,7 @@ import { errorMessage } from '@/api/errors'
 import { AlbumCard, ArtistCard } from '@/components/album-card'
 import { Notice } from '@/components/notice'
 import { PageHeader } from '@/components/page-header'
-import { StartRoom } from '@/components/start-room'
+import { JoinRoomPrompt } from '@/components/start-room'
 import { TrackRow } from '@/components/track-row'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -108,7 +108,7 @@ function Search() {
         )}
       </div>
 
-      <StartRoom className="mt-4" />
+      <JoinRoomPrompt className="mt-4" />
 
       {links.data && links.data.length === 0 ? (
         <NoLinks />

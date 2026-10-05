@@ -198,3 +198,25 @@
     }
   }
 }
+
+/* Equalizer bars for "this device is playing". Transform-only, so it runs
+   on the compositor and stays smooth while the page is busy. */
+@keyframes eq {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@utility eq-bar {
+  transform: scaleY(0.3);
+  transform-origin: bottom;
+  animation: eq var(--eq-duration, 1s) ease-in-out var(--eq-delay, 0s) infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    transform: scaleY(0.6);
+  }
+}

@@ -206,6 +206,38 @@ func (s *Service) Get(ctx context.Context, id string) (store.Room, error) {
 	return r, err
 }
 
+// Played is a song the room played, and how it ended.
+type Played struct {
+	Item      store.QueueItem
+	StartedAt time.Time
+	EndedAt   time.Time
+	EndReason string
+}
+
+// History returns up to limit songs the room finished playing, newest
+// first. The song playing now isn't one until it ends.
+func (s *Service) History(ctx context.Context, id string, limit int) ([]Played, error) {
+	if _, err := s.Get(ctx, id); err != nil {
+		return nil, err
+	}
+	// One extra, for the play still in progress.
+	rows, err := s.db.ListHistory(ctx, store.ListHistoryParams{RoomID: id, Limit: int64(limit) + 1})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Played, 0, len(rows))
+	for _, r := range rows {
+		if !r.PlayHistory.EndedAt.Valid || len(out) == limit {
+			continue
+		}
+		out = append(out, Played{
+			Item: r.QueueItem, StartedAt: r.PlayHistory.StartedAt,
+			EndedAt: r.PlayHistory.EndedAt.Time, EndReason: r.PlayHistory.EndReason.String,
+		})
+	}
+	return out, nil
+}
+
 // QueueSnapshot reads a room's queue and its version together.
 func (s *Service) QueueSnapshot(ctx context.Context, id string) (QueueSnapshot, error) {
 	var snap QueueSnapshot

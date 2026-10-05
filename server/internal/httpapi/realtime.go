@@ -252,7 +252,7 @@ func toQueueItem(it store.QueueItem) QueueItem {
 		slog.Warn("queue item has unreadable metadata", "item", it.ID, "err", err)
 	}
 	track := QueuedTrack{
-		Provider: it.Provider, TrackId: it.TrackID, Title: t.Title, Artists: []string{},
+		Provider: it.Provider, TrackId: it.TrackID, Title: t.Title, Artists: []string{}, ArtistIds: &[]string{},
 		DurationMs: t.Duration.Milliseconds(), Explicit: t.Explicit,
 	}
 	if it.LinkID.Valid {
@@ -260,9 +260,13 @@ func toQueueItem(it store.QueueItem) QueueItem {
 	}
 	for _, a := range t.Artists {
 		track.Artists = append(track.Artists, a.Name)
+		*track.ArtistIds = append(*track.ArtistIds, a.ID)
 	}
 	if t.Album.Title != "" {
 		track.Album = &t.Album.Title
+	}
+	if t.Album.ID != "" {
+		track.AlbumId = &t.Album.ID
 	}
 	if t.Artwork != "" {
 		track.Artwork = ptr(string(t.Artwork))

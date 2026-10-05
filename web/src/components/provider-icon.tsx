@@ -1,16 +1,9 @@
-import { AudioLines, FlaskConical, Music, Server } from 'lucide-react'
+import { providerLook } from '@/lib/services'
 import { cn } from '@/lib/utils'
-
-// Keyed by ProviderInfo.icon. Unknown providers get a generic note.
-const icons: Record<string, { icon: typeof Music; color: string }> = {
-  navidrome: { icon: Server, color: '#3b82f6' },
-  spotify: { icon: AudioLines, color: '#1db954' },
-  fake: { icon: FlaskConical, color: '#a855f7' },
-}
 
 /** A provider's badge: its glyph on a tile in its brand color. */
 export function ProviderIcon({ icon, className }: { icon: string; className?: string }) {
-  const { icon: Icon, color } = icons[icon] ?? { icon: Music, color: 'var(--primary)' }
+  const { icon: Icon, color } = providerLook(icon)
   return (
     <span
       aria-hidden

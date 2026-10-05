@@ -16,6 +16,13 @@ export const playbackQuery = (roomId: string) =>
     queryFn: () => unwrap(api.GET('/rooms/{roomId}/playback', { params: { path: { roomId } } })),
   })
 
+/** Songs the room played recently, newest first. Refetch when the song changes. */
+export const historyQuery = (roomId: string) =>
+  queryOptions({
+    queryKey: ['history', roomId],
+    queryFn: () => unwrap(api.GET('/rooms/{roomId}/history', { params: { path: { roomId }, query: { limit: 20 } } })),
+  })
+
 export function sendCommand(roomId: string, body: PlaybackCommand) {
   return unwrap(api.POST('/rooms/{roomId}/playback', { params: { path: { roomId } }, body }))
 }
@@ -52,6 +59,8 @@ export function songsBeforeYours(upNext: string[], items: QueueItem[], userId: s
 export function toNowPlaying(roomId: string, p: Playback, users: NowPlaying['requester'][] | undefined): NowPlaying | null {
   if (!p.item) return null
   return {
+    roomId,
+    itemId: p.item.id,
     track: p.item.track,
     artworkUrl: queueArtworkUrl(roomId, p.item, 600),
     requester: users?.find((u) => u?.id === p.item?.addedBy),

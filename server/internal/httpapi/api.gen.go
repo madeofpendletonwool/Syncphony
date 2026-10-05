@@ -138,6 +138,30 @@ func (e PlaybackState) Valid() bool {
 	}
 }
 
+// Defines values for PlayedItemEndReason.
+const (
+	PlayedItemEndReasonError    PlayedItemEndReason = "error"
+	PlayedItemEndReasonFinished PlayedItemEndReason = "finished"
+	PlayedItemEndReasonRemoved  PlayedItemEndReason = "removed"
+	PlayedItemEndReasonSkipped  PlayedItemEndReason = "skipped"
+)
+
+// Valid indicates whether the value is a known member of the PlayedItemEndReason enum.
+func (e PlayedItemEndReason) Valid() bool {
+	switch e {
+	case PlayedItemEndReasonError:
+		return true
+	case PlayedItemEndReasonFinished:
+		return true
+	case PlayedItemEndReasonRemoved:
+		return true
+	case PlayedItemEndReasonSkipped:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PlayerReportEvent.
 const (
 	PlayerReportEventEnded    PlayerReportEvent = "ended"
@@ -621,6 +645,17 @@ type PlaybackNotice struct {
 // speaker to start the song.
 type PlaybackState string
 
+// PlayedItem defines model for PlayedItem.
+type PlayedItem struct {
+	EndReason PlayedItemEndReason `json:"endReason"`
+	EndedAt   time.Time           `json:"endedAt"`
+	Item      QueueItem           `json:"item"`
+	StartedAt time.Time           `json:"startedAt"`
+}
+
+// PlayedItemEndReason defines model for PlayedItem.EndReason.
+type PlayedItemEndReason string
+
 // Player The device a room plays through.
 type Player struct {
 	DeviceId string    `json:"deviceId"`
@@ -712,11 +747,18 @@ type QueueSnapshot struct {
 
 // QueuedTrack The track as it was when queued; still shown if its service is offline.
 type QueuedTrack struct {
-	Album      *string  `json:"album,omitempty"`
-	Artists    []string `json:"artists"`
-	Artwork    *string  `json:"artwork,omitempty"`
-	DurationMs int64    `json:"durationMs"`
-	Explicit   bool     `json:"explicit"`
+	Album *string `json:"album,omitempty"`
+
+	// AlbumId The provider's album ID within `linkId`, if known.
+	AlbumId *string `json:"albumId,omitempty"`
+
+	// ArtistIds The provider's ID for each of `artists`, in the same order, within
+	// `linkId`. Empty where the provider didn't say.
+	ArtistIds  *[]string `json:"artistIds,omitempty"`
+	Artists    []string  `json:"artists"`
+	Artwork    *string   `json:"artwork,omitempty"`
+	DurationMs int64     `json:"durationMs"`
+	Explicit   bool      `json:"explicit"`
 
 	// LinkId Absent if the link was removed; the track can't play then.
 	LinkId   *string `json:"linkId,omitempty"`
@@ -920,6 +962,11 @@ type RenamePasskeyJSONBody struct {
 	Name string `json:"name"`
 }
 
+// GetHistoryParams defines parameters for GetHistory.
+type GetHistoryParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ReleasePlayerParams defines parameters for ReleasePlayer.
 type ReleasePlayerParams struct {
 	DeviceId string `form:"deviceId" json:"deviceId"`
@@ -1116,6 +1163,9 @@ type ServerInterface interface {
 	// UpdateRoom Change a room you own
 	// (PATCH /rooms/{roomId})
 	UpdateRoom(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// GetHistory Songs the room played recently, newest first
+	// (GET /rooms/{roomId}/history)
+	GetHistory(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetHistoryParams)
 	// GetPlayback What the room is playing
 	// (GET /rooms/{roomId}/playback)
 	GetPlayback(w http.ResponseWriter, r *http.Request, roomId RoomId)
@@ -1880,6 +1930,48 @@ func (siw *ServerInterfaceWrapper) UpdateRoom(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// GetHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetHistory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetHistoryParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHistory(w, r, roomId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetPlayback operation middleware
 func (siw *ServerInterfaceWrapper) GetPlayback(w http.ResponseWriter, r *http.Request) {
 
@@ -2499,6 +2591,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artwork", wrapper.GetLinkArtwork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.GetQueue)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.AddToQueue)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/history", wrapper.GetHistory)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.RemoveQueueItem)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.MoveQueueItem)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/artwork", wrapper.GetQueueItemArtwork)
@@ -3844,6 +3937,46 @@ func (response UpdateRoomdefaultJSONResponse) VisitUpdateRoomResponse(w http.Res
 	return err
 }
 
+type GetHistoryRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Params GetHistoryParams
+}
+
+type GetHistoryResponseObject interface {
+	VisitGetHistoryResponse(w http.ResponseWriter) error
+}
+
+type GetHistory200JSONResponse []PlayedItem
+
+func (response GetHistory200JSONResponse) VisitGetHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHistorydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetHistorydefaultJSONResponse) VisitGetHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPlaybackRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 }
@@ -4504,6 +4637,9 @@ type StrictServerInterface interface {
 	// UpdateRoom Change a room you own
 	// (PATCH /rooms/{roomId})
 	UpdateRoom(ctx context.Context, request UpdateRoomRequestObject) (UpdateRoomResponseObject, error)
+	// GetHistory Songs the room played recently, newest first
+	// (GET /rooms/{roomId}/history)
+	GetHistory(ctx context.Context, request GetHistoryRequestObject) (GetHistoryResponseObject, error)
 	// GetPlayback What the room is playing
 	// (GET /rooms/{roomId}/playback)
 	GetPlayback(ctx context.Context, request GetPlaybackRequestObject) (GetPlaybackResponseObject, error)
@@ -5549,6 +5685,33 @@ func (sh *strictHandler) UpdateRoom(w http.ResponseWriter, r *http.Request, room
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateRoomResponseObject); ok {
 		if err := validResponse.VisitUpdateRoomResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetHistory operation middleware
+func (sh *strictHandler) GetHistory(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetHistoryParams) {
+	var request GetHistoryRequestObject
+
+	request.RoomId = roomId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetHistory(ctx, request.(GetHistoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetHistory")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetHistoryResponseObject); ok {
+		if err := validResponse.VisitGetHistoryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

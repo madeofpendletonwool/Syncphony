@@ -159,6 +159,15 @@ func TestPlaybackAPI(t *testing.T) {
 	if notice.ItemId == nil || *notice.ItemId != item || !strings.Contains(notice.Message, "Reference Tone") {
 		t.Fatalf("notice: %+v", notice)
 	}
+	// History has the failed song, not the one now playing.
+	var hist []httpapi.PlayedItem
+	bob.want(http.StatusOK, "GET", base+"/history", nil).decode(t, &hist)
+	if len(hist) != 1 || hist[0].Item.Id != item || hist[0].EndReason != httpapi.PlayedItemEndReasonError || hist[0].Item.AddedBy != me(t, alice).Id {
+		t.Fatalf("history: %+v", hist)
+	}
+	if r := bob.do("GET", "/rooms/nope/history", nil); r.status != http.StatusNotFound {
+		t.Errorf("history of a missing room: %d", r.status)
+	}
 	// It already played, so it can't be streamed any more.
 	if r := alice.do("GET", base+"/stream/"+item, nil); r.status != http.StatusConflict || r.code() != "not_streamable" {
 		t.Errorf("stream an old song: %d %s", r.status, r.body)

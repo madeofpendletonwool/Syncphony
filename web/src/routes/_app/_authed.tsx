@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Outlet, redirect, useRouter } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { RoomLive } from '@/components/room-live'
+import { PageTransition } from '@/components/shell/app-shell'
 import { meQuery } from '@/lib/auth'
 
 export const Route = createFileRoute('/_app/_authed')({
@@ -24,7 +25,9 @@ function Authed() {
   return (
     <>
       <RoomLive />
-      <Outlet />
+      <PageTransition>
+        <Outlet />
+      </PageTransition>
     </>
   )
 }

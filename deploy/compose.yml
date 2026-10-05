@@ -2,6 +2,10 @@
 #
 #   SYNCPHONY_BASE_URL=https://syncphony.example.com docker compose -f deploy/compose.yml up -d
 #
+# `docker compose pull` fetches the published image. To test local changes
+# instead, `docker compose -f deploy/compose.yml up -d --build` builds it from
+# this checkout under the same tag; `pull` again to go back.
+#
 # Already have a reverse proxy (Traefik, nginx, NPM...)? Point it at port 8080.
 # Want this file to handle HTTPS too? Add `--profile caddy`. Caddy gets a
 # certificate for the host in SYNCPHONY_BASE_URL automatically.
@@ -9,10 +13,15 @@ name: syncphony
 
 services:
   syncphony:
-    image: ghcr.io/madeofpendletonwool/syncphony:${SYNCPHONY_TAG:-latest}
+    image: ghcr.io/madeofpendletonwool/syncphony:${SYNCPHONY_TAG:-main}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        VERSION: ${SYNCPHONY_VERSION:-local}
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8054:8080"
     environment:
       # The public URL people (and OAuth redirects) use to reach Syncphony.
       SYNCPHONY_BASE_URL: ${SYNCPHONY_BASE_URL:-http://localhost:8080}

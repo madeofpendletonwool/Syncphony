@@ -372,7 +372,7 @@ class Speaker {
       this.apply(np)
     } catch {
       this.halt()
-      toast({ message: 'This phone stopped being the speaker.', tone: 'error' })
+      toast({ message: 'This device stopped being the speaker.', tone: 'error' })
     } finally {
       this.reclaiming = false
     }

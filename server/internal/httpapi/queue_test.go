@@ -61,6 +61,10 @@ func TestQueueAPI(t *testing.T) {
 	if snap.Version != 2 {
 		t.Errorf("version %d, want 2", snap.Version)
 	}
+	// Queued songs keep their album and artist IDs, for browsing to them.
+	if tr := snap.Items[0].Track; tr.AlbumId == nil || *tr.AlbumId == "" || tr.ArtistIds == nil || len(*tr.ArtistIds) != len(tr.Artists) || (*tr.ArtistIds)[0] == "" {
+		t.Errorf("queued track IDs: %+v", tr)
+	}
 	// Bob's socket sees each change, with the order.
 	var pushed httpapi.QueueSnapshot
 	sock.await("queue.updated", &pushed)

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { MonitorSmartphone, Speaker, Volume2 } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState } from 'react'
+import { Equalizer } from '@/components/equalizer'
 import { Button } from '@/components/ui/button'
 import { useMe } from '@/lib/auth'
 import { canControl, playbackQuery } from '@/lib/playback'
@@ -23,6 +24,7 @@ export function SpeakerPanel({ room, prominent }: { room: Room; prominent?: bool
   const here = state.roomId === room.id && state.status !== 'off'
   const other = playback.data?.player
   const allowed = canControl(room, me.id)
+  const thisDevice = deviceNoun()
 
   const start = () => {
     setStarting(true)
@@ -39,19 +41,15 @@ export function SpeakerPanel({ room, prominent }: { room: Room; prominent?: bool
           </Button>
         )}
         <div className="flex items-center gap-3 rounded-2xl bg-primary/12 p-3">
-          <span className="relative grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
-            <Speaker className="size-5" />
-            {state.status === 'playing' && (
-              <motion.span
-                aria-hidden
-                className="absolute inset-0 rounded-xl ring-2 ring-primary"
-                animate={{ scale: [1, 1.35], opacity: [0.7, 0] }}
-                transition={{ duration: 1.4, repeat: Infinity, ease: 'easeOut' }}
-              />
+          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
+            {state.status === 'playing' || state.status === 'paused' ? (
+              <Equalizer playing={state.status === 'playing'} />
+            ) : (
+              <Speaker className="size-5" />
             )}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">This phone is the speaker</p>
+            <p className="text-sm font-medium">This {thisDevice} is the speaker</p>
             <p className="text-caption text-muted-foreground">
               {state.status === 'remote'
                 ? 'This song plays on its own service'
@@ -96,10 +94,10 @@ export function SpeakerPanel({ room, prominent }: { room: Room; prominent?: bool
         className={cn(prominent && 'w-full')}
       >
         <Speaker data-icon="inline-start" />
-        {other ? 'Play on this phone instead' : 'Play on this phone'}
+        {other ? `Play on this ${thisDevice} instead` : `Play on this ${thisDevice}`}
       </Button>
       <p className="text-caption text-muted-foreground">
-        {other ? `Playing on ${other.name}` : 'Use the phone connected to the speaker'}
+        {other ? `Playing on ${other.name}` : 'Use the device connected to the speaker'}
       </p>
     </div>
   )
@@ -125,4 +123,12 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (on:
       />
     </button>
   )
+}
+
+/** What to call this device in "play on this …". */
+function deviceNoun() {
+  const name = deviceName()
+  if (name === 'iPhone' || name === 'Android') return 'phone'
+  if (name === 'iPad') return 'tablet'
+  return 'device'
 }

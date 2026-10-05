@@ -1,8 +1,10 @@
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, ListMusic } from 'lucide-react'
 import { AnimatePresence, motion, useDragControls } from 'motion/react'
 import { Dialog } from 'radix-ui'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Artwork } from '@/components/artwork'
+import { ServiceTag } from '@/components/service-tag'
+import { AlbumLink, ArtistLinks } from '@/components/track-credits'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
@@ -13,14 +15,20 @@ import { easeOutExpo, spring } from '@/lib/motion'
 import { formatDuration, usePlayer } from '@/lib/now-playing'
 import { AlbumBackdrop } from './album-backdrop'
 import { TransportControls } from './player-controls'
+import { SheetQueue } from './sheet-queue'
 
-/** Full-screen now playing. Swipe down or press Escape to close. */
+/**
+ * Full-screen now playing, with the room's queue below (beside, on wide
+ * screens). Swipe down or press Escape to close.
+ */
 export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { nowPlaying: np, commands } = usePlayer()
   const position = usePosition(np)
   const drag = useDragControls()
   // While scrubbing, show the thumb where the finger is, not the live position.
   const [scrub, setScrub] = useState<number>()
+  const queueRef = useRef<HTMLElement>(null)
+  const close = () => onOpenChange(false)
 
   return (
     <Dialog.Root open={open && np !== null} onOpenChange={onOpenChange}>
@@ -66,62 +74,90 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
                   <span className="size-10" />
                 </div>
 
-                <div
-                  onPointerDown={(e) => drag.start(e)}
-                  className="flex flex-1 touch-none items-center justify-center px-8 py-4"
-                >
-                  <Artwork
-                    src={np.artworkUrl}
-                    alt={np.track.album ? `${np.track.album} cover` : ''}
-                    layoutId="now-playing-artwork"
-                    className="w-full max-w-[min(26rem,52dvh)] rounded-3xl shadow-[0_30px_80px_-20px_var(--glow)]"
-                  />
-                </div>
-
-                <div className="pb-safe mx-auto w-full max-w-xl px-gutter">
-                  <motion.div
-                    key={np.track.trackId}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={spring}
-                    className="flex items-end justify-between gap-4"
-                  >
-                    <div className="min-w-0">
-                      <Dialog.Title className="truncate text-title">{np.track.title}</Dialog.Title>
-                      <p className="truncate text-headline font-normal text-muted-foreground">
-                        {np.track.artists.join(', ')}
-                      </p>
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:overflow-hidden">
+                  <div className="flex min-h-full flex-col lg:min-h-0 lg:overflow-y-auto">
+                    <div
+                      onPointerDown={(e) => drag.start(e)}
+                      className="flex flex-1 touch-none items-center justify-center px-8 py-4"
+                    >
+                      <Artwork
+                        src={np.artworkUrl}
+                        alt={np.track.album ? `${np.track.album} cover` : ''}
+                        layoutId="now-playing-artwork"
+                        className="w-full max-w-[min(26rem,46dvh)] rounded-3xl shadow-[0_30px_80px_-20px_var(--glow)]"
+                      />
                     </div>
-                    {np.requester && (
-                      <Badge variant="lane" style={laneStyle(np.requester.color)} className="gap-1.5 py-1 pl-1">
-                        <UserAvatar user={np.requester} className="size-5 text-[0.6rem]" />
-                        {np.requester.displayName}
-                      </Badge>
-                    )}
-                  </motion.div>
 
-                  <div className="mt-6">
-                    <Slider
-                      aria-label="Seek"
-                      max={np.track.durationMs}
-                      step={1000}
-                      value={[scrub ?? position]}
-                      disabled={!commands.seek}
-                      onValueChange={([v]) => setScrub(v)}
-                      onValueCommit={([v]) => {
-                        commands.seek?.(v)
-                        setScrub(undefined)
-                      }}
+                    <div className="mx-auto w-full max-w-xl px-gutter">
+                      <motion.div
+                        key={np.track.trackId}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={spring}
+                        className="min-w-0"
+                      >
+                        <Dialog.Title className="line-clamp-2 text-title">{np.track.title}</Dialog.Title>
+                        <ArtistLinks
+                          track={np.track}
+                          onNavigate={close}
+                          className="line-clamp-1 text-headline font-normal text-muted-foreground"
+                        />
+                        <AlbumLink track={np.track} onNavigate={close} className="line-clamp-1 text-sm text-muted-foreground/80" />
+                        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                          {np.requester && (
+                            <Badge variant="lane" style={laneStyle(np.requester.color)} className="gap-1.5 py-1 pl-1">
+                              <UserAvatar user={np.requester} className="size-5 text-[0.6rem]" />
+                              Added by {np.requester.displayName}
+                            </Badge>
+                          )}
+                          <ServiceTag provider={np.track.provider} className="py-1" />
+                        </div>
+                      </motion.div>
+
+                      <div className="mt-5">
+                        <Slider
+                          aria-label="Seek"
+                          max={np.track.durationMs}
+                          step={1000}
+                          value={[scrub ?? position]}
+                          disabled={!commands.seek}
+                          onValueChange={([v]) => setScrub(v)}
+                          onValueCommit={([v]) => {
+                            commands.seek?.(v)
+                            setScrub(undefined)
+                          }}
+                        />
+                        <div className="flex justify-between text-caption text-muted-foreground tabular-nums">
+                          <span>{formatDuration(scrub ?? position)}</span>
+                          <span>-{formatDuration(np.track.durationMs - (scrub ?? position))}</span>
+                        </div>
+                      </div>
+
+                      <div className="py-6">
+                        <TransportControls paused={np.paused} commands={commands} />
+                      </div>
+
+                      {np.roomId && (
+                        <button
+                          type="button"
+                          onClick={() => queueRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                          className="mx-auto mb-[calc(env(safe-area-inset-bottom)+0.75rem)] flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 lg:hidden"
+                        >
+                          <ListMusic className="size-4" />
+                          Queue
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {np.roomId && (
+                    <SheetQueue
+                      ref={queueRef}
+                      roomId={np.roomId}
+                      itemId={np.itemId}
+                      className="mx-auto w-full max-w-xl scroll-mt-2 lg:max-w-none lg:overflow-y-auto lg:pt-4"
                     />
-                    <div className="flex justify-between text-caption text-muted-foreground tabular-nums">
-                      <span>{formatDuration(scrub ?? position)}</span>
-                      <span>-{formatDuration(np.track.durationMs - (scrub ?? position))}</span>
-                    </div>
-                  </div>
-
-                  <div className="py-8">
-                    <TransportControls paused={np.paused} commands={commands} />
-                  </div>
+                  )}
                 </div>
               </motion.div>
             </Dialog.Content>

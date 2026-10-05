@@ -15,7 +15,7 @@ import { usersQuery } from '@/lib/users'
  */
 export function RoomLive() {
   const me = useMe()
-  const { room } = useCurrentRoom()
+  const { room, rooms } = useCurrentRoom()
   useRoomSocket(room?.id)
   const playback = useQuery({ ...playbackQuery(room?.id ?? ''), enabled: !!room })
   const users = useQuery(usersQuery)
@@ -28,9 +28,10 @@ export function RoomLive() {
     speaker.onState = (np) => queryClient.setQueryData(playbackQuery(np.roomId).queryKey, (old) => newer(old, np))
   }, [queryClient])
   useEffect(() => speaker.apply(playback.data), [playback.data])
+  // Switching rooms, or leaving, stops playing the old one here.
   useEffect(() => {
-    if (speaker.active && room && speakerRoom() !== room.id) void speaker.stop()
-  }, [room])
+    if (speaker.active && rooms.isSuccess && speakerRoom() !== room?.id) void speaker.stop()
+  }, [room, rooms.isSuccess])
   // Signing out stops the speaker.
   useEffect(() => () => void speaker.stop(), [])
 

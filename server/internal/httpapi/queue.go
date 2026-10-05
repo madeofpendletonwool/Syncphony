@@ -47,3 +47,23 @@ func (s *Server) RemoveQueueItem(ctx context.Context, req RemoveQueueItemRequest
 	}
 	return RemoveQueueItem200JSONResponse(toQueueSnapshot(snap)), nil
 }
+
+// GetHistory returns the songs a room played recently.
+func (s *Server) GetHistory(ctx context.Context, req GetHistoryRequestObject) (GetHistoryResponseObject, error) {
+	limit := 20
+	if req.Params.Limit != nil {
+		limit = min(max(*req.Params.Limit, 1), 100)
+	}
+	ps, err := s.Rooms.History(ctx, req.RoomId, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make(GetHistory200JSONResponse, len(ps))
+	for i, p := range ps {
+		out[i] = PlayedItem{
+			Item: toQueueItem(p.Item), StartedAt: p.StartedAt, EndedAt: p.EndedAt,
+			EndReason: PlayedItemEndReason(p.EndReason),
+		}
+	}
+	return out, nil
+}

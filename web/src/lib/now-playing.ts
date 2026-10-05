@@ -10,6 +10,9 @@ export type User = components['schemas']['User']
  * socket; the shell only renders it.
  */
 export type NowPlaying = {
+  /** The room and queue item playing; absent in the design demo. */
+  roomId?: string
+  itemId?: string
   track: Track
   /** A URL the browser can load; Track.artwork is a provider ref. */
   artworkUrl?: string
