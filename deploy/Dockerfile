@@ -18,9 +18,12 @@ COPY server/ ./
 COPY --from=web /src/web/dist/ ./internal/webui/dist/
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/syncphony ./cmd/syncphony
+# An empty /data owned by nonroot, so a fresh volume mounted there is writable.
+RUN mkdir -p /out/data
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=server /out/syncphony /usr/local/bin/syncphony
+COPY --from=server --chown=nonroot:nonroot /out/data /data
 ENV SYNCPHONY_ADDR=:8080 \
     SYNCPHONY_DATA_DIR=/data
 VOLUME /data
