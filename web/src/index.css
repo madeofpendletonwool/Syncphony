@@ -160,14 +160,12 @@
   background-color: var(--glass);
   border: 1px solid var(--glass-border);
   backdrop-filter: blur(28px) saturate(170%);
-  -webkit-backdrop-filter: blur(28px) saturate(170%);
 }
 
 @utility glass-strong {
   background-color: var(--glass-strong);
   border: 1px solid var(--glass-border);
   backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
 }
 
 @utility pb-safe {
