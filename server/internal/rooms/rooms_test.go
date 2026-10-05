@@ -28,7 +28,7 @@ func TestUnknownRoom(t *testing.T) {
 	if _, err := s.QueueSnapshot(t.Context(), "nope"); !errors.Is(err, rooms.ErrNotFound) {
 		t.Errorf("QueueSnapshot: %v", err)
 	}
-	if err := s.QueueChanged(t.Context(), "nope"); !errors.Is(err, rooms.ErrNotFound) {
+	if _, err := s.QueueChanged(t.Context(), "nope"); !errors.Is(err, rooms.ErrNotFound) {
 		t.Errorf("QueueChanged: %v", err)
 	}
 	select {

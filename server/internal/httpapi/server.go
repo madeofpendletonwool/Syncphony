@@ -20,6 +20,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
+	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 )
@@ -35,6 +36,7 @@ type Server struct {
 	Links   *links.Service
 	// Realtime: room state, the event bus, and who's connected.
 	Rooms    *rooms.Service
+	Queue    *queue.Service
 	Bus      realtime.Bus
 	Presence *realtime.Presence
 	// PingEvery is how often room sockets are pinged and their session
@@ -230,7 +232,10 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var invalid *auth.InvalidInputError
 	var invalidField *links.InvalidInputError
 	var limited *auth.RateLimitError
+	var invalidQueue *queue.InvalidInputError
 	switch {
+	case errors.As(err, &invalidQueue):
+		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidQueue.Error())
 	case errors.As(err, &invalid):
 		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalid.Error())
 	case errors.As(err, &invalidField):
@@ -271,6 +276,10 @@ var errorCodes = []struct {
 	{links.ErrWrongMethod, http.StatusBadRequest, "wrong_link_method"},
 	{links.ErrDifferentAccount, http.StatusConflict, "different_account"},
 	{links.ErrOAuthState, http.StatusBadRequest, "oauth_state"},
+	{rooms.ErrNotFound, http.StatusNotFound, "not_found"},
+	{queue.ErrNotFound, http.StatusNotFound, "not_found"},
+	{queue.ErrForbidden, http.StatusForbidden, "forbidden"},
+	{queue.ErrNotQueued, http.StatusConflict, "not_queued"},
 	// Errors from a service, while linking or using a link.
 	{provider.ErrInvalidCredentials, http.StatusBadRequest, "service_rejected_credentials"},
 	{provider.ErrAuthExpired, http.StatusConflict, "needs_relink"},

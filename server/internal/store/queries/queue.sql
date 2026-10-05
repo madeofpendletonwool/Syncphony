@@ -43,3 +43,25 @@ JOIN queue_items ON queue_items.id = play_history.queue_item_id
 WHERE play_history.room_id = ?
 ORDER BY play_history.started_at DESC
 LIMIT ?;
+
+-- ListLane returns one user's queued items in a room, in lane order.
+-- name: ListLane :many
+SELECT * FROM queue_items
+WHERE room_id = ? AND added_by = ? AND state = 'queued'
+ORDER BY lane_position, added_at;
+
+-- LastPlayedByUser is when each user's most recent song started in a room,
+-- for the fairness engine. It selects the column itself, not max(), so the
+-- driver still knows it's a timestamp.
+-- name: LastPlayedByUser :many
+SELECT queue_items.added_by AS user_id, play_history.started_at
+FROM play_history
+JOIN queue_items ON queue_items.id = play_history.queue_item_id
+WHERE play_history.room_id = sqlc.arg(room_id)
+  AND NOT EXISTS (
+    SELECT 1 FROM play_history AS later
+    JOIN queue_items AS later_item ON later_item.id = later.queue_item_id
+    WHERE later.room_id = play_history.room_id
+      AND later_item.added_by = queue_items.added_by
+      AND later.started_at > play_history.started_at
+  );

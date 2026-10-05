@@ -265,6 +265,32 @@ func TestQueue(t *testing.T) {
 	if len(hist) != 1 || hist[0].QueueItem.ID != items[0].ID || hist[0].PlayHistory.EndReason.String != store.EndFinished {
 		t.Fatalf("history: %+v", hist)
 	}
+
+	// Alice's lane no longer has the playing item.
+	lane, err := s.ListLane(ctx, store.ListLaneParams{RoomID: room.ID, AddedBy: alice.ID})
+	if err != nil || len(lane) != 1 || lane[0].ID != items[1].ID {
+		t.Fatalf("ListLane = %v, %v", lane, err)
+	}
+
+	// The latest play per user.
+	later := h.StartedAt.Add(time.Minute)
+	if _, err := s.StartPlay(ctx, store.StartPlayParams{ID: store.NewID(), RoomID: room.ID, QueueItemID: items[2].ID, StartedAt: h.StartedAt.Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.StartPlay(ctx, store.StartPlayParams{ID: store.NewID(), RoomID: room.ID, QueueItemID: items[1].ID, StartedAt: later}); err != nil {
+		t.Fatal(err)
+	}
+	last, err := s.LastPlayedByUser(ctx, room.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]time.Time{}
+	for _, r := range last {
+		got[r.UserID] = r.StartedAt
+	}
+	if len(got) != 2 || !got[alice.ID].Equal(later) || !got[bob.ID].Equal(h.StartedAt.Add(-time.Hour)) {
+		t.Fatalf("LastPlayedByUser = %v", last)
+	}
 }
 
 func TestTx(t *testing.T) {

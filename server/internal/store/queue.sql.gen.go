@@ -119,6 +119,51 @@ func (q *Queries) GetQueueItem(ctx context.Context, id string) (QueueItem, error
 	return i, err
 }
 
+const lastPlayedByUser = `-- name: LastPlayedByUser :many
+SELECT queue_items.added_by AS user_id, play_history.started_at
+FROM play_history
+JOIN queue_items ON queue_items.id = play_history.queue_item_id
+WHERE play_history.room_id = ?1
+  AND NOT EXISTS (
+    SELECT 1 FROM play_history AS later
+    JOIN queue_items AS later_item ON later_item.id = later.queue_item_id
+    WHERE later.room_id = play_history.room_id
+      AND later_item.added_by = queue_items.added_by
+      AND later.started_at > play_history.started_at
+  )
+`
+
+type LastPlayedByUserRow struct {
+	UserID    string
+	StartedAt time.Time
+}
+
+// LastPlayedByUser is when each user's most recent song started in a room,
+// for the fairness engine. It selects the column itself, not max(), so the
+// driver still knows it's a timestamp.
+func (q *Queries) LastPlayedByUser(ctx context.Context, roomID string) ([]LastPlayedByUserRow, error) {
+	rows, err := q.db.QueryContext(ctx, lastPlayedByUser, roomID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LastPlayedByUserRow{}
+	for rows.Next() {
+		var i LastPlayedByUserRow
+		if err := rows.Scan(&i.UserID, &i.StartedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listHistory = `-- name: ListHistory :many
 SELECT play_history.id, play_history.room_id, play_history.queue_item_id, play_history.started_at, play_history.ended_at, play_history.end_reason, queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at
 FROM play_history
@@ -165,6 +210,53 @@ func (q *Queries) ListHistory(ctx context.Context, arg ListHistoryParams) ([]Lis
 			&i.QueueItem.LanePosition,
 			&i.QueueItem.AddedAt,
 			&i.QueueItem.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLane = `-- name: ListLane :many
+SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at FROM queue_items
+WHERE room_id = ? AND added_by = ? AND state = 'queued'
+ORDER BY lane_position, added_at
+`
+
+type ListLaneParams struct {
+	RoomID  string
+	AddedBy string
+}
+
+// ListLane returns one user's queued items in a room, in lane order.
+func (q *Queries) ListLane(ctx context.Context, arg ListLaneParams) ([]QueueItem, error) {
+	rows, err := q.db.QueryContext(ctx, listLane, arg.RoomID, arg.AddedBy)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []QueueItem{}
+	for rows.Next() {
+		var i QueueItem
+		if err := rows.Scan(
+			&i.ID,
+			&i.RoomID,
+			&i.AddedBy,
+			&i.Provider,
+			&i.LinkID,
+			&i.TrackID,
+			&i.Metadata,
+			&i.State,
+			&i.LanePosition,
+			&i.AddedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
