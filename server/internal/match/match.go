@@ -101,8 +101,7 @@ func (s *Service) name(providerID string) string {
 	return providerID
 }
 
-// search finds want's best match on one link: by title and artist first,
-// then by title alone, since services search differently.
+// search finds want's best match on one link.
 func (s *Service) search(ctx context.Context, linkID string, want provider.Track) (provider.Track, float64, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.Timeout)
 	defer cancel()
@@ -111,6 +110,13 @@ func (s *Service) search(ctx context.Context, linkID string, want provider.Track
 		return provider.Track{}, 0, err
 	}
 	defer sess.Close()
+	return On(ctx, sess, want)
+}
+
+// On finds want's best match on one session, and its score (see Score):
+// 0 if there's none. It searches by title and artist first, then by title
+// alone, since services search differently.
+func On(ctx context.Context, sess provider.Session, want provider.Track) (provider.Track, float64, error) {
 	name := searchTitle(want.Title)
 	queries := []string{name}
 	if len(want.Artists) > 0 {

@@ -80,6 +80,9 @@ func Run(t *testing.T, h Harness) {
 	if s.info.Capabilities.Lyrics {
 		t.Run("Lyrics", s.testLyrics)
 	}
+	if s.info.Capabilities.Recommendations {
+		t.Run("Recommendations", s.testRecommendations)
+	}
 	t.Run("AuthExpired", s.testAuthExpired)
 }
 
@@ -195,10 +198,12 @@ func (s *suite) testCapabilities(t *testing.T) {
 	_, remote := sess.(provider.Remote)
 	_, playlists := sess.(provider.PlaylistLister)
 	_, lyrics := sess.(provider.Lyricist)
+	_, recommends := sess.(provider.Recommender)
 	check("Streamer", c.Playback == provider.PlaybackStream, streamer)
 	check("Remote", c.Playback == provider.PlaybackRemote, remote)
 	check("PlaylistLister", c.Playlists, playlists)
 	check("Lyricist", c.Lyrics, lyrics)
+	check("Recommender", c.Recommendations, recommends)
 }
 
 func (s *suite) testSearch(t *testing.T) {
@@ -594,6 +599,50 @@ func (s *suite) testLyrics(t *testing.T) {
 	}
 	if _, err := l.Lyrics(t.Context(), s.MissingID); !errors.Is(err, provider.ErrNotFound) {
 		t.Errorf("Lyrics(missing): got %v, want ErrNotFound", err)
+	}
+}
+
+func (s *suite) testRecommendations(t *testing.T) {
+	sess, link := s.open(t)
+	r := sess.(provider.Recommender)
+	ctx := t.Context()
+	seed := s.someTrack(t, sess)
+	const limit = 5
+	check := func(call string, ts []provider.Track, err error) {
+		t.Helper()
+		if err != nil {
+			t.Errorf("%s: %v", call, err)
+			return
+		}
+		if len(ts) > limit {
+			t.Errorf("%s: %d songs, want at most %d", call, len(ts), limit)
+		}
+		for _, tr := range ts {
+			s.checkTrack(t, tr, link)
+		}
+	}
+	ts, err := r.SimilarToTrack(ctx, seed.Ref.ID, limit)
+	check("SimilarToTrack", ts, err)
+	for _, tr := range ts {
+		if tr.Ref.ID == seed.Ref.ID {
+			t.Errorf("SimilarToTrack(%q) returned the seed", seed.Title)
+		}
+	}
+	if len(seed.Artists) > 0 {
+		if id := seed.Artists[0].ID; id != "" {
+			ts, err := r.SimilarToArtist(ctx, id, limit)
+			check("SimilarToArtist", ts, err)
+		}
+		ts, err := r.TopTracks(ctx, seed.Artists[0].Name, limit)
+		check("TopTracks", ts, err)
+	}
+	ts, err = r.RandomTracks(ctx, limit)
+	check("RandomTracks", ts, err)
+	if len(ts) == 0 {
+		t.Error("RandomTracks found nothing in a library with songs")
+	}
+	if _, err := r.SimilarToTrack(ctx, s.MissingID, limit); !errors.Is(err, provider.ErrNotFound) {
+		t.Errorf("SimilarToTrack(missing): got %v, want ErrNotFound", err)
 	}
 }
 

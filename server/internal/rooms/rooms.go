@@ -6,11 +6,13 @@
 package rooms
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -79,10 +81,29 @@ type Settings struct {
 	Permissions Permissions `json:"permissions"`
 	// SkipVotePercent: a skip vote passes once more than this percent of
 	// the room has voted (see VotesNeeded). 0 to 99.
-	SkipVotePercent *int     `json:"skipVotePercent,omitempty"`
-	Fairness        Fairness `json:"fairness"`
-	Matching        Matching `json:"matching"`
+	SkipVotePercent *int      `json:"skipVotePercent,omitempty"`
+	Fairness        Fairness  `json:"fairness"`
+	Matching        Matching  `json:"matching"`
+	Autopilot       Autopilot `json:"autopilot"`
 }
+
+// Autopilot keeps the music going when a room's queue runs dry, with
+// songs like the ones the room has been playing (see package autopilot).
+type Autopilot struct {
+	On bool `json:"on,omitempty"`
+	// Adventure is how far autopilot strays from the room's songs:
+	// AdventureSimilar (the default) or AdventureDiscovery.
+	Adventure string `json:"adventure,omitempty"`
+}
+
+// Autopilot adventure levels.
+const (
+	// AdventureSimilar plays songs close to the seed, its artist included.
+	AdventureSimilar = "similar"
+	// AdventureDiscovery plays other artists, reaching further down the
+	// list of similar songs.
+	AdventureDiscovery = "discovery"
+)
 
 // Matching says how a room uses the same song on other services (see
 // package match).
@@ -186,6 +207,9 @@ func ParseSettings(raw string) Settings {
 	if st.Fairness.validate() != nil {
 		st.Fairness = Fairness{}
 	}
+	if st.Autopilot.Adventure != AdventureDiscovery {
+		st.Autopilot.Adventure = AdventureSimilar
+	}
 	return st
 }
 
@@ -229,6 +253,8 @@ type Update struct {
 	Fairness *Fairness
 	// Matching, if set, replaces the room's matching options.
 	Matching *Matching
+	// Autopilot, if set, replaces the room's autopilot options.
+	Autopilot *Autopilot
 }
 
 // Update changes a room. Only its owner may. Everyone in the room hears
@@ -270,6 +296,9 @@ func (s *Service) Update(ctx context.Context, userID, id string, u Update) (stor
 	}
 	if u.Matching != nil {
 		st.Matching = *u.Matching
+	}
+	if u.Autopilot != nil {
+		st.Autopilot = *u.Autopilot
 	}
 	name, raw, err := validate(name, mode, st)
 	if err != nil {
@@ -322,6 +351,13 @@ func validate(name, mode string, st Settings) (string, string, error) {
 	if err := st.Fairness.validate(); err != nil {
 		return "", "", err
 	}
+	switch st.Autopilot.Adventure {
+	case "":
+		st.Autopilot.Adventure = AdventureSimilar
+	case AdventureSimilar, AdventureDiscovery:
+	default:
+		return "", "", &InvalidInputError{"autopilot's adventure is similar or discovery"}
+	}
 	st.Fairness.clean()
 	st.Controls = ""
 	raw, err := json.Marshal(st)
@@ -332,7 +368,7 @@ func ptr[T any](v T) *T { return &v }
 
 // QueueSnapshot is a room's queue at a version: the playing item and the
 // queued items, each user's lane in order, and the play order the room's
-// fairness policy makes of them.
+// fairness policy makes of them. Autopilot songs play after every member's.
 type QueueSnapshot struct {
 	RoomID  string
 	Version int64
@@ -513,18 +549,36 @@ func SnapshotTx(ctx context.Context, q *store.Queries, id string) (QueueSnapshot
 	fs := fairnessState(items, history)
 	fs.Recent = recent
 	order := fairness.ForMode(r.FairnessMode, opts).Order(fs)
-	upNext := make([]string, len(order))
+	upNext := make([]string, len(order), len(items))
 	for i, it := range order {
 		upNext[i] = it.ID
+	}
+	// Autopilot songs aren't in any lane: they wait behind everyone's, in
+	// the order autopilot added them, so a member's song always goes first.
+	var autopilot []store.QueueItem
+	for _, it := range items {
+		if it.State == store.ItemQueued && it.IsAutopilot() {
+			autopilot = append(autopilot, it)
+		}
+	}
+	slices.SortFunc(autopilot, func(a, b store.QueueItem) int {
+		return cmp.Or(a.AddedAt.Compare(b.AddedAt), cmp.Compare(a.ID, b.ID))
+	})
+	for _, it := range autopilot {
+		upNext = append(upNext, it.ID)
 	}
 	return QueueSnapshot{RoomID: id, Version: r.QueueVersion, Items: items, UpNext: upNext}, nil
 }
 
 // fairnessState builds the fairness engine's input from the upcoming items
 // (lanes in order, as ListUpcoming returns them) and each user's last play.
+// Autopilot songs are nobody's turn, so the engine doesn't see them.
 func fairnessState(items []store.QueueItem, history []store.LastPlayedByUserRow) fairness.State {
 	s := fairness.State{Lanes: map[string][]fairness.Item{}, LastPlayed: map[string]time.Time{}}
 	for _, it := range items {
+		if it.IsAutopilot() {
+			continue
+		}
 		switch it.State {
 		case store.ItemPlaying:
 			s.Playing = it.AddedBy

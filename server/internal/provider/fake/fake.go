@@ -94,13 +94,14 @@ func (p *Provider) Info() provider.Info {
 		Name: p.opts.Name,
 		Icon: "fake",
 		Capabilities: provider.Capabilities{
-			Playback:  p.opts.Playback,
-			Search:    []provider.EntityKind{provider.KindTrack, provider.KindAlbum, provider.KindArtist, provider.KindPlaylist},
-			Playlists: true,
-			Artwork:   true,
-			Lyrics:    true,
-			ISRC:      true,
-			Shareable: !p.opts.Private,
+			Playback:        p.opts.Playback,
+			Search:          []provider.EntityKind{provider.KindTrack, provider.KindAlbum, provider.KindArtist, provider.KindPlaylist},
+			Playlists:       true,
+			Artwork:         true,
+			Lyrics:          true,
+			Recommendations: true,
+			ISRC:            true,
+			Shareable:       !p.opts.Private,
 		},
 	}
 }

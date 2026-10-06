@@ -55,6 +55,8 @@ type Capabilities struct {
 	Artwork bool
 	// Lyrics means sessions implement Lyricist.
 	Lyrics bool
+	// Recommendations means sessions implement Recommender.
+	Recommendations bool
 	// ISRC means tracks carry ISRCs, for matching across services.
 	ISRC bool
 	// Shareable means a link's owner may let everyone on the server search

@@ -72,6 +72,12 @@ export function MiniPlayer({ expanded, onExpand }: { expanded: boolean; onExpand
                   </span>
                 </>
               )}
+              {np.autopilot && (
+                <>
+                  {' · '}
+                  <span className="text-primary">Autopilot</span>
+                </>
+              )}
             </p>
           </motion.div>
         </AnimatePresence>

@@ -18,6 +18,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
+	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
@@ -319,6 +320,9 @@ func toQueueItem(it store.QueueItem) QueueItem {
 	}
 	if it.ViaLinkID.Valid {
 		out.Via = &PlaysVia{Provider: it.ViaProvider.String, LinkId: it.ViaLinkID.String, TrackId: it.ViaTrackID.String}
+	}
+	if info, ok := queue.ParseAutopilot(it); ok {
+		out.Autopilot = &AutopilotPick{SeedItemId: nonEmpty(info.SeedItemID), SeedTitle: nonEmpty(info.SeedTitle), SeedArtist: nonEmpty(info.SeedArtist)}
 	}
 	if it.Palette.Valid {
 		var p palette.Palette

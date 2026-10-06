@@ -226,6 +226,67 @@ func (s *Service) Add(ctx context.Context, roomID, userID string, refs []TrackRe
 	return snap, err
 }
 
+// AutopilotInfo says why autopilot chose a song. It's stored with the item.
+type AutopilotInfo struct {
+	// SeedItemID is the item whose song it's like, if any. A song autopilot
+	// picked at random, to keep the music going, has none.
+	SeedItemID string `json:"seedItemId,omitempty"`
+	SeedTitle  string `json:"seedTitle,omitempty"`
+	SeedArtist string `json:"seedArtist,omitempty"`
+}
+
+// ParseAutopilot reads an autopilot item's info. ok is false for a
+// member's song.
+func ParseAutopilot(it store.QueueItem) (info AutopilotInfo, ok bool) {
+	if !it.IsAutopilot() {
+		return info, false
+	}
+	_ = json.Unmarshal([]byte(it.Autopilot.String), &info)
+	return info, true
+}
+
+// ErrNotDry is autopilot adding a song while members' songs, or another
+// autopilot song, are already waiting.
+var ErrNotDry = errors.New("the queue has songs waiting")
+
+// AddAutopilot queues a song autopilot chose, for forUser (whose taste
+// seeded it). It goes in nobody's lane and plays after every member's song.
+// It's ErrNotDry if anything is already waiting, and a *RepeatError if the
+// room's repeat guard refuses it.
+func (s *Service) AddAutopilot(ctx context.Context, roomID, forUser string, t provider.Track, info AutopilotInfo) (rooms.QueueSnapshot, error) {
+	meta, err := json.Marshal(t)
+	if err != nil {
+		return rooms.QueueSnapshot{}, err
+	}
+	why, err := json.Marshal(info)
+	if err != nil {
+		return rooms.QueueSnapshot{}, err
+	}
+	snap, err := s.Change(ctx, roomID, func(q *store.Queries, room store.Room) error {
+		items, err := q.ListUpcoming(ctx, roomID)
+		if err != nil {
+			return err
+		}
+		if slices.ContainsFunc(items, func(it store.QueueItem) bool { return it.State == store.ItemQueued }) {
+			return ErrNotDry
+		}
+		now := s.Now()
+		if _, err := s.withoutRepeats(ctx, q, room, []provider.Track{t}, now); err != nil {
+			return err
+		}
+		_, err = q.AddQueueItem(ctx, store.AddQueueItemParams{
+			ID: store.NewID(), RoomID: roomID, AddedBy: forUser,
+			Provider: t.Ref.Provider, LinkID: sql.NullString{String: t.Ref.LinkID, Valid: true}, TrackID: t.Ref.ID,
+			Metadata: string(meta), Autopilot: sql.NullString{String: string(why), Valid: true}, Now: now,
+		})
+		return err
+	})
+	if err == nil && s.OnAdd != nil {
+		s.OnAdd([]provider.Track{t})
+	}
+	return snap, err
+}
+
 // withoutRepeats drops the songs the room's repeat guard refuses, including
 // a song given twice. It's a *RepeatError if none are left.
 func (s *Service) withoutRepeats(ctx context.Context, q *store.Queries, room store.Room, tracks []provider.Track, now time.Time) ([]provider.Track, error) {
@@ -361,7 +422,7 @@ func (s *Service) Move(ctx context.Context, roomID, userID, itemID string, posit
 		if err != nil {
 			return err
 		}
-		if it.AddedBy != userID {
+		if it.AddedBy != userID || it.IsAutopilot() {
 			return ErrForbidden
 		}
 		lane, err := q.ListLane(ctx, store.ListLaneParams{RoomID: roomID, AddedBy: userID})
@@ -387,15 +448,15 @@ func (s *Service) Move(ctx context.Context, roomID, userID, itemID string, posit
 }
 
 // Remove takes a queued song out of the queue. Anyone can remove their own
-// songs; the room's owner can remove anyone's. The playing song isn't
-// removed here: skipping it is the playback engine's job.
+// songs, and autopilot's; the room's owner can remove anyone's. The
+// playing song isn't removed here: skipping it is the playback engine's job.
 func (s *Service) Remove(ctx context.Context, roomID, userID, itemID string) (rooms.QueueSnapshot, error) {
 	return s.Change(ctx, roomID, func(q *store.Queries, room store.Room) error {
 		it, err := queuedItem(ctx, q, roomID, itemID)
 		if err != nil {
 			return err
 		}
-		if it.AddedBy != userID && room.OwnerID != userID {
+		if it.AddedBy != userID && room.OwnerID != userID && !it.IsAutopilot() {
 			return ErrForbidden
 		}
 		return q.SetQueueItemState(ctx, store.SetQueueItemStateParams{State: store.ItemRemoved, UpdatedAt: s.Now(), ID: itemID})

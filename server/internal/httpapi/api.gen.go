@@ -426,6 +426,24 @@ func (e Role) Valid() bool {
 	}
 }
 
+// Defines values for RoomAutopilotAdventure.
+const (
+	Discovery RoomAutopilotAdventure = "discovery"
+	Similar   RoomAutopilotAdventure = "similar"
+)
+
+// Valid indicates whether the value is a known member of the RoomAutopilotAdventure enum.
+func (e RoomAutopilotAdventure) Valid() bool {
+	switch e {
+	case Discovery:
+		return true
+	case Similar:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RoomEventType.
 const (
 	RoomEventTypeHello             RoomEventType = "hello"
@@ -590,6 +608,17 @@ type ArtistResult struct {
 	Name    string  `json:"name"`
 }
 
+// AutopilotPick Set when autopilot queued the song, because the queue ran dry.
+// Label it "Autopilot", not as anyone's. It plays after every
+// member's song, takes nobody's turn, and anyone may remove it.
+type AutopilotPick struct {
+	SeedArtist *string `json:"seedArtist,omitempty"`
+
+	// SeedItemId The item whose song it's like. Absent for a song picked at random.
+	SeedItemId *string `json:"seedItemId,omitempty"`
+	SeedTitle  *string `json:"seedTitle,omitempty"`
+}
+
 // BeginOAuthLinkRequest Set `provider` to link a new account, or `linkId` to re-link one. For
 // providers that pair first, set only `pairingId`, the approved pairing.
 type BeginOAuthLinkRequest struct {
@@ -638,6 +667,11 @@ type CreateLinkRequest struct {
 
 // CreateRoomRequest defines model for CreateRoomRequest.
 type CreateRoomRequest struct {
+	// Autopilot When the queue runs dry, autopilot adds songs like the ones the
+	// room has been playing, taking seeds from each member's songs in
+	// turn. It only plays while the room has a speaker.
+	Autopilot *RoomAutopilot `json:"autopilot,omitempty"`
+
 	// Fairness Tunes the room's fairness mode. While someone else has songs
 	// waiting, nobody gets more than `maxInARow` songs in a row, and
 	// `cooldown` other songs play between one person's songs; when
@@ -1186,10 +1220,16 @@ type ProviderInfoPlayback string
 type QueueItem struct {
 	AddedAt time.Time `json:"addedAt"`
 
-	// AddedBy User ID.
-	AddedBy      string `json:"addedBy"`
-	Id           string `json:"id"`
-	LanePosition int64  `json:"lanePosition"`
+	// AddedBy User ID. For an autopilot song, whose taste seeded it: the song
+	// isn't theirs, and isn't in their lane.
+	AddedBy string `json:"addedBy"`
+
+	// Autopilot Set when autopilot queued the song, because the queue ran dry.
+	// Label it "Autopilot", not as anyone's. It plays after every
+	// member's song, takes nobody's turn, and anyone may remove it.
+	Autopilot    *AutopilotPick `json:"autopilot,omitempty"`
+	Id           string         `json:"id"`
+	LanePosition int64          `json:"lanePosition"`
 
 	// Palette The colors of a song's artwork, worked out once on the server so
 	// every phone in the room matches. On a queue item once it's ready
@@ -1276,7 +1316,11 @@ type Role string
 
 // Room defines model for Room.
 type Room struct {
-	CreatedAt time.Time `json:"createdAt"`
+	// Autopilot When the queue runs dry, autopilot adds songs like the ones the
+	// room has been playing, taking seeds from each member's songs in
+	// turn. It only plays while the room has a speaker.
+	Autopilot RoomAutopilot `json:"autopilot"`
+	CreatedAt time.Time     `json:"createdAt"`
 
 	// Fairness Tunes the room's fairness mode. While someone else has songs
 	// waiting, nobody gets more than `maxInARow` songs in a row, and
@@ -1297,6 +1341,20 @@ type Room struct {
 	// voted (not counting whoever queued the song): 50 is a majority.
 	SkipVotePercent SkipVotePercent `json:"skipVotePercent"`
 }
+
+// RoomAutopilot When the queue runs dry, autopilot adds songs like the ones the
+// room has been playing, taking seeds from each member's songs in
+// turn. It only plays while the room has a speaker.
+type RoomAutopilot struct {
+	// Adventure `similar` stays close to the room's songs, their artists
+	// included. `discovery` plays other artists, further afield.
+	Adventure RoomAutopilotAdventure `json:"adventure"`
+	On        bool                   `json:"on"`
+}
+
+// RoomAutopilotAdventure `similar` stays close to the room's songs, their artists
+// included. `discovery` plays other artists, further afield.
+type RoomAutopilotAdventure string
 
 // RoomEvent A message on the room WebSocket, `GET /ws/rooms/{roomId}?since=<version>`.
 // The socket needs the session cookie and is server-push only: send
@@ -1552,6 +1610,11 @@ type UpdateLinkRequest struct {
 
 // UpdateRoomRequest defines model for UpdateRoomRequest.
 type UpdateRoomRequest struct {
+	// Autopilot When the queue runs dry, autopilot adds songs like the ones the
+	// room has been playing, taking seeds from each member's songs in
+	// turn. It only plays while the room has a speaker.
+	Autopilot *RoomAutopilot `json:"autopilot,omitempty"`
+
 	// Fairness Tunes the room's fairness mode. While someone else has songs
 	// waiting, nobody gets more than `maxInARow` songs in a row, and
 	// `cooldown` other songs play between one person's songs; when

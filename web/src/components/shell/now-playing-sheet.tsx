@@ -4,6 +4,7 @@ import { Dialog } from 'radix-ui'
 import { useRef, useState } from 'react'
 import { Artwork } from '@/components/artwork'
 import { LyricsView } from '@/components/lyrics/lyrics-view'
+import { AutopilotBadge } from '@/components/room/autopilot-badge'
 import { SourceTag } from '@/components/service-tag'
 import { AlbumLink, ArtistLinks } from '@/components/track-credits'
 import { Badge } from '@/components/ui/badge'
@@ -132,6 +133,7 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
                               Added by {np.requester.displayName}
                             </Badge>
                           )}
+                          {np.autopilot && <AutopilotBadge pick={np.autopilot} />}
                           <SourceTag provider={np.track.provider} via={np.via} className="py-1" />
                         </div>
                       </motion.div>

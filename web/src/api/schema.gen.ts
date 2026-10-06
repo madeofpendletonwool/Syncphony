@@ -1685,7 +1685,10 @@ export interface components {
         };
         QueueItem: {
             id: string;
-            /** @description User ID. */
+            /**
+             * @description User ID. For an autopilot song, whose taste seeded it: the song
+             *     isn't theirs, and isn't in their lane.
+             */
             addedBy: string;
             /** @enum {string} */
             state: "queued" | "playing" | "played" | "skipped" | "removed";
@@ -1696,6 +1699,18 @@ export interface components {
             track: components["schemas"]["QueuedTrack"];
             via?: components["schemas"]["PlaysVia"];
             palette?: components["schemas"]["Palette"];
+            autopilot?: components["schemas"]["AutopilotPick"];
+        };
+        /**
+         * @description Set when autopilot queued the song, because the queue ran dry.
+         *     Label it "Autopilot", not as anyone's. It plays after every
+         *     member's song, takes nobody's turn, and anyone may remove it.
+         */
+        AutopilotPick: {
+            /** @description The item whose song it's like. Absent for a song picked at random. */
+            seedItemId?: string;
+            seedTitle?: string;
+            seedArtist?: string;
         };
         /**
          * @description The colors of a song's artwork, worked out once on the server so
@@ -1988,6 +2003,22 @@ export interface components {
              */
             borrow: boolean;
         };
+        /**
+         * @description When the queue runs dry, autopilot adds songs like the ones the
+         *     room has been playing, taking seeds from each member's songs in
+         *     turn. It only plays while the room has a speaker.
+         */
+        RoomAutopilot: {
+            /** @default false */
+            on: boolean;
+            /**
+             * @description `similar` stays close to the room's songs, their artists
+             *     included. `discovery` plays other artists, further afield.
+             * @default similar
+             * @enum {string}
+             */
+            adventure: "similar" | "discovery";
+        };
         Room: {
             id: string;
             name: string;
@@ -1995,6 +2026,7 @@ export interface components {
             fairnessMode: components["schemas"]["FairnessMode"];
             fairness: components["schemas"]["RoomFairness"];
             matching: components["schemas"]["RoomMatching"];
+            autopilot: components["schemas"]["RoomAutopilot"];
             permissions: components["schemas"]["RoomPermissions"];
             skipVotePercent: components["schemas"]["SkipVotePercent"];
             /** Format: date-time */
@@ -2005,6 +2037,7 @@ export interface components {
             fairnessMode?: components["schemas"]["FairnessMode"];
             fairness?: components["schemas"]["RoomFairness"];
             matching?: components["schemas"]["RoomMatching"];
+            autopilot?: components["schemas"]["RoomAutopilot"];
             permissions?: components["schemas"]["RoomPermissionsChange"];
             skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };
@@ -2013,6 +2046,7 @@ export interface components {
             fairnessMode?: components["schemas"]["FairnessMode"];
             fairness?: components["schemas"]["RoomFairness"];
             matching?: components["schemas"]["RoomMatching"];
+            autopilot?: components["schemas"]["RoomAutopilot"];
             permissions?: components["schemas"]["RoomPermissionsChange"];
             skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };

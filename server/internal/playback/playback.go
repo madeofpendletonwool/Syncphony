@@ -485,7 +485,8 @@ func (e *Engine) Command(ctx context.Context, roomID, userID string, c Command) 
 	defer r.mu.Unlock()
 	r.setRoom(row)
 	perms := r.settings.Permissions
-	mine := r.np.Item != nil && r.np.Item.AddedBy == userID
+	// Autopilot's songs are nobody's: skipping one takes the room's say-so.
+	mine := r.np.Item != nil && r.np.Item.AddedBy == userID && !r.np.Item.IsAutopilot()
 	var level string
 	switch c.Action {
 	case ActionPlay, ActionPause:
@@ -961,7 +962,8 @@ func (e *Engine) background(roomID, what string, fn func(context.Context, *room)
 
 // tally counts the vote to skip the current song, or is nil if the room
 // doesn't vote on skips or nothing is playing. Everyone in the room may
-// vote but whoever queued the song (they can just skip it).
+// vote but whoever queued the song (they can just skip it). Everyone may
+// vote on an autopilot song.
 func (e *Engine) tally(r *room) *rooms.SkipVotes {
 	if r.settings.Permissions.Skip != rooms.Vote || r.np.Item == nil {
 		return nil
@@ -976,7 +978,9 @@ func (e *Engine) tally(r *room) *rooms.SkipVotes {
 	for _, id := range r.votes {
 		voters[id] = true
 	}
-	delete(voters, r.np.Item.AddedBy)
+	if !r.np.Item.IsAutopilot() {
+		delete(voters, r.np.Item.AddedBy)
+	}
 	return &rooms.SkipVotes{
 		Voters: append([]string{}, r.votes...),
 		Needed: rooms.VotesNeeded(len(voters), *r.settings.SkipVotePercent),

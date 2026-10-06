@@ -60,6 +60,57 @@ func (w *watcher) CheckPlayable(ctx context.Context, trackID string) error {
 	return w.see(ctx, pc.CheckPlayable(ctx, trackID))
 }
 
+// Recommender is on every wrapped session too, like PlayChecker. Sessions
+// that can't recommend return ErrUnsupported; callers go by the
+// provider's Recommendations capability.
+func (w *watcher) recommender() (provider.Recommender, error) {
+	r, ok := w.inner.(provider.Recommender)
+	if !ok {
+		return nil, provider.ErrUnsupported
+	}
+	return r, nil
+}
+
+// SimilarToTrack implements provider.Recommender.
+func (w *watcher) SimilarToTrack(ctx context.Context, trackID string, limit int) ([]provider.Track, error) {
+	r, err := w.recommender()
+	if err != nil {
+		return nil, err
+	}
+	ts, err := r.SimilarToTrack(ctx, trackID, limit)
+	return ts, w.see(ctx, err)
+}
+
+// SimilarToArtist implements provider.Recommender.
+func (w *watcher) SimilarToArtist(ctx context.Context, artistID string, limit int) ([]provider.Track, error) {
+	r, err := w.recommender()
+	if err != nil {
+		return nil, err
+	}
+	ts, err := r.SimilarToArtist(ctx, artistID, limit)
+	return ts, w.see(ctx, err)
+}
+
+// TopTracks implements provider.Recommender.
+func (w *watcher) TopTracks(ctx context.Context, artist string, limit int) ([]provider.Track, error) {
+	r, err := w.recommender()
+	if err != nil {
+		return nil, err
+	}
+	ts, err := r.TopTracks(ctx, artist, limit)
+	return ts, w.see(ctx, err)
+}
+
+// RandomTracks implements provider.Recommender.
+func (w *watcher) RandomTracks(ctx context.Context, limit int) ([]provider.Track, error) {
+	r, err := w.recommender()
+	if err != nil {
+		return nil, err
+	}
+	ts, err := r.RandomTracks(ctx, limit)
+	return ts, w.see(ctx, err)
+}
+
 type streamer struct{ *watcher }
 
 func (w streamer) Stream(ctx context.Context, trackID string, opts provider.StreamOpts) (*provider.AudioStream, error) {

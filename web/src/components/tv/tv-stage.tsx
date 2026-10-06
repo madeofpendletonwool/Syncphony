@@ -4,10 +4,12 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo } from 'react'
 import { Artwork } from '@/components/artwork'
 import { LyricsView } from '@/components/lyrics/lyrics-view'
+import { AutopilotMark } from '@/components/room/autopilot-badge'
 import { AlbumBackdrop } from '@/components/shell/album-backdrop'
 import { UserAvatar } from '@/components/user-avatar'
 import { useAlbumPalette } from '@/hooks/use-album-palette'
 import { usePosition } from '@/hooks/use-position'
+import { autopilotReason } from '@/lib/autopilot'
 import { laneStyle } from '@/lib/lane'
 import { linerCards, linerNotesQuery } from '@/lib/liner-notes'
 import { inGap, lyricsQuery, offsetKey, useLyricsOffset } from '@/lib/lyrics'
@@ -126,6 +128,15 @@ function NowPlayingColumn({ np }: { np: NowPlaying }) {
             <p className="mt-[0.6vh] line-clamp-1 text-[clamp(1.1rem,2vw,2.1rem)] text-muted-foreground">
               {np.track.artists.join(', ')}
             </p>
+            {np.autopilot && (
+              <div className="mt-[2vh] flex items-center gap-3">
+                <AutopilotMark className="size-[5vh] [&>svg]:size-[2.4vh]" />
+                <p className="text-[clamp(0.95rem,1.5vw,1.5rem)]">
+                  <span className="font-semibold text-primary">Autopilot</span>
+                  <span className="text-muted-foreground"> · {autopilotReason(np.autopilot)}</span>
+                </p>
+              </div>
+            )}
             {np.requester && (
               <div style={laneStyle(np.requester.color)} className="mt-[2vh] flex items-center gap-3">
                 <UserAvatar user={np.requester} className="size-[5vh] text-[1.8vh] ring-2 ring-(--lane)" />
@@ -225,16 +236,17 @@ function UpNext({
   userById: (id: string) => User | undefined
 }) {
   if (items.length === 0) return <div />
-  const next = userById(items[0].addedBy)
+  const next = items[0].autopilot ? undefined : userById(items[0].addedBy)
   return (
     <section className="min-w-0 flex-1">
       <p className="mb-[1.2vh] text-[clamp(0.8rem,1.1vw,1.15rem)] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
         Up next{next && <span style={laneStyle(next.color)} className="text-(--lane) normal-case tracking-normal"> · {next.displayName}&apos;s turn</span>}
+        {items[0].autopilot && <span className="text-primary normal-case tracking-normal"> · Autopilot</span>}
       </p>
       <ol className="flex gap-[1.2vw]">
         <AnimatePresence initial={false}>
           {items.map((item, i) => {
-            const u = userById(item.addedBy)
+            const u = item.autopilot ? undefined : userById(item.addedBy)
             return (
               <motion.li
                 key={item.id}
@@ -253,8 +265,8 @@ function UpNext({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[clamp(0.85rem,1.15vw,1.2rem)] font-semibold">{item.track.title}</p>
                   <p className="flex items-center gap-1.5 truncate text-[clamp(0.75rem,0.95vw,1rem)] text-muted-foreground">
-                    <span className="size-2 shrink-0 rounded-full bg-(--lane)" />
-                    {u?.displayName ?? 'Someone'}
+                    <span className={cn('size-2 shrink-0 rounded-full bg-(--lane)', item.autopilot && 'bg-primary')} />
+                    {item.autopilot ? 'Autopilot' : (u?.displayName ?? 'Someone')}
                   </p>
                 </div>
               </motion.li>

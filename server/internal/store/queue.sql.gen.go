@@ -12,9 +12,9 @@ import (
 )
 
 const addQueueItem = `-- name: AddQueueItem :one
-INSERT INTO queue_items (id, room_id, added_by, provider, link_id, track_id, metadata, lane_position, added_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?9, ?9)
-RETURNING id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id, palette
+INSERT INTO queue_items (id, room_id, added_by, provider, link_id, track_id, metadata, lane_position, autopilot, added_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?10, ?10)
+RETURNING id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id, palette, autopilot
 `
 
 type AddQueueItemParams struct {
@@ -26,6 +26,7 @@ type AddQueueItemParams struct {
 	TrackID      string
 	Metadata     string
 	LanePosition int64
+	Autopilot    sql.NullString
 	Now          time.Time
 }
 
@@ -39,6 +40,7 @@ func (q *Queries) AddQueueItem(ctx context.Context, arg AddQueueItemParams) (Que
 		arg.TrackID,
 		arg.Metadata,
 		arg.LanePosition,
+		arg.Autopilot,
 		arg.Now,
 	)
 	var i QueueItem
@@ -58,6 +60,7 @@ func (q *Queries) AddQueueItem(ctx context.Context, arg AddQueueItemParams) (Que
 		&i.ViaLinkID,
 		&i.ViaTrackID,
 		&i.Palette,
+		&i.Autopilot,
 	)
 	return i, err
 }
@@ -95,7 +98,7 @@ func (q *Queries) EndPlay(ctx context.Context, arg EndPlayParams) error {
 }
 
 const getPlaying = `-- name: GetPlaying :one
-SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id, palette FROM queue_items WHERE room_id = ? AND state = 'playing'
+SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id, palette, autopilot FROM queue_items WHERE room_id = ? AND state = 'playing'
 `
 
 func (q *Queries) GetPlaying(ctx context.Context, roomID string) (QueueItem, error) {
@@ -117,12 +120,13 @@ func (q *Queries) GetPlaying(ctx context.Context, roomID string) (QueueItem, err
 		&i.ViaLinkID,
 		&i.ViaTrackID,
 		&i.Palette,
+		&i.Autopilot,
 	)
 	return i, err
 }
 
 const getQueueItem = `-- name: GetQueueItem :one
-SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id, palette FROM queue_items WHERE id = ?
+SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id, palette, autopilot FROM queue_items WHERE id = ?
 `
 
 func (q *Queries) GetQueueItem(ctx context.Context, id string) (QueueItem, error) {
@@ -144,6 +148,7 @@ func (q *Queries) GetQueueItem(ctx context.Context, id string) (QueueItem, error
 		&i.ViaLinkID,
 		&i.ViaTrackID,
 		&i.Palette,
+		&i.Autopilot,
 	)
 	return i, err
 }
@@ -153,11 +158,13 @@ SELECT queue_items.added_by AS user_id, play_history.started_at
 FROM play_history
 JOIN queue_items ON queue_items.id = play_history.queue_item_id
 WHERE play_history.room_id = ?1
+  AND queue_items.autopilot IS NULL
   AND NOT EXISTS (
     SELECT 1 FROM play_history AS later
     JOIN queue_items AS later_item ON later_item.id = later.queue_item_id
     WHERE later.room_id = play_history.room_id
       AND later_item.added_by = queue_items.added_by
+      AND later_item.autopilot IS NULL
       AND later.started_at > play_history.started_at
   )
 `
@@ -169,7 +176,7 @@ type LastPlayedByUserRow struct {
 
 // LastPlayedByUser is when each user's most recent song started in a room,
 // for the fairness engine. It selects the column itself, not max(), so the
-// driver still knows it's a timestamp.
+// driver still knows it's a timestamp. Autopilot songs aren't anyone's turn.
 func (q *Queries) LastPlayedByUser(ctx context.Context, roomID string) ([]LastPlayedByUserRow, error) {
 	rows, err := q.db.QueryContext(ctx, lastPlayedByUser, roomID)
 	if err != nil {
@@ -193,8 +200,63 @@ func (q *Queries) LastPlayedByUser(ctx context.Context, roomID string) ([]LastPl
 	return items, nil
 }
 
+const listAutopilot = `-- name: ListAutopilot :many
+SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id, palette, autopilot FROM queue_items
+WHERE room_id = ? AND autopilot IS NOT NULL
+ORDER BY added_at DESC, id DESC
+LIMIT ?
+`
+
+type ListAutopilotParams struct {
+	RoomID string
+	Limit  int64
+}
+
+// ListAutopilot returns a room's most recent autopilot items in any state,
+// newest first: who autopilot last chose songs for, and which songs the
+// room skipped or removed.
+func (q *Queries) ListAutopilot(ctx context.Context, arg ListAutopilotParams) ([]QueueItem, error) {
+	rows, err := q.db.QueryContext(ctx, listAutopilot, arg.RoomID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []QueueItem{}
+	for rows.Next() {
+		var i QueueItem
+		if err := rows.Scan(
+			&i.ID,
+			&i.RoomID,
+			&i.AddedBy,
+			&i.Provider,
+			&i.LinkID,
+			&i.TrackID,
+			&i.Metadata,
+			&i.State,
+			&i.LanePosition,
+			&i.AddedAt,
+			&i.UpdatedAt,
+			&i.ViaProvider,
+			&i.ViaLinkID,
+			&i.ViaTrackID,
+			&i.Palette,
+			&i.Autopilot,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listHistory = `-- name: ListHistory :many
-SELECT play_history.id, play_history.room_id, play_history.queue_item_id, play_history.started_at, play_history.ended_at, play_history.end_reason, queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at, queue_items.via_provider, queue_items.via_link_id, queue_items.via_track_id, queue_items.palette
+SELECT play_history.id, play_history.room_id, play_history.queue_item_id, play_history.started_at, play_history.ended_at, play_history.end_reason, queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at, queue_items.via_provider, queue_items.via_link_id, queue_items.via_track_id, queue_items.palette, queue_items.autopilot
 FROM play_history
 JOIN queue_items ON queue_items.id = play_history.queue_item_id
 WHERE play_history.room_id = ?
@@ -243,6 +305,7 @@ func (q *Queries) ListHistory(ctx context.Context, arg ListHistoryParams) ([]Lis
 			&i.QueueItem.ViaLinkID,
 			&i.QueueItem.ViaTrackID,
 			&i.QueueItem.Palette,
+			&i.QueueItem.Autopilot,
 		); err != nil {
 			return nil, err
 		}
@@ -258,8 +321,8 @@ func (q *Queries) ListHistory(ctx context.Context, arg ListHistoryParams) ([]Lis
 }
 
 const listLane = `-- name: ListLane :many
-SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id, palette FROM queue_items
-WHERE room_id = ? AND added_by = ? AND state = 'queued'
+SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id, palette, autopilot FROM queue_items
+WHERE room_id = ? AND added_by = ? AND state = 'queued' AND autopilot IS NULL
 ORDER BY lane_position, added_at
 `
 
@@ -294,6 +357,7 @@ func (q *Queries) ListLane(ctx context.Context, arg ListLaneParams) ([]QueueItem
 			&i.ViaLinkID,
 			&i.ViaTrackID,
 			&i.Palette,
+			&i.Autopilot,
 		); err != nil {
 			return nil, err
 		}
@@ -309,7 +373,8 @@ func (q *Queries) ListLane(ctx context.Context, arg ListLaneParams) ([]QueueItem
 }
 
 const listPlayTimes = `-- name: ListPlayTimes :many
-SELECT play_history.started_at, play_history.ended_at, queue_items.added_by
+SELECT play_history.started_at, play_history.ended_at,
+  CAST(CASE WHEN queue_items.autopilot IS NULL THEN queue_items.added_by ELSE '' END AS TEXT) AS added_by
 FROM play_history
 JOIN queue_items ON queue_items.id = play_history.queue_item_id
 WHERE play_history.room_id = ? AND play_history.ended_at IS NOT NULL
@@ -329,7 +394,8 @@ type ListPlayTimesRow struct {
 }
 
 // ListPlayTimes returns when each of a room's finished plays started and
-// ended, and whose song it was, oldest first, to find sessions.
+// ended, and whose song it was (” for autopilot), oldest first, to find
+// sessions.
 func (q *Queries) ListPlayTimes(ctx context.Context, arg ListPlayTimesParams) ([]ListPlayTimesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPlayTimes, arg.RoomID, arg.Limit)
 	if err != nil {
@@ -354,13 +420,13 @@ func (q *Queries) ListPlayTimes(ctx context.Context, arg ListPlayTimesParams) ([
 }
 
 const listPlayed = `-- name: ListPlayed :many
-SELECT play_history.id, play_history.room_id, play_history.queue_item_id, play_history.started_at, play_history.ended_at, play_history.end_reason, queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at, queue_items.via_provider, queue_items.via_link_id, queue_items.via_track_id, queue_items.palette
+SELECT play_history.id, play_history.room_id, play_history.queue_item_id, play_history.started_at, play_history.ended_at, play_history.end_reason, queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at, queue_items.via_provider, queue_items.via_link_id, queue_items.via_track_id, queue_items.palette, queue_items.autopilot
 FROM play_history
 JOIN queue_items ON queue_items.id = play_history.queue_item_id
 WHERE play_history.room_id = ?1
   AND play_history.ended_at IS NOT NULL
   AND play_history.started_at < ?2
-  AND (CAST(?3 AS TEXT) = '' OR queue_items.added_by = ?3)
+  AND (CAST(?3 AS TEXT) = '' OR (queue_items.added_by = ?3 AND queue_items.autopilot IS NULL))
 ORDER BY play_history.started_at DESC, play_history.id DESC
 LIMIT ?4
 `
@@ -379,7 +445,8 @@ type ListPlayedRow struct {
 
 // ListPlayed returns a room's finished plays (not the one in progress)
 // that started before a time, newest first, optionally only one user's
-// songs. Pages go back by passing the last row's started_at.
+// songs (autopilot songs are nobody's). Pages go back by passing the last
+// row's started_at.
 func (q *Queries) ListPlayed(ctx context.Context, arg ListPlayedParams) ([]ListPlayedRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPlayed,
 		arg.RoomID,
@@ -416,6 +483,7 @@ func (q *Queries) ListPlayed(ctx context.Context, arg ListPlayedParams) ([]ListP
 			&i.QueueItem.ViaLinkID,
 			&i.QueueItem.ViaTrackID,
 			&i.QueueItem.Palette,
+			&i.QueueItem.Autopilot,
 		); err != nil {
 			return nil, err
 		}
@@ -431,7 +499,7 @@ func (q *Queries) ListPlayed(ctx context.Context, arg ListPlayedParams) ([]ListP
 }
 
 const listPlaysBetween = `-- name: ListPlaysBetween :many
-SELECT play_history.id, play_history.room_id, play_history.queue_item_id, play_history.started_at, play_history.ended_at, play_history.end_reason, queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at, queue_items.via_provider, queue_items.via_link_id, queue_items.via_track_id, queue_items.palette
+SELECT play_history.id, play_history.room_id, play_history.queue_item_id, play_history.started_at, play_history.ended_at, play_history.end_reason, queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at, queue_items.via_provider, queue_items.via_link_id, queue_items.via_track_id, queue_items.palette, queue_items.autopilot
 FROM play_history
 JOIN queue_items ON queue_items.id = play_history.queue_item_id
 WHERE play_history.room_id = ?1
@@ -491,6 +559,7 @@ func (q *Queries) ListPlaysBetween(ctx context.Context, arg ListPlaysBetweenPara
 			&i.QueueItem.ViaLinkID,
 			&i.QueueItem.ViaTrackID,
 			&i.QueueItem.Palette,
+			&i.QueueItem.Autopilot,
 		); err != nil {
 			return nil, err
 		}
@@ -506,7 +575,7 @@ func (q *Queries) ListPlaysBetween(ctx context.Context, arg ListPlaysBetweenPara
 }
 
 const listUpcoming = `-- name: ListUpcoming :many
-SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id, palette FROM queue_items
+SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id, palette, autopilot FROM queue_items
 WHERE room_id = ? AND state IN ('queued', 'playing')
 ORDER BY added_by, lane_position, added_at
 `
@@ -538,6 +607,7 @@ func (q *Queries) ListUpcoming(ctx context.Context, roomID string) ([]QueueItem,
 			&i.ViaLinkID,
 			&i.ViaTrackID,
 			&i.Palette,
+			&i.Autopilot,
 		); err != nil {
 			return nil, err
 		}
@@ -570,7 +640,7 @@ func (q *Queries) MoveQueueItem(ctx context.Context, arg MoveQueueItemParams) er
 const nextLanePosition = `-- name: NextLanePosition :one
 SELECT CAST(coalesce(max(lane_position), 0) + 1024 AS INTEGER)
 FROM queue_items
-WHERE room_id = ? AND added_by = ? AND state = 'queued'
+WHERE room_id = ? AND added_by = ? AND state = 'queued' AND autopilot IS NULL
 `
 
 type NextLanePositionParams struct {
@@ -579,6 +649,7 @@ type NextLanePositionParams struct {
 }
 
 // NextLanePosition is where a new item goes at the end of a user's lane.
+// Autopilot items aren't in anyone's lane.
 func (q *Queries) NextLanePosition(ctx context.Context, arg NextLanePositionParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, nextLanePosition, arg.RoomID, arg.AddedBy)
 	var column_1 int64
@@ -628,7 +699,7 @@ func (q *Queries) RecentDuplicates(ctx context.Context, arg RecentDuplicatesPara
 }
 
 const recentPlayers = `-- name: RecentPlayers :many
-SELECT queue_items.added_by
+SELECT CAST(CASE WHEN queue_items.autopilot IS NULL THEN queue_items.added_by ELSE '' END AS TEXT) AS added_by
 FROM play_history
 JOIN queue_items ON queue_items.id = play_history.queue_item_id
 WHERE play_history.room_id = ?
@@ -642,7 +713,8 @@ type RecentPlayersParams struct {
 }
 
 // RecentPlayers is who queued the songs that most recently started in a
-// room, newest first, for fairness rules that look back a few songs.
+// room, newest first, for fairness rules that look back a few songs. An
+// autopilot song is nobody's: ”.
 func (q *Queries) RecentPlayers(ctx context.Context, arg RecentPlayersParams) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, recentPlayers, arg.RoomID, arg.Limit)
 	if err != nil {

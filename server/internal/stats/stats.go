@@ -50,6 +50,7 @@ type Totals struct {
 }
 
 // Person is one person's totals: their songs, whoever skipped them.
+// Autopilot's songs count for the room, but not for anyone.
 type Person struct {
 	UserID string
 	Totals
@@ -78,14 +79,17 @@ func Summarize(plays []rooms.Played) Summary {
 			s.First = p
 		}
 		s.Last = p
+		var track provider.Track
+		_ = json.Unmarshal([]byte(p.Item.Metadata), &track)
+		room.add(p, track)
+		if p.Item.IsAutopilot() {
+			continue
+		}
 		t := people[p.Item.AddedBy]
 		if t == nil {
 			t = newTally()
 			people[p.Item.AddedBy] = t
 		}
-		var track provider.Track
-		_ = json.Unmarshal([]byte(p.Item.Metadata), &track)
-		room.add(p, track)
 		t.add(p, track)
 	}
 	s.Totals = room.totals()
@@ -165,7 +169,7 @@ func (t *tally) totals() Totals {
 	return out
 }
 
-// Span is one play's time and whose song it was.
+// Span is one play's time and whose song it was: "" for autopilot's.
 type Span struct {
 	Start, End time.Time
 	User       string
@@ -204,7 +208,9 @@ func Sessions(spans []Span) []Session {
 		if sp.End.After(s.End) {
 			s.End = sp.End
 		}
-		counts[sp.User]++
+		if sp.User != "" {
+			counts[sp.User]++
+		}
 	}
 	flush()
 	slices.Reverse(out)

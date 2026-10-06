@@ -105,6 +105,7 @@ Images are published to `ghcr.io/madeofpendletonwool/syncphony`: `:main` tracks 
 1. Pair a phone with the Bluetooth speaker and open Syncphony on it. On iPhone, add it to the Home Screen first (Share → Add to Home Screen).
 2. On the Room screen, tap **Play on this phone**. That phone is now the speaker: it plays the queue, and its lock screen and the speaker's buttons control the room.
 3. Everyone else opens Syncphony on their own phone, searches, and adds songs to their lane.
+4. Optionally, turn on **Autopilot** in the room's settings. When every lane runs dry, it keeps the music going with songs like the ones the room has played, taking turns with everyone's taste. Anything someone adds still plays first.
 
 What works where (and what doesn't yet) is in [docs/player-mode.md](docs/player-mode.md).
 
