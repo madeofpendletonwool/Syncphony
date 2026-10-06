@@ -497,3 +497,47 @@ func TestFairnessOptions(t *testing.T) {
 		t.Errorf("bob weighted 2: %q, want %q", got, want)
 	}
 }
+
+func TestQueueAgain(t *testing.T) {
+	e := newEnv(t)
+	ctx := t.Context()
+	snap := e.add(e.alice, "t01")
+	id := itemID(t, snap, e.alice, "t01")
+	again := []queue.TrackRef{{FromItemID: id}}
+
+	// Alice can queue her own song again; bob can't use alice's link.
+	snap, err := e.q.Add(ctx, e.room.ID, e.alice.ID, again)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := upNext(snap, e.alice); got != "alice:t01 alice:t01" {
+		t.Errorf("alice again: %q", got)
+	}
+	if _, err := e.q.Add(ctx, e.room.ID, e.bob.ID, again); !errors.Is(err, queue.ErrCantBorrow) {
+		t.Fatalf("bob borrowing: %v", err)
+	}
+
+	// A room that lets people borrow: it plays through alice's link.
+	e.setSettings(`{"matching":{"borrow":true}}`)
+	snap, err = e.q.Add(ctx, e.room.ID, e.bob.ID, again)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bobs store.QueueItem
+	for _, it := range snap.Items {
+		if it.AddedBy == e.bob.ID {
+			bobs = it
+		}
+	}
+	if bobs.TrackID != "t01" || bobs.LinkID.String != e.alice.link || !strings.Contains(bobs.Metadata, "Reference Tone") {
+		t.Fatalf("bob's borrowed song: %+v", bobs)
+	}
+
+	other := e.newRoom(e.bob.ID, store.FairnessRoundRobin)
+	if _, err := e.q.Add(ctx, other.ID, e.bob.ID, again); !errors.Is(err, queue.ErrNotFound) {
+		t.Errorf("another room's item: %v", err)
+	}
+	if _, err := e.q.Add(ctx, e.room.ID, e.bob.ID, []queue.TrackRef{{LinkID: e.bob.link}}); !isInvalid(err) {
+		t.Errorf("no track: %v", err)
+	}
+}

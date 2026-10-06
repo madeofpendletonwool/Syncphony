@@ -11,7 +11,7 @@ import { QueueRow } from '@/components/room/queue-row'
 import { RoomSettings } from '@/components/room/room-settings'
 import { SpeakerPanel } from '@/components/room/speaker-panel'
 import { TransportControls } from '@/components/shell/player-controls'
-import { ServiceTag } from '@/components/service-tag'
+import { SourceTag } from '@/components/service-tag'
 import { RoomLobby } from '@/components/start-room'
 import { AlbumLink, ArtistLinks } from '@/components/track-credits'
 import { Badge } from '@/components/ui/badge'
@@ -309,7 +309,7 @@ function NowPlayingCard({ room, waiting }: { room: RoomInfo; waiting: number }) 
                 {np.requester.displayName}
               </Badge>
             )}
-            <ServiceTag provider={np.track.provider} className="py-1" />
+            <SourceTag provider={np.track.provider} via={np.via} className="py-1" />
           </div>
         </div>
       </div>

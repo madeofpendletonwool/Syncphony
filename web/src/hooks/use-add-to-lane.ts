@@ -11,6 +11,9 @@ import { toast } from '@/lib/toast'
 
 export type LaneStatus = 'idle' | 'adding' | 'added'
 
+/** A song to add: from search, or one the room had (`fromItemId`), again. */
+export type LaneTrack = TrackResult & { fromItemId?: string }
+
 // Tracks being added right now, shared by every list on screen, so a song
 // shows as added the moment it's tapped.
 const pending = createStore<ReadonlySet<string>>(new Set())
@@ -46,12 +49,12 @@ export function useAddToLane() {
   )
 
   const mutation = useMutation({
-    mutationFn: (tracks: TrackResult[]) => {
+    mutationFn: (tracks: LaneTrack[]) => {
       if (!room) throw new Error('no room')
       return unwrap(
         api.POST('/rooms/{roomId}/queue', {
           params: { path: { roomId: room.id } },
-          body: { items: tracks.map((t) => ({ linkId: t.linkId, trackId: t.trackId })) },
+          body: { items: tracks.map((t) => (t.fromItemId ? { fromItemId: t.fromItemId } : { linkId: t.linkId, trackId: t.trackId })) },
         }),
       )
     },

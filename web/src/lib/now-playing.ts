@@ -14,6 +14,8 @@ export type NowPlaying = {
   roomId?: string
   itemId?: string
   track: Track
+  /** The service playing it instead of its own, if one stood in. */
+  via?: string
   /** A URL the browser can load; Track.artwork is a provider ref. */
   artworkUrl?: string
   /** Who queued it. Their lane color tints the player. */

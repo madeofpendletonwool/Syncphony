@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
@@ -81,6 +82,8 @@ const lanePositionStep = 1024
 // links.Service in production.
 type Tracks interface {
 	OpenFor(ctx context.Context, userID, linkID string) (provider.Session, error)
+	// GetUsable returns a link userID may use, or links.ErrNotFound.
+	GetUsable(ctx context.Context, userID, linkID string) (store.ServiceLink, error)
 	Provider(id string) (provider.Provider, error)
 }
 
@@ -142,11 +145,20 @@ func (s *Service) Change(ctx context.Context, roomID string, fn func(q *store.Qu
 	return snap, err
 }
 
-// TrackRef names a song to queue: a track ID on one of the user's links.
+// TrackRef names a song to queue: a track ID on a link the user can use,
+// or, with FromItemID, the song of an item the room already had.
 type TrackRef struct {
 	LinkID  string
 	TrackID string
+	// FromItemID queues the song of one of the room's items again, from
+	// the same link. That needs a link the user can use, unless the room
+	// lets people borrow (rooms.Matching.Borrow).
+	FromItemID string
 }
+
+// ErrCantBorrow is queueing again a song from someone else's service in a
+// room that doesn't allow it.
+var ErrCantBorrow = errors.New("that song is on someone else's service, and this room doesn't let people borrow songs")
 
 // Add appends songs to the end of userID's lane, in the order given. It
 // looks each one up on its service first, so the queue keeps a snapshot of
@@ -168,11 +180,12 @@ func (s *Service) Add(ctx context.Context, roomID, userID string, refs []TrackRe
 	if len(refs) > MaxAdd {
 		return rooms.QueueSnapshot{}, &InvalidInputError{fmt.Sprintf("add at most %d songs at a time", MaxAdd)}
 	}
-	if _, err := s.rooms.Get(ctx, roomID); err != nil {
+	room, err := s.rooms.Get(ctx, roomID)
+	if err != nil {
 		return rooms.QueueSnapshot{}, err
 	}
 	// Look the tracks up before taking the room's lock: services can be slow.
-	tracks, err := s.lookup(ctx, userID, refs)
+	tracks, err := s.lookup(ctx, room, userID, refs)
 	if err != nil {
 		return rooms.QueueSnapshot{}, err
 	}
@@ -239,8 +252,9 @@ func (s *Service) withoutRepeats(ctx context.Context, q *store.Queries, room sto
 	return out, nil
 }
 
-// lookup fetches each track's metadata, opening each link once.
-func (s *Service) lookup(ctx context.Context, userID string, refs []TrackRef) ([]provider.Track, error) {
+// lookup fetches each track's metadata, opening each link once. Songs
+// queued again from an item reuse its snapshot.
+func (s *Service) lookup(ctx context.Context, room store.Room, userID string, refs []TrackRef) ([]provider.Track, error) {
 	sessions := map[string]provider.Session{}
 	defer func() {
 		for _, sess := range sessions {
@@ -249,8 +263,16 @@ func (s *Service) lookup(ctx context.Context, userID string, refs []TrackRef) ([
 	}()
 	out := make([]provider.Track, len(refs))
 	for i, r := range refs {
+		if r.FromItemID != "" {
+			t, err := s.again(ctx, room, userID, r.FromItemID)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = t
+			continue
+		}
 		if r.LinkID == "" || r.TrackID == "" {
-			return nil, &InvalidInputError{"each song needs a linkId and trackId"}
+			return nil, &InvalidInputError{"each song needs a linkId and trackId, or a fromItemId"}
 		}
 		sess, ok := sessions[r.LinkID]
 		if !ok {
@@ -278,6 +300,31 @@ func (s *Service) lookup(ctx context.Context, userID string, refs []TrackRef) ([
 		out[i] = t
 	}
 	return out, nil
+}
+
+// again returns the song of one of the room's items, to queue it again.
+func (s *Service) again(ctx context.Context, room store.Room, userID, itemID string) (provider.Track, error) {
+	it, err := s.Item(ctx, room.ID, itemID)
+	if err != nil {
+		return provider.Track{}, err
+	}
+	var t provider.Track
+	if err := json.Unmarshal([]byte(it.Metadata), &t); err != nil {
+		return provider.Track{}, err
+	}
+	if !it.LinkID.Valid {
+		return provider.Track{}, &InvalidInputError{"that song's service was unlinked"}
+	}
+	if !rooms.ParseSettings(room.Settings).Matching.Borrow {
+		if _, err := s.tracks.GetUsable(ctx, userID, it.LinkID.String); err != nil {
+			if errors.Is(err, links.ErrNotFound) {
+				return provider.Track{}, ErrCantBorrow
+			}
+			return provider.Track{}, err
+		}
+	}
+	t.Ref = provider.TrackRef{Provider: it.Provider, LinkID: it.LinkID.String, ID: it.TrackID}
+	return t, nil
 }
 
 // serviceName is a provider's display name, for messages.

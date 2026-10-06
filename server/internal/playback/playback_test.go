@@ -6,12 +6,14 @@ import (
 	"errors"
 	"io"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
+	"github.com/madeofpendletonwool/syncphony/server/internal/match"
 	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
@@ -85,7 +87,7 @@ func (e *env) start() {
 	}
 	e.p = playback.New(e.db, e.rooms, e.q, e.links, playback.Config{
 		LoadTimeout: 10 * time.Second, PlayerTimeout: time.Minute, EndGrace: 5 * time.Second, RemotePoll: time.Second,
-		Presence: e.presence, Now: e.clock,
+		Presence: e.presence, Matcher: match.New(e.db, e.links, e.presence), Now: e.clock,
 	})
 	e.t.Cleanup(e.p.Close)
 }
@@ -414,6 +416,11 @@ func TestPermissions(t *testing.T) {
 
 func TestFailuresSkip(t *testing.T) {
 	e := newEnv(t)
+	// Every fake link has the same songs: without this, failures would
+	// play from someone else's (see TestFallback).
+	if _, err := e.rooms.Update(t.Context(), e.alice.ID, e.room.ID, rooms.Update{Matching: &rooms.Matching{Fallback: new(false)}}); err != nil {
+		t.Fatal(err)
+	}
 	notices := e.notices()
 	e.claim(e.alice, "phone")
 	e.add(e.alice, "t01", "t02", "t03", "t04")
@@ -707,4 +714,82 @@ func TestVoteSkip(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.waitFor("votes on", func(np rooms.NowPlaying) bool { return np.SkipVotes != nil && len(np.SkipVotes.Voters) == 0 })
+}
+
+func TestFallback(t *testing.T) {
+	e := newEnv(t)
+	ctx := t.Context()
+	notices := e.notices()
+	e.claim(e.alice, "phone")
+
+	// Alice's song fails on the speaker. Her own other service has it, so
+	// it plays from there, on its remote player.
+	e.add(e.alice, "t01")
+	e.waitFor("alice's song", playing(playback.StateLoading, "t01"))
+	np := e.report(e.alice, "phone", playback.EventError, 0)
+	if !playing(playback.StatePlaying, "t01")(np) || np.Item.ViaLinkID.String != e.aliceRemote || np.Driver != string(provider.PlaybackRemote) {
+		t.Fatalf("from alice's other service: %s via %v (%s)", describe(np), np.Item.ViaLinkID, np.Driver)
+	}
+	if got := notices(); len(got) != 1 || !strings.Contains(got[0], "from alice's Fake Remote") {
+		t.Fatalf("notices: %q", got)
+	}
+	e.must(playback.Command{Action: playback.ActionSkip})
+
+	// Carol isn't here and has only one link: nowhere else to look, so her
+	// song is skipped.
+	e.add(e.carol, "t04", "t05")
+	e.waitFor("carol's song", playing(playback.StateLoading, "t04"))
+	np = e.report(e.alice, "phone", playback.EventError, 0)
+	if !playing(playback.StateLoading, "t05")(np) || np.Item.ViaLinkID.Valid {
+		t.Fatalf("with nowhere to look: %s", describe(np))
+	}
+
+	// Bob joins: carol's next song plays from bob's link, from the start.
+	e.presence.Join(e.room.ID, e.bob.ID)
+	rev := np.Revision
+	np = e.report(e.alice, "phone", playback.EventError, 5*time.Second)
+	if !playing(playback.StateLoading, "t05")(np) || np.Item.ViaLinkID.String != e.bob.link || np.Item.ViaTrackID.String != "t05" ||
+		np.Position != 0 || np.Revision <= rev {
+		t.Fatalf("from bob's: %s via %v, at %v, revision %d", describe(np), np.Item.ViaLinkID, np.Position, np.Revision)
+	}
+	if got := notices(); !strings.Contains(got[len(got)-1], "from bob's Fake") {
+		t.Fatalf("notices: %q", got)
+	}
+	// The stand-in is in the queue too, and streams from bob's link.
+	snap, _ := e.rooms.QueueSnapshot(ctx, e.room.ID)
+	if i := slices.IndexFunc(snap.Items, func(it store.QueueItem) bool { return it.ID == np.Item.ID }); i < 0 || snap.Items[i].ViaLinkID.String != e.bob.link {
+		t.Fatalf("snapshot: %+v", snap.Items)
+	}
+	a, err := e.p.Stream(ctx, e.room.ID, np.Item.ID, provider.StreamOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Body.Close()
+	// One stand-in per song: failing again skips it.
+	if np = e.report(e.alice, "phone", playback.EventError, 0); np.State != playback.StateIdle {
+		t.Fatalf("after the stand-in failed: %s", describe(np))
+	}
+
+	// A song whose link is gone stands in before it starts.
+	e.add(e.carol, "t07", "t08")
+	e.waitFor("carol's song", playing(playback.StateLoading, "t07"))
+	if err := e.links.Unlink(ctx, e.carol.ID, e.carol.link); err != nil {
+		t.Fatal(err)
+	}
+	e.report(e.alice, "phone", playback.EventEnded, 0)
+	np = e.waitFor("carol's next song", playing(playback.StateLoading, "t08"))
+	if np.Item.ViaLinkID.String != e.bob.link {
+		t.Fatalf("unlinked song: via %v", np.Item.ViaLinkID)
+	}
+
+	// The room can turn it off.
+	if _, err := e.rooms.Update(ctx, e.alice.ID, e.room.ID, rooms.Update{Matching: &rooms.Matching{Fallback: new(false)}}); err != nil {
+		t.Fatal(err)
+	}
+	e.add(e.bob, "t06")
+	e.report(e.alice, "phone", playback.EventEnded, 0)
+	e.waitFor("bob's song", playing(playback.StateLoading, "t06"))
+	if np := e.report(e.alice, "phone", playback.EventError, 0); np.State != playback.StateIdle {
+		t.Fatalf("with fallback off: %s", describe(np))
+	}
 }

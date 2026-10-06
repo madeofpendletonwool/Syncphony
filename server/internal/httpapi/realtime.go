@@ -275,7 +275,11 @@ func toQueueItem(it store.QueueItem) QueueItem {
 	if t.Artwork != "" {
 		track.Artwork = ptr(string(t.Artwork))
 	}
-	return QueueItem{
+	out := QueueItem{
 		Id: it.ID, AddedBy: it.AddedBy, State: QueueItemState(it.State), LanePosition: it.LanePosition, AddedAt: it.AddedAt, Track: track,
 	}
+	if it.ViaLinkID.Valid {
+		out.Via = &PlaysVia{Provider: it.ViaProvider.String, LinkId: it.ViaLinkID.String, TrackId: it.ViaTrackID.String}
+	}
+	return out
 }

@@ -7,6 +7,7 @@ import { api } from '@/api/client'
 import { errorMessage, unwrap } from '@/api/errors'
 import type { components } from '@/api/schema.gen'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { UserAvatar } from '@/components/user-avatar'
 import { easeOutExpo } from '@/lib/motion'
@@ -56,6 +57,7 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
                 skipVotePercent: body.skipVotePercent ?? r.skipVotePercent,
                 fairnessMode: body.fairnessMode ?? r.fairnessMode,
                 fairness: body.fairness ?? r.fairness,
+                matching: body.matching ?? r.matching,
               }
             : r,
         ),
@@ -198,6 +200,20 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
                 {room.fairnessMode === 'round_robin' && (
                   <Weights weights={room.fairness.weights} onChange={(weights) => tune({ weights })} />
                 )}
+
+                <SectionTitle hint="Uses the services of the people in the room, and shared ones">Other services</SectionTitle>
+                <Toggle
+                  label="Fill in from other services"
+                  hint="When a song's service can't play it, play the same recording from someone else's"
+                  checked={room.matching.fallback}
+                  onChange={(fallback) => update.mutate({ matching: { ...room.matching, fallback } })}
+                />
+                <Toggle
+                  label="Borrow songs"
+                  hint="Anyone can add a song the room played again, even if it's only on someone else's service"
+                  checked={room.matching.borrow}
+                  onChange={(borrow) => update.mutate({ matching: { ...room.matching, borrow } })}
+                />
               </motion.div>
             </Dialog.Content>
           </Dialog.Portal>
@@ -213,6 +229,18 @@ function SectionTitle({ children, hint, first }: { children: ReactNode; hint?: s
       <h3 className="text-caption font-semibold tracking-wide text-muted-foreground uppercase">{children}</h3>
       {hint && <p className="text-caption text-muted-foreground">{hint}</p>}
     </div>
+  )
+}
+
+function Toggle({ label, hint, checked, onChange }: { label: string; hint: string; checked: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <label className="flex cursor-pointer items-start justify-between gap-4">
+      <span>
+        <span className="block text-sm font-medium">{label}</span>
+        <span className="block text-caption text-muted-foreground">{hint}</span>
+      </span>
+      <Switch checked={checked} onChange={onChange} label={label} />
+    </label>
   )
 }
 

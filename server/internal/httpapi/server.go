@@ -241,6 +241,8 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var notPlayable *queue.NotPlayableError
 	var repeat *queue.RepeatError
 	switch {
+	case errors.Is(err, queue.ErrCantBorrow):
+		writeJSONError(w, http.StatusForbidden, "cant_borrow", err.Error())
 	case errors.As(err, &repeat):
 		writeJSONError(w, http.StatusConflict, "repeat", repeat.Error())
 	case errors.As(err, &notPlayable):

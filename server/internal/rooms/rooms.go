@@ -81,7 +81,22 @@ type Settings struct {
 	// the room has voted (see VotesNeeded). 0 to 99.
 	SkipVotePercent *int     `json:"skipVotePercent,omitempty"`
 	Fairness        Fairness `json:"fairness"`
+	Matching        Matching `json:"matching"`
 }
+
+// Matching says how a room uses the same song on other services (see
+// package match).
+type Matching struct {
+	// Fallback plays a song through another service in the room when its
+	// own can't play it. Nil means the default, on.
+	Fallback *bool `json:"fallback,omitempty"`
+	// Borrow lets anyone queue a song the room played again, even if it's
+	// only on someone else's service, which they couldn't search.
+	Borrow bool `json:"borrow,omitempty"`
+}
+
+// FallbackOn reports whether Fallback is on.
+func (m Matching) FallbackOn() bool { return m.Fallback == nil || *m.Fallback }
 
 // Fairness tunes a room's fairness mode. The zero value is plain round
 // robin or FIFO.
@@ -212,6 +227,8 @@ type Update struct {
 	SkipVotePercent    *int
 	// Fairness, if set, replaces the room's fairness options.
 	Fairness *Fairness
+	// Matching, if set, replaces the room's matching options.
+	Matching *Matching
 }
 
 // Update changes a room. Only its owner may. Everyone in the room hears
@@ -250,6 +267,9 @@ func (s *Service) Update(ctx context.Context, userID, id string, u Update) (stor
 	before := ParseSettings(r.Settings).Fairness
 	if u.Fairness != nil {
 		st.Fairness = *u.Fairness
+	}
+	if u.Matching != nil {
+		st.Matching = *u.Matching
 	}
 	name, raw, err := validate(name, mode, st)
 	if err != nil {

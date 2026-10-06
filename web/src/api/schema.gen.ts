@@ -1152,11 +1152,19 @@ export interface components {
         AddToQueueRequest: {
             items: components["schemas"]["TrackToQueue"][];
         };
+        /**
+         * @description A song from search (`linkId` and `trackId`), or a song the room
+         *     already had, again (`fromItemId`). Queueing again from someone
+         *     else's service needs the room's `matching.borrow`
+         *     (`cant_borrow` otherwise).
+         */
         TrackToQueue: {
-            /** @description One of your links. */
-            linkId: string;
+            /** @description A link you can use (yours, or shared). */
+            linkId?: string;
             /** @description The track's ID on that service, from search. */
-            trackId: string;
+            trackId?: string;
+            /** @description One of the room's queue items, from history or stats. */
+            fromItemId?: string;
         };
         MoveQueueItemRequest: {
             /** @description Where in your lane to put the song; 0 is the front. Past the end means the end. */
@@ -1268,6 +1276,17 @@ export interface components {
             /** Format: date-time */
             addedAt: string;
             track: components["schemas"]["QueuedTrack"];
+            via?: components["schemas"]["PlaysVia"];
+        };
+        /**
+         * @description Where the song plays from instead of its own service, which
+         *     couldn't play it: the same recording, found on another service in
+         *     the room. Show "playing from Navidrome instead of Spotify".
+         */
+        PlaysVia: {
+            provider: string;
+            linkId: string;
+            trackId: string;
         };
         PlayedItem: {
             item: components["schemas"]["QueueItem"];
@@ -1487,12 +1506,30 @@ export interface components {
              */
             repeatWindowMinutes: number;
         };
+        /** @description How the room uses the same song on other services. */
+        RoomMatching: {
+            /**
+             * @description When a song's service can't play it, play the same recording
+             *     from another service in the room: a service of someone who's
+             *     here, or a shared one. Matched by ISRC, or carefully by title,
+             *     artist and length.
+             * @default true
+             */
+            fallback: boolean;
+            /**
+             * @description Anyone may queue a song the room played again, even if it's only
+             *     on someone else's service.
+             * @default false
+             */
+            borrow: boolean;
+        };
         Room: {
             id: string;
             name: string;
             ownerId: string;
             fairnessMode: components["schemas"]["FairnessMode"];
             fairness: components["schemas"]["RoomFairness"];
+            matching: components["schemas"]["RoomMatching"];
             permissions: components["schemas"]["RoomPermissions"];
             skipVotePercent: components["schemas"]["SkipVotePercent"];
             /** Format: date-time */
@@ -1502,6 +1539,7 @@ export interface components {
             name: string;
             fairnessMode?: components["schemas"]["FairnessMode"];
             fairness?: components["schemas"]["RoomFairness"];
+            matching?: components["schemas"]["RoomMatching"];
             permissions?: components["schemas"]["RoomPermissionsChange"];
             skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };
@@ -1509,6 +1547,7 @@ export interface components {
             name?: string;
             fairnessMode?: components["schemas"]["FairnessMode"];
             fairness?: components["schemas"]["RoomFairness"];
+            matching?: components["schemas"]["RoomMatching"];
             permissions?: components["schemas"]["RoomPermissionsChange"];
             skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };

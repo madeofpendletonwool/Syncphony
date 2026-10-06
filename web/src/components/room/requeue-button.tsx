@@ -1,21 +1,23 @@
 import { useQuery } from '@tanstack/react-query'
 import { AddButton } from '@/components/add-button'
-import { useAddToLane } from '@/hooks/use-add-to-lane'
-import type { TrackResult } from '@/lib/browse'
+import { useAddToLane, type LaneTrack } from '@/hooks/use-add-to-lane'
 import type { QueueItem } from '@/lib/playback'
 import { usableLinksQuery } from '@/lib/services'
 
 /**
- * Puts a song from history back in your lane. Only shown when you can play
- * it: it came from one of your links, or one shared with you.
+ * Puts a song the room played back in your lane. Only shown when you can:
+ * it came from a link you can use (yours, or shared), or the room lets
+ * people borrow songs from each other's services.
  */
 export function RequeueButton({ item }: { item: QueueItem }) {
   const links = useQuery(usableLinksQuery)
-  const { add, status } = useAddToLane()
+  const { add, status, room } = useAddToLane()
   const linkId = item.track.linkId
-  if (!linkId || !links.data?.some((l) => l.id === linkId && l.status === 'ok')) return null
+  const usable = links.data?.some((l) => l.id === linkId && l.status === 'ok')
+  if (!linkId || !(usable || room?.matching.borrow)) return null
   const t = item.track
-  const track: TrackResult = {
+  const track: LaneTrack = {
+    fromItemId: item.id,
     linkId,
     provider: t.provider,
     trackId: t.trackId,

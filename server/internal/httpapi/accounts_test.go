@@ -20,6 +20,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
+	"github.com/madeofpendletonwool/syncphony/server/internal/match"
 	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
@@ -87,7 +88,7 @@ func newEnv(t *testing.T) *env {
 	e.links = links.New(db, vault.New(key), reg, links.Config{BaseURL: e.base, Now: e.clock, Notifier: links.BusNotifier{Bus: e.bus}})
 	qs := queue.New(db, e.rooms, e.links)
 	presence := realtime.NewPresence()
-	e.playback = playback.New(db, e.rooms, qs, e.links, playback.Config{Now: e.clock, Presence: presence})
+	e.playback = playback.New(db, e.rooms, qs, e.links, playback.Config{Now: e.clock, Presence: presence, Matcher: match.New(db, e.links, presence)})
 	t.Cleanup(e.playback.Close)
 	api := &httpapi.Server{
 		Version: "test", Auth: e.svc, Links: e.links, Rooms: e.rooms, Queue: qs, Playback: e.playback, Bus: e.bus, Presence: presence,

@@ -28,6 +28,9 @@ func (s *Server) CreateRoom(ctx context.Context, req CreateRoomRequestObject) (C
 	if f := req.Body.Fairness; f != nil {
 		st.Fairness = fromFairness(*f)
 	}
+	if m := req.Body.Matching; m != nil {
+		st.Matching = fromMatching(*m)
+	}
 	var mode string
 	if req.Body.FairnessMode != nil {
 		mode = string(*req.Body.FairnessMode)
@@ -59,6 +62,9 @@ func (s *Server) UpdateRoom(ctx context.Context, req UpdateRoomRequestObject) (U
 	if f := req.Body.Fairness; f != nil {
 		u.Fairness = ptr(fromFairness(*f))
 	}
+	if m := req.Body.Matching; m != nil {
+		u.Matching = ptr(fromMatching(*m))
+	}
 	r, err := s.Rooms.Update(ctx, sessionFrom(ctx).User.ID, req.RoomId, u)
 	if err != nil {
 		return nil, err
@@ -81,10 +87,15 @@ func toRoom(r store.Room) Room {
 			Weights: st.Fairness.Weights, RepeatWindowMinutes: st.Fairness.RepeatWindowMinutes,
 		},
 	}
+	out.Matching = RoomMatching{Fallback: st.Matching.FallbackOn(), Borrow: st.Matching.Borrow}
 	if out.Fairness.Weights == nil {
 		out.Fairness.Weights = map[string]int{}
 	}
 	return out
+}
+
+func fromMatching(m RoomMatching) rooms.Matching {
+	return rooms.Matching{Fallback: &m.Fallback, Borrow: m.Borrow}
 }
 
 func fromFairness(f RoomFairness) rooms.Fairness {

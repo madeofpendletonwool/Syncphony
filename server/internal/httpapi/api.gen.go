@@ -549,7 +549,10 @@ type CreateRoomRequest struct {
 	// robin, `weights` give some people more songs per turn.
 	Fairness     *RoomFairness `json:"fairness,omitempty"`
 	FairnessMode *FairnessMode `json:"fairnessMode,omitempty"`
-	Name         string        `json:"name"`
+
+	// Matching How the room uses the same song on other services.
+	Matching *RoomMatching `json:"matching,omitempty"`
+	Name     string        `json:"name"`
 
 	// Permissions Permissions to change. Missing ones stay as they are (`everyone` for a new room).
 	Permissions *RoomPermissionsChange `json:"permissions,omitempty"`
@@ -827,6 +830,15 @@ type PlayerReport struct {
 // PlayerReportEvent defines model for PlayerReport.Event.
 type PlayerReportEvent string
 
+// PlaysVia Where the song plays from instead of its own service, which
+// couldn't play it: the same recording, found on another service in
+// the room. Show "playing from Navidrome instead of Spotify".
+type PlaysVia struct {
+	LinkId   string `json:"linkId"`
+	Provider string `json:"provider"`
+	TrackId  string `json:"trackId"`
+}
+
 // ProfileUpdate Fields to change. Send `avatar` as "" to remove it.
 type ProfileUpdate struct {
 	Avatar      *string `json:"avatar,omitempty"`
@@ -884,6 +896,11 @@ type QueueItem struct {
 
 	// Track The track as it was when queued; still shown if its service is offline.
 	Track QueuedTrack `json:"track"`
+
+	// Via Where the song plays from instead of its own service, which
+	// couldn't play it: the same recording, found on another service in
+	// the room. Show "playing from Navidrome instead of Spotify".
+	Via *PlaysVia `json:"via,omitempty"`
 }
 
 // QueueItemState defines model for QueueItem.State.
@@ -941,12 +958,15 @@ type Room struct {
 	// `cooldown` other songs play between one person's songs; when
 	// nobody else is waiting, the music keeps going anyway. In round
 	// robin, `weights` give some people more songs per turn.
-	Fairness     RoomFairness    `json:"fairness"`
-	FairnessMode FairnessMode    `json:"fairnessMode"`
-	Id           string          `json:"id"`
-	Name         string          `json:"name"`
-	OwnerId      string          `json:"ownerId"`
-	Permissions  RoomPermissions `json:"permissions"`
+	Fairness     RoomFairness `json:"fairness"`
+	FairnessMode FairnessMode `json:"fairnessMode"`
+	Id           string       `json:"id"`
+
+	// Matching How the room uses the same song on other services.
+	Matching    RoomMatching    `json:"matching"`
+	Name        string          `json:"name"`
+	OwnerId     string          `json:"ownerId"`
+	Permissions RoomPermissions `json:"permissions"`
 
 	// SkipVotePercent A skip vote passes once more than this percent of the room has
 	// voted (not counting whoever queued the song): 50 is a majority.
@@ -1012,6 +1032,19 @@ type RoomHello struct {
 
 	// You Your user ID.
 	You string `json:"you"`
+}
+
+// RoomMatching How the room uses the same song on other services.
+type RoomMatching struct {
+	// Borrow Anyone may queue a song the room played again, even if it's only
+	// on someone else's service.
+	Borrow bool `json:"borrow"`
+
+	// Fallback When a song's service can't play it, play the same recording
+	// from another service in the room: a service of someone who's
+	// here, or a shared one. Matched by ISRC, or carefully by title,
+	// artist and length.
+	Fallback bool `json:"fallback"`
 }
 
 // RoomPermissions defines model for RoomPermissions.
@@ -1162,13 +1195,19 @@ type TrackResult struct {
 	TrackId    string  `json:"trackId"`
 }
 
-// TrackToQueue defines model for TrackToQueue.
+// TrackToQueue A song from search (`linkId` and `trackId`), or a song the room
+// already had, again (`fromItemId`). Queueing again from someone
+// else's service needs the room's `matching.borrow`
+// (`cant_borrow` otherwise).
 type TrackToQueue struct {
-	// LinkId One of your links.
-	LinkId string `json:"linkId"`
+	// FromItemId One of the room's queue items, from history or stats.
+	FromItemId *string `json:"fromItemId,omitempty"`
+
+	// LinkId A link you can use (yours, or shared).
+	LinkId *string `json:"linkId,omitempty"`
 
 	// TrackId The track's ID on that service, from search.
-	TrackId string `json:"trackId"`
+	TrackId *string `json:"trackId,omitempty"`
 }
 
 // UpdateLinkRequest defines model for UpdateLinkRequest.
@@ -1185,7 +1224,10 @@ type UpdateRoomRequest struct {
 	// robin, `weights` give some people more songs per turn.
 	Fairness     *RoomFairness `json:"fairness,omitempty"`
 	FairnessMode *FairnessMode `json:"fairnessMode,omitempty"`
-	Name         *string       `json:"name,omitempty"`
+
+	// Matching How the room uses the same song on other services.
+	Matching *RoomMatching `json:"matching,omitempty"`
+	Name     *string       `json:"name,omitempty"`
 
 	// Permissions Permissions to change. Missing ones stay as they are (`everyone` for a new room).
 	Permissions *RoomPermissionsChange `json:"permissions,omitempty"`

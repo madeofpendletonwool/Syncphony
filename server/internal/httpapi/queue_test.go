@@ -20,7 +20,7 @@ func linkFake(t *testing.T, c *client) string {
 func addReq(linkID string, trackIDs ...string) httpapi.AddToQueueRequest {
 	var req httpapi.AddToQueueRequest
 	for _, id := range trackIDs {
-		req.Items = append(req.Items, httpapi.TrackToQueue{LinkId: linkID, TrackId: id})
+		req.Items = append(req.Items, httpapi.TrackToQueue{LinkId: ptr(linkID), TrackId: ptr(id)})
 	}
 	return req
 }

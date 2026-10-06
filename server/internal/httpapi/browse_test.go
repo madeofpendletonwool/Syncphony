@@ -100,7 +100,7 @@ func TestSearchAndBrowse(t *testing.T) {
 	alice.want(http.StatusCreated, "POST", "/rooms", httpapi.CreateRoomRequest{Name: "Den"}).decode(t, &room)
 	var snap httpapi.QueueSnapshot
 	alice.want(http.StatusOK, "POST", "/rooms/"+room.Id+"/queue", httpapi.AddToQueueRequest{
-		Items: []httpapi.TrackToQueue{{LinkId: tr.LinkId, TrackId: tr.TrackId}},
+		Items: []httpapi.TrackToQueue{{LinkId: &tr.LinkId, TrackId: &tr.TrackId}},
 	}).decode(t, &snap)
 	if len(snap.Items) != 1 || snap.Items[0].Track.Title != tr.Title {
 		t.Fatalf("queued: %+v", snap.Items)

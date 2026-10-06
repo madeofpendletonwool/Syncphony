@@ -79,4 +79,29 @@ func TestHistoryAndStatsAPI(t *testing.T) {
 	if r := bob.do("GET", "/rooms/nope/stats", nil); r.status != http.StatusNotFound {
 		t.Errorf("stats of a missing room: %d", r.status)
 	}
+
+	// Queueing a song again: bob can't borrow from alice's link, until the
+	// room lets him.
+	if room.Matching != (httpapi.RoomMatching{Fallback: true, Borrow: false}) {
+		t.Fatalf("default matching: %+v", room.Matching)
+	}
+	alices := st.First.Item.Id
+	again := httpapi.AddToQueueRequest{Items: []httpapi.TrackToQueue{{FromItemId: &alices}}}
+	if r := bob.do("POST", base+"/queue", again); r.status != http.StatusForbidden || r.code() != "cant_borrow" {
+		t.Fatalf("borrowing: %d %s", r.status, r.body)
+	}
+	alice.want(http.StatusOK, "PATCH", base, httpapi.UpdateRoomRequest{Matching: &httpapi.RoomMatching{Fallback: true, Borrow: true}}).decode(t, &room)
+	if !room.Matching.Borrow {
+		t.Fatalf("matching: %+v", room.Matching)
+	}
+	bob.want(http.StatusOK, "POST", base+"/queue", again).decode(t, &snap)
+	n := 0
+	for _, it := range snap.Items {
+		if it.AddedBy == bobID && it.Track.TrackId == st.First.Item.Track.TrackId && it.State == "queued" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("bob's lane: %+v", snap.Items)
+	}
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/config"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
+	"github.com/madeofpendletonwool/syncphony/server/internal/match"
 	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
@@ -153,7 +154,9 @@ func run() error {
 		slog.Warn("ffmpeg not found: songs in formats the player can't decode won't play")
 	}
 	presence := realtime.NewPresence()
-	player := playback.New(db, roomSvc, queueSvc, a.links, playback.Config{Transcoder: transcoder, Presence: presence})
+	player := playback.New(db, roomSvc, queueSvc, a.links, playback.Config{
+		Transcoder: transcoder, Presence: presence, Matcher: match.New(db, a.links, presence),
+	})
 	defer player.Close()
 	go player.Run(ctx)
 	api := &httpapi.Server{

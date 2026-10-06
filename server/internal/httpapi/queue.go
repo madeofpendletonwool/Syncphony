@@ -21,7 +21,7 @@ func (s *Server) GetQueue(ctx context.Context, req GetQueueRequestObject) (GetQu
 func (s *Server) AddToQueue(ctx context.Context, req AddToQueueRequestObject) (AddToQueueResponseObject, error) {
 	refs := make([]queue.TrackRef, len(req.Body.Items))
 	for i, it := range req.Body.Items {
-		refs[i] = queue.TrackRef{LinkID: it.LinkId, TrackID: it.TrackId}
+		refs[i] = queue.TrackRef{LinkID: deref(it.LinkId), TrackID: deref(it.TrackId), FromItemID: deref(it.FromItemId)}
 	}
 	snap, err := s.Queue.Add(ctx, req.RoomId, sessionFrom(ctx).User.ID, refs)
 	if err != nil {

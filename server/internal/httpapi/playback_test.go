@@ -91,7 +91,10 @@ func TestPlaybackAPI(t *testing.T) {
 	alice := e.admin()
 	bob := e.member(alice, "bob")
 	var room httpapi.Room
-	alice.want(http.StatusCreated, "POST", "/rooms", httpapi.CreateRoomRequest{Name: "Living room"}).decode(t, &room)
+	// No fallback: bob's link has alice's songs too, and this tests skipping.
+	alice.want(http.StatusCreated, "POST", "/rooms", httpapi.CreateRoomRequest{
+		Name: "Living room", Matching: &httpapi.RoomMatching{Fallback: false},
+	}).decode(t, &room)
 	base := "/rooms/" + room.Id
 	aliceLink, bobLink := linkFake(t, alice), linkFake(t, bob)
 

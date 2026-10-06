@@ -135,3 +135,7 @@ JOIN queue_items ON queue_items.id = play_history.queue_item_id
 WHERE play_history.room_id = ? AND play_history.ended_at IS NOT NULL
 ORDER BY play_history.started_at, play_history.id
 LIMIT ?;
+
+-- SetQueueItemVia records where an item plays from instead of its own link.
+-- name: SetQueueItemVia :exec
+UPDATE queue_items SET via_provider = ?, via_link_id = ?, via_track_id = ?, updated_at = ? WHERE id = ?;

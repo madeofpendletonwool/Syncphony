@@ -33,9 +33,11 @@ import (
 	"io"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/match"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
@@ -94,8 +96,17 @@ type Config struct {
 	// Presence says who's in each room, to size skip votes. Nil counts
 	// only the voters.
 	Presence Presence
+	// Matcher finds a song on another service when its own can't play it,
+	// in rooms that allow it. Nil turns that off.
+	Matcher Matcher
 	// Now is the clock. Default store.Now.
 	Now func() time.Time
+}
+
+// Matcher finds the same song on another service in the room.
+// match.Service is one.
+type Matcher interface {
+	Find(ctx context.Context, roomID string, it store.QueueItem) (match.Via, error)
 }
 
 // Presence says who's in a room right now. realtime.Presence is one.
@@ -275,10 +286,11 @@ func (e *Engine) load(ctx context.Context, r *room) error {
 // driverOf works out how an item plays, without starting it. Unknown (its
 // link is gone, say) reads as stream; starting it will fail and skip it.
 func (e *Engine) driverOf(ctx context.Context, it store.QueueItem) string {
-	if !it.LinkID.Valid {
+	linkID, _ := source(it)
+	if linkID == "" {
 		return string(provider.PlaybackStream)
 	}
-	sess, err := e.sessions.Open(ctx, it.LinkID.String)
+	sess, err := e.sessions.Open(ctx, linkID)
 	if err != nil {
 		return string(provider.PlaybackStream)
 	}
@@ -660,6 +672,16 @@ func (e *Engine) Report(ctx context.Context, roomID, userID string, rep Report) 
 		if cause == "" {
 			cause = "the speaker reported an error"
 		}
+		// Before skipping it, try the song on another service.
+		if alt, ok := e.elsewhere(ctx, r, *r.np.Item, errors.New(cause)); ok {
+			r.np.Position, r.np.At, r.since = 0, now, now
+			r.np.Revision++
+			if err = e.start(ctx, r, alt); err == nil {
+				e.publish(r)
+				break
+			}
+			cause = err.Error()
+		}
 		err = e.failed(ctx, r, fmt.Sprintf("Couldn't play %s", title(r.np.Item)), errors.New(cause))
 	default:
 		return rooms.NowPlaying{}, &InvalidInputError{"event is playing, progress, paused, ended or error"}
@@ -762,13 +784,79 @@ func (e *Engine) rotate(ctx context.Context, r *room, reason string, start bool)
 	return next, snap, err
 }
 
-// begin starts an item that rotate made current. Streamed songs wait for
-// the speaker to load them; remote songs start on the service's player.
+// begin starts an item that rotate made current. If its service can't
+// start it, the same song on another service in the room may stand in.
 func (e *Engine) begin(ctx context.Context, r *room, it store.QueueItem) error {
-	if !it.LinkID.Valid {
+	err := e.start(ctx, r, it)
+	if err == nil {
+		return nil
+	}
+	if alt, ok := e.elsewhere(ctx, r, it, err); ok {
+		return e.start(ctx, r, alt)
+	}
+	return err
+}
+
+// matchTimeout bounds the search for a stand-in. It's under the load
+// timeout, so a song that's found still has time to start.
+const matchTimeout = 15 * time.Second
+
+// source is where an item plays from: the link and track standing in for
+// it, if any, or its own. linkID is "" if its link is gone.
+func source(it store.QueueItem) (linkID, trackID string) {
+	if it.ViaLinkID.Valid {
+		return it.ViaLinkID.String, it.ViaTrackID.String
+	}
+	return it.LinkID.String, it.TrackID
+}
+
+// elsewhere finds item's song on another service in the room, records it
+// as where the item plays from, and makes it the current item. It says
+// no if the room doesn't allow it, if the item already stands in for
+// itself somewhere else, or if nothing has the song.
+func (e *Engine) elsewhere(ctx context.Context, r *room, it store.QueueItem, cause error) (store.QueueItem, bool) {
+	if e.cfg.Matcher == nil || !r.settings.Matching.FallbackOn() || it.ViaLinkID.Valid {
+		return it, false
+	}
+	// The room is locked while we look, so don't look for long.
+	fctx, cancel := context.WithTimeout(ctx, matchTimeout)
+	via, err := e.cfg.Matcher.Find(fctx, r.id, it)
+	cancel()
+	if err != nil {
+		if !errors.Is(err, match.ErrNoMatch) {
+			slog.Warn("playback: looking for a song elsewhere", "room", r.id, "item", it.ID, "err", err)
+		}
+		return it, false
+	}
+	_, err = e.queue.Change(ctx, r.id, func(q *store.Queries, _ store.Room) error {
+		return q.SetQueueItemVia(ctx, store.SetQueueItemViaParams{
+			ViaProvider: nullString(via.Provider), ViaLinkID: nullString(via.LinkID), ViaTrackID: nullString(via.TrackID),
+			UpdatedAt: e.cfg.Now(), ID: it.ID,
+		})
+	})
+	if err != nil {
+		slog.Warn("playback: recording a stand-in", "room", r.id, "item", it.ID, "err", err)
+		return it, false
+	}
+	slog.Info("playback: playing a song from another service", "room", r.id, "item", it.ID, "via", via.LinkID, "cause", cause)
+	it.ViaProvider, it.ViaLinkID, it.ViaTrackID = nullString(via.Provider), nullString(via.LinkID), nullString(via.TrackID)
+	r.np.Item = &it
+	from := via.ProviderName
+	if via.OwnerName != "" {
+		from = possessive(via.OwnerName) + " " + via.ProviderName
+	}
+	e.notice(r, it.ID, fmt.Sprintf("Playing %s from %s: %s couldn't play it", title(&it), from, via.FromName))
+	return it, true
+}
+
+// start starts an item from its source. Streamed songs wait for the
+// speaker to load them; remote songs start on the service's player.
+func (e *Engine) start(ctx context.Context, r *room, it store.QueueItem) error {
+	linkID, _ := source(it)
+	if linkID == "" {
 		return errors.New("its service was unlinked")
 	}
-	sess, err := e.sessions.Open(ctx, it.LinkID.String)
+	sess, err := e.sessions.Open(ctx, linkID)
 	if err != nil {
 		return err
 	}
@@ -795,7 +883,8 @@ func (e *Engine) begin(ctx context.Context, r *room, it store.QueueItem) error {
 // startRemote opens a session for a remote song and plays it from at. The
 // session stays open while the song is current: it's the remote's handle.
 func (e *Engine) startRemote(ctx context.Context, r *room, it store.QueueItem, at time.Duration) error {
-	sess, err := e.sessions.Open(ctx, it.LinkID.String)
+	linkID, trackID := source(it)
+	sess, err := e.sessions.Open(ctx, linkID)
 	if err != nil {
 		return err
 	}
@@ -804,7 +893,7 @@ func (e *Engine) startRemote(ctx context.Context, r *room, it store.QueueItem, a
 		sess.Close()
 		return errors.New("its service can't play remotely")
 	}
-	if err := rem.Play(ctx, it.TrackID, at); err != nil {
+	if err := rem.Play(ctx, trackID, at); err != nil {
 		sess.Close()
 		return err
 	}
@@ -995,12 +1084,13 @@ func (e *Engine) poll(ctx context.Context, r *room, now time.Time) error {
 		return e.failed(ctx, r, fmt.Sprintf("Skipped %s: lost touch with its player", title(r.np.Item)), err)
 	}
 	d := duration(r.np.Item)
+	_, trackID := source(*r.np.Item)
 	// Some services report the old track for a moment after a change.
 	settled := now.Sub(r.since) > 5*time.Second
 	switch {
-	case st.TrackID != r.np.Item.TrackID && settled:
+	case st.TrackID != trackID && settled:
 		return e.next(ctx, r, store.EndFinished)
-	case st.TrackID != r.np.Item.TrackID:
+	case st.TrackID != trackID:
 	case !st.Playing && d > 0 && st.Position >= d-2*time.Second:
 		return e.next(ctx, r, store.EndFinished)
 	case !st.Playing:
@@ -1023,10 +1113,11 @@ func (e *Engine) Stream(ctx context.Context, roomID, itemID string, opts provide
 	} else if err != nil {
 		return nil, err
 	}
-	if (it.State != store.ItemPlaying && it.State != store.ItemQueued) || !it.LinkID.Valid {
+	linkID, trackID := source(it)
+	if (it.State != store.ItemPlaying && it.State != store.ItemQueued) || linkID == "" {
 		return nil, ErrNotStreamable
 	}
-	sess, err := e.sessions.Open(ctx, it.LinkID.String)
+	sess, err := e.sessions.Open(ctx, linkID)
 	if err != nil {
 		return nil, err
 	}
@@ -1035,7 +1126,7 @@ func (e *Engine) Stream(ctx context.Context, roomID, itemID string, opts provide
 		sess.Close()
 		return nil, ErrNotStreamable
 	}
-	a, err := transcode.Stream(ctx, s, it.TrackID, opts, e.cfg.Transcoder)
+	a, err := transcode.Stream(ctx, s, trackID, opts, e.cfg.Transcoder)
 	if err != nil {
 		sess.Close()
 		return nil, err
@@ -1062,6 +1153,14 @@ func title(it *store.QueueItem) string {
 		return "a song"
 	}
 	return "“" + t.Title + "”"
+}
+
+// possessive is "Sam's", or "James'".
+func possessive(name string) string {
+	if strings.HasSuffix(name, "s") {
+		return name + "'"
+	}
+	return name + "'s"
 }
 
 func playerName(p *rooms.Player) string {

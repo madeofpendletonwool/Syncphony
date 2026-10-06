@@ -1793,14 +1793,21 @@ components:
 
     TrackToQueue:
       type: object
-      required: [linkId, trackId]
+      description: |
+        A song from search (`linkId` and `trackId`), or a song the room
+        already had, again (`fromItemId`). Queueing again from someone
+        else's service needs the room's `matching.borrow`
+        (`cant_borrow` otherwise).
       properties:
         linkId:
           type: string
-          description: One of your links.
+          description: A link you can use (yours, or shared).
         trackId:
           type: string
           description: The track's ID on that service, from search.
+        fromItemId:
+          type: string
+          description: One of the room's queue items, from history or stats.
 
     MoveQueueItemRequest:
       type: object
@@ -1979,6 +1986,23 @@ components:
           format: date-time
         track:
           $ref: "#/components/schemas/QueuedTrack"
+        via:
+          $ref: "#/components/schemas/PlaysVia"
+
+    PlaysVia:
+      type: object
+      description: |
+        Where the song plays from instead of its own service, which
+        couldn't play it: the same recording, found on another service in
+        the room. Show "playing from Navidrome instead of Spotify".
+      required: [provider, linkId, trackId]
+      properties:
+        provider:
+          type: string
+        linkId:
+          type: string
+        trackId:
+          type: string
 
     PlayedItem:
       type: object
@@ -2353,9 +2377,29 @@ components:
             Refuse songs already waiting or playing, or started within this
             many minutes. 0 is off.
 
+    RoomMatching:
+      type: object
+      description: How the room uses the same song on other services.
+      required: [fallback, borrow]
+      properties:
+        fallback:
+          type: boolean
+          default: true
+          description: |
+            When a song's service can't play it, play the same recording
+            from another service in the room: a service of someone who's
+            here, or a shared one. Matched by ISRC, or carefully by title,
+            artist and length.
+        borrow:
+          type: boolean
+          default: false
+          description: |
+            Anyone may queue a song the room played again, even if it's only
+            on someone else's service.
+
     Room:
       type: object
-      required: [id, name, ownerId, fairnessMode, fairness, permissions, skipVotePercent, createdAt]
+      required: [id, name, ownerId, fairnessMode, fairness, matching, permissions, skipVotePercent, createdAt]
       properties:
         id:
           type: string
@@ -2367,6 +2411,8 @@ components:
           $ref: "#/components/schemas/FairnessMode"
         fairness:
           $ref: "#/components/schemas/RoomFairness"
+        matching:
+          $ref: "#/components/schemas/RoomMatching"
         permissions:
           $ref: "#/components/schemas/RoomPermissions"
         skipVotePercent:
@@ -2387,6 +2433,8 @@ components:
           $ref: "#/components/schemas/FairnessMode"
         fairness:
           $ref: "#/components/schemas/RoomFairness"
+        matching:
+          $ref: "#/components/schemas/RoomMatching"
         permissions:
           $ref: "#/components/schemas/RoomPermissionsChange"
         skipVotePercent:
@@ -2403,6 +2451,8 @@ components:
           $ref: "#/components/schemas/FairnessMode"
         fairness:
           $ref: "#/components/schemas/RoomFairness"
+        matching:
+          $ref: "#/components/schemas/RoomMatching"
         permissions:
           $ref: "#/components/schemas/RoomPermissionsChange"
         skipVotePercent:
