@@ -1,0 +1,8 @@
+{"isrc":"USAAA2600001","recordings":[
+ {"id":"cc000000-0000-4000-8000-000000000009","title":"Rolloff (Live at the Oscilloscope)","length":245000,"disambiguation":"live","video":false,
+  "artist-credit":[{"name":"The Square Roots","joinphrase":"","artist":{"id":"0b3a1c55-2f0c-4a35-9a3e-6a1f33a0e001","name":"The Square Roots","sort-name":"Square Roots, The"}}],
+  "releases":[{"id":"aa000000-0000-4000-8000-000000000009","title":"Live","status":"Official","date":"2020-01-01","release-group":{"id":"bb000000-0000-4000-8000-000000000009","primary-type":"Album","secondary-types":["Live"]}}]},
+ {"id":"8f3471b5-7e6a-48da-86a9-c1c07a0f47ae","title":"Rolloff","length":20133,"disambiguation":"","video":false,
+  "artist-credit":[{"name":"The Square Roots","joinphrase":"","artist":{"id":"0b3a1c55-2f0c-4a35-9a3e-6a1f33a0e001","name":"The Square Roots","sort-name":"Square Roots, The"}}],
+  "releases":[{"id":"aa000000-0000-4000-8000-000000000002","title":"Low Pass","status":"Official","date":"2019-03-01","release-group":{"id":"bb000000-0000-4000-8000-000000000002","primary-type":"Album","secondary-types":[]}}]}
+]}

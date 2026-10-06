@@ -799,7 +799,10 @@ export interface paths {
         /**
          * A queued song's artwork
          * @description Loaded through the link of whoever queued the song, so everyone in
-         *     the room can see it. 404 if the song has none or its link is gone.
+         *     the room can see it. When that's missing, or smaller than `size`,
+         *     the release's front cover from the Cover Art Archive is sent instead
+         *     if it's bigger, once the song has been matched on MusicBrainz. 404
+         *     if there's none.
          */
         get: operations["getQueueItemArtwork"];
         put?: never;

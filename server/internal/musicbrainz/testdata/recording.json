@@ -1,0 +1,7 @@
+{"id":"8f3471b5-7e6a-48da-86a9-c1c07a0f47ae","title":"Rolloff","length":20133,"disambiguation":"","video":false,"first-release-date":"2019-03-01",
+"artist-credit":[{"name":"The Square Roots","joinphrase":"","artist":{"id":"0b3a1c55-2f0c-4a35-9a3e-6a1f33a0e001","name":"The Square Roots","sort-name":"Square Roots, The","disambiguation":"","type":"Group"}}],
+"releases":[
+ {"id":"aa000000-0000-4000-8000-000000000001","title":"Now That's What I Call Sine Waves","status":"Official","date":"2018-06-01","country":"XE","release-group":{"id":"bb000000-0000-4000-8000-000000000001","title":"Now That's What I Call Sine Waves","primary-type":"Album","secondary-types":["Compilation"]}},
+ {"id":"aa000000-0000-4000-8000-000000000002","title":"Low Pass","status":"Official","date":"2019-03-01","country":"GB","release-group":{"id":"bb000000-0000-4000-8000-000000000002","title":"Low Pass","primary-type":"Album","secondary-types":[]}},
+ {"id":"aa000000-0000-4000-8000-000000000003","title":"Low Pass","status":"Bootleg","date":"2017-01-01","country":"XW","release-group":{"id":"bb000000-0000-4000-8000-000000000002","title":"Low Pass","primary-type":"Album","secondary-types":[]}}
+]}

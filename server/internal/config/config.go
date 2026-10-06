@@ -39,6 +39,9 @@ type Config struct {
 	// LRCLIBURL is the LRCLIB instance asked for lyrics a song's own
 	// service doesn't have, e.g. a self-hosted one. Empty turns it off.
 	LRCLIBURL string
+	// MusicBrainzURL is the MusicBrainz server queued songs are matched on,
+	// for Cover Art Archive artwork. Empty turns both off.
+	MusicBrainzURL string
 }
 
 // defaultTrustedProxies are loopback and private networks, where a
@@ -79,6 +82,13 @@ func Load() (Config, error) {
 		c.LRCLIBURL = u
 	default:
 		return Config{}, fmt.Errorf("SYNCPHONY_LRCLIB_URL %q: want an http(s) URL, or off", u)
+	}
+	switch u := strings.TrimRight(strings.TrimSpace(env("SYNCPHONY_MUSICBRAINZ_URL", "https://musicbrainz.org")), "/"); {
+	case u == "off" || u == "none":
+	case strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://"):
+		c.MusicBrainzURL = u
+	default:
+		return Config{}, fmt.Errorf("SYNCPHONY_MUSICBRAINZ_URL %q: want an http(s) URL, or off", u)
 	}
 	proxies := env("SYNCPHONY_TRUSTED_PROXIES", defaultTrustedProxies)
 	if proxies != "none" {

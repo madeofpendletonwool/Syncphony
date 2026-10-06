@@ -17,11 +17,29 @@ import (
 	"strings"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/artcache"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 )
 
 // ID is the provider ID stored in links and track refs.
 const ID = "navidrome"
+
+const (
+	// artworkTTL is how long a cached image is served before it's fetched
+	// again, so changed cover art shows up eventually.
+	artworkTTL = 24 * time.Hour
+	// maxArtwork is the largest image we'll fetch or cache.
+	maxArtwork = 8 << 20
+)
+
+// artKey names a cached image.
+type artKey struct {
+	// account keeps users' caches apart: Navidrome libraries can be
+	// per-user, so one user's art isn't necessarily visible to another.
+	account string
+	ref     string
+	size    int
+}
 
 // Options configure the provider. The zero value is ready to use.
 type Options struct {
@@ -38,7 +56,7 @@ type Options struct {
 // Provider is the Navidrome provider.
 type Provider struct {
 	client *http.Client
-	art    *artCache
+	art    *artcache.Cache[artKey]
 }
 
 var _ provider.Provider = (*Provider)(nil)
@@ -54,7 +72,7 @@ func New(opts Options) *Provider {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	return &Provider{client: opts.Client, art: newArtCache(opts.ArtworkCacheBytes, artworkTTL, opts.Now)}
+	return &Provider{client: opts.Client, art: artcache.New[artKey](opts.ArtworkCacheBytes, artworkTTL, opts.Now)}
 }
 
 // defaultClient waits at most 30s for response headers but puts no limit

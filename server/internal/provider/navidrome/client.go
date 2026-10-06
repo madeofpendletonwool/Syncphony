@@ -233,6 +233,8 @@ type song struct {
 	Artists        []credit `json:"artists"`
 	ISRC           []string `json:"isrc"`
 	ExplicitStatus string   `json:"explicitStatus"`
+	// MusicBrainzID is the recording's MBID, from tags.
+	MusicBrainzID string `json:"musicBrainzId"`
 }
 
 type album struct {

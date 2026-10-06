@@ -45,6 +45,18 @@ type LyricsCache struct {
 	ExpiresAt    time.Time
 }
 
+type MusicbrainzTrack struct {
+	Provider         string
+	TrackID          string
+	RecordingMbid    string
+	ReleaseMbid      string
+	ReleaseGroupMbid string
+	ArtistMbid       string
+	Method           string
+	ResolvedAt       time.Time
+	ExpiresAt        time.Time
+}
+
 type PlayHistory struct {
 	ID          string
 	RoomID      string

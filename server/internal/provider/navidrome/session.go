@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/artcache"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/transcode"
 )
@@ -36,7 +37,9 @@ const (
 	// defaultArtworkSize is used when the caller has no preference.
 	// Originals can be several megabytes.
 	defaultArtworkSize = 600
-	maxArtworkSize     = 2000
+	// maxArtworkSize is the API's own limit, for big screens. Navidrome
+	// doesn't scale images up, so asking for more than the original is safe.
+	maxArtworkSize = 2048
 )
 
 func (s *session) Search(ctx context.Context, q provider.SearchQuery) (provider.SearchPage, error) {
@@ -156,6 +159,7 @@ func (s *session) track(so song) provider.Track {
 		Album:    provider.AlbumCredit{ID: so.AlbumID, Title: so.Album},
 		Duration: time.Duration(so.Duration) * time.Second,
 		Explicit: so.ExplicitStatus == "explicit",
+		MBID:     so.MusicBrainzID,
 		Artwork:  provider.ArtworkRef(so.CoverArt),
 	}
 	if len(so.ISRC) > 0 {
@@ -215,8 +219,8 @@ func (s *session) Artwork(ctx context.Context, ref provider.ArtworkRef, size int
 	}
 	size = min(size, maxArtworkSize)
 	key := artKey{account: s.link.Account.ID, ref: string(ref), size: size}
-	if img, ok := s.p.art.get(key); ok {
-		return io.NopCloser(bytes.NewReader(img.data)), img.contentType, nil
+	if img, ok := s.p.art.Get(key); ok {
+		return io.NopCloser(bytes.NewReader(img.Data)), img.ContentType, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
@@ -246,7 +250,7 @@ func (s *session) Artwork(ctx context.Context, ref provider.ArtworkRef, size int
 	if len(data) > maxArtwork {
 		return nil, "", fmt.Errorf("navidrome getCoverArt: image over %d bytes", maxArtwork)
 	}
-	s.p.art.put(key, image{data: data, contentType: ct})
+	s.p.art.Put(key, artcache.Image{Data: data, ContentType: ct})
 	return io.NopCloser(bytes.NewReader(data)), ct, nil
 }
 

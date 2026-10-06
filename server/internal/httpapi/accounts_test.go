@@ -22,6 +22,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
 	"github.com/madeofpendletonwool/syncphony/server/internal/match"
+	"github.com/madeofpendletonwool/syncphony/server/internal/musicbrainz"
 	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
@@ -43,6 +44,7 @@ type env struct {
 	bus      *realtime.Local
 	rooms    *rooms.Service
 	playback *playback.Engine
+	mb       *musicbrainz.Service
 	fake     *fake.Provider // links with a form
 	oauth    *fake.Provider // links with OAuth2
 	setupURL string
@@ -88,12 +90,16 @@ func newEnv(t *testing.T) *env {
 	e.rooms = rooms.New(db, e.bus)
 	e.links = links.New(db, vault.New(key), reg, links.Config{BaseURL: e.base, Now: e.clock, Notifier: links.BusNotifier{Bus: e.bus}})
 	qs := queue.New(db, e.rooms, e.links)
+	mbURL := newMusicBrainz(t).URL
+	e.mb = musicbrainz.New(db, musicbrainz.Options{BaseURL: mbURL, CoverArtURL: mbURL, Interval: -1, Now: e.clock})
+	qs.OnAdd = func(ts []provider.Track) { e.mb.Enqueue(ts...) }
+	go e.mb.Run(t.Context())
 	presence := realtime.NewPresence()
 	e.playback = playback.New(db, e.rooms, qs, e.links, playback.Config{Now: e.clock, Presence: presence, Matcher: match.New(db, e.links, presence)})
 	t.Cleanup(e.playback.Close)
 	ly := lyrics.New(db, lyrics.Options{LRCLIB: &lyrics.LRCLIB{BaseURL: newLRCLIB(t).URL}, Now: e.clock})
 	api := &httpapi.Server{
-		Version: "test", Auth: e.svc, Links: e.links, Lyrics: ly, Rooms: e.rooms, Queue: qs, Playback: e.playback, Bus: e.bus, Presence: presence,
+		Version: "test", Auth: e.svc, Links: e.links, Lyrics: ly, MusicBrainz: e.mb, Rooms: e.rooms, Queue: qs, Playback: e.playback, Bus: e.bus, Presence: presence,
 		BaseURL: e.base, PingEvery: 50 * time.Millisecond,
 	}
 	mux := http.NewServeMux()

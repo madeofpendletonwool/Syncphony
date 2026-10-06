@@ -98,6 +98,9 @@ type Service struct {
 	// change. The playback engine uses it to start playing when songs
 	// arrive. It runs on the caller's goroutine and must not block.
 	OnChange func(roomID string)
+	// OnAdd, if set, is called with the songs added, once they're in. Like
+	// OnChange it must not block. MusicBrainz enrichment starts here.
+	OnAdd func(tracks []provider.Track)
 
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex
@@ -189,12 +192,14 @@ func (s *Service) Add(ctx context.Context, roomID, userID string, refs []TrackRe
 	if err != nil {
 		return rooms.QueueSnapshot{}, err
 	}
-	return s.Change(ctx, roomID, func(q *store.Queries, room store.Room) error {
+	var added []provider.Track
+	snap, err := s.Change(ctx, roomID, func(q *store.Queries, room store.Room) error {
 		now := s.Now()
 		tracks, err := s.withoutRepeats(ctx, q, room, tracks, now)
 		if err != nil {
 			return err
 		}
+		added = tracks
 		pos, err := q.NextLanePosition(ctx, store.NextLanePositionParams{RoomID: roomID, AddedBy: userID})
 		if err != nil {
 			return err
@@ -215,6 +220,10 @@ func (s *Service) Add(ctx context.Context, roomID, userID string, refs []TrackRe
 		}
 		return nil
 	})
+	if err == nil && s.OnAdd != nil {
+		s.OnAdd(added)
+	}
+	return snap, err
 }
 
 // withoutRepeats drops the songs the room's repeat guard refuses, including

@@ -21,6 +21,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
 	"github.com/madeofpendletonwool/syncphony/server/internal/match"
+	"github.com/madeofpendletonwool/syncphony/server/internal/musicbrainz"
 	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
@@ -147,20 +148,32 @@ func run() error {
 	} else if link != "" {
 		slog.Warn("no accounts yet: open this one-time link to create the admin account (valid 24h, renewed on restart)", "url", link)
 	}
+	// What MusicBrainz and LRCLIB ask clients to send: name/version (contact).
+	userAgent := "Syncphony/" + version + " ( https://github.com/madeofpendletonwool/syncphony )"
 	lyricsOpts := lyrics.Options{}
 	if cfg.LRCLIBURL != "" {
 		lyricsOpts.LRCLIB = &lyrics.LRCLIB{
 			BaseURL:   cfg.LRCLIBURL,
-			UserAgent: "Syncphony/" + version + " (https://github.com/madeofpendletonwool/syncphony)",
+			UserAgent: userAgent,
 		}
 	} else {
 		slog.Info("LRCLIB is off: only lyrics from linked services are shown")
 	}
 	lyricsSvc := lyrics.New(db, lyricsOpts)
-	go sweep(ctx, db, lyricsSvc)
+	var mb *musicbrainz.Service
+	if cfg.MusicBrainzURL != "" {
+		mb = musicbrainz.New(db, musicbrainz.Options{BaseURL: cfg.MusicBrainzURL, UserAgent: userAgent})
+		go mb.Run(ctx)
+	} else {
+		slog.Info("MusicBrainz is off: artwork comes only from linked services")
+	}
+	go sweep(ctx, db, lyricsSvc, mb)
 
 	roomSvc := rooms.New(db, a.bus)
 	queueSvc := queue.New(db, roomSvc, a.links)
+	if mb != nil {
+		queueSvc.OnAdd = func(ts []provider.Track) { mb.Enqueue(ts...) }
+	}
 	var transcoder transcode.Transcoder
 	if ff := (transcode.FFmpeg{}); ff.Available() {
 		transcoder = ff
@@ -174,7 +187,7 @@ func run() error {
 	defer player.Close()
 	go player.Run(ctx)
 	api := &httpapi.Server{
-		Version: version, Auth: accounts, Links: a.links, Lyrics: lyricsSvc,
+		Version: version, Auth: accounts, Links: a.links, Lyrics: lyricsSvc, MusicBrainz: mb,
 		Rooms: roomSvc, Queue: queueSvc, Playback: player, Bus: a.bus, Presence: presence,
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	}
@@ -213,8 +226,9 @@ func run() error {
 	return nil
 }
 
-// sweep deletes expired sessions and cached lyrics every hour until ctx is done.
-func sweep(ctx context.Context, db *store.Store, ly *lyrics.Service) {
+// sweep deletes expired sessions, cached lyrics and MusicBrainz matches
+// every hour until ctx is done.
+func sweep(ctx context.Context, db *store.Store, ly *lyrics.Service, mb *musicbrainz.Service) {
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()
 	for {
@@ -225,6 +239,11 @@ func sweep(ctx context.Context, db *store.Store, ly *lyrics.Service) {
 		}
 		if err := ly.Sweep(ctx); err != nil {
 			slog.Warn("sweeping expired lyrics", "err", err)
+		}
+		if mb != nil {
+			if err := mb.Sweep(ctx); err != nil {
+				slog.Warn("sweeping expired MusicBrainz matches", "err", err)
+			}
 		}
 		select {
 		case <-ctx.Done():
