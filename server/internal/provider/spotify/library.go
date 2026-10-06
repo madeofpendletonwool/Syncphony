@@ -18,14 +18,22 @@ import (
 // Implementations must be safe for concurrent use, and map failures to the
 // provider package's errors as Audio's do.
 type Library interface {
-	// Playlists lists the playlists in login's library, in the user's order,
-	// with folders flattened away.
+	// Playlists lists login's playlists as the Spotify apps' home and
+	// library do: Liked Songs first (as LikedSongsID), then playlists, most
+	// recently played first. That includes playlists played but not saved
+	// (Spotify's mixes, mostly). Playlists never played follow, in the
+	// library's order, with folders flattened away.
 	Playlists(ctx context.Context, login Login) ([]LibraryPlaylist, error)
 	// PlaylistTracks lists up to n of a playlist's items from offset from.
-	// Items that aren't tracks (episodes, local files) and tracks Spotify
-	// has no metadata for are left out, so a page can be short.
+	// LikedSongsID lists Liked Songs, newest first. Items that aren't
+	// tracks (episodes, local files) and tracks Spotify has no metadata for
+	// are left out, so a page can be short.
 	PlaylistTracks(ctx context.Context, login Login, playlistID string, from, n int) (LibraryPage, error)
 }
+
+// LikedSongsID is the playlist ID Liked Songs is listed by. It isn't a
+// Spotify ID, so it can't name a real playlist.
+const LikedSongsID = "liked"
 
 // LibraryPlaylist is a playlist in an account's library.
 type LibraryPlaylist struct {
@@ -90,8 +98,10 @@ func (s playlistSession) Playlists(ctx context.Context, cursor string) (provider
 // PlaylistTracks implements provider.PlaylistLister. The cursor is the
 // offset of the next page.
 func (s playlistSession) PlaylistTracks(ctx context.Context, id, cursor string) (provider.Page[provider.Track], error) {
-	if err := checkID("playlist", id); err != nil {
-		return provider.Page[provider.Track]{}, err
+	if id != LikedSongsID {
+		if err := checkID("playlist", id); err != nil {
+			return provider.Page[provider.Track]{}, err
+		}
 	}
 	offset := 0
 	if cursor != "" {

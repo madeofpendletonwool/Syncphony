@@ -84,13 +84,27 @@ func TestLive(t *testing.T) {
 		t.Fatalf("Playlists: %v", err)
 	}
 	t.Logf("%d playlists", len(lists.Items))
+	for i, l := range lists.Items[:min(12, len(lists.Items))] {
+		t.Logf("  %d. %s (%d tracks, owner %s)", i+1, l.ID, l.TrackCount, l.Owner)
+	}
+	// Liked Songs leads, newest first.
+	if len(lists.Items) > 0 && lists.Items[0].ID == spotify.LikedSongsID {
+		tp, err := pl.PlaylistTracks(t.Context(), spotify.LikedSongsID, "")
+		if err != nil || len(tp.Items) == 0 {
+			t.Errorf("Liked Songs: %d tracks, %v", len(tp.Items), err)
+		} else {
+			t.Logf("Liked Songs: %d of %d on the first page, next %q", len(tp.Items), lists.Items[0].TrackCount, tp.Next)
+		}
+	} else {
+		t.Error("Liked Songs isn't listed first")
+	}
 	withArt := 0
 	for _, l := range lists.Items {
 		if l.Artwork == "" {
 			continue
 		}
 		withArt++
-		if withArt > 3 {
+		if withArt > 4 {
 			continue
 		}
 		img, ct, err := sess.Artwork(t.Context(), l.Artwork, 300)

@@ -5,13 +5,16 @@ package streaming
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
 
 	golibrespot "github.com/devgianlu/go-librespot"
+	collectionpb "github.com/devgianlu/go-librespot/proto/spotify/collection/v2"
 	metadatapb "github.com/devgianlu/go-librespot/proto/spotify/metadata"
 	playlist4pb "github.com/devgianlu/go-librespot/proto/spotify/playlist4"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
@@ -114,5 +117,123 @@ func TestStatusError(t *testing.T) {
 	}
 	if err := statusError("x", 400, ""); errors.Is(err, provider.ErrNotFound) || errors.Is(err, provider.ErrUnavailable) {
 		t.Errorf("400: %v", err)
+	}
+}
+
+func TestOrderPlaylists(t *testing.T) {
+	pl := func(id string, n int) spotify.LibraryPlaylist {
+		return spotify.LibraryPlaylist{ID: id, Name: id, TrackCount: n}
+	}
+	// The library lists b and dj as empty; b isn't.
+	lib := []spotify.LibraryPlaylist{pl("a", 5), pl("b", 0), pl("c", 5), pl("d", 5), pl("dj", 0)}
+	recent := []played{
+		{URI: "spotify:playlist:mix", Time: 600},
+		{URI: "spotify:playlist:likedpl", Time: 500},
+		{URI: "spotify:album:x", Time: 400},
+		{URI: "spotify:playlist:c", Time: 300},
+		{URI: "spotify:playlist:gone", Time: 250},
+		{URI: "spotify:playlist:a", Time: 100},
+		{URI: "spotify:playlist:c", Time: 50},
+	}
+	unsaved := unsavedPlaylists(lib, recent)
+	if want := []string{"mix", "likedpl", "gone"}; !reflect.DeepEqual(unsaved, want) {
+		t.Errorf("unsavedPlaylists: %v, want %v", unsaved, want)
+	}
+	found := map[string]lookedUp{
+		"b":       {playlist: pl("b", 50)},
+		"dj":      {playlist: pl("dj", 0)},
+		"mix":     {playlist: pl("mix", 30)},
+		"likedpl": {playlist: pl("likedpl", 9), likedSongs: true},
+		// gone couldn't be read.
+	}
+	all, likedAs := mergePlaylists(lib, unsaved, found)
+	if likedAs != "likedpl" {
+		t.Errorf("likedAs %q", likedAs)
+	}
+	all = append(all, pl(spotify.LikedSongsID, 9))
+	var got []string
+	for _, p := range orderPlaylists(all, recent, likedAs) {
+		got = append(got, fmt.Sprintf("%s:%d", p.ID, p.TrackCount))
+	}
+	// Played, newest first (Liked Songs as likedpl), then never played in
+	// library order. dj is empty and gone unreadable, so both are left out.
+	if want := []string{"mix:30", "liked:9", "c:5", "a:5", "b:50", "d:5"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("order: %v, want %v", got, want)
+	}
+
+	// Nothing played: Liked Songs first, then the library's order.
+	got = nil
+	for _, p := range orderPlaylists([]spotify.LibraryPlaylist{pl("a", 1), pl(spotify.LikedSongsID, 1), pl("b", 1)}, nil, "") {
+		got = append(got, p.ID)
+	}
+	if want := []string{spotify.LikedSongsID, "a", "b"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("nothing played: %v, want %v", got, want)
+	}
+	// Liked Songs played from an older app, as the collection.
+	got = nil
+	collection := []played{{URI: "spotify:playlist:a", Time: 10}, {URI: "spotify:user:alice:collection", Time: 5}, {URI: "spotify:playlist:b", Time: 1}}
+	for _, p := range orderPlaylists([]spotify.LibraryPlaylist{pl("a", 1), pl(spotify.LikedSongsID, 1), pl("b", 1)}, collection, "") {
+		got = append(got, p.ID)
+	}
+	if want := []string{"a", spotify.LikedSongsID, "b"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("collection played: %v, want %v", got, want)
+	}
+}
+
+func TestLikedSongsPaging(t *testing.T) {
+	// A PageResponse: items, next_page_token, and a sync token to skip.
+	item := func(uri string, added int64, removed bool) []byte {
+		b, err := proto.Marshal(&collectionpb.CollectionItem{Uri: uri, AddedAt: added, IsRemoved: removed})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	var resp []byte
+	for _, it := range [][]byte{
+		item("spotify:album:aaaaaaaaaaaaaaaaaaaaaa", 900, false),
+		item("spotify:track:old0000000000000000000", 100, false),
+		item("spotify:track:new0000000000000000000", 300, false),
+		item("spotify:track:gone000000000000000000", 400, true),
+		item("spotify:track:mid0000000000000000000", 200, false),
+	} {
+		resp = protowire.AppendTag(resp, 1, protowire.BytesType)
+		resp = protowire.AppendBytes(resp, it)
+	}
+	resp = protowire.AppendTag(resp, 2, protowire.BytesType)
+	resp = protowire.AppendString(resp, "next-token")
+	resp = protowire.AppendTag(resp, 3, protowire.BytesType)
+	resp = protowire.AppendString(resp, "sync")
+	resp = protowire.AppendTag(resp, 9, protowire.VarintType)
+	resp = protowire.AppendVarint(resp, 7)
+
+	items, next, err := parsePageResponse(resp)
+	if err != nil || len(items) != 5 || next != "next-token" {
+		t.Fatalf("parsePageResponse: %d items, next %q, %v", len(items), next, err)
+	}
+	want := []string{"spotify:track:new0000000000000000000", "spotify:track:mid0000000000000000000", "spotify:track:old0000000000000000000"}
+	if got := likedURIs(items); !reflect.DeepEqual(got, want) {
+		t.Errorf("likedURIs: %v, want %v", got, want)
+	}
+	if _, _, err := parsePageResponse([]byte{0x0a, 0x05, 0x01}); err == nil {
+		t.Error("truncated response parsed")
+	}
+
+	// The request round-trips through the same wire format.
+	req := pageRequest("alice", "collection", "tok", 2000)
+	fields := map[protowire.Number]any{}
+	for len(req) > 0 {
+		num, typ, n := protowire.ConsumeTag(req)
+		req = req[n:]
+		if typ == protowire.BytesType {
+			v, m := protowire.ConsumeString(req)
+			fields[num], req = v, req[m:]
+		} else {
+			v, m := protowire.ConsumeVarint(req)
+			fields[num], req = v, req[m:]
+		}
+	}
+	if !reflect.DeepEqual(fields, map[protowire.Number]any{1: "alice", 2: "collection", 3: "tok", 4: uint64(2000)}) {
+		t.Errorf("pageRequest: %v", fields)
 	}
 }

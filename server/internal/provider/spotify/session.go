@@ -264,7 +264,7 @@ var imageID = regexp.MustCompile(`^[0-9A-Za-z]{1,100}$`)
 // imageHosts are the other hosts artwork is fetched from. Refs come back
 // from browsers, so they're checked before fetching.
 func imageHost(host string) bool {
-	return host == "mosaic.scdn.co" || host == "i.scdn.co" || strings.HasSuffix(host, ".spotifycdn.com")
+	return host == "mosaic.scdn.co" || host == "i.scdn.co" || host == "misc.scdn.co" || strings.HasSuffix(host, ".spotifycdn.com")
 }
 
 type sized struct {

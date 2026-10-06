@@ -96,7 +96,7 @@ This serves on port 8080, ready for your existing reverse proxy. If you don't ha
 2. Under **APIs used**, tick **Web API**.
 3. Put the app's client ID and secret in `SYNCPHONY_SPOTIFY_CLIENT_ID` and `SYNCPHONY_SPOTIFY_CLIENT_SECRET` (in `.env` next to `compose.yml`), and restart.
 
-Friends link Spotify by approving a code at spotify.com/pair, from any device. The server searches with the app's own token and streams through each friend's account, so every linked account needs Premium. Your Spotify playlists show on the Search screen before you search. Spotify won't let Syncphony play some songs; those are refused when you add them. [ADR 0004](docs/adr/0004-spotify-playback.md) explains why.
+Friends link Spotify by approving a code at spotify.com/pair, from any device. The server searches with the app's own token and streams through each friend's account, so every linked account needs Premium. Your Liked Songs and Spotify playlists, most recently played first, show on the Search screen before you search. Spotify won't let Syncphony play some songs; those are refused when you add them. [ADR 0004](docs/adr/0004-spotify-playback.md) explains why.
 
 Images are published to `ghcr.io/madeofpendletonwool/syncphony`: `:main` tracks the main branch, and `v*` tags publish `:X.Y.Z` and `:latest`. Pick one with `SYNCPHONY_TAG` (e.g. `SYNCPHONY_TAG=main`).
 
