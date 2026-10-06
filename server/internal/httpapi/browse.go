@@ -307,6 +307,8 @@ func (r artworkResponse) VisitGetQueueItemArtworkResponse(w http.ResponseWriter)
 	return r.write(w)
 }
 
+func (r artworkResponse) VisitGetUserAvatarResponse(w http.ResponseWriter) error { return r.write(w) }
+
 func (r artworkResponse) write(w http.ResponseWriter) error {
 	if r.sess != nil {
 		defer r.sess.Close()

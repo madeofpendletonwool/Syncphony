@@ -22,6 +22,8 @@ import { Route as AppAuthedMeRouteImport } from './routes/_app/_authed/me'
 import { Route as AppAuthedRoomRouteImport } from './routes/_app/_authed/room'
 import { Route as AppAuthedSearchRouteImport } from './routes/_app/_authed/search'
 import { Route as AppAuthedSettingsPeopleRouteImport } from './routes/_app/_authed/settings.people'
+import { Route as AppAuthedSettingsProfileRouteImport } from './routes/_app/_authed/settings.profile'
+import { Route as AppAuthedSettingsSecurityRouteImport } from './routes/_app/_authed/settings.security'
 import { Route as AppAuthedSettingsServicesRouteImport } from './routes/_app/_authed/settings.services'
 import { Route as AppAuthedAlbumLinkIdAlbumIdRouteImport } from './routes/_app/_authed/album.$linkId.$albumId'
 import { Route as AppAuthedArtistLinkIdArtistIdRouteImport } from './routes/_app/_authed/artist.$linkId.$artistId'
@@ -90,6 +92,18 @@ const AppAuthedSettingsPeopleRoute = AppAuthedSettingsPeopleRouteImport.update({
   path: '/settings/people',
   getParentRoute: () => AppAuthedRoute,
 } as any)
+const AppAuthedSettingsProfileRoute =
+  AppAuthedSettingsProfileRouteImport.update({
+    id: '/settings/profile',
+    path: '/settings/profile',
+    getParentRoute: () => AppAuthedRoute,
+  } as any)
+const AppAuthedSettingsSecurityRoute =
+  AppAuthedSettingsSecurityRouteImport.update({
+    id: '/settings/security',
+    path: '/settings/security',
+    getParentRoute: () => AppAuthedRoute,
+  } as any)
 const AppAuthedSettingsServicesRoute =
   AppAuthedSettingsServicesRouteImport.update({
     id: '/settings/services',
@@ -127,6 +141,8 @@ export interface FileRoutesByFullPath {
   '/room': typeof AppAuthedRoomRoute
   '/search': typeof AppAuthedSearchRoute
   '/settings/people': typeof AppAuthedSettingsPeopleRoute
+  '/settings/profile': typeof AppAuthedSettingsProfileRoute
+  '/settings/security': typeof AppAuthedSettingsSecurityRoute
   '/settings/services': typeof AppAuthedSettingsServicesRoute
   '/album/$linkId/$albumId': typeof AppAuthedAlbumLinkIdAlbumIdRoute
   '/artist/$linkId/$artistId': typeof AppAuthedArtistLinkIdArtistIdRoute
@@ -144,6 +160,8 @@ export interface FileRoutesByTo {
   '/room': typeof AppAuthedRoomRoute
   '/search': typeof AppAuthedSearchRoute
   '/settings/people': typeof AppAuthedSettingsPeopleRoute
+  '/settings/profile': typeof AppAuthedSettingsProfileRoute
+  '/settings/security': typeof AppAuthedSettingsSecurityRoute
   '/settings/services': typeof AppAuthedSettingsServicesRoute
   '/album/$linkId/$albumId': typeof AppAuthedAlbumLinkIdAlbumIdRoute
   '/artist/$linkId/$artistId': typeof AppAuthedArtistLinkIdArtistIdRoute
@@ -164,6 +182,8 @@ export interface FileRoutesById {
   '/_app/_authed/search': typeof AppAuthedSearchRoute
   '/_app/_authed/': typeof AppAuthedIndexRoute
   '/_app/_authed/settings/people': typeof AppAuthedSettingsPeopleRoute
+  '/_app/_authed/settings/profile': typeof AppAuthedSettingsProfileRoute
+  '/_app/_authed/settings/security': typeof AppAuthedSettingsSecurityRoute
   '/_app/_authed/settings/services': typeof AppAuthedSettingsServicesRoute
   '/_app/_authed/album/$linkId/$albumId': typeof AppAuthedAlbumLinkIdAlbumIdRoute
   '/_app/_authed/artist/$linkId/$artistId': typeof AppAuthedArtistLinkIdArtistIdRoute
@@ -183,6 +203,8 @@ export interface FileRouteTypes {
     | '/room'
     | '/search'
     | '/settings/people'
+    | '/settings/profile'
+    | '/settings/security'
     | '/settings/services'
     | '/album/$linkId/$albumId'
     | '/artist/$linkId/$artistId'
@@ -200,6 +222,8 @@ export interface FileRouteTypes {
     | '/room'
     | '/search'
     | '/settings/people'
+    | '/settings/profile'
+    | '/settings/security'
     | '/settings/services'
     | '/album/$linkId/$albumId'
     | '/artist/$linkId/$artistId'
@@ -219,6 +243,8 @@ export interface FileRouteTypes {
     | '/_app/_authed/search'
     | '/_app/_authed/'
     | '/_app/_authed/settings/people'
+    | '/_app/_authed/settings/profile'
+    | '/_app/_authed/settings/security'
     | '/_app/_authed/settings/services'
     | '/_app/_authed/album/$linkId/$albumId'
     | '/_app/_authed/artist/$linkId/$artistId'
@@ -326,6 +352,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAuthedSettingsPeopleRouteImport
       parentRoute: typeof AppAuthedRoute
     }
+    '/_app/_authed/settings/profile': {
+      id: '/_app/_authed/settings/profile'
+      path: '/settings/profile'
+      fullPath: '/settings/profile'
+      preLoaderRoute: typeof AppAuthedSettingsProfileRouteImport
+      parentRoute: typeof AppAuthedRoute
+    }
+    '/_app/_authed/settings/security': {
+      id: '/_app/_authed/settings/security'
+      path: '/settings/security'
+      fullPath: '/settings/security'
+      preLoaderRoute: typeof AppAuthedSettingsSecurityRouteImport
+      parentRoute: typeof AppAuthedRoute
+    }
     '/_app/_authed/settings/services': {
       id: '/_app/_authed/settings/services'
       path: '/settings/services'
@@ -364,6 +404,8 @@ interface AppAuthedRouteChildren {
   AppAuthedSearchRoute: typeof AppAuthedSearchRoute
   AppAuthedIndexRoute: typeof AppAuthedIndexRoute
   AppAuthedSettingsPeopleRoute: typeof AppAuthedSettingsPeopleRoute
+  AppAuthedSettingsProfileRoute: typeof AppAuthedSettingsProfileRoute
+  AppAuthedSettingsSecurityRoute: typeof AppAuthedSettingsSecurityRoute
   AppAuthedSettingsServicesRoute: typeof AppAuthedSettingsServicesRoute
   AppAuthedAlbumLinkIdAlbumIdRoute: typeof AppAuthedAlbumLinkIdAlbumIdRoute
   AppAuthedArtistLinkIdArtistIdRoute: typeof AppAuthedArtistLinkIdArtistIdRoute
@@ -377,6 +419,8 @@ const AppAuthedRouteChildren: AppAuthedRouteChildren = {
   AppAuthedSearchRoute: AppAuthedSearchRoute,
   AppAuthedIndexRoute: AppAuthedIndexRoute,
   AppAuthedSettingsPeopleRoute: AppAuthedSettingsPeopleRoute,
+  AppAuthedSettingsProfileRoute: AppAuthedSettingsProfileRoute,
+  AppAuthedSettingsSecurityRoute: AppAuthedSettingsSecurityRoute,
   AppAuthedSettingsServicesRoute: AppAuthedSettingsServicesRoute,
   AppAuthedAlbumLinkIdAlbumIdRoute: AppAuthedAlbumLinkIdAlbumIdRoute,
   AppAuthedArtistLinkIdArtistIdRoute: AppAuthedArtistLinkIdArtistIdRoute,

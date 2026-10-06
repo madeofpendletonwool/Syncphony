@@ -150,6 +150,23 @@ func (q *Queries) DeleteSession(ctx context.Context, tokenHash []byte) error {
 	return err
 }
 
+const deleteUserSession = `-- name: DeleteUserSession :execrows
+DELETE FROM sessions WHERE token_hash = ? AND user_id = ?
+`
+
+type DeleteUserSessionParams struct {
+	TokenHash []byte
+	UserID    string
+}
+
+func (q *Queries) DeleteUserSession(ctx context.Context, arg DeleteUserSessionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteUserSession, arg.TokenHash, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteUserSessions = `-- name: DeleteUserSessions :exec
 DELETE FROM sessions WHERE user_id = ?
 `
@@ -247,11 +264,19 @@ func (q *Queries) ListPasskeys(ctx context.Context, userID string) ([]Credential
 }
 
 const listSessions = `-- name: ListSessions :many
-SELECT token_hash, user_id, user_agent, created_at, last_seen_at, expires_at FROM sessions WHERE user_id = ? ORDER BY last_seen_at DESC
+SELECT token_hash, user_id, user_agent, created_at, last_seen_at, expires_at FROM sessions
+WHERE user_id = ?1 AND expires_at > ?2
+ORDER BY last_seen_at DESC, created_at DESC
 `
 
-func (q *Queries) ListSessions(ctx context.Context, userID string) ([]Session, error) {
-	rows, err := q.db.QueryContext(ctx, listSessions, userID)
+type ListSessionsParams struct {
+	UserID string
+	Now    time.Time
+}
+
+// ListSessions returns a user's unexpired sessions, most recently used first.
+func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]Session, error) {
+	rows, err := q.db.QueryContext(ctx, listSessions, arg.UserID, arg.Now)
 	if err != nil {
 		return nil, err
 	}

@@ -205,7 +205,7 @@ export interface paths {
         /**
          * Set or change your password
          * @description `currentPassword` is required if you already have one. Other sessions
-         *     are signed out.
+         *     are signed out unless `signOutOtherSessions` is false.
          */
         put: operations["setPassword"];
         post?: never;
@@ -294,6 +294,68 @@ export interface paths {
         patch: operations["renamePasskey"];
         trace?: never;
     };
+    "/me/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upload a profile picture
+         * @description JPEG, PNG, GIF or WebP, up to 10 MB. It's cropped to a centered
+         *     square and shrunk; `avatar` then points at `/api/users/{id}/avatar`.
+         *     Remove it with `PATCH /me` and an empty `avatar`.
+         */
+        put: operations["uploadAvatar"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The devices you're signed in on */
+        get: operations["listMySessions"];
+        put?: never;
+        post?: never;
+        /**
+         * Sign out everywhere else
+         * @description Signs out every session but this one.
+         */
+        delete: operations["revokeOtherSessions"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Sign out one device */
+        delete: operations["revokeMySession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -303,6 +365,28 @@ export interface paths {
         };
         /** Everyone on this server */
         get: operations["listUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Someone's uploaded profile picture
+         * @description What `avatar` points at after an upload. Cacheable; the URL changes with the picture.
+         */
+        get: operations["getUserAvatar"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1503,6 +1587,29 @@ export interface components {
         SetPasswordRequest: {
             currentPassword?: string;
             newPassword: components["schemas"]["Password"];
+            /**
+             * @description Sign out every other device. Defaults to true.
+             * @default true
+             */
+            signOutOtherSessions: boolean;
+        };
+        /** @description A device you're signed in on. */
+        SignedInSession: {
+            id: string;
+            /** @description The browser's User-Agent when it signed in; may be empty. */
+            userAgent: string;
+            /**
+             * Format: date-time
+             * @description When it signed in.
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Roughly when it was last used (updated at most hourly).
+             */
+            lastSeenAt: string;
+            /** @description This is the session making the request. */
+            current: boolean;
         };
         Ceremony: {
             /** @description Pass back to the matching finish endpoint within 5 minutes. */
@@ -2751,6 +2858,92 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    uploadAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "image/*": string;
+            };
+        };
+        responses: {
+            /** @description The updated user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listMySessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sessions, most recently used first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignedInSession"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeOtherSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeMySession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     listUsers: {
         parameters: {
             query?: never;
@@ -2767,6 +2960,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["User"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getUserAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The picture */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
                 };
             };
             default: components["responses"]["Error"];

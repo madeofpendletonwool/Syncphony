@@ -224,7 +224,7 @@ paths:
       summary: Set or change your password
       description: |
         `currentPassword` is required if you already have one. Other sessions
-        are signed out.
+        are signed out unless `signOutOtherSessions` is false.
       tags: [account]
       requestBody:
         required: true
@@ -337,6 +337,76 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /me/avatar:
+    put:
+      operationId: uploadAvatar
+      summary: Upload a profile picture
+      description: |
+        JPEG, PNG, GIF or WebP, up to 10 MB. It's cropped to a centered
+        square and shrunk; `avatar` then points at `/api/users/{id}/avatar`.
+        Remove it with `PATCH /me` and an empty `avatar`.
+      tags: [account]
+      requestBody:
+        required: true
+        content:
+          image/*:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: The updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Me"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/sessions:
+    get:
+      operationId: listMySessions
+      summary: The devices you're signed in on
+      tags: [account]
+      responses:
+        "200":
+          description: Sessions, most recently used first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SignedInSession"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: revokeOtherSessions
+      summary: Sign out everywhere else
+      description: Signs out every session but this one.
+      tags: [account]
+      responses:
+        "204":
+          description: Signed out
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/sessions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: revokeMySession
+      summary: Sign out one device
+      tags: [account]
+      responses:
+        "204":
+          description: Signed out
+        default:
+          $ref: "#/components/responses/Error"
+
   # --- People and invites ---------------------------------------------------
 
   /users:
@@ -356,6 +426,32 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /users/{id}/avatar:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getUserAvatar
+      summary: Someone's uploaded profile picture
+      description: What `avatar` points at after an upload. Cacheable; the URL changes with the picture.
+      tags: [account]
+      security:
+        - session: []
+        - display: []
+      responses:
+        "200":
+          description: The picture
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
         default:
           $ref: "#/components/responses/Error"
 
@@ -2204,6 +2300,32 @@ components:
           type: string
         newPassword:
           $ref: "#/components/schemas/Password"
+        signOutOtherSessions:
+          type: boolean
+          default: true
+          description: Sign out every other device. Defaults to true.
+
+    SignedInSession:
+      type: object
+      description: A device you're signed in on.
+      required: [id, userAgent, createdAt, lastSeenAt, current]
+      properties:
+        id:
+          type: string
+        userAgent:
+          type: string
+          description: The browser's User-Agent when it signed in; may be empty.
+        createdAt:
+          type: string
+          format: date-time
+          description: When it signed in.
+        lastSeenAt:
+          type: string
+          format: date-time
+          description: Roughly when it was last used (updated at most hourly).
+        current:
+          type: boolean
+          description: This is the session making the request.
 
     Ceremony:
       type: object

@@ -42,11 +42,17 @@ SELECT * FROM sessions WHERE token_hash = sqlc.arg(token_hash) AND expires_at > 
 -- name: TouchSession :exec
 UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE token_hash = ?;
 
+-- ListSessions returns a user's unexpired sessions, most recently used first.
 -- name: ListSessions :many
-SELECT * FROM sessions WHERE user_id = ? ORDER BY last_seen_at DESC;
+SELECT * FROM sessions
+WHERE user_id = sqlc.arg(user_id) AND expires_at > sqlc.arg(now)
+ORDER BY last_seen_at DESC, created_at DESC;
 
 -- name: DeleteSession :exec
 DELETE FROM sessions WHERE token_hash = ?;
+
+-- name: DeleteUserSession :execrows
+DELETE FROM sessions WHERE token_hash = ? AND user_id = ?;
 
 -- name: DeleteUserSessions :exec
 DELETE FROM sessions WHERE user_id = ?;

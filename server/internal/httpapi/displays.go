@@ -32,6 +32,7 @@ var displayOps = map[string]bool{
 	"GetQueue":               true,
 	"GetPlayback":            true,
 	"ListUsers":              true,
+	"GetUserAvatar":          true,
 	"GetQueueItemArtwork":    true,
 	"GetQueueItemPalette":    true,
 	"GetQueueItemLyrics":     true,
