@@ -1,9 +1,11 @@
 import { Outlet, useRouterState } from '@tanstack/react-router'
-import { LayoutGroup, motion } from 'motion/react'
+import { WifiOff } from 'lucide-react'
+import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { useAlbumAccent } from '@/hooks/use-album-accent'
 import { easeOutExpo } from '@/lib/motion'
 import { usePlayer } from '@/lib/now-playing'
+import { useOnline } from '@/lib/pwa'
 import { Toaster } from '@/components/toaster'
 import { AlbumBackdrop } from './album-backdrop'
 import { BottomNav } from './bottom-nav'
@@ -26,6 +28,7 @@ export function AppShell() {
         <AlbumBackdrop src={nowPlaying?.artworkUrl} />
 
         <main className="pt-safe mx-auto w-full max-w-2xl px-gutter pb-[calc(var(--spacing-nav)+var(--spacing-mini)+env(safe-area-inset-bottom)+2.5rem)]">
+          <OfflineBanner />
           <Outlet />
         </main>
 
@@ -40,6 +43,29 @@ export function AppShell() {
         <NowPlayingSheet open={expanded} onOpenChange={setExpanded} />
       </div>
     </LayoutGroup>
+  )
+}
+
+/** The app opens offline (the service worker keeps its shell), but the music needs the server. */
+function OfflineBanner() {
+  const online = useOnline()
+  return (
+    <AnimatePresence initial={false}>
+      {!online && (
+        <motion.p
+          role="status"
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          className="overflow-hidden"
+        >
+          <span className="mt-4 flex items-center gap-2 rounded-2xl bg-muted px-4 py-3 text-sm text-muted-foreground">
+            <WifiOff className="size-4 shrink-0" />
+            You&apos;re offline. Syncphony will catch up when you&apos;re back.
+          </span>
+        </motion.p>
+      )}
+    </AnimatePresence>
   )
 }
 

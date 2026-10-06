@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -34,6 +36,8 @@ type Service struct {
 	bus realtime.Bus
 	// Now is the clock. Default store.Now.
 	Now func() time.Time
+	// OnUpdate, if set, is called after a room's settings change.
+	OnUpdate func(store.Room)
 }
 
 // New returns a Service.
@@ -41,16 +45,119 @@ func New(db *store.Store, bus realtime.Bus) *Service {
 	return &Service{db: db, bus: bus, Now: store.Now}
 }
 
-// Who may control playback (play, pause, skip, seek, and becoming the
-// speaker). The owner always may, and anyone may skip their own song.
+// Permission levels: who may do something in a room. The owner always may.
 const (
-	ControlsEveryone = "everyone"
-	ControlsOwner    = "owner"
+	Everyone = "everyone"
+	Owner    = "owner"
+	// Vote is a skip level only: members vote, and the song is skipped
+	// once enough of them have.
+	Vote = "vote"
 )
+
+// Permissions say who may control playback in a room. Whoever queued a
+// song may always skip it.
+type Permissions struct {
+	// PlayPause is who may play and pause: Everyone or Owner.
+	PlayPause string `json:"playPause"`
+	// Seek is who may seek: Everyone or Owner.
+	Seek string `json:"seek"`
+	// Skip is who may skip: Everyone, Vote or Owner.
+	Skip string `json:"skip"`
+	// Speaker is who may become the room's speaker: Everyone or Owner.
+	Speaker string `json:"speaker"`
+}
+
+// DefaultSkipVotePercent makes a skip vote need a majority.
+const DefaultSkipVotePercent = 50
 
 // Settings are a room's options, stored as JSON in rooms.settings.
 type Settings struct {
-	Controls string `json:"controls,omitempty"`
+	// Controls is the single setting rooms had before Permissions (who may
+	// do everything, Everyone or Owner). It's only read, as the default
+	// for each permission, and never written.
+	Controls    string      `json:"controls,omitempty"`
+	Permissions Permissions `json:"permissions"`
+	// SkipVotePercent: a skip vote passes once more than this percent of
+	// the room has voted (see VotesNeeded). 0 to 99.
+	SkipVotePercent *int     `json:"skipVotePercent,omitempty"`
+	Fairness        Fairness `json:"fairness"`
+	Matching        Matching `json:"matching"`
+}
+
+// Matching says how a room uses the same song on other services (see
+// package match).
+type Matching struct {
+	// Fallback plays a song through another service in the room when its
+	// own can't play it. Nil means the default, on.
+	Fallback *bool `json:"fallback,omitempty"`
+	// Borrow lets anyone queue a song the room played again, even if it's
+	// only on someone else's service, which they couldn't search.
+	Borrow bool `json:"borrow,omitempty"`
+}
+
+// FallbackOn reports whether Fallback is on.
+func (m Matching) FallbackOn() bool { return m.Fallback == nil || *m.Fallback }
+
+// Fairness tunes a room's fairness mode. The zero value is plain round
+// robin or FIFO.
+type Fairness struct {
+	// MaxInARow caps one person's songs in a row while others wait: 0
+	// (no cap) to MaxLimit.
+	MaxInARow int `json:"maxInARow,omitempty"`
+	// Cooldown is how many other songs play between one person's songs
+	// while others wait: 0 to MaxLimit.
+	Cooldown int `json:"cooldown,omitempty"`
+	// Weights are songs per turn in round robin, by user ID: 2 to
+	// MaxWeight. Everyone else gets 1.
+	Weights map[string]int `json:"weights,omitempty"`
+	// RepeatWindowMinutes refuses a song that's waiting, playing, or
+	// started within this many minutes: 0 (off) to MaxRepeatWindow.
+	RepeatWindowMinutes int `json:"repeatWindowMinutes,omitempty"`
+}
+
+// Fairness limits.
+const (
+	MaxLimit        = 10
+	MaxWeight       = 4
+	MaxWeights      = 64
+	MaxRepeatWindow = 24 * 60
+)
+
+// Options are the fairness engine's view of f.
+func (f Fairness) Options() fairness.Options {
+	return fairness.Options{MaxInARow: f.MaxInARow, Cooldown: f.Cooldown, Weights: f.Weights}
+}
+
+// Equal reports whether f and g order the queue alike.
+func (f Fairness) Equal(g Fairness) bool {
+	return f.MaxInARow == g.MaxInARow && f.Cooldown == g.Cooldown && maps.Equal(f.Weights, g.Weights)
+}
+
+// clean drops weights of 1, which are the default.
+func (f *Fairness) clean() {
+	maps.DeleteFunc(f.Weights, func(_ string, w int) bool { return w == 1 })
+	if len(f.Weights) == 0 {
+		f.Weights = nil
+	}
+}
+
+func (f Fairness) validate() error {
+	switch {
+	case f.MaxInARow < 0 || f.MaxInARow > MaxLimit:
+		return &InvalidInputError{fmt.Sprintf("songs in a row is 0 (no cap) to %d", MaxLimit)}
+	case f.Cooldown < 0 || f.Cooldown > MaxLimit:
+		return &InvalidInputError{fmt.Sprintf("the cooldown is 0 to %d songs", MaxLimit)}
+	case len(f.Weights) > MaxWeights:
+		return &InvalidInputError{fmt.Sprintf("weight at most %d people", MaxWeights)}
+	case f.RepeatWindowMinutes < 0 || f.RepeatWindowMinutes > MaxRepeatWindow:
+		return &InvalidInputError{fmt.Sprintf("the repeat window is 0 (off) to %d minutes", MaxRepeatWindow)}
+	}
+	for _, w := range f.Weights {
+		if w < 1 || w > MaxWeight {
+			return &InvalidInputError{fmt.Sprintf("a weight is 1 to %d songs a turn", MaxWeight)}
+		}
+	}
+	return nil
 }
 
 // ParseSettings reads a room's settings, filling in defaults. Unknown or
@@ -58,21 +165,47 @@ type Settings struct {
 func ParseSettings(raw string) Settings {
 	var st Settings
 	_ = json.Unmarshal([]byte(raw), &st)
-	if st.Controls != ControlsOwner {
-		st.Controls = ControlsEveryone
+	fallback := Everyone
+	if st.Controls == Owner {
+		fallback = Owner
+	}
+	st.Controls = ""
+	p := &st.Permissions
+	for _, level := range []*string{&p.PlayPause, &p.Seek, &p.Speaker} {
+		if *level != Everyone && *level != Owner {
+			*level = fallback
+		}
+	}
+	if p.Skip != Everyone && p.Skip != Owner && p.Skip != Vote {
+		p.Skip = fallback
+	}
+	if st.SkipVotePercent == nil || *st.SkipVotePercent < 0 || *st.SkipVotePercent > 99 {
+		st.SkipVotePercent = ptr(DefaultSkipVotePercent)
+	}
+	st.Fairness.clean()
+	if st.Fairness.validate() != nil {
+		st.Fairness = Fairness{}
 	}
 	return st
 }
 
-// CanControl reports whether userID may control playback in room.
-func CanControl(room store.Room, userID string) bool {
-	return room.OwnerID == userID || ParseSettings(room.Settings).Controls == ControlsEveryone
+// Allowed reports whether userID may act at level in a room owned by
+// ownerID. Only the owner may act directly at the Vote level.
+func Allowed(level, ownerID, userID string) bool {
+	return userID == ownerID || level == Everyone
+}
+
+// VotesNeeded is how many votes skip a song when voters members could
+// vote: more than percent of them, and at least one.
+func VotesNeeded(voters, percent int) int {
+	return min(max(voters*percent/100+1, 1), max(voters, 1))
 }
 
 // List returns every room, oldest first.
 func (s *Service) List(ctx context.Context) ([]store.Room, error) { return s.db.ListRooms(ctx) }
 
-// Create makes a room owned by ownerID. mode "" means round robin.
+// Create makes a room owned by ownerID. mode "" means round robin, and
+// empty settings are defaults.
 func (s *Service) Create(ctx context.Context, ownerID, name, mode string, st Settings) (store.Room, error) {
 	if mode == "" {
 		mode = store.FairnessRoundRobin
@@ -86,13 +219,20 @@ func (s *Service) Create(ctx context.Context, ownerID, name, mode string, st Set
 	})
 }
 
-// Update is a change to a room. Nil fields are left alone.
+// Update is a change to a room. Nil fields, and empty permissions, are
+// left alone.
 type Update struct {
-	Name, FairnessMode, Controls *string
+	Name, FairnessMode *string
+	Permissions        Permissions
+	SkipVotePercent    *int
+	// Fairness, if set, replaces the room's fairness options.
+	Fairness *Fairness
+	// Matching, if set, replaces the room's matching options.
+	Matching *Matching
 }
 
-// Update changes a room. Only its owner may. A new fairness mode reorders
-// the queue at once, so the new order is pushed to the room.
+// Update changes a room. Only its owner may. Everyone in the room hears
+// about it, and a new fairness mode reorders the queue at once.
 func (s *Service) Update(ctx context.Context, userID, id string, u Update) (store.Room, error) {
 	r, err := s.Get(ctx, id)
 	if err != nil {
@@ -108,8 +248,28 @@ func (s *Service) Update(ctx context.Context, userID, id string, u Update) (stor
 	if u.FairnessMode != nil {
 		mode = *u.FairnessMode
 	}
-	if u.Controls != nil {
-		st.Controls = *u.Controls
+	for _, f := range []struct {
+		to   *string
+		from string
+	}{
+		{&st.Permissions.PlayPause, u.Permissions.PlayPause},
+		{&st.Permissions.Seek, u.Permissions.Seek},
+		{&st.Permissions.Skip, u.Permissions.Skip},
+		{&st.Permissions.Speaker, u.Permissions.Speaker},
+	} {
+		if f.from != "" {
+			*f.to = f.from
+		}
+	}
+	if u.SkipVotePercent != nil {
+		st.SkipVotePercent = u.SkipVotePercent
+	}
+	before := ParseSettings(r.Settings).Fairness
+	if u.Fairness != nil {
+		st.Fairness = *u.Fairness
+	}
+	if u.Matching != nil {
+		st.Matching = *u.Matching
 	}
 	name, raw, err := validate(name, mode, st)
 	if err != nil {
@@ -119,7 +279,11 @@ func (s *Service) Update(ctx context.Context, userID, id string, u Update) (stor
 	if err != nil {
 		return updated, err
 	}
-	if mode != r.FairnessMode {
+	s.bus.Publish(realtime.RoomTopic(id), realtime.Event{Type: realtime.RoomUpdated, Data: updated})
+	if s.OnUpdate != nil {
+		s.OnUpdate(updated)
+	}
+	if mode != r.FairnessMode || !before.Equal(ParseSettings(raw).Fairness) {
 		if _, err := s.QueueChanged(ctx, id); err != nil {
 			return updated, err
 		}
@@ -135,15 +299,36 @@ func validate(name, mode string, st Settings) (string, string, error) {
 	if mode != store.FairnessRoundRobin && mode != store.FairnessFIFO {
 		return "", "", &InvalidInputError{"fairness mode is round_robin or fifo"}
 	}
-	if st.Controls == "" {
-		st.Controls = ControlsEveryone
+	p := &st.Permissions
+	for _, level := range []*string{&p.PlayPause, &p.Seek, &p.Skip, &p.Speaker} {
+		if *level == "" {
+			*level = Everyone
+		}
 	}
-	if st.Controls != ControlsEveryone && st.Controls != ControlsOwner {
-		return "", "", &InvalidInputError{"controls is everyone or owner"}
+	for _, level := range []string{p.PlayPause, p.Seek, p.Speaker} {
+		if level != Everyone && level != Owner {
+			return "", "", &InvalidInputError{"play/pause, seek and speaker permissions are everyone or owner"}
+		}
 	}
+	if p.Skip != Everyone && p.Skip != Owner && p.Skip != Vote {
+		return "", "", &InvalidInputError{"the skip permission is everyone, vote or owner"}
+	}
+	if st.SkipVotePercent == nil {
+		st.SkipVotePercent = ptr(DefaultSkipVotePercent)
+	}
+	if *st.SkipVotePercent < 0 || *st.SkipVotePercent > 99 {
+		return "", "", &InvalidInputError{"the skip vote percent is 0 to 99"}
+	}
+	if err := st.Fairness.validate(); err != nil {
+		return "", "", err
+	}
+	st.Fairness.clean()
+	st.Controls = ""
 	raw, err := json.Marshal(st)
 	return name, string(raw), err
 }
+
+func ptr[T any](v T) *T { return &v }
 
 // QueueSnapshot is a room's queue at a version: the playing item and the
 // queued items, each user's lane in order, and the play order the room's
@@ -177,6 +362,16 @@ type NowPlaying struct {
 	Player *Player
 	// Next is the item that plays after this one, for preloading.
 	Next *store.QueueItem
+	// SkipVotes is the vote to skip Item, while the room votes on skips.
+	SkipVotes *SkipVotes
+}
+
+// SkipVotes is a vote to skip the playing song.
+type SkipVotes struct {
+	// Voters are the IDs of users who voted to skip, in the order they did.
+	Voters []string
+	// Needed is how many votes skip the song, given who's in the room now.
+	Needed int
 }
 
 // Player is the device a room plays through.
@@ -214,28 +409,72 @@ type Played struct {
 	EndReason string
 }
 
-// History returns up to limit songs the room finished playing, newest
-// first. The song playing now isn't one until it ends.
-func (s *Service) History(ctx context.Context, id string, limit int) ([]Played, error) {
+// HistoryQuery picks a page of a room's history.
+type HistoryQuery struct {
+	Limit int
+	// Before, if set, returns plays that started before it: the last
+	// play's StartedAt from the previous page.
+	Before time.Time
+	// UserID, if set, returns only that user's songs.
+	UserID string
+}
+
+// History returns songs the room finished playing, newest first. The song
+// playing now isn't one until it ends.
+func (s *Service) History(ctx context.Context, id string, hq HistoryQuery) ([]Played, error) {
 	if _, err := s.Get(ctx, id); err != nil {
 		return nil, err
 	}
-	// One extra, for the play still in progress.
-	rows, err := s.db.ListHistory(ctx, store.ListHistoryParams{RoomID: id, Limit: int64(limit) + 1})
+	before := hq.Before
+	if before.IsZero() {
+		before = Forever
+	}
+	rows, err := s.db.ListPlayed(ctx, store.ListPlayedParams{RoomID: id, Before: before, UserID: hq.UserID, Limit: int64(hq.Limit)})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Played, 0, len(rows))
-	for _, r := range rows {
-		if !r.PlayHistory.EndedAt.Valid || len(out) == limit {
-			continue
-		}
-		out = append(out, Played{
-			Item: r.QueueItem, StartedAt: r.PlayHistory.StartedAt,
-			EndedAt: r.PlayHistory.EndedAt.Time, EndReason: r.PlayHistory.EndReason.String,
-		})
+	out := make([]Played, len(rows))
+	for i, r := range rows {
+		out[i] = played(r.PlayHistory, r.QueueItem)
 	}
 	return out, nil
+}
+
+// Forever is later than any play, for open-ended time ranges.
+var Forever = time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
+
+// MaxPlays is the most plays Plays reads at once, so a long-lived room's
+// stats stay cheap.
+const MaxPlays = 10_000
+
+// Plays returns the songs the room finished playing that started in
+// [from, to), oldest first: at most MaxPlays, the earliest.
+func (s *Service) Plays(ctx context.Context, id string, from, to time.Time) ([]Played, error) {
+	if _, err := s.Get(ctx, id); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.ListPlaysBetween(ctx, store.ListPlaysBetweenParams{RoomID: id, FromTime: from, ToTime: to, Limit: MaxPlays})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Played, len(rows))
+	for i, r := range rows {
+		out[i] = played(r.PlayHistory, r.QueueItem)
+	}
+	return out, nil
+}
+
+// PlayTimes returns when each of the room's finished plays started and
+// ended, and whose song it was, oldest first: at most MaxPlays * 5.
+func (s *Service) PlayTimes(ctx context.Context, id string) ([]store.ListPlayTimesRow, error) {
+	if _, err := s.Get(ctx, id); err != nil {
+		return nil, err
+	}
+	return s.db.ListPlayTimes(ctx, store.ListPlayTimesParams{RoomID: id, Limit: MaxPlays * 5})
+}
+
+func played(h store.PlayHistory, it store.QueueItem) Played {
+	return Played{Item: it, StartedAt: h.StartedAt, EndedAt: h.EndedAt.Time, EndReason: h.EndReason.String}
 }
 
 // QueueSnapshot reads a room's queue and its version together.
@@ -266,7 +505,14 @@ func SnapshotTx(ctx context.Context, q *store.Queries, id string) (QueueSnapshot
 	if err != nil {
 		return QueueSnapshot{}, err
 	}
-	order := fairness.ForMode(r.FairnessMode).Order(fairnessState(items, history))
+	opts := ParseSettings(r.Settings).Fairness.Options()
+	recent, err := q.RecentPlayers(ctx, store.RecentPlayersParams{RoomID: id, Limit: int64(opts.Reach())})
+	if err != nil {
+		return QueueSnapshot{}, err
+	}
+	fs := fairnessState(items, history)
+	fs.Recent = recent
+	order := fairness.ForMode(r.FairnessMode, opts).Order(fs)
 	upNext := make([]string, len(order))
 	for i, it := range order {
 		upNext[i] = it.ID

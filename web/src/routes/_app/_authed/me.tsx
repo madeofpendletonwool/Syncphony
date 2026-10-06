@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, type LinkProps } from '@tanstack/react-router'
-import { ChevronRight, LoaderCircle, LogOut, Monitor, Moon, Palette, Sun, Users, Waypoints } from 'lucide-react'
+import { ChevronRight, Download, LoaderCircle, LogOut, Monitor, Moon, Palette, Share, SquarePlus, Sun, Users, Waypoints } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { api } from '@/api/client'
 import { PageHeader } from '@/components/page-header'
@@ -10,6 +10,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { UserAvatar } from '@/components/user-avatar'
 import { useMe, useSignOut } from '@/lib/auth'
 import { laneStyle } from '@/lib/lane'
+import { useInstall } from '@/lib/pwa'
 import { linksQuery } from '@/lib/services'
 import { setPreference, useThemePreference, type ThemePreference } from '@/lib/theme'
 import { cn } from '@/lib/utils'
@@ -36,6 +37,8 @@ function Me() {
             Your lane
           </Badge>
         </section>
+
+        <InstallCard />
 
         <nav aria-label="Settings" className="glass flex flex-col rounded-3xl p-1.5">
           <ServicesRow />
@@ -114,6 +117,42 @@ function ServicesRow() {
     >
       Services
     </SettingsRow>
+  )
+}
+
+/** Install Syncphony as an app: full screen, on the Home Screen, and a steadier speaker. */
+function InstallCard() {
+  const state = useInstall()
+  if (state.kind === 'installed' || state.kind === 'unavailable') return null
+  return (
+    <section className="glass flex flex-col gap-3 rounded-3xl p-5">
+      <div className="flex items-start gap-3">
+        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
+          <Download className="size-5" />
+        </span>
+        <div>
+          <h2 className="font-medium">Install Syncphony</h2>
+          <p className="text-sm text-muted-foreground">Open it from your Home Screen, full screen, like any other app.</p>
+        </div>
+      </div>
+      {state.kind === 'prompt' ? (
+        <Button onClick={() => void state.install()} className="self-start">
+          <Download data-icon="inline-start" />
+          Install
+        </Button>
+      ) : (
+        <ol className="flex flex-col gap-2 text-sm">
+          <li className="flex items-center gap-2">
+            <span className="grid size-6 place-items-center rounded-full bg-muted text-caption font-medium">1</span>
+            Tap <Share className="size-4 text-primary" aria-label="Share" /> in Safari&apos;s toolbar
+          </li>
+          <li className="flex items-center gap-2">
+            <span className="grid size-6 place-items-center rounded-full bg-muted text-caption font-medium">2</span>
+            Choose <SquarePlus className="size-4 text-primary" aria-hidden /> <span className="font-medium">Add to Home Screen</span>
+          </li>
+        </ol>
+      )}
+    </section>
   )
 }
 

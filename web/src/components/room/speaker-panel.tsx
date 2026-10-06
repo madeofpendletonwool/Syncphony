@@ -5,7 +5,7 @@ import { Equalizer } from '@/components/equalizer'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { useMe } from '@/lib/auth'
-import { canControl, playbackQuery } from '@/lib/playback'
+import { can, playbackQuery } from '@/lib/playback'
 import type { Room } from '@/lib/room'
 import { speaker, speakerState } from '@/lib/speaker'
 import { useStore } from '@/lib/store'
@@ -23,7 +23,7 @@ export function SpeakerPanel({ room, prominent }: { room: Room; prominent?: bool
   const [starting, setStarting] = useState(false)
   const here = state.roomId === room.id && state.status !== 'off'
   const other = playback.data?.player
-  const allowed = canControl(room, me.id)
+  const allowed = can(room, me.id, 'speaker')
   const thisDevice = deviceNoun()
 
   const start = () => {

@@ -111,12 +111,32 @@ func (e PairingStatusStatus) Valid() bool {
 	}
 }
 
+// Defines values for PermissionLevel.
+const (
+	PermissionLevelEveryone PermissionLevel = "everyone"
+	PermissionLevelOwner    PermissionLevel = "owner"
+)
+
+// Valid indicates whether the value is a known member of the PermissionLevel enum.
+func (e PermissionLevel) Valid() bool {
+	switch e {
+	case PermissionLevelEveryone:
+		return true
+	case PermissionLevelOwner:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PlaybackCommandAction.
 const (
-	Pause PlaybackCommandAction = "pause"
-	Play  PlaybackCommandAction = "play"
-	Seek  PlaybackCommandAction = "seek"
-	Skip  PlaybackCommandAction = "skip"
+	Pause      PlaybackCommandAction = "pause"
+	Play       PlaybackCommandAction = "play"
+	Seek       PlaybackCommandAction = "seek"
+	Skip       PlaybackCommandAction = "skip"
+	UnvoteSkip PlaybackCommandAction = "unvote_skip"
+	VoteSkip   PlaybackCommandAction = "vote_skip"
 )
 
 // Valid indicates whether the value is a known member of the PlaybackCommandAction enum.
@@ -129,6 +149,10 @@ func (e PlaybackCommandAction) Valid() bool {
 	case Seek:
 		return true
 	case Skip:
+		return true
+	case UnvoteSkip:
+		return true
+	case VoteSkip:
 		return true
 	default:
 		return false
@@ -318,24 +342,6 @@ func (e Role) Valid() bool {
 	}
 }
 
-// Defines values for RoomControls.
-const (
-	Everyone RoomControls = "everyone"
-	Owner    RoomControls = "owner"
-)
-
-// Valid indicates whether the value is a known member of the RoomControls enum.
-func (e RoomControls) Valid() bool {
-	switch e {
-	case Everyone:
-		return true
-	case Owner:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for RoomEventType.
 const (
 	RoomEventTypeHello             RoomEventType = "hello"
@@ -345,6 +351,7 @@ const (
 	RoomEventTypeNowplayingUpdated RoomEventType = "nowplaying.updated"
 	RoomEventTypePlaybackNotice    RoomEventType = "playback.notice"
 	RoomEventTypeQueueUpdated      RoomEventType = "queue.updated"
+	RoomEventTypeRoomUpdated       RoomEventType = "room.updated"
 )
 
 // Valid indicates whether the value is a known member of the RoomEventType enum.
@@ -363,6 +370,8 @@ func (e RoomEventType) Valid() bool {
 	case RoomEventTypePlaybackNotice:
 		return true
 	case RoomEventTypeQueueUpdated:
+		return true
+	case RoomEventTypeRoomUpdated:
 		return true
 	default:
 		return false
@@ -384,6 +393,27 @@ func (e ServiceLinkStatus) Valid() bool {
 	case ServiceLinkStatusNeedsRelink:
 		return true
 	case ServiceLinkStatusOk:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SkipPermission.
+const (
+	SkipPermissionEveryone SkipPermission = "everyone"
+	SkipPermissionOwner    SkipPermission = "owner"
+	SkipPermissionVote     SkipPermission = "vote"
+)
+
+// Valid indicates whether the value is a known member of the SkipPermission enum.
+func (e SkipPermission) Valid() bool {
+	switch e {
+	case SkipPermissionEveryone:
+		return true
+	case SkipPermissionOwner:
+		return true
+	case SkipPermissionVote:
 		return true
 	default:
 		return false
@@ -434,6 +464,12 @@ type AlbumResult struct {
 	Title      string         `json:"title"`
 	TrackCount *int           `json:"trackCount,omitempty"`
 	Year       *int           `json:"year,omitempty"`
+}
+
+// ArtistCount defines model for ArtistCount.
+type ArtistCount struct {
+	Name  string `json:"name"`
+	Plays int    `json:"plays"`
 }
 
 // ArtistCredit defines model for ArtistCredit.
@@ -506,10 +542,24 @@ type CreateLinkRequest struct {
 
 // CreateRoomRequest defines model for CreateRoomRequest.
 type CreateRoomRequest struct {
-	// Controls Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
-	Controls     *RoomControls `json:"controls,omitempty"`
+	// Fairness Tunes the room's fairness mode. While someone else has songs
+	// waiting, nobody gets more than `maxInARow` songs in a row, and
+	// `cooldown` other songs play between one person's songs; when
+	// nobody else is waiting, the music keeps going anyway. In round
+	// robin, `weights` give some people more songs per turn.
+	Fairness     *RoomFairness `json:"fairness,omitempty"`
 	FairnessMode *FairnessMode `json:"fairnessMode,omitempty"`
-	Name         string        `json:"name"`
+
+	// Matching How the room uses the same song on other services.
+	Matching *RoomMatching `json:"matching,omitempty"`
+	Name     string        `json:"name"`
+
+	// Permissions Permissions to change. Missing ones stay as they are (`everyone` for a new room).
+	Permissions *RoomPermissionsChange `json:"permissions,omitempty"`
+
+	// SkipVotePercent A skip vote passes once more than this percent of the room has
+	// voted (not counting whoever queued the song): 50 is a majority.
+	SkipVotePercent *SkipVotePercent `json:"skipVotePercent,omitempty"`
 }
 
 // Error defines model for Error.
@@ -583,6 +633,16 @@ type LinkField struct {
 // LinkFieldKind `secret` fields must be masked.
 type LinkFieldKind string
 
+// ListeningSession defines model for ListeningSession.
+type ListeningSession struct {
+	EndedAt time.Time `json:"endedAt"`
+
+	// People User IDs whose songs played, most first.
+	People    []string  `json:"people"`
+	Plays     int       `json:"plays"`
+	StartedAt time.Time `json:"startedAt"`
+}
+
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
 	Password string `json:"password"`
@@ -634,6 +694,11 @@ type NowPlaying struct {
 	// pause, or seek. Apply each revision once.
 	Revision int64  `json:"revision"`
 	RoomId   string `json:"roomId"`
+
+	// SkipVotes The vote to skip the playing song, while the room's skip permission
+	// is `vote`. Everyone in the room but whoever queued the song can
+	// vote; `needed` changes as people come and go.
+	SkipVotes *SkipVotes `json:"skipVotes,omitempty"`
 
 	// State `idle`: nothing to play, or no speaker. `loading`: waiting for the
 	// speaker to start the song.
@@ -693,11 +758,25 @@ type PasskeySignupRequest struct {
 // Password defines model for Password.
 type Password = string
 
+// PermissionLevel Who may do something. The room's owner always may.
+type PermissionLevel string
+
+// PersonStats One person's songs, whoever skipped them.
+type PersonStats struct {
+	ListeningMs int64         `json:"listeningMs"`
+	Plays       int           `json:"plays"`
+	Skipped     int           `json:"skipped"`
+	TopArtists  []ArtistCount `json:"topArtists"`
+	TopTracks   []TrackCount  `json:"topTracks"`
+	UserId      string        `json:"userId"`
+}
+
 // PlaybackCommand defines model for PlaybackCommand.
 type PlaybackCommand struct {
 	Action PlaybackCommandAction `json:"action"`
 
-	// ItemId Skip only if this is still the current song, so two people tapping skip skip one song.
+	// ItemId Skip (or vote) only if this is still the current song, so two
+	// people tapping skip skip one song.
 	ItemId *string `json:"itemId,omitempty"`
 
 	// PositionMs Where to seek to.
@@ -782,6 +861,15 @@ type PlaylistTracks struct {
 	Tracks   []TrackResult `json:"tracks"`
 }
 
+// PlaysVia Where the song plays from instead of its own service, which
+// couldn't play it: the same recording, found on another service in
+// the room. Show "playing from Navidrome instead of Spotify".
+type PlaysVia struct {
+	LinkId   string `json:"linkId"`
+	Provider string `json:"provider"`
+	TrackId  string `json:"trackId"`
+}
+
 // ProfileUpdate Fields to change. Send `avatar` as "" to remove it.
 type ProfileUpdate struct {
 	Avatar      *string `json:"avatar,omitempty"`
@@ -839,6 +927,11 @@ type QueueItem struct {
 
 	// Track The track as it was when queued; still shown if its service is offline.
 	Track QueuedTrack `json:"track"`
+
+	// Via Where the song plays from instead of its own service, which
+	// couldn't play it: the same recording, found on another service in
+	// the room. Show "playing from Navidrome instead of Spotify".
+	Via *PlaysVia `json:"via,omitempty"`
 }
 
 // QueueItemState defines model for QueueItem.State.
@@ -889,17 +982,27 @@ type Role string
 
 // Room defines model for Room.
 type Room struct {
-	// Controls Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
-	Controls     RoomControls `json:"controls"`
-	CreatedAt    time.Time    `json:"createdAt"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Fairness Tunes the room's fairness mode. While someone else has songs
+	// waiting, nobody gets more than `maxInARow` songs in a row, and
+	// `cooldown` other songs play between one person's songs; when
+	// nobody else is waiting, the music keeps going anyway. In round
+	// robin, `weights` give some people more songs per turn.
+	Fairness     RoomFairness `json:"fairness"`
 	FairnessMode FairnessMode `json:"fairnessMode"`
 	Id           string       `json:"id"`
-	Name         string       `json:"name"`
-	OwnerId      string       `json:"ownerId"`
-}
 
-// RoomControls Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
-type RoomControls string
+	// Matching How the room uses the same song on other services.
+	Matching    RoomMatching    `json:"matching"`
+	Name        string          `json:"name"`
+	OwnerId     string          `json:"ownerId"`
+	Permissions RoomPermissions `json:"permissions"`
+
+	// SkipVotePercent A skip vote passes once more than this percent of the room has
+	// voted (not counting whoever queued the song): 50 is a majority.
+	SkipVotePercent SkipVotePercent `json:"skipVotePercent"`
+}
 
 // RoomEvent A message on the room WebSocket, `GET /ws/rooms/{roomId}?since=<version>`.
 // The socket needs the session cookie and is server-push only: send
@@ -915,6 +1018,7 @@ type RoomControls string
 //   - `member.joined`, `member.left`: User. Someone's first connection to
 //     the room opened, or their last one closed.
 //   - `link.status`: ServiceLink. One of your links changed status.
+//   - `room.updated`: Room. The room's name or settings changed.
 //
 // Close code 1013 (try again later) means the client fell behind and
 // missed events: reconnect with `since` set to the last version seen.
@@ -930,6 +1034,26 @@ type RoomEvent struct {
 // RoomEventType defines model for RoomEvent.Type.
 type RoomEventType string
 
+// RoomFairness Tunes the room's fairness mode. While someone else has songs
+// waiting, nobody gets more than `maxInARow` songs in a row, and
+// `cooldown` other songs play between one person's songs; when
+// nobody else is waiting, the music keeps going anyway. In round
+// robin, `weights` give some people more songs per turn.
+type RoomFairness struct {
+	// Cooldown Songs by others between one person's songs. 0 is none.
+	Cooldown int `json:"cooldown"`
+
+	// MaxInARow 0 is no cap.
+	MaxInARow int `json:"maxInARow"`
+
+	// RepeatWindowMinutes Refuse songs already waiting or playing, or started within this
+	// many minutes. 0 is off.
+	RepeatWindowMinutes int `json:"repeatWindowMinutes"`
+
+	// Weights Songs per turn (2 to 4) by user ID, in round robin. Everyone else gets 1.
+	Weights map[string]int `json:"weights"`
+}
+
 // RoomHello defines model for RoomHello.
 type RoomHello struct {
 	// Members Everyone connected to the room right now, you included.
@@ -939,6 +1063,67 @@ type RoomHello struct {
 
 	// You Your user ID.
 	You string `json:"you"`
+}
+
+// RoomMatching How the room uses the same song on other services.
+type RoomMatching struct {
+	// Borrow Anyone may queue a song the room played again, even if it's only
+	// on someone else's service.
+	Borrow bool `json:"borrow"`
+
+	// Fallback When a song's service can't play it, play the same recording
+	// from another service in the room: a service of someone who's
+	// here, or a shared one. Matched by ISRC, or carefully by title,
+	// artist and length.
+	Fallback bool `json:"fallback"`
+}
+
+// RoomPermissions defines model for RoomPermissions.
+type RoomPermissions struct {
+	// PlayPause Who may do something. The room's owner always may.
+	PlayPause PermissionLevel `json:"playPause"`
+
+	// Seek Who may do something. The room's owner always may.
+	Seek PermissionLevel `json:"seek"`
+
+	// Skip Who may skip. `vote`: the owner may, and everyone else votes (see
+	// SkipVotes). Whoever queued a song may always skip it.
+	Skip SkipPermission `json:"skip"`
+
+	// Speaker Who may do something. The room's owner always may.
+	Speaker PermissionLevel `json:"speaker"`
+}
+
+// RoomPermissionsChange Permissions to change. Missing ones stay as they are (`everyone` for a new room).
+type RoomPermissionsChange struct {
+	// PlayPause Who may do something. The room's owner always may.
+	PlayPause *PermissionLevel `json:"playPause,omitempty"`
+
+	// Seek Who may do something. The room's owner always may.
+	Seek *PermissionLevel `json:"seek,omitempty"`
+
+	// Skip Who may skip. `vote`: the owner may, and everyone else votes (see
+	// SkipVotes). Whoever queued a song may always skip it.
+	Skip *SkipPermission `json:"skip,omitempty"`
+
+	// Speaker Who may do something. The room's owner always may.
+	Speaker *PermissionLevel `json:"speaker,omitempty"`
+}
+
+// RoomStats defines model for RoomStats.
+type RoomStats struct {
+	First       *PlayedItem `json:"first,omitempty"`
+	Last        *PlayedItem `json:"last,omitempty"`
+	ListeningMs int64       `json:"listeningMs"`
+
+	// People Everyone whose songs played, most plays first.
+	People []PersonStats `json:"people"`
+
+	// Plays Songs that played, to the end or until skipped.
+	Plays      int           `json:"plays"`
+	Skipped    int           `json:"skipped"`
+	TopArtists []ArtistCount `json:"topArtists"`
+	TopTracks  []TrackCount  `json:"topTracks"`
 }
 
 // SearchGroup One link's search results.
@@ -1001,6 +1186,31 @@ type SignupRequest struct {
 	Username Username `json:"username"`
 }
 
+// SkipPermission Who may skip. `vote`: the owner may, and everyone else votes (see
+// SkipVotes). Whoever queued a song may always skip it.
+type SkipPermission string
+
+// SkipVotePercent A skip vote passes once more than this percent of the room has
+// voted (not counting whoever queued the song): 50 is a majority.
+type SkipVotePercent = int
+
+// SkipVotes The vote to skip the playing song, while the room's skip permission
+// is `vote`. Everyone in the room but whoever queued the song can
+// vote; `needed` changes as people come and go.
+type SkipVotes struct {
+	// Needed How many votes skip the song.
+	Needed int `json:"needed"`
+
+	// Voters IDs of the users who voted, in order.
+	Voters []string `json:"voters"`
+}
+
+// TrackCount A song and how many times it played to the end. `item` is its latest play.
+type TrackCount struct {
+	Item  QueueItem `json:"item"`
+	Plays int       `json:"plays"`
+}
+
 // TrackResult A track you can queue with `linkId` and `trackId`.
 type TrackResult struct {
 	Album   *AlbumCredit   `json:"album,omitempty"`
@@ -1016,13 +1226,19 @@ type TrackResult struct {
 	TrackId    string  `json:"trackId"`
 }
 
-// TrackToQueue defines model for TrackToQueue.
+// TrackToQueue A song from search (`linkId` and `trackId`), or a song the room
+// already had, again (`fromItemId`). Queueing again from someone
+// else's service needs the room's `matching.borrow`
+// (`cant_borrow` otherwise).
 type TrackToQueue struct {
-	// LinkId One of your links.
-	LinkId string `json:"linkId"`
+	// FromItemId One of the room's queue items, from history or stats.
+	FromItemId *string `json:"fromItemId,omitempty"`
+
+	// LinkId A link you can use (yours, or shared).
+	LinkId *string `json:"linkId,omitempty"`
 
 	// TrackId The track's ID on that service, from search.
-	TrackId string `json:"trackId"`
+	TrackId *string `json:"trackId,omitempty"`
 }
 
 // UpdateLinkRequest defines model for UpdateLinkRequest.
@@ -1032,10 +1248,24 @@ type UpdateLinkRequest struct {
 
 // UpdateRoomRequest defines model for UpdateRoomRequest.
 type UpdateRoomRequest struct {
-	// Controls Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
-	Controls     *RoomControls `json:"controls,omitempty"`
+	// Fairness Tunes the room's fairness mode. While someone else has songs
+	// waiting, nobody gets more than `maxInARow` songs in a row, and
+	// `cooldown` other songs play between one person's songs; when
+	// nobody else is waiting, the music keeps going anyway. In round
+	// robin, `weights` give some people more songs per turn.
+	Fairness     *RoomFairness `json:"fairness,omitempty"`
 	FairnessMode *FairnessMode `json:"fairnessMode,omitempty"`
-	Name         *string       `json:"name,omitempty"`
+
+	// Matching How the room uses the same song on other services.
+	Matching *RoomMatching `json:"matching,omitempty"`
+	Name     *string       `json:"name,omitempty"`
+
+	// Permissions Permissions to change. Missing ones stay as they are (`everyone` for a new room).
+	Permissions *RoomPermissionsChange `json:"permissions,omitempty"`
+
+	// SkipVotePercent A skip vote passes once more than this percent of the room has
+	// voted (not counting whoever queued the song): 50 is a majority.
+	SkipVotePercent *SkipVotePercent `json:"skipVotePercent,omitempty"`
 }
 
 // User defines model for User.
@@ -1112,6 +1342,12 @@ type RenamePasskeyJSONBody struct {
 // GetHistoryParams defines parameters for GetHistory.
 type GetHistoryParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Before Only plays that started before this time.
+	Before *time.Time `form:"before,omitempty" json:"before,omitempty"`
+
+	// UserId Only this person's songs.
+	UserId *string `form:"userId,omitempty" json:"userId,omitempty"`
 }
 
 // ReleasePlayerParams defines parameters for ReleasePlayer.
@@ -1123,6 +1359,17 @@ type ReleasePlayerParams struct {
 type GetQueueItemArtworkParams struct {
 	// Size Wanted width in pixels; a hint.
 	Size *int `form:"size,omitempty" json:"size,omitempty"`
+}
+
+// ListSessionsParams defines parameters for ListSessions.
+type ListSessionsParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetRoomStatsParams defines parameters for GetRoomStats.
+type GetRoomStatsParams struct {
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+	To   *time.Time `form:"to,omitempty" json:"to,omitempty"`
 }
 
 // StreamQueueItemParams defines parameters for StreamQueueItem.
@@ -1331,13 +1578,13 @@ type ServerInterface interface {
 	// UpdateRoom Change a room you own
 	// (PATCH /rooms/{roomId})
 	UpdateRoom(w http.ResponseWriter, r *http.Request, roomId RoomId)
-	// GetHistory Songs the room played recently, newest first
+	// GetHistory Songs the room played, newest first
 	// (GET /rooms/{roomId}/history)
 	GetHistory(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetHistoryParams)
 	// GetPlayback What the room is playing
 	// (GET /rooms/{roomId}/playback)
 	GetPlayback(w http.ResponseWriter, r *http.Request, roomId RoomId)
-	// ControlPlayback Play, pause, skip or seek
+	// ControlPlayback Play, pause, skip, seek, or vote to skip
 	// (POST /rooms/{roomId}/playback)
 	ControlPlayback(w http.ResponseWriter, r *http.Request, roomId RoomId)
 	// ReleasePlayer Stop being the room's speaker
@@ -1364,6 +1611,12 @@ type ServerInterface interface {
 	// GetQueueItemArtwork A queued song's artwork
 	// (GET /rooms/{roomId}/queue/{itemId}/artwork)
 	GetQueueItemArtwork(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params GetQueueItemArtworkParams)
+	// ListSessions The room's listening sessions, newest first
+	// (GET /rooms/{roomId}/sessions)
+	ListSessions(w http.ResponseWriter, r *http.Request, roomId RoomId, params ListSessionsParams)
+	// GetRoomStats Who played what, and the top tracks and artists
+	// (GET /rooms/{roomId}/stats)
+	GetRoomStats(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetRoomStatsParams)
 	// StreamQueueItem A song's audio
 	// (GET /rooms/{roomId}/stream/{itemId})
 	StreamQueueItem(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params StreamQueueItemParams)
@@ -2307,6 +2560,32 @@ func (siw *ServerInterfaceWrapper) GetHistory(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// ------------- Optional query parameter "before" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "before", r.URL.Query(), &params.Before, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "before"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "before", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "userId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "userId", r.URL.Query(), &params.UserId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "userId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHistory(w, r, roomId, params)
 	}))
@@ -2637,6 +2916,103 @@ func (siw *ServerInterfaceWrapper) GetQueueItemArtwork(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// ListSessions operation middleware
+func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSessionsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSessions(w, r, roomId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRoomStats operation middleware
+func (siw *ServerInterfaceWrapper) GetRoomStats(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetRoomStatsParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRoomStats(w, r, roomId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // StreamQueueItem operation middleware
 func (siw *ServerInterfaceWrapper) StreamQueueItem(w http.ResponseWriter, r *http.Request) {
 
@@ -2942,6 +3318,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artwork", wrapper.GetLinkArtwork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.GetQueue)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.AddToQueue)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/stats", wrapper.GetRoomStats)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/sessions", wrapper.ListSessions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/history", wrapper.GetHistory)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.RemoveQueueItem)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.MoveQueueItem)
@@ -4935,6 +5313,86 @@ func (response GetQueueItemArtworkdefaultJSONResponse) VisitGetQueueItemArtworkR
 	return err
 }
 
+type ListSessionsRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Params ListSessionsParams
+}
+
+type ListSessionsResponseObject interface {
+	VisitListSessionsResponse(w http.ResponseWriter) error
+}
+
+type ListSessions200JSONResponse []ListeningSession
+
+func (response ListSessions200JSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessionsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListSessionsdefaultJSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoomStatsRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Params GetRoomStatsParams
+}
+
+type GetRoomStatsResponseObject interface {
+	VisitGetRoomStatsResponse(w http.ResponseWriter) error
+}
+
+type GetRoomStats200JSONResponse RoomStats
+
+func (response GetRoomStats200JSONResponse) VisitGetRoomStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoomStatsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetRoomStatsdefaultJSONResponse) VisitGetRoomStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type StreamQueueItemRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 	ItemId string `json:"itemId"`
@@ -5203,13 +5661,13 @@ type StrictServerInterface interface {
 	// UpdateRoom Change a room you own
 	// (PATCH /rooms/{roomId})
 	UpdateRoom(ctx context.Context, request UpdateRoomRequestObject) (UpdateRoomResponseObject, error)
-	// GetHistory Songs the room played recently, newest first
+	// GetHistory Songs the room played, newest first
 	// (GET /rooms/{roomId}/history)
 	GetHistory(ctx context.Context, request GetHistoryRequestObject) (GetHistoryResponseObject, error)
 	// GetPlayback What the room is playing
 	// (GET /rooms/{roomId}/playback)
 	GetPlayback(ctx context.Context, request GetPlaybackRequestObject) (GetPlaybackResponseObject, error)
-	// ControlPlayback Play, pause, skip or seek
+	// ControlPlayback Play, pause, skip, seek, or vote to skip
 	// (POST /rooms/{roomId}/playback)
 	ControlPlayback(ctx context.Context, request ControlPlaybackRequestObject) (ControlPlaybackResponseObject, error)
 	// ReleasePlayer Stop being the room's speaker
@@ -5236,6 +5694,12 @@ type StrictServerInterface interface {
 	// GetQueueItemArtwork A queued song's artwork
 	// (GET /rooms/{roomId}/queue/{itemId}/artwork)
 	GetQueueItemArtwork(ctx context.Context, request GetQueueItemArtworkRequestObject) (GetQueueItemArtworkResponseObject, error)
+	// ListSessions The room's listening sessions, newest first
+	// (GET /rooms/{roomId}/sessions)
+	ListSessions(ctx context.Context, request ListSessionsRequestObject) (ListSessionsResponseObject, error)
+	// GetRoomStats Who played what, and the top tracks and artists
+	// (GET /rooms/{roomId}/stats)
+	GetRoomStats(ctx context.Context, request GetRoomStatsRequestObject) (GetRoomStatsResponseObject, error)
 	// StreamQueueItem A song's audio
 	// (GET /rooms/{roomId}/stream/{itemId})
 	StreamQueueItem(ctx context.Context, request StreamQueueItemRequestObject) (StreamQueueItemResponseObject, error)
@@ -6725,6 +7189,60 @@ func (sh *strictHandler) GetQueueItemArtwork(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetQueueItemArtworkResponseObject); ok {
 		if err := validResponse.VisitGetQueueItemArtworkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSessions operation middleware
+func (sh *strictHandler) ListSessions(w http.ResponseWriter, r *http.Request, roomId RoomId, params ListSessionsParams) {
+	var request ListSessionsRequestObject
+
+	request.RoomId = roomId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSessions(ctx, request.(ListSessionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSessions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSessionsResponseObject); ok {
+		if err := validResponse.VisitListSessionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRoomStats operation middleware
+func (sh *strictHandler) GetRoomStats(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetRoomStatsParams) {
+	var request GetRoomStatsRequestObject
+
+	request.RoomId = roomId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRoomStats(ctx, request.(GetRoomStatsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRoomStats")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRoomStatsResponseObject); ok {
+		if err := validResponse.VisitGetRoomStatsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

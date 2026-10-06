@@ -1,6 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, type Ref } from 'react'
+import { Link } from '@tanstack/react-router'
 import { QueueRow } from '@/components/room/queue-row'
+import { RequeueButton } from '@/components/room/requeue-button'
 import { useMe } from '@/lib/auth'
 import { historyQuery, type QueueItem } from '@/lib/playback'
 import { queueQuery } from '@/lib/room'
@@ -67,7 +69,12 @@ export function SheetQueue({
 
       {played.length > 0 && (
         <div className="pb-8">
-          <Heading title="Recently played" />
+          <div className="mb-2 flex items-baseline justify-between px-1">
+            <h2 className="text-headline">Recently played</h2>
+            <Link to="/history" className="text-sm font-medium text-primary">
+              See all
+            </Link>
+          </div>
           <ol className="glass flex flex-col rounded-3xl p-1.5">
             {played.map((p) => (
               <li key={`${p.item.id}-${p.startedAt}`}>
@@ -78,11 +85,14 @@ export function SheetQueue({
                   byline
                   className="opacity-75"
                   trailing={
-                    p.endReason !== 'finished' && (
-                      <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-caption text-muted-foreground">
-                        {p.endReason === 'error' ? "Couldn't play" : p.endReason === 'skipped' ? 'Skipped' : 'Removed'}
-                      </span>
-                    )
+                    <>
+                      {p.endReason !== 'finished' && (
+                        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-caption text-muted-foreground">
+                          {p.endReason === 'error' ? "Couldn't play" : p.endReason === 'skipped' ? 'Skipped' : 'Removed'}
+                        </span>
+                      )}
+                      <RequeueButton item={p.item} />
+                    </>
                   }
                 />
               </li>

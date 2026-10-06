@@ -33,9 +33,11 @@ import (
 	"io"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/match"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
@@ -91,8 +93,25 @@ type Config struct {
 	// Transcoder converts formats the player can't decode. Nil disables
 	// transcoding.
 	Transcoder transcode.Transcoder
+	// Presence says who's in each room, to size skip votes. Nil counts
+	// only the voters.
+	Presence Presence
+	// Matcher finds a song on another service when its own can't play it,
+	// in rooms that allow it. Nil turns that off.
+	Matcher Matcher
 	// Now is the clock. Default store.Now.
 	Now func() time.Time
+}
+
+// Matcher finds the same song on another service in the room.
+// match.Service is one.
+type Matcher interface {
+	Find(ctx context.Context, roomID string, it store.QueueItem) (match.Via, error)
+}
+
+// Presence says who's in a room right now. realtime.Presence is one.
+type Presence interface {
+	Members(roomID string) []string
 }
 
 // Engine runs playback for every room.
@@ -112,8 +131,9 @@ type Engine struct {
 	byID   map[string]*room
 }
 
-// New returns an Engine and registers it for queue changes, so a room with
-// a speaker starts playing when songs arrive. Call Run to start its timers
+// New returns an Engine and registers it for queue and room changes, so a
+// room with a speaker starts playing when songs arrive and follows its
+// settings. Call Run to start its timers
 // and Close when done.
 func New(db *store.Store, rs *rooms.Service, qs *queue.Service, sessions Sessions, cfg Config) *Engine {
 	if cfg.LoadTimeout == 0 {
@@ -137,6 +157,7 @@ func New(db *store.Store, rs *rooms.Service, qs *queue.Service, sessions Session
 	ctx, cancel := context.WithCancel(context.Background())
 	e := &Engine{cfg: cfg, db: db, rooms: rs, queue: qs, sessions: sessions, ctx: ctx, cancel: cancel, byID: map[string]*room{}}
 	qs.OnChange = e.queueChanged
+	rs.OnUpdate = e.roomUpdated
 	return e
 }
 
@@ -180,6 +201,11 @@ type room struct {
 	id     string
 	loaded bool
 	np     rooms.NowPlaying
+	// owner and settings are the room's, as of the last command or change.
+	owner    string
+	settings rooms.Settings
+	// votes are the users who voted to skip the current song, in order.
+	votes []string
 	// errors counts songs in a row that failed to play.
 	errors int
 	// halted means the room stopped after too many failures; it waits for
@@ -191,6 +217,11 @@ type room struct {
 	sess     provider.Session
 	remote   provider.Remote
 	lastPoll time.Time
+}
+
+// setRoom caches the room's owner and settings.
+func (r *room) setRoom(row store.Room) {
+	r.owner, r.settings = row.OwnerID, rooms.ParseSettings(row.Settings)
 }
 
 func (r *room) closeRemote() {
@@ -228,6 +259,7 @@ func (e *Engine) load(ctx context.Context, r *room) error {
 		return err
 	}
 	now := e.cfg.Now()
+	r.setRoom(row)
 	r.np = rooms.NowPlaying{RoomID: r.id, State: StateIdle, At: now}
 	if row.PlayerDeviceID.Valid {
 		if err := e.db.SetRoomPlayer(ctx, store.SetRoomPlayerParams{ID: r.id}); err != nil {
@@ -254,10 +286,11 @@ func (e *Engine) load(ctx context.Context, r *room) error {
 // driverOf works out how an item plays, without starting it. Unknown (its
 // link is gone, say) reads as stream; starting it will fail and skip it.
 func (e *Engine) driverOf(ctx context.Context, it store.QueueItem) string {
-	if !it.LinkID.Valid {
+	linkID, _ := source(it)
+	if linkID == "" {
 		return string(provider.PlaybackStream)
 	}
-	sess, err := e.sessions.Open(ctx, it.LinkID.String)
+	sess, err := e.sessions.Open(ctx, linkID)
 	if err != nil {
 		return string(provider.PlaybackStream)
 	}
@@ -312,7 +345,14 @@ func (r *room) view(now time.Time) rooms.NowPlaying {
 	return np
 }
 
-func (e *Engine) publish(r *room) { e.rooms.PublishNowPlaying(r.view(e.cfg.Now())) }
+// view is the room's state as of now, with the skip vote tallied.
+func (e *Engine) view(r *room) rooms.NowPlaying {
+	np := r.view(e.cfg.Now())
+	np.SkipVotes = e.tally(r)
+	return np
+}
+
+func (e *Engine) publish(r *room) { e.rooms.PublishNowPlaying(e.view(r)) }
 
 func (e *Engine) notice(r *room, itemID, msg string) {
 	slog.Info("playback notice", "room", r.id, "item", itemID, "msg", msg)
@@ -326,7 +366,7 @@ func (e *Engine) NowPlaying(ctx context.Context, roomID string) (rooms.NowPlayin
 		return rooms.NowPlaying{}, err
 	}
 	defer r.mu.Unlock()
-	return r.view(e.cfg.Now()), nil
+	return e.view(r), nil
 }
 
 // Claim makes a device the room's speaker, taking over from any other.
@@ -344,8 +384,9 @@ func (e *Engine) Claim(ctx context.Context, roomID, userID, deviceID, name strin
 		return rooms.NowPlaying{}, err
 	}
 	defer r.mu.Unlock()
+	r.setRoom(row)
 	same := r.np.Player != nil && r.np.Player.DeviceID == deviceID && r.np.Player.UserID == userID
-	if !same && !rooms.CanControl(row, userID) {
+	if !same && !rooms.Allowed(r.settings.Permissions.Speaker, row.OwnerID, userID) {
 		return rooms.NowPlaying{}, ErrForbidden
 	}
 	now := e.cfg.Now()
@@ -368,7 +409,7 @@ func (e *Engine) Claim(ctx context.Context, roomID, userID, deviceID, name strin
 	} else {
 		e.publish(r)
 	}
-	return r.view(now), nil
+	return e.view(r), nil
 }
 
 // Release stops a device being the speaker. The current song pauses. The
@@ -405,7 +446,7 @@ func (e *Engine) Release(ctx context.Context, roomID, userID, deviceID string) (
 		}
 	}
 	e.publish(r)
-	return r.view(e.cfg.Now()), nil
+	return e.view(r), nil
 }
 
 // Command actions.
@@ -414,6 +455,10 @@ const (
 	ActionPause = "pause"
 	ActionSkip  = "skip"
 	ActionSeek  = "seek"
+	// ActionVoteSkip and ActionUnvoteSkip cast and take back a vote to
+	// skip the current song, in rooms that vote on skips.
+	ActionVoteSkip   = "vote_skip"
+	ActionUnvoteSkip = "unvote_skip"
 )
 
 // Command is a member's request to control playback.
@@ -421,12 +466,13 @@ type Command struct {
 	Action string
 	// Position is where to seek to.
 	Position time.Duration
-	// ItemID, if set, makes a skip apply only while that item is current,
-	// so two people tapping skip at once skip one song, not two.
+	// ItemID, if set, makes a skip or vote apply only while that item is
+	// current, so two people tapping skip at once skip one song, not two.
 	ItemID string
 }
 
-// Command controls playback.
+// Command controls playback. The room's permissions say who may do what;
+// the owner may do anything, and whoever queued a song may skip it.
 func (e *Engine) Command(ctx context.Context, roomID, userID string, c Command) (rooms.NowPlaying, error) {
 	row, err := e.rooms.Get(ctx, roomID)
 	if err != nil {
@@ -437,9 +483,20 @@ func (e *Engine) Command(ctx context.Context, roomID, userID string, c Command) 
 		return rooms.NowPlaying{}, err
 	}
 	defer r.mu.Unlock()
-	allowed := rooms.CanControl(row, userID) ||
-		(c.Action == ActionSkip && r.np.Item != nil && r.np.Item.AddedBy == userID)
-	if !allowed {
+	r.setRoom(row)
+	perms := r.settings.Permissions
+	mine := r.np.Item != nil && r.np.Item.AddedBy == userID
+	var level string
+	switch c.Action {
+	case ActionPlay, ActionPause:
+		level = perms.PlayPause
+	case ActionSeek:
+		level = perms.Seek
+	case ActionSkip:
+		level = perms.Skip
+	}
+	ownSkip := c.Action == ActionSkip && mine
+	if level != "" && !ownSkip && !rooms.Allowed(level, row.OwnerID, userID) {
 		return rooms.NowPlaying{}, ErrForbidden
 	}
 	now := e.cfg.Now()
@@ -477,13 +534,35 @@ func (e *Engine) Command(ctx context.Context, roomID, userID string, c Command) 
 		r.np.Position, r.np.At = to, now
 		r.np.Revision++
 		e.publish(r)
+	case ActionVoteSkip, ActionUnvoteSkip:
+		if perms.Skip != rooms.Vote {
+			return rooms.NowPlaying{}, &InvalidInputError{"this room doesn't vote on skips"}
+		}
+		if r.np.Item == nil {
+			return rooms.NowPlaying{}, ErrNothingPlaying
+		}
+		if c.ItemID != "" && c.ItemID != r.np.Item.ID {
+			break // the vote was for a song that's over
+		}
+		if mine {
+			return rooms.NowPlaying{}, &InvalidInputError{"you queued this song, so you can skip it yourself"}
+		}
+		voted := slices.Contains(r.votes, userID)
+		switch {
+		case c.Action == ActionVoteSkip && !voted:
+			r.votes = append(r.votes, userID)
+			err = e.settleVote(ctx, r)
+		case c.Action == ActionUnvoteSkip && voted:
+			r.votes = slices.DeleteFunc(r.votes, func(id string) bool { return id == userID })
+			e.publish(r)
+		}
 	default:
-		return rooms.NowPlaying{}, &InvalidInputError{"action is play, pause, skip or seek"}
+		return rooms.NowPlaying{}, &InvalidInputError{"action is play, pause, skip, seek, vote_skip or unvote_skip"}
 	}
 	if err != nil {
 		return rooms.NowPlaying{}, err
 	}
-	return r.view(e.cfg.Now()), nil
+	return e.view(r), nil
 }
 
 func (e *Engine) play(ctx context.Context, r *room) error {
@@ -565,7 +644,7 @@ func (e *Engine) Report(ctx context.Context, roomID, userID string, rep Report) 
 	now := e.cfg.Now()
 	p.LastSeen = now
 	if r.np.Item == nil || r.np.Item.ID != rep.ItemID || r.np.Driver != string(provider.PlaybackStream) {
-		return r.view(now), nil
+		return e.view(r), nil
 	}
 	switch rep.Event {
 	case EventPlaying:
@@ -593,6 +672,16 @@ func (e *Engine) Report(ctx context.Context, roomID, userID string, rep Report) 
 		if cause == "" {
 			cause = "the speaker reported an error"
 		}
+		// Before skipping it, try the song on another service.
+		if alt, ok := e.elsewhere(ctx, r, *r.np.Item, errors.New(cause)); ok {
+			r.np.Position, r.np.At, r.since = 0, now, now
+			r.np.Revision++
+			if err = e.start(ctx, r, alt); err == nil {
+				e.publish(r)
+				break
+			}
+			cause = err.Error()
+		}
 		err = e.failed(ctx, r, fmt.Sprintf("Couldn't play %s", title(r.np.Item)), errors.New(cause))
 	default:
 		return rooms.NowPlaying{}, &InvalidInputError{"event is playing, progress, paused, ended or error"}
@@ -600,7 +689,7 @@ func (e *Engine) Report(ctx context.Context, roomID, userID string, rep Report) 
 	if err != nil {
 		return rooms.NowPlaying{}, err
 	}
-	return r.view(e.cfg.Now()), nil
+	return e.view(r), nil
 }
 
 // next ends the current song for reason and starts the next one, skipping
@@ -614,6 +703,7 @@ func (e *Engine) next(ctx context.Context, r *room, reason string) error {
 			return err
 		}
 		now := e.cfg.Now()
+		r.votes = nil
 		r.np.Item, r.np.Position, r.np.At, r.since = item, 0, now, now
 		r.np.Next = nextOf(snap)
 		r.np.Revision++
@@ -694,13 +784,79 @@ func (e *Engine) rotate(ctx context.Context, r *room, reason string, start bool)
 	return next, snap, err
 }
 
-// begin starts an item that rotate made current. Streamed songs wait for
-// the speaker to load them; remote songs start on the service's player.
+// begin starts an item that rotate made current. If its service can't
+// start it, the same song on another service in the room may stand in.
 func (e *Engine) begin(ctx context.Context, r *room, it store.QueueItem) error {
-	if !it.LinkID.Valid {
+	err := e.start(ctx, r, it)
+	if err == nil {
+		return nil
+	}
+	if alt, ok := e.elsewhere(ctx, r, it, err); ok {
+		return e.start(ctx, r, alt)
+	}
+	return err
+}
+
+// matchTimeout bounds the search for a stand-in. It's under the load
+// timeout, so a song that's found still has time to start.
+const matchTimeout = 15 * time.Second
+
+// source is where an item plays from: the link and track standing in for
+// it, if any, or its own. linkID is "" if its link is gone.
+func source(it store.QueueItem) (linkID, trackID string) {
+	if it.ViaLinkID.Valid {
+		return it.ViaLinkID.String, it.ViaTrackID.String
+	}
+	return it.LinkID.String, it.TrackID
+}
+
+// elsewhere finds item's song on another service in the room, records it
+// as where the item plays from, and makes it the current item. It says
+// no if the room doesn't allow it, if the item already stands in for
+// itself somewhere else, or if nothing has the song.
+func (e *Engine) elsewhere(ctx context.Context, r *room, it store.QueueItem, cause error) (store.QueueItem, bool) {
+	if e.cfg.Matcher == nil || !r.settings.Matching.FallbackOn() || it.ViaLinkID.Valid {
+		return it, false
+	}
+	// The room is locked while we look, so don't look for long.
+	fctx, cancel := context.WithTimeout(ctx, matchTimeout)
+	via, err := e.cfg.Matcher.Find(fctx, r.id, it)
+	cancel()
+	if err != nil {
+		if !errors.Is(err, match.ErrNoMatch) {
+			slog.Warn("playback: looking for a song elsewhere", "room", r.id, "item", it.ID, "err", err)
+		}
+		return it, false
+	}
+	_, err = e.queue.Change(ctx, r.id, func(q *store.Queries, _ store.Room) error {
+		return q.SetQueueItemVia(ctx, store.SetQueueItemViaParams{
+			ViaProvider: nullString(via.Provider), ViaLinkID: nullString(via.LinkID), ViaTrackID: nullString(via.TrackID),
+			UpdatedAt: e.cfg.Now(), ID: it.ID,
+		})
+	})
+	if err != nil {
+		slog.Warn("playback: recording a stand-in", "room", r.id, "item", it.ID, "err", err)
+		return it, false
+	}
+	slog.Info("playback: playing a song from another service", "room", r.id, "item", it.ID, "via", via.LinkID, "cause", cause)
+	it.ViaProvider, it.ViaLinkID, it.ViaTrackID = nullString(via.Provider), nullString(via.LinkID), nullString(via.TrackID)
+	r.np.Item = &it
+	from := via.ProviderName
+	if via.OwnerName != "" {
+		from = possessive(via.OwnerName) + " " + via.ProviderName
+	}
+	e.notice(r, it.ID, fmt.Sprintf("Playing %s from %s: %s couldn't play it", title(&it), from, via.FromName))
+	return it, true
+}
+
+// start starts an item from its source. Streamed songs wait for the
+// speaker to load them; remote songs start on the service's player.
+func (e *Engine) start(ctx context.Context, r *room, it store.QueueItem) error {
+	linkID, _ := source(it)
+	if linkID == "" {
 		return errors.New("its service was unlinked")
 	}
-	sess, err := e.sessions.Open(ctx, it.LinkID.String)
+	sess, err := e.sessions.Open(ctx, linkID)
 	if err != nil {
 		return err
 	}
@@ -727,7 +883,8 @@ func (e *Engine) begin(ctx context.Context, r *room, it store.QueueItem) error {
 // startRemote opens a session for a remote song and plays it from at. The
 // session stays open while the song is current: it's the remote's handle.
 func (e *Engine) startRemote(ctx context.Context, r *room, it store.QueueItem, at time.Duration) error {
-	sess, err := e.sessions.Open(ctx, it.LinkID.String)
+	linkID, trackID := source(it)
+	sess, err := e.sessions.Open(ctx, linkID)
 	if err != nil {
 		return err
 	}
@@ -736,7 +893,7 @@ func (e *Engine) startRemote(ctx context.Context, r *room, it store.QueueItem, a
 		sess.Close()
 		return errors.New("its service can't play remotely")
 	}
-	if err := rem.Play(ctx, it.TrackID, at); err != nil {
+	if err := rem.Play(ctx, trackID, at); err != nil {
 		sess.Close()
 		return err
 	}
@@ -749,6 +906,36 @@ func (e *Engine) startRemote(ctx context.Context, r *room, it store.QueueItem, a
 // engine holds a room's lock (the engine changes the queue too), so the
 // work happens on another goroutine.
 func (e *Engine) queueChanged(roomID string) {
+	e.background(roomID, "reacting to queue change", e.refresh)
+}
+
+// roomUpdated follows a change to a room's settings: a skip vote may now
+// pass, or no longer apply.
+func (e *Engine) roomUpdated(row store.Room) {
+	e.background(row.ID, "reacting to room change", func(ctx context.Context, r *room) error {
+		was := r.settings.Permissions.Skip
+		r.setRoom(row)
+		if r.settings.Permissions.Skip == rooms.Vote {
+			return e.settleVote(ctx, r)
+		}
+		r.votes = nil
+		if was == rooms.Vote {
+			e.publish(r)
+		}
+		return nil
+	})
+}
+
+// MembersChanged follows someone joining or leaving a room: a skip vote
+// needs more or fewer votes, and may now pass.
+func (e *Engine) MembersChanged(roomID string) {
+	e.background(roomID, "reacting to members", e.settleVote)
+}
+
+// background runs fn on a room the engine has loaded, on another
+// goroutine, holding the room's lock. Rooms that were never loaded have no
+// speaker and nothing playing, so there's nothing to do.
+func (e *Engine) background(roomID, what string, fn func(context.Context, *room) error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.closed {
@@ -756,25 +943,64 @@ func (e *Engine) queueChanged(roomID string) {
 	}
 	r, ok := e.byID[roomID]
 	if !ok {
-		return // never loaded, so nobody has claimed it as speaker
+		return
 	}
 	e.wg.Add(1)
 	go func() {
 		defer e.wg.Done()
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		if err := e.refresh(e.ctx, r); err != nil && !errors.Is(err, context.Canceled) {
-			slog.Warn("playback: reacting to queue change", "room", roomID, "err", err)
+		if !r.loaded {
+			return
+		}
+		if err := fn(e.ctx, r); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("playback: "+what, "room", roomID, "err", err)
 		}
 	}()
+}
+
+// tally counts the vote to skip the current song, or is nil if the room
+// doesn't vote on skips or nothing is playing. Everyone in the room may
+// vote but whoever queued the song (they can just skip it).
+func (e *Engine) tally(r *room) *rooms.SkipVotes {
+	if r.settings.Permissions.Skip != rooms.Vote || r.np.Item == nil {
+		return nil
+	}
+	voters := map[string]bool{}
+	if e.cfg.Presence != nil {
+		for _, id := range e.cfg.Presence.Members(r.id) {
+			voters[id] = true
+		}
+	}
+	// Votes count even after the voter leaves.
+	for _, id := range r.votes {
+		voters[id] = true
+	}
+	delete(voters, r.np.Item.AddedBy)
+	return &rooms.SkipVotes{
+		Voters: append([]string{}, r.votes...),
+		Needed: rooms.VotesNeeded(len(voters), *r.settings.SkipVotePercent),
+	}
+}
+
+// settleVote skips the current song if enough of the room voted to, and
+// otherwise publishes the tally. The caller holds r.mu.
+func (e *Engine) settleVote(ctx context.Context, r *room) error {
+	v := e.tally(r)
+	if v == nil {
+		return nil
+	}
+	if len(v.Voters) == 0 || len(v.Voters) < v.Needed {
+		e.publish(r)
+		return nil
+	}
+	e.notice(r, r.np.Item.ID, fmt.Sprintf("Skipped %s: the room voted", title(r.np.Item)))
+	return e.next(ctx, r, store.EndSkipped)
 }
 
 // refresh starts an idle room when songs arrive, and keeps the preloaded
 // next song current as the order changes.
 func (e *Engine) refresh(ctx context.Context, r *room) error {
-	if !r.loaded {
-		return nil
-	}
 	if r.np.State == StateIdle && r.np.Player != nil && !r.halted {
 		return e.next(ctx, r, "")
 	}
@@ -858,12 +1084,13 @@ func (e *Engine) poll(ctx context.Context, r *room, now time.Time) error {
 		return e.failed(ctx, r, fmt.Sprintf("Skipped %s: lost touch with its player", title(r.np.Item)), err)
 	}
 	d := duration(r.np.Item)
+	_, trackID := source(*r.np.Item)
 	// Some services report the old track for a moment after a change.
 	settled := now.Sub(r.since) > 5*time.Second
 	switch {
-	case st.TrackID != r.np.Item.TrackID && settled:
+	case st.TrackID != trackID && settled:
 		return e.next(ctx, r, store.EndFinished)
-	case st.TrackID != r.np.Item.TrackID:
+	case st.TrackID != trackID:
 	case !st.Playing && d > 0 && st.Position >= d-2*time.Second:
 		return e.next(ctx, r, store.EndFinished)
 	case !st.Playing:
@@ -886,10 +1113,11 @@ func (e *Engine) Stream(ctx context.Context, roomID, itemID string, opts provide
 	} else if err != nil {
 		return nil, err
 	}
-	if (it.State != store.ItemPlaying && it.State != store.ItemQueued) || !it.LinkID.Valid {
+	linkID, trackID := source(it)
+	if (it.State != store.ItemPlaying && it.State != store.ItemQueued) || linkID == "" {
 		return nil, ErrNotStreamable
 	}
-	sess, err := e.sessions.Open(ctx, it.LinkID.String)
+	sess, err := e.sessions.Open(ctx, linkID)
 	if err != nil {
 		return nil, err
 	}
@@ -898,7 +1126,7 @@ func (e *Engine) Stream(ctx context.Context, roomID, itemID string, opts provide
 		sess.Close()
 		return nil, ErrNotStreamable
 	}
-	a, err := transcode.Stream(ctx, s, it.TrackID, opts, e.cfg.Transcoder)
+	a, err := transcode.Stream(ctx, s, trackID, opts, e.cfg.Transcoder)
 	if err != nil {
 		sess.Close()
 		return nil, err
@@ -925,6 +1153,14 @@ func title(it *store.QueueItem) string {
 		return "a song"
 	}
 	return "“" + t.Title + "”"
+}
+
+// possessive is "Sam's", or "James'".
+func possessive(name string) string {
+	if strings.HasSuffix(name, "s") {
+		return name + "'"
+	}
+	return name + "'s"
 }
 
 func playerName(p *rooms.Player) string {

@@ -55,6 +55,9 @@ type QueueItem struct {
 	LanePosition int64
 	AddedAt      time.Time
 	UpdatedAt    time.Time
+	ViaProvider  sql.NullString
+	ViaLinkID    sql.NullString
+	ViaTrackID   sql.NullString
 }
 
 type Room struct {

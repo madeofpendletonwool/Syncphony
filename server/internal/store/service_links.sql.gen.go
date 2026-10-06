@@ -7,6 +7,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -190,6 +191,61 @@ SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, 
 
 func (q *Queries) ListAllServiceLinks(ctx context.Context) ([]ServiceLink, error) {
 	rows, err := q.db.QueryContext(ctx, listAllServiceLinks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ServiceLink{}
+	for rows.Next() {
+		var i ServiceLink
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Provider,
+			&i.AccountID,
+			&i.AccountLabel,
+			&i.EncryptedCredentials,
+			&i.Status,
+			&i.StatusDetail,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastOkAt,
+			&i.Shared,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMatchLinks = `-- name: ListMatchLinks :many
+SELECT id, user_id, provider, account_id, account_label, encrypted_credentials, status, status_detail, created_at, updated_at, last_ok_at, shared FROM service_links
+WHERE status != 'expired' AND (shared OR user_id IN (/*SLICE:user_ids*/?))
+ORDER BY shared, created_at
+`
+
+// ListMatchLinks returns the links a room may look for a song on: those
+// of the given users (who are in the room) and shared ones, unless
+// expired. The users' own links come first.
+func (q *Queries) ListMatchLinks(ctx context.Context, userIds []string) ([]ServiceLink, error) {
+	query := listMatchLinks
+	var queryParams []interface{}
+	if len(userIds) > 0 {
+		for _, v := range userIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:user_ids*/?", strings.Repeat(",?", len(userIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:user_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}

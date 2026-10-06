@@ -80,6 +80,10 @@ class Speaker {
   private last?: Playback
   private lastProgress = 0
   private retries = 0
+  // Set once the browser refused to start the preloaded element in the
+  // background (iOS may): from then on, songs that start while hidden play
+  // in the element that just ended, which it does allow.
+  private inPlace = false
   // Pauses until this time are our own doing (a command, a new song), not
   // something to report.
   private ownPauseUntil = 0
@@ -264,11 +268,15 @@ class Speaker {
     return `/api/rooms/${encodeURIComponent(this.roomId!)}/stream/${encodeURIComponent(item.id)}?${q}`
   }
 
-  private play() {
+  /** Plays the current element. onBlocked, if given, handles the browser refusing instead of asking for a tap. */
+  private play(onBlocked?: () => void) {
     this.cur.play().then(
       () => this.set({ status: 'playing' }),
       (err: unknown) => {
-        if (err instanceof DOMException && err.name === 'NotAllowedError') this.set({ status: 'blocked' })
+        if (err instanceof DOMException && err.name === 'NotAllowedError') {
+          if (onBlocked) onBlocked()
+          else this.set({ status: 'blocked' })
+        }
         // AbortError: a newer load interrupted this one; it'll play instead.
       },
     )
@@ -312,10 +320,33 @@ class Speaker {
     // Gapless: start the preloaded next song now instead of waiting for the
     // server's round trip. Its new state confirms it.
     const next = this.last?.next
-    if (next && this.preItem === next.id) {
-      this.load(next, 0)
-      this.play()
+    if (!next || this.preItem !== next.id) return
+    if (this.inPlace && document.visibilityState === 'hidden') {
+      this.playInPlace(next)
+      return
     }
+    this.load(next, 0)
+    // iOS may refuse to start a different element while the screen is
+    // locked; the one that just ended is still allowed to play.
+    this.play(() => {
+      this.inPlace = true
+      this.playInPlace(next)
+    })
+  }
+
+  /** Plays item in the element that just ended, rather than the preloaded one. */
+  private playInPlace(item: QueueItem) {
+    if (this.curItem?.id === item.id && this.pre.ended) {
+      // load() already swapped to the preloaded element: swap back.
+      this.expectPause()
+      this.cur.pause()
+      ;[this.cur, this.pre] = [this.pre, this.cur]
+    }
+    this.preItem = undefined
+    this.curItem = item
+    this.retries = 0
+    this.cur.src = this.streamUrl(item)
+    this.play()
   }
 
   private onError() {

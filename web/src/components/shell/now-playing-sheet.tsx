@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useDragControls } from 'motion/react'
 import { Dialog } from 'radix-ui'
 import { useRef, useState } from 'react'
 import { Artwork } from '@/components/artwork'
-import { ServiceTag } from '@/components/service-tag'
+import { SourceTag } from '@/components/service-tag'
 import { AlbumLink, ArtistLinks } from '@/components/track-credits'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -110,7 +110,7 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
                               Added by {np.requester.displayName}
                             </Badge>
                           )}
-                          <ServiceTag provider={np.track.provider} className="py-1" />
+                          <SourceTag provider={np.track.provider} via={np.via} className="py-1" />
                         </div>
                       </motion.div>
 

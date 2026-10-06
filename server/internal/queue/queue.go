@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
@@ -42,6 +43,29 @@ func (e *NotPlayableError) Error() string {
 
 func (e *NotPlayableError) Unwrap() error { return provider.ErrNotPlayable }
 
+// RepeatError is a song refused by the room's repeat guard: it's already
+// waiting or playing, or played too recently.
+type RepeatError struct {
+	Title string
+	// Minutes is the room's repeat window.
+	Minutes int
+}
+
+func (e *RepeatError) Error() string {
+	return fmt.Sprintf("%q is already in the queue or played in the last %s. This room doesn't repeat songs that soon.", e.Title, window(e.Minutes))
+}
+
+func window(minutes int) string {
+	switch {
+	case minutes == 60:
+		return "hour"
+	case minutes%60 == 0:
+		return fmt.Sprintf("%d hours", minutes/60)
+	default:
+		return fmt.Sprintf("%d minutes", minutes)
+	}
+}
+
 // InvalidInputError is a bad request, such as adding no songs.
 type InvalidInputError struct{ Message string }
 
@@ -58,6 +82,8 @@ const lanePositionStep = 1024
 // links.Service in production.
 type Tracks interface {
 	OpenFor(ctx context.Context, userID, linkID string) (provider.Session, error)
+	// GetUsable returns a link userID may use, or links.ErrNotFound.
+	GetUsable(ctx context.Context, userID, linkID string) (store.ServiceLink, error)
 	Provider(id string) (provider.Provider, error)
 }
 
@@ -119,11 +145,20 @@ func (s *Service) Change(ctx context.Context, roomID string, fn func(q *store.Qu
 	return snap, err
 }
 
-// TrackRef names a song to queue: a track ID on one of the user's links.
+// TrackRef names a song to queue: a track ID on a link the user can use,
+// or, with FromItemID, the song of an item the room already had.
 type TrackRef struct {
 	LinkID  string
 	TrackID string
+	// FromItemID queues the song of one of the room's items again, from
+	// the same link. That needs a link the user can use, unless the room
+	// lets people borrow (rooms.Matching.Borrow).
+	FromItemID string
 }
+
+// ErrCantBorrow is queueing again a song from someone else's service in a
+// room that doesn't allow it.
+var ErrCantBorrow = errors.New("that song is on someone else's service, and this room doesn't let people borrow songs")
 
 // Add appends songs to the end of userID's lane, in the order given. It
 // looks each one up on its service first, so the queue keeps a snapshot of
@@ -134,6 +169,10 @@ type TrackRef struct {
 // song is a *NotPlayableError. Larger adds (an album) aren't checked: one
 // check per song would trip Spotify's throttling, and a song that won't
 // play is skipped with a notice when its turn comes.
+//
+// If the room has a repeat window, songs that are already waiting or
+// playing, or started within the window, are left out. If that leaves
+// nothing to add, it's a *RepeatError.
 func (s *Service) Add(ctx context.Context, roomID, userID string, refs []TrackRef) (rooms.QueueSnapshot, error) {
 	if len(refs) == 0 {
 		return rooms.QueueSnapshot{}, &InvalidInputError{"add at least one song"}
@@ -141,20 +180,25 @@ func (s *Service) Add(ctx context.Context, roomID, userID string, refs []TrackRe
 	if len(refs) > MaxAdd {
 		return rooms.QueueSnapshot{}, &InvalidInputError{fmt.Sprintf("add at most %d songs at a time", MaxAdd)}
 	}
-	if _, err := s.rooms.Get(ctx, roomID); err != nil {
-		return rooms.QueueSnapshot{}, err
-	}
-	// Look the tracks up before taking the room's lock: services can be slow.
-	tracks, err := s.lookup(ctx, userID, refs)
+	room, err := s.rooms.Get(ctx, roomID)
 	if err != nil {
 		return rooms.QueueSnapshot{}, err
 	}
-	return s.Change(ctx, roomID, func(q *store.Queries, _ store.Room) error {
+	// Look the tracks up before taking the room's lock: services can be slow.
+	tracks, err := s.lookup(ctx, room, userID, refs)
+	if err != nil {
+		return rooms.QueueSnapshot{}, err
+	}
+	return s.Change(ctx, roomID, func(q *store.Queries, room store.Room) error {
+		now := s.Now()
+		tracks, err := s.withoutRepeats(ctx, q, room, tracks, now)
+		if err != nil {
+			return err
+		}
 		pos, err := q.NextLanePosition(ctx, store.NextLanePositionParams{RoomID: roomID, AddedBy: userID})
 		if err != nil {
 			return err
 		}
-		now := s.Now()
 		for _, t := range tracks {
 			meta, err := json.Marshal(t)
 			if err != nil {
@@ -173,8 +217,44 @@ func (s *Service) Add(ctx context.Context, roomID, userID string, refs []TrackRe
 	})
 }
 
-// lookup fetches each track's metadata, opening each link once.
-func (s *Service) lookup(ctx context.Context, userID string, refs []TrackRef) ([]provider.Track, error) {
+// withoutRepeats drops the songs the room's repeat guard refuses, including
+// a song given twice. It's a *RepeatError if none are left.
+func (s *Service) withoutRepeats(ctx context.Context, q *store.Queries, room store.Room, tracks []provider.Track, now time.Time) ([]provider.Track, error) {
+	minutes := rooms.ParseSettings(room.Settings).Fairness.RepeatWindowMinutes
+	if minutes == 0 {
+		return tracks, nil
+	}
+	since := now.Add(-time.Duration(minutes) * time.Minute)
+	seen := map[string]bool{}
+	out := make([]provider.Track, 0, len(tracks))
+	for _, t := range tracks {
+		key := t.Ref.Provider + "\x00" + t.Ref.ID
+		if seen[key] || (t.ISRC != "" && seen["isrc\x00"+t.ISRC]) {
+			continue
+		}
+		seen[key] = true
+		if t.ISRC != "" {
+			seen["isrc\x00"+t.ISRC] = true
+		}
+		n, err := q.RecentDuplicates(ctx, store.RecentDuplicatesParams{
+			RoomID: room.ID, Provider: t.Ref.Provider, TrackID: t.Ref.ID, Isrc: t.ISRC, Since: since,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			out = append(out, t)
+		}
+	}
+	if len(out) == 0 {
+		return nil, &RepeatError{Title: tracks[0].Title, Minutes: minutes}
+	}
+	return out, nil
+}
+
+// lookup fetches each track's metadata, opening each link once. Songs
+// queued again from an item reuse its snapshot.
+func (s *Service) lookup(ctx context.Context, room store.Room, userID string, refs []TrackRef) ([]provider.Track, error) {
 	sessions := map[string]provider.Session{}
 	defer func() {
 		for _, sess := range sessions {
@@ -183,8 +263,16 @@ func (s *Service) lookup(ctx context.Context, userID string, refs []TrackRef) ([
 	}()
 	out := make([]provider.Track, len(refs))
 	for i, r := range refs {
+		if r.FromItemID != "" {
+			t, err := s.again(ctx, room, userID, r.FromItemID)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = t
+			continue
+		}
 		if r.LinkID == "" || r.TrackID == "" {
-			return nil, &InvalidInputError{"each song needs a linkId and trackId"}
+			return nil, &InvalidInputError{"each song needs a linkId and trackId, or a fromItemId"}
 		}
 		sess, ok := sessions[r.LinkID]
 		if !ok {
@@ -212,6 +300,31 @@ func (s *Service) lookup(ctx context.Context, userID string, refs []TrackRef) ([
 		out[i] = t
 	}
 	return out, nil
+}
+
+// again returns the song of one of the room's items, to queue it again.
+func (s *Service) again(ctx context.Context, room store.Room, userID, itemID string) (provider.Track, error) {
+	it, err := s.Item(ctx, room.ID, itemID)
+	if err != nil {
+		return provider.Track{}, err
+	}
+	var t provider.Track
+	if err := json.Unmarshal([]byte(it.Metadata), &t); err != nil {
+		return provider.Track{}, err
+	}
+	if !it.LinkID.Valid {
+		return provider.Track{}, &InvalidInputError{"that song's service was unlinked"}
+	}
+	if !rooms.ParseSettings(room.Settings).Matching.Borrow {
+		if _, err := s.tracks.GetUsable(ctx, userID, it.LinkID.String); err != nil {
+			if errors.Is(err, links.ErrNotFound) {
+				return provider.Track{}, ErrCantBorrow
+			}
+			return provider.Track{}, err
+		}
+	}
+	t.Ref = provider.TrackRef{Provider: it.Provider, LinkID: it.LinkID.String, ID: it.TrackID}
+	return t, nil
 }
 
 // serviceName is a provider's display name, for messages.

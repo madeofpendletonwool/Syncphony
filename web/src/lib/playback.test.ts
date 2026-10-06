@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { currentPosition } from '@/hooks/use-room-controls'
-import { canControl, queueArtworkUrl, songsBeforeYours, toNowPlaying, type Playback, type QueueItem } from './playback'
+import { can, queueArtworkUrl, skipMode, songsBeforeYours, toNowPlaying, type Playback, type QueueItem } from './playback'
 
 const item = (id: string, addedBy: string, extra: Partial<QueueItem['track']> = {}): QueueItem => ({
   id,
@@ -22,13 +22,28 @@ describe('songsBeforeYours', () => {
   })
 })
 
-describe('canControl', () => {
-  it('lets everyone control an open room', () => {
-    expect(canControl({ controls: 'everyone', ownerId: 'o' }, 'x')).toBe(true)
+describe('permissions', () => {
+  const room = (skip: 'everyone' | 'vote' | 'owner', rest: 'everyone' | 'owner' = 'everyone') => ({
+    ownerId: 'o',
+    permissions: { playPause: rest, seek: 'owner' as const, skip, speaker: rest },
   })
-  it('limits an owner-only room to its owner', () => {
-    expect(canControl({ controls: 'owner', ownerId: 'o' }, 'x')).toBe(false)
-    expect(canControl({ controls: 'owner', ownerId: 'o' }, 'o')).toBe(true)
+  it('checks each permission on its own', () => {
+    expect(can(room('owner'), 'x', 'playPause')).toBe(true)
+    expect(can(room('owner'), 'x', 'seek')).toBe(false)
+    expect(can(room('owner', 'owner'), 'x', 'speaker')).toBe(false)
+  })
+  it('lets the owner do anything', () => {
+    expect(can(room('owner', 'owner'), 'o', 'seek')).toBe(true)
+    expect(can(room('vote'), 'o', 'skip')).toBe(true)
+  })
+  it('works out how you can skip', () => {
+    const bobs = { addedBy: 'bob' }
+    expect(skipMode(room('everyone'), 'x', bobs)).toBe('skip')
+    expect(skipMode(room('vote'), 'x', bobs)).toBe('vote')
+    expect(skipMode(room('owner'), 'x', bobs)).toBeUndefined()
+    expect(skipMode(room('owner'), 'bob', bobs)).toBe('skip')
+    expect(skipMode(room('vote'), 'bob', bobs)).toBe('skip')
+    expect(skipMode(room('vote'), 'o', bobs)).toBe('skip')
   })
 })
 

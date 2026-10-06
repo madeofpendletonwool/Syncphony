@@ -43,6 +43,24 @@ This means someone who arrives late plays soon instead of after every earlier la
 
 `fifo` plays songs in the order they were added, across everyone. Lanes still apply: it merges them by when each lane's next item was added, so reordering your own lane still works.
 
+### Tuning: weights, caps, cooldowns (MAD-702)
+
+A room tunes its mode with options in `rooms.settings` (`fairness`). They're `fairness.Options`, passed to the policy alongside the mode:
+
+- **Weights** (round robin only): someone with weight 2 gets two songs each time their turn comes, back to back. Everyone else gets 1.
+- **Max in a row**: nobody gets more than N songs in a row. This mostly matters for FIFO, where one person adding an album would otherwise take over.
+- **Cooldown**: at least N other songs play between one person's songs.
+
+The cap and the cooldown only hold back someone while somebody else has songs waiting. If they'd hold back everyone, the order goes on as if they weren't set: the music never waits on a rule. The cap can cut a weighted turn short.
+
+Both policies now run the same step-by-step simulation, which knows who played the last few songs. `State.Recent` carries that history from `play_history`, as far back as the options need (`Options.Reach`), so a cap or a weighted turn picks up where the room actually is. The playing song counts.
+
+The simulation is still a pure function, and the property tests run with options on as well as off.
+
+### Repeat guard
+
+`repeatWindowMinutes` refuses a song that's already waiting or playing, or started within the window. A song counts as the same if it's the same track on the same service, or has the same ISRC on any service. This is a check when songs are added, in `queue.Add`, not an ordering rule. A multi-song add (an album) leaves the repeats out. If nothing is left to add, the add is refused with `repeat`.
+
 ### Changes are serialized per room
 
 `queue.Service.Change` takes a per-room lock and runs the change in a transaction. It then bumps the room's queue version and pushes the new snapshot (items plus `upNext`) over realtime. Add, move and remove go through it. The playback engine (MAD-691) will route its state changes (playing, played, skipped) through it too, so changes never interleave and every change gets its own version.
@@ -51,7 +69,8 @@ When adding, the service looks up track metadata on the service *before* taking 
 
 ## Consequences
 
-- New modes (weighted turns, "at most N in a row", per-user cooldowns) are a new `Policy` plus a value in the `rooms.fairness_mode` CHECK constraint. The queue engine and API don't change.
+- A new mode is a new `Policy` plus a value in the `rooms.fairness_mode` CHECK constraint. Tuning a mode is an `Options` field. In neither case does the queue engine change.
+- A time-based cooldown ("one song per person per 10 minutes") was left out. It would put a clock into the order, and with lanes nobody needs to be rate limited on adding.
 - The order is recomputed on every snapshot. That's O(items × users), trivial at party scale.
 - Fairness depends on `play_history`. Until the playback engine writes it, the order is "who queued first" round robin.
 - The per-room lock is in-process. Running more than one server against the same database would need a database-level lock instead.

@@ -14,6 +14,8 @@ export type NowPlaying = {
   roomId?: string
   itemId?: string
   track: Track
+  /** The service playing it instead of its own, if one stood in. */
+  via?: string
   /** A URL the browser can load; Track.artwork is a provider ref. */
   artworkUrl?: string
   /** Who queued it. Their lane color tints the player. */
@@ -29,6 +31,16 @@ export type PlayerCommands = {
   next?: () => void
   previous?: () => void
   seek?: (positionMs: number) => void
+  /** In a room that votes on skips, your vote in place of `next`. */
+  vote?: SkipVote
+}
+
+export type SkipVote = {
+  voted: boolean
+  count: number
+  needed: number
+  /** Votes, or takes your vote back. */
+  toggle: () => void
 }
 
 type State = { nowPlaying: NowPlaying | null; commands: PlayerCommands }

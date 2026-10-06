@@ -62,3 +62,11 @@ ORDER BY user_id != ?1, created_at;
 -- GetUsableServiceLink is one link user_id may use: their own, or shared.
 -- name: GetUsableServiceLink :one
 SELECT * FROM service_links WHERE id = sqlc.arg(id) AND (user_id = sqlc.arg(user_id) OR shared);
+
+-- ListMatchLinks returns the links a room may look for a song on: those
+-- of the given users (who are in the room) and shared ones, unless
+-- expired. The users' own links come first.
+-- name: ListMatchLinks :many
+SELECT * FROM service_links
+WHERE status != 'expired' AND (shared OR user_id IN (sqlc.slice(user_ids)))
+ORDER BY shared, created_at;

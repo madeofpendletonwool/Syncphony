@@ -21,7 +21,7 @@ func (s *Server) GetQueue(ctx context.Context, req GetQueueRequestObject) (GetQu
 func (s *Server) AddToQueue(ctx context.Context, req AddToQueueRequestObject) (AddToQueueResponseObject, error) {
 	refs := make([]queue.TrackRef, len(req.Body.Items))
 	for i, it := range req.Body.Items {
-		refs[i] = queue.TrackRef{LinkID: it.LinkId, TrackID: it.TrackId}
+		refs[i] = queue.TrackRef{LinkID: deref(it.LinkId), TrackID: deref(it.TrackId), FromItemID: deref(it.FromItemId)}
 	}
 	snap, err := s.Queue.Add(ctx, req.RoomId, sessionFrom(ctx).User.ID, refs)
 	if err != nil {
@@ -46,24 +46,4 @@ func (s *Server) RemoveQueueItem(ctx context.Context, req RemoveQueueItemRequest
 		return nil, err
 	}
 	return RemoveQueueItem200JSONResponse(toQueueSnapshot(snap)), nil
-}
-
-// GetHistory returns the songs a room played recently.
-func (s *Server) GetHistory(ctx context.Context, req GetHistoryRequestObject) (GetHistoryResponseObject, error) {
-	limit := 20
-	if req.Params.Limit != nil {
-		limit = min(max(*req.Params.Limit, 1), 100)
-	}
-	ps, err := s.Rooms.History(ctx, req.RoomId, limit)
-	if err != nil {
-		return nil, err
-	}
-	out := make(GetHistory200JSONResponse, len(ps))
-	for i, p := range ps {
-		out[i] = PlayedItem{
-			Item: toQueueItem(p.Item), StartedAt: p.StartedAt, EndedAt: p.EndedAt,
-			EndReason: PlayedItemEndReason(p.EndReason),
-		}
-	}
-	return out, nil
 }

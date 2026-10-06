@@ -70,3 +70,72 @@ WHERE play_history.room_id = sqlc.arg(room_id)
 -- most one: the playing item's.
 -- name: EndOpenPlays :exec
 UPDATE play_history SET ended_at = ?, end_reason = ? WHERE room_id = ? AND ended_at IS NULL;
+
+-- RecentPlayers is who queued the songs that most recently started in a
+-- room, newest first, for fairness rules that look back a few songs.
+-- name: RecentPlayers :many
+SELECT queue_items.added_by
+FROM play_history
+JOIN queue_items ON queue_items.id = play_history.queue_item_id
+WHERE play_history.room_id = ?
+ORDER BY play_history.started_at DESC, play_history.id DESC
+LIMIT ?;
+
+-- RecentDuplicates counts a room's items for the same song (the same
+-- track, or the same ISRC on any service) that are waiting, playing, or
+-- started playing since a time, for the repeat guard. metadata is a
+-- provider.Track, whose ISRC field has no JSON tag.
+-- name: RecentDuplicates :one
+SELECT count(*) FROM queue_items
+WHERE queue_items.room_id = sqlc.arg(room_id)
+  AND (
+    (queue_items.provider = sqlc.arg(provider) AND queue_items.track_id = sqlc.arg(track_id))
+    OR (CAST(sqlc.arg(isrc) AS TEXT) != '' AND json_extract(queue_items.metadata, '$.ISRC') = sqlc.arg(isrc))
+  )
+  AND (
+    queue_items.state IN ('queued', 'playing')
+    OR EXISTS (
+      SELECT 1 FROM play_history
+      WHERE play_history.queue_item_id = queue_items.id AND play_history.started_at >= sqlc.arg(since)
+    )
+  );
+
+-- ListPlayed returns a room's finished plays (not the one in progress)
+-- that started before a time, newest first, optionally only one user's
+-- songs. Pages go back by passing the last row's started_at.
+-- name: ListPlayed :many
+SELECT sqlc.embed(play_history), sqlc.embed(queue_items)
+FROM play_history
+JOIN queue_items ON queue_items.id = play_history.queue_item_id
+WHERE play_history.room_id = sqlc.arg(room_id)
+  AND play_history.ended_at IS NOT NULL
+  AND play_history.started_at < sqlc.arg(before)
+  AND (CAST(sqlc.arg(user_id) AS TEXT) = '' OR queue_items.added_by = sqlc.arg(user_id))
+ORDER BY play_history.started_at DESC, play_history.id DESC
+LIMIT sqlc.arg(limit);
+
+-- ListPlaysBetween returns a room's finished plays that started in
+-- [from, to), oldest first, for stats.
+-- name: ListPlaysBetween :many
+SELECT sqlc.embed(play_history), sqlc.embed(queue_items)
+FROM play_history
+JOIN queue_items ON queue_items.id = play_history.queue_item_id
+WHERE play_history.room_id = sqlc.arg(room_id)
+  AND play_history.ended_at IS NOT NULL
+  AND play_history.started_at >= sqlc.arg(from_time) AND play_history.started_at < sqlc.arg(to_time)
+ORDER BY play_history.started_at, play_history.id
+LIMIT sqlc.arg(limit);
+
+-- ListPlayTimes returns when each of a room's finished plays started and
+-- ended, and whose song it was, oldest first, to find sessions.
+-- name: ListPlayTimes :many
+SELECT play_history.started_at, play_history.ended_at, queue_items.added_by
+FROM play_history
+JOIN queue_items ON queue_items.id = play_history.queue_item_id
+WHERE play_history.room_id = ? AND play_history.ended_at IS NOT NULL
+ORDER BY play_history.started_at, play_history.id
+LIMIT ?;
+
+-- SetQueueItemVia records where an item plays from instead of its own link.
+-- name: SetQueueItemVia :exec
+UPDATE queue_items SET via_provider = ?, via_link_id = ?, via_track_id = ?, updated_at = ? WHERE id = ?;

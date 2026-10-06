@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Check, ChevronDown, LogOut, Plus, Sparkles, Speaker } from 'lucide-react'
+import { Check, ChevronDown, History, LogOut, Plus, Settings2, Sparkles, Speaker } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { DropdownMenu } from 'radix-ui'
 import { useState } from 'react'
@@ -8,9 +8,10 @@ import { Artwork } from '@/components/artwork'
 import { PageHeader } from '@/components/page-header'
 import { MyLane } from '@/components/room/my-lane'
 import { QueueRow } from '@/components/room/queue-row'
+import { RoomSettings } from '@/components/room/room-settings'
 import { SpeakerPanel } from '@/components/room/speaker-panel'
 import { TransportControls } from '@/components/shell/player-controls'
-import { ServiceTag } from '@/components/service-tag'
+import { SourceTag } from '@/components/service-tag'
 import { RoomLobby } from '@/components/start-room'
 import { AlbumLink, ArtistLinks } from '@/components/track-credits'
 import { Badge } from '@/components/ui/badge'
@@ -139,7 +140,9 @@ function Room() {
 }
 
 function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
+  const me = useMe()
   const { members, status } = useStore(live)
+  const [settings, setSettings] = useState(false)
   const others = rooms.filter((r) => r.id !== room.id)
   const title = (
     <DropdownMenu.Root>
@@ -166,6 +169,18 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
             </DropdownMenu.Item>
           ))}
           <DropdownMenu.Separator className="mx-2 my-1.5 h-px bg-border" />
+          <DropdownMenu.Item asChild className={menuItem}>
+            <Link to="/history">
+              <History className="size-4 text-muted-foreground" />
+              <span className="flex-1">History and recaps</span>
+            </Link>
+          </DropdownMenu.Item>
+          {room.ownerId === me.id && (
+            <DropdownMenu.Item onSelect={() => setSettings(true)} className={menuItem}>
+              <Settings2 className="size-4 text-muted-foreground" />
+              <span className="flex-1">Room settings</span>
+            </DropdownMenu.Item>
+          )}
           <DropdownMenu.Item onSelect={leaveRoom} className={menuItem}>
             <LogOut className="size-4 text-muted-foreground" />
             <span className="flex-1">Leave room</span>
@@ -177,6 +192,7 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
 
   return (
     <header className="flex items-end justify-between gap-4 pt-10 pb-6">
+      <RoomSettings room={room} open={settings} onOpenChange={setSettings} />
       <div className="min-w-0">
         <h1 className="text-display">{title}</h1>
         <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
@@ -293,7 +309,7 @@ function NowPlayingCard({ room, waiting }: { room: RoomInfo; waiting: number }) 
                 {np.requester.displayName}
               </Badge>
             )}
-            <ServiceTag provider={np.track.provider} className="py-1" />
+            <SourceTag provider={np.track.provider} via={np.via} className="py-1" />
           </div>
         </div>
       </div>

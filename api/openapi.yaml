@@ -852,6 +852,12 @@ paths:
         none are. When you add one song, services that can tell ahead of time
         that they won't play it (Spotify) are asked first, and the song is
         refused with `not_playable` and a message to show.
+
+        If the room has a repeat window (`fairness.repeatWindowMinutes`),
+        songs already waiting or playing, or started within the window, are
+        left out, matched by track or by ISRC across services. If that
+        leaves nothing, the add is refused with `repeat` (409) and a
+        message to show.
       tags: [queue]
       requestBody:
         required: true
@@ -869,17 +875,49 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
-  /rooms/{roomId}/history:
+  /rooms/{roomId}/stats:
     parameters:
       - $ref: "#/components/parameters/RoomId"
     get:
-      operationId: getHistory
-      summary: Songs the room played recently, newest first
+      operationId: getRoomStats
+      summary: Who played what, and the top tracks and artists
       description: |
-        Songs that finished, were skipped or failed. The song playing now
-        isn't included until it ends. Refetch on `nowplaying.updated` when
-        the song changes.
-      tags: [queue]
+        Sums up the songs that started in `[from, to)`, by default all of
+        them. A session's recap is its stats: pass its `startedAt` and
+        `endedAt` (plus a moment). Songs that failed or were removed don't
+        count. Top tracks and artists count songs that played to the end.
+      tags: [history]
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: The stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomStats"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/sessions:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: listSessions
+      summary: The room's listening sessions, newest first
+      description: |
+        A session is a stretch of listening: a new one starts when the
+        room has been quiet for two hours.
+      tags: [history]
       parameters:
         - name: limit
           in: query
@@ -888,6 +926,49 @@ paths:
             minimum: 1
             maximum: 100
             default: 20
+      responses:
+        "200":
+          description: Sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ListeningSession"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/history:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: getHistory
+      summary: Songs the room played, newest first
+      description: |
+        Songs that finished, were skipped or failed. The song playing now
+        isn't included until it ends. Refetch on `nowplaying.updated` when
+        the song changes. For the next page, pass the last item's
+        `startedAt` as `before`.
+      tags: [history]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: before
+          in: query
+          description: Only plays that started before this time.
+          schema:
+            type: string
+            format: date-time
+        - name: userId
+          in: query
+          description: Only this person's songs.
+          schema:
+            type: string
       responses:
         "200":
           description: Recent plays
@@ -1033,7 +1114,10 @@ paths:
     patch:
       operationId: updateRoom
       summary: Change a room you own
-      description: A new fairness mode reorders the queue at once.
+      description: |
+        Everyone in the room gets `room.updated`. A new fairness mode or
+        `fairness` reorders the queue at once; `fairness` replaces the
+        room's as a whole.
       tags: [rooms]
       requestBody:
         required: true
@@ -1070,12 +1154,15 @@ paths:
           $ref: "#/components/responses/Error"
     post:
       operationId: controlPlayback
-      summary: Play, pause, skip or seek
+      summary: Play, pause, skip, seek, or vote to skip
       description: |
-        Allowed for the room's owner, for everyone when the room's
-        `controls` is `everyone`, and for skipping your own song.
-        `play` needs a speaker (`no_player`); pausing, skipping or seeking
-        with nothing playing is `nothing_playing`.
+        The room's `permissions` say who may do what (`forbidden`
+        otherwise). The owner may do anything, and whoever queued a song
+        may skip it. In a room whose skip permission is `vote`, everyone
+        else sends `vote_skip` (and `unvote_skip` to take it back); the
+        song is skipped once `skipVotes.needed` have voted.
+        `play` needs a speaker (`no_player`); pausing, skipping, seeking or
+        voting with nothing playing is `nothing_playing`.
       tags: [playback]
       requestBody:
         required: true
@@ -1101,8 +1188,8 @@ paths:
       summary: Become the room's speaker
       description: |
         The device takes over playback from any other speaker. If the room
-        is idle and songs are waiting, the first one starts. Needs playback
-        control (see `controlPlayback`) unless the device already is the
+        is idle and songs are waiting, the first one starts. Needs the
+        room's `speaker` permission unless the device already is the
         speaker.
       tags: [playback]
       requestBody:
@@ -1820,14 +1907,21 @@ components:
 
     TrackToQueue:
       type: object
-      required: [linkId, trackId]
+      description: |
+        A song from search (`linkId` and `trackId`), or a song the room
+        already had, again (`fromItemId`). Queueing again from someone
+        else's service needs the room's `matching.borrow`
+        (`cant_borrow` otherwise).
       properties:
         linkId:
           type: string
-          description: One of your links.
+          description: A link you can use (yours, or shared).
         trackId:
           type: string
           description: The track's ID on that service, from search.
+        fromItemId:
+          type: string
+          description: One of the room's queue items, from history or stats.
 
     MoveQueueItemRequest:
       type: object
@@ -1928,6 +2022,7 @@ components:
         - `member.joined`, `member.left`: User. Someone's first connection to
           the room opened, or their last one closed.
         - `link.status`: ServiceLink. One of your links changed status.
+        - `room.updated`: Room. The room's name or settings changed.
 
         Close code 1013 (try again later) means the client fell behind and
         missed events: reconnect with `since` set to the last version seen.
@@ -1936,7 +2031,7 @@ components:
       properties:
         type:
           type: string
-          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status]
+          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated]
         version:
           type: integer
           format: int64
@@ -2005,6 +2100,23 @@ components:
           format: date-time
         track:
           $ref: "#/components/schemas/QueuedTrack"
+        via:
+          $ref: "#/components/schemas/PlaysVia"
+
+    PlaysVia:
+      type: object
+      description: |
+        Where the song plays from instead of its own service, which
+        couldn't play it: the same recording, found on another service in
+        the room. Show "playing from Navidrome instead of Spotify".
+      required: [provider, linkId, trackId]
+      properties:
+        provider:
+          type: string
+        linkId:
+          type: string
+        trackId:
+          type: string
 
     PlayedItem:
       type: object
@@ -2021,6 +2133,96 @@ components:
         endReason:
           type: string
           enum: [finished, skipped, removed, error]
+
+    RoomStats:
+      type: object
+      required: [plays, skipped, listeningMs, topTracks, topArtists, people]
+      properties:
+        plays:
+          type: integer
+          description: Songs that played, to the end or until skipped.
+        skipped:
+          type: integer
+        listeningMs:
+          type: integer
+          format: int64
+        topTracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrackCount"
+        topArtists:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArtistCount"
+        people:
+          type: array
+          description: Everyone whose songs played, most plays first.
+          items:
+            $ref: "#/components/schemas/PersonStats"
+        first:
+          $ref: "#/components/schemas/PlayedItem"
+        last:
+          $ref: "#/components/schemas/PlayedItem"
+
+    PersonStats:
+      type: object
+      description: One person's songs, whoever skipped them.
+      required: [userId, plays, skipped, listeningMs, topTracks, topArtists]
+      properties:
+        userId:
+          type: string
+        plays:
+          type: integer
+        skipped:
+          type: integer
+        listeningMs:
+          type: integer
+          format: int64
+        topTracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrackCount"
+        topArtists:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArtistCount"
+
+    TrackCount:
+      type: object
+      description: A song and how many times it played to the end. `item` is its latest play.
+      required: [item, plays]
+      properties:
+        item:
+          $ref: "#/components/schemas/QueueItem"
+        plays:
+          type: integer
+
+    ArtistCount:
+      type: object
+      required: [name, plays]
+      properties:
+        name:
+          type: string
+        plays:
+          type: integer
+
+    ListeningSession:
+      type: object
+      required: [startedAt, endedAt, plays, people]
+      properties:
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        plays:
+          type: integer
+        people:
+          type: array
+          description: User IDs whose songs played, most first.
+          items:
+            type: string
 
     QueuedTrack:
       type: object
@@ -2097,6 +2299,25 @@ components:
           $ref: "#/components/schemas/Player"
         next:
           $ref: "#/components/schemas/QueueItem"
+        skipVotes:
+          $ref: "#/components/schemas/SkipVotes"
+
+    SkipVotes:
+      type: object
+      description: |
+        The vote to skip the playing song, while the room's skip permission
+        is `vote`. Everyone in the room but whoever queued the song can
+        vote; `needed` changes as people come and go.
+      required: [voters, needed]
+      properties:
+        voters:
+          type: array
+          description: IDs of the users who voted, in order.
+          items:
+            type: string
+        needed:
+          type: integer
+          description: How many votes skip the song.
 
     PlaybackState:
       type: string
@@ -2126,7 +2347,7 @@ components:
       properties:
         action:
           type: string
-          enum: [play, pause, skip, seek]
+          enum: [play, pause, skip, seek, vote_skip, unvote_skip]
         positionMs:
           type: integer
           format: int64
@@ -2134,7 +2355,9 @@ components:
           description: Where to seek to.
         itemId:
           type: string
-          description: Skip only if this is still the current song, so two people tapping skip skip one song.
+          description: |
+            Skip (or vote) only if this is still the current song, so two
+            people tapping skip skip one song.
 
     ClaimPlayerRequest:
       type: object
@@ -2186,14 +2409,111 @@ components:
       type: string
       enum: [round_robin, fifo]
 
-    RoomControls:
+    PermissionLevel:
       type: string
       enum: [everyone, owner]
-      description: Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
+      description: Who may do something. The room's owner always may.
+
+    SkipPermission:
+      type: string
+      enum: [everyone, vote, owner]
+      description: |
+        Who may skip. `vote`: the owner may, and everyone else votes (see
+        SkipVotes). Whoever queued a song may always skip it.
+
+    RoomPermissions:
+      type: object
+      required: [playPause, seek, skip, speaker]
+      properties:
+        playPause:
+          $ref: "#/components/schemas/PermissionLevel"
+        seek:
+          $ref: "#/components/schemas/PermissionLevel"
+        skip:
+          $ref: "#/components/schemas/SkipPermission"
+        speaker:
+          $ref: "#/components/schemas/PermissionLevel"
+
+    RoomPermissionsChange:
+      type: object
+      description: Permissions to change. Missing ones stay as they are (`everyone` for a new room).
+      properties:
+        playPause:
+          $ref: "#/components/schemas/PermissionLevel"
+        seek:
+          $ref: "#/components/schemas/PermissionLevel"
+        skip:
+          $ref: "#/components/schemas/SkipPermission"
+        speaker:
+          $ref: "#/components/schemas/PermissionLevel"
+
+    SkipVotePercent:
+      type: integer
+      minimum: 0
+      maximum: 99
+      default: 50
+      description: |
+        A skip vote passes once more than this percent of the room has
+        voted (not counting whoever queued the song): 50 is a majority.
+
+    RoomFairness:
+      type: object
+      description: |
+        Tunes the room's fairness mode. While someone else has songs
+        waiting, nobody gets more than `maxInARow` songs in a row, and
+        `cooldown` other songs play between one person's songs; when
+        nobody else is waiting, the music keeps going anyway. In round
+        robin, `weights` give some people more songs per turn.
+      required: [maxInARow, cooldown, weights, repeatWindowMinutes]
+      properties:
+        maxInARow:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: 0 is no cap.
+        cooldown:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: Songs by others between one person's songs. 0 is none.
+        weights:
+          type: object
+          description: Songs per turn (2 to 4) by user ID, in round robin. Everyone else gets 1.
+          additionalProperties:
+            type: integer
+            minimum: 1
+            maximum: 4
+        repeatWindowMinutes:
+          type: integer
+          minimum: 0
+          maximum: 1440
+          description: |
+            Refuse songs already waiting or playing, or started within this
+            many minutes. 0 is off.
+
+    RoomMatching:
+      type: object
+      description: How the room uses the same song on other services.
+      required: [fallback, borrow]
+      properties:
+        fallback:
+          type: boolean
+          default: true
+          description: |
+            When a song's service can't play it, play the same recording
+            from another service in the room: a service of someone who's
+            here, or a shared one. Matched by ISRC, or carefully by title,
+            artist and length.
+        borrow:
+          type: boolean
+          default: false
+          description: |
+            Anyone may queue a song the room played again, even if it's only
+            on someone else's service.
 
     Room:
       type: object
-      required: [id, name, ownerId, fairnessMode, controls, createdAt]
+      required: [id, name, ownerId, fairnessMode, fairness, matching, permissions, skipVotePercent, createdAt]
       properties:
         id:
           type: string
@@ -2203,8 +2523,14 @@ components:
           type: string
         fairnessMode:
           $ref: "#/components/schemas/FairnessMode"
-        controls:
-          $ref: "#/components/schemas/RoomControls"
+        fairness:
+          $ref: "#/components/schemas/RoomFairness"
+        matching:
+          $ref: "#/components/schemas/RoomMatching"
+        permissions:
+          $ref: "#/components/schemas/RoomPermissions"
+        skipVotePercent:
+          $ref: "#/components/schemas/SkipVotePercent"
         createdAt:
           type: string
           format: date-time
@@ -2219,8 +2545,14 @@ components:
           maxLength: 64
         fairnessMode:
           $ref: "#/components/schemas/FairnessMode"
-        controls:
-          $ref: "#/components/schemas/RoomControls"
+        fairness:
+          $ref: "#/components/schemas/RoomFairness"
+        matching:
+          $ref: "#/components/schemas/RoomMatching"
+        permissions:
+          $ref: "#/components/schemas/RoomPermissionsChange"
+        skipVotePercent:
+          $ref: "#/components/schemas/SkipVotePercent"
 
     UpdateRoomRequest:
       type: object
@@ -2231,5 +2563,11 @@ components:
           maxLength: 64
         fairnessMode:
           $ref: "#/components/schemas/FairnessMode"
-        controls:
-          $ref: "#/components/schemas/RoomControls"
+        fairness:
+          $ref: "#/components/schemas/RoomFairness"
+        matching:
+          $ref: "#/components/schemas/RoomMatching"
+        permissions:
+          $ref: "#/components/schemas/RoomPermissionsChange"
+        skipVotePercent:
+          $ref: "#/components/schemas/SkipVotePercent"

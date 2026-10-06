@@ -5,9 +5,9 @@
 // into one "up next" list.
 //
 // Policies are pure functions of a State, with no I/O and no clock, so the
-// same lanes and history always give the same order. Adding a mode (weighted
-// turns, "at most N in a row", per-user cooldowns) means adding a Policy;
-// the queue engine doesn't change.
+// same lanes and history always give the same order. A room picks a mode
+// (round robin or FIFO) and tunes it with Options: weighted turns, a cap on
+// songs in a row, and a cooldown between one person's songs.
 package fairness
 
 import (
@@ -35,7 +35,37 @@ type State struct {
 	// Playing is the user whose song is playing now, or "". They count as
 	// having just had their turn.
 	Playing string
+	// Recent is who queued the songs that most recently started in this
+	// room, newest first, starting with the one playing now. It needs to
+	// reach back only as far as Options.Reach.
+	Recent []string
 }
+
+// Options tune a policy. The zero value is the plain policy.
+type Options struct {
+	// MaxInARow caps how many songs one person gets in a row while
+	// someone else has songs waiting. 0 means no cap.
+	MaxInARow int
+	// Cooldown is how many other songs must play between one person's
+	// songs while someone else has songs waiting. 0 means none.
+	Cooldown int
+	// Weights gives some people more songs per turn in round robin: a
+	// weight of 2 plays two of their songs each time their turn comes.
+	// Missing users, and weights below 1, count as 1. Cooldown and
+	// MaxInARow still apply, so they can cut a weighted turn short.
+	Weights map[string]int
+}
+
+// Reach is how many recent plays the policy needs to see in State.Recent.
+func (o Options) Reach() int {
+	n := max(o.MaxInARow, o.Cooldown, 1)
+	for _, w := range o.Weights {
+		n = max(n, w)
+	}
+	return n
+}
+
+func (o Options) weight(user string) int { return max(o.Weights[user], 1) }
 
 // Policy turns lanes into a play order.
 type Policy interface {
@@ -52,21 +82,21 @@ const (
 	ModeFIFO       = "fifo"
 )
 
-// ForMode returns the policy for a room's fairness mode. Unknown modes fall
-// back to round robin.
-func ForMode(mode string) Policy {
+// ForMode returns the policy for a room's fairness mode, tuned by o.
+// Unknown modes fall back to round robin.
+func ForMode(mode string, o Options) Policy {
 	if mode == ModeFIFO {
-		return FIFO{}
+		return FIFO{o}
 	}
-	return RoundRobin{}
+	return RoundRobin{o}
 }
 
 // RoundRobin takes turns between users. The next turn goes to whoever has
 // waited longest since their last song started; someone who hasn't had a
 // song yet goes before anyone who has, so a late arrival plays soon rather
 // than after every earlier lane drains. Between users who haven't played,
-// whoever queued first goes first.
-type RoundRobin struct{}
+// whoever queued first goes first. A weighted user's turn is several songs.
+type RoundRobin struct{ Options }
 
 // Mode implements Policy.
 func (RoundRobin) Mode() string { return ModeRoundRobin }
@@ -84,82 +114,125 @@ func (a lastTurn) compare(b lastTurn) int {
 	return cmp.Or(cmp.Compare(a.tier, b.tier), a.at.Compare(b.at), cmp.Compare(a.step, b.step))
 }
 
+// lane is one user's queued items during a simulation.
+type lane struct {
+	user  string
+	items []Item
+	// last and waiting are round robin's: when the user last had a turn,
+	// and when their earliest queued item was added (to break ties
+	// between users who haven't played).
+	last    lastTurn
+	waiting time.Time
+}
+
 // Order implements Policy.
-func (RoundRobin) Order(s State) []Item {
-	type lane struct {
-		user  string
-		items []Item
-		last  lastTurn
-		// waiting is when the user's earliest queued item was added, to
-		// break ties between users who haven't played.
-		waiting time.Time
-	}
-	var lanes []*lane
-	total := 0
-	for _, user := range users(s.Lanes) {
-		items := s.Lanes[user]
-		l := &lane{user: user, items: items, waiting: earliest(items)}
-		switch at, ok := s.LastPlayed[user]; {
-		case user == s.Playing:
+func (p RoundRobin) Order(s State) []Item {
+	lanes := makeLanes(s)
+	for _, l := range lanes {
+		l.waiting = earliest(l.items)
+		switch at, ok := s.LastPlayed[l.user]; {
+		case l.user == s.Playing:
 			l.last = lastTurn{tier: 2}
 		case ok:
 			l.last = lastTurn{tier: 1, at: at}
 		}
-		lanes = append(lanes, l)
-		total += len(items)
 	}
-	out := make([]Item, 0, total)
-	for step := 1; len(out) < total; step++ {
+	return simulate(s, lanes, p.Options, func(run *lane, runLen int, eligible []*lane, step int) *lane {
 		var next *lane
-		for _, l := range lanes {
-			if len(l.items) == 0 {
-				continue
-			}
-			if next == nil {
-				next = l
-				continue
-			}
-			c := cmp.Or(l.last.compare(next.last), l.waiting.Compare(next.waiting), cmp.Compare(l.user, next.user))
-			if c < 0 {
-				next = l
+		if run != nil && runLen < p.weight(run.user) && slices.Contains(eligible, run) {
+			next = run // a weighted turn carries on
+		} else {
+			for _, l := range eligible {
+				if next == nil || cmp.Or(l.last.compare(next.last), l.waiting.Compare(next.waiting), cmp.Compare(l.user, next.user)) < 0 {
+					next = l
+				}
 			}
 		}
-		out = append(out, next.items[0])
-		next.items = next.items[1:]
 		next.last = lastTurn{tier: 2, step: step}
-	}
-	return out
+		return next
+	})
 }
 
 // FIFO plays songs in the order they were queued, across everyone. Users
 // can still reorder their own lane: it merges lanes by when each lane's
-// next item was added.
-type FIFO struct{}
+// next item was added. Weights don't apply.
+type FIFO struct{ Options }
 
 // Mode implements Policy.
 func (FIFO) Mode() string { return ModeFIFO }
 
 // Order implements Policy.
-func (FIFO) Order(s State) []Item {
-	lanes := make([][]Item, 0, len(s.Lanes))
-	total := 0
-	for _, user := range users(s.Lanes) {
-		lanes = append(lanes, s.Lanes[user])
-		total += len(s.Lanes[user])
-	}
-	out := make([]Item, 0, total)
-	for len(out) < total {
-		best := -1
-		for i, l := range lanes {
-			if len(l) == 0 {
-				continue
-			}
-			if best < 0 || cmp.Or(l[0].AddedAt.Compare(lanes[best][0].AddedAt), cmp.Compare(l[0].ID, lanes[best][0].ID)) < 0 {
-				best = i
+func (p FIFO) Order(s State) []Item {
+	return simulate(s, makeLanes(s), p.Options, func(_ *lane, _ int, eligible []*lane, _ int) *lane {
+		var best *lane
+		for _, l := range eligible {
+			if best == nil || cmp.Or(l.items[0].AddedAt.Compare(best.items[0].AddedAt), cmp.Compare(l.items[0].ID, best.items[0].ID)) < 0 {
+				best = l
 			}
 		}
-		out = append(out, lanes[best][0])
-		lanes[best] = lanes[best][1:]
+		return best
+	})
+}
+
+func makeLanes(s State) []*lane {
+	out := make([]*lane, 0, len(s.Lanes))
+	for _, user := range users(s.Lanes) {
+		out = append(out, &lane{user: user, items: s.Lanes[user]})
+	}
+	return out
+}
+
+// simulate plays the lanes out one song at a time. At each step, pick
+// chooses from the lanes that may go next: those with songs left, less any
+// that MaxInARow or Cooldown hold back (unless that would hold back all of
+// them; the music never waits). run is the lane of whoever played last,
+// and runLen how many songs in a row they've had.
+func simulate(s State, lanes []*lane, o Options, pick func(run *lane, runLen int, eligible []*lane, step int) *lane) []Item {
+	total := 0
+	byUser := map[string]*lane{}
+	for _, l := range lanes {
+		total += len(l.items)
+		byUser[l.user] = l
+	}
+	// history is who played, oldest first: the recent past, then the
+	// simulated future.
+	history := make([]string, 0, len(s.Recent)+total)
+	for _, u := range slices.Backward(s.Recent) {
+		history = append(history, u)
+	}
+	out := make([]Item, 0, total)
+	eligible := make([]*lane, 0, len(lanes))
+	for step := 1; len(out) < total; step++ {
+		var run *lane
+		runLen := 0
+		if n := len(history); n > 0 {
+			run = byUser[history[n-1]]
+			for i := n - 1; i >= 0 && history[i] == history[n-1]; i-- {
+				runLen++
+			}
+		}
+		var waiting []*lane
+		eligible = eligible[:0]
+		for _, l := range lanes {
+			if len(l.items) == 0 {
+				continue
+			}
+			waiting = append(waiting, l)
+			if o.MaxInARow > 0 && l == run && runLen >= o.MaxInARow {
+				continue
+			}
+			if o.Cooldown > 0 && slices.Contains(history[max(len(history)-o.Cooldown, 0):], l.user) {
+				continue
+			}
+			eligible = append(eligible, l)
+		}
+		if len(eligible) == 0 {
+			eligible = append(eligible, waiting...)
+		}
+		next := pick(run, runLen, eligible, step)
+		out = append(out, next.items[0])
+		next.items = next.items[1:]
+		history = append(history, next.user)
 	}
 	return out
 }

@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import type { components } from '@/api/schema.gen'
 import { meQuery } from './auth'
 import { newer, playbackQuery, type Playback } from './playback'
-import { queueQuery, type QueueSnapshot } from './room'
+import { queueQuery, roomsQuery, type QueueSnapshot, type Room } from './room'
 import { linksQuery, usableLinksQuery } from './services'
 import { createStore } from './store'
 import { toast } from './toast'
@@ -116,6 +116,11 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
     case 'member.left': {
       const u = ev.data as User
       live.set((l) => ({ ...l, members: l.members.filter((m) => m.id !== u.id) }))
+      break
+    }
+    case 'room.updated': {
+      const room = ev.data as Room
+      queryClient.setQueryData(roomsQuery.queryKey, (rs) => rs?.map((r) => (r.id === room.id ? room : r)))
       break
     }
     case 'link.status': {

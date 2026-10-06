@@ -6,14 +6,51 @@ import type { components } from '@/api/schema.gen'
 
 export type Me = components['schemas']['Me']
 
-/** The signed-in user, or null when signed out. */
+const ME_KEY = 'syncphony-me'
+
+/**
+ * Remembers who's signed in on this device, so the app still opens when the
+ * server can't be reached (offline, or a restart). It's only for showing the
+ * app: the server checks the session on every request.
+ */
+export function rememberMe(me: Me | null) {
+  try {
+    if (me) localStorage.setItem(ME_KEY, JSON.stringify(me))
+    else localStorage.removeItem(ME_KEY)
+  } catch {
+    // Private mode: nothing to remember.
+  }
+}
+
+function rememberedMe(): Me | undefined {
+  try {
+    const raw = localStorage.getItem(ME_KEY)
+    return raw ? (JSON.parse(raw) as Me) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The signed-in user, or null when signed out. If the server can't be
+ * reached, the user this device last saw signed in.
+ */
 export const meQuery = queryOptions({
   queryKey: ['me'],
   queryFn: async (): Promise<Me | null> => {
     try {
-      return await unwrap(api.GET('/me'))
+      const me = await unwrap(api.GET('/me'))
+      rememberMe(me)
+      return me
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) return null
+      if (err instanceof ApiError && err.status === 401) {
+        rememberMe(null)
+        return null
+      }
+      // Not an answer from the server (offline, or it's down): carry on as
+      // whoever was signed in.
+      const known = err instanceof ApiError ? undefined : rememberedMe()
+      if (known) return known
       throw err
     }
   },
@@ -48,6 +85,7 @@ export function useSignOut() {
     } finally {
       // The signed-in layout leaves as soon as `me` is null; drop the rest of
       // the cache once its screens are gone.
+      rememberMe(null)
       queryClient.setQueryData(meQuery.queryKey, null)
       await navigate({ to: '/login', replace: true })
       queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== meQuery.queryKey[0] })
