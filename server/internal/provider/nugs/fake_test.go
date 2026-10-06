@@ -419,7 +419,7 @@ func encrypt(key []byte, seq int64, plain []byte) []byte {
 	pad := aes.BlockSize - len(plain)%aes.BlockSize
 	in := append(bytes.Clone(plain), bytes.Repeat([]byte{byte(pad)}, pad)...)
 	out := make([]byte, len(in))
-	cipher.NewCBCEncrypter(block, iv).CryptBlocks(out, in)
+	cipher.NewCBCEncrypter(block, iv).CryptBlocks(out, in) //nolint:gosec // HLS's IV is the sequence number, set above
 	return out
 }
 
