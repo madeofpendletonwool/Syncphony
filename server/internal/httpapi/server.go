@@ -238,7 +238,10 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var invalidQueue *queue.InvalidInputError
 	var invalidRoom *rooms.InvalidInputError
 	var invalidPlayback *playback.InvalidInputError
+	var notPlayable *queue.NotPlayableError
 	switch {
+	case errors.As(err, &notPlayable):
+		writeJSONError(w, http.StatusUnprocessableEntity, "not_playable", notPlayable.Error())
 	case errors.As(err, &invalidRoom):
 		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidRoom.Error())
 	case errors.As(err, &invalidPlayback):
@@ -286,6 +289,8 @@ var errorCodes = []struct {
 	{links.ErrDifferentAccount, http.StatusConflict, "different_account"},
 	{links.ErrNotShareable, http.StatusBadRequest, "not_shareable"},
 	{links.ErrOAuthState, http.StatusBadRequest, "oauth_state"},
+	{links.ErrPairingExpired, http.StatusGone, "pairing_expired"},
+	{links.ErrNotPaired, http.StatusConflict, "not_paired"},
 	{rooms.ErrNotFound, http.StatusNotFound, "not_found"},
 	{rooms.ErrForbidden, http.StatusForbidden, "forbidden"},
 	{playback.ErrForbidden, http.StatusForbidden, "forbidden"},

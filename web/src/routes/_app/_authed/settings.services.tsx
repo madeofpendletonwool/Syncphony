@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { ArrowRight, ExternalLink, LoaderCircle, Plus, RefreshCw, Unlink, Users } from 'lucide-react'
+import { ArrowRight, Check, ExternalLink, LoaderCircle, Plus, RefreshCw, Unlink, Users } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api } from '@/api/client'
 import { errorMessage, unwrap } from '@/api/errors'
 import type { components } from '@/api/schema.gen'
@@ -124,8 +124,10 @@ function ProviderCard({
   const [adding, setAdding] = useState(false)
   const oauth = useBeginOAuth()
 
+  // Pairing providers and credentials providers open a panel; plain OAuth2
+  // providers go straight to the service.
   const startLink = () => {
-    if (provider.linkMethod === 'oauth2') oauth.mutate({ provider: provider.id })
+    if (provider.linkMethod === 'oauth2' && !provider.pairing) oauth.mutate({ provider: provider.id })
     else setAdding(true)
   }
 
@@ -160,20 +162,34 @@ function ProviderCard({
       <AnimatePresence initial={false}>
         {adding && (
           <Expand key="form">
-            <LinkForm
-              provider={provider}
-              onDone={(link) => {
-                setAdding(false)
-                if (link) onLinked(link.id)
-              }}
-            />
+            {provider.pairing ? (
+              <PairingPanel
+                provider={provider}
+                onDone={(link) => {
+                  setAdding(false)
+                  if (link) onLinked(link.id)
+                }}
+              />
+            ) : (
+              <LinkForm
+                provider={provider}
+                onDone={(link) => {
+                  setAdding(false)
+                  if (link) onLinked(link.id)
+                }}
+              />
+            )}
           </Expand>
         )}
       </AnimatePresence>
 
       {links.length === 0 && !adding && (
         <Button className="mt-4" onClick={startLink} disabled={oauth.isPending}>
-          {oauth.isPending ? <LoaderCircle className="animate-spin" /> : provider.linkMethod === 'oauth2' && <ExternalLink data-icon="inline-start" />}
+          {oauth.isPending ? (
+            <LoaderCircle className="animate-spin" />
+          ) : (
+            provider.linkMethod === 'oauth2' && !provider.pairing && <ExternalLink data-icon="inline-start" />
+          )}
           Link {provider.name}
         </Button>
       )}
@@ -189,7 +205,7 @@ const statusText: Record<ServiceLink['status'], string> = {
 
 function LinkRow({ link, provider, highlighted }: { link: ServiceLink; provider?: Provider; highlighted: boolean }) {
   const queryClient = useQueryClient()
-  const [mode, setMode] = useState<'idle' | 'relink' | 'unlink'>('idle')
+  const [mode, setMode] = useState<'idle' | 'relink' | 'pair' | 'unlink'>('idle')
   const oauth = useBeginOAuth()
   const unlink = useMutation({
     mutationFn: () => unwrap(api.DELETE('/links/{id}', { params: { path: { id: link.id } } })),
@@ -198,7 +214,8 @@ function LinkRow({ link, provider, highlighted }: { link: ServiceLink; provider?
 
   const relink = () => {
     if (!provider) return
-    if (provider.linkMethod === 'oauth2') oauth.mutate({ linkId: link.id })
+    if (provider.pairing) setMode('pair')
+    else if (provider.linkMethod === 'oauth2') oauth.mutate({ linkId: link.id })
     else setMode('relink')
   }
   const healthy = link.status === 'ok'
@@ -273,6 +290,11 @@ function LinkRow({ link, provider, highlighted }: { link: ServiceLink; provider?
         {mode === 'relink' && provider && (
           <Expand key="relink">
             <LinkForm provider={provider} link={link} onDone={() => setMode('idle')} />
+          </Expand>
+        )}
+        {mode === 'pair' && provider && (
+          <Expand key="pair">
+            <PairingPanel provider={provider} link={link} onDone={() => setMode('idle')} />
           </Expand>
         )}
       </AnimatePresence>
@@ -385,6 +407,125 @@ function ShareSwitch({ link }: { link: ServiceLink }) {
         <Switch checked={link.shared} onChange={(on) => share.mutate(on)} label={`Share ${link.accountLabel} with everyone`} />
       </label>
       <Notice className="mt-2">{share.error && errorMessage(share.error)}</Notice>
+    </div>
+  )
+}
+
+type Pairing = components['schemas']['Pairing']
+
+/**
+ * Links (or with `link`, re-links) a provider that pairs a device: shows a
+ * code to approve on any device, waits for it, then finishes linking, or
+ * for `oauth2` providers sends the browser on to sign in.
+ */
+function PairingPanel({
+  provider,
+  link,
+  onDone,
+}: {
+  provider: Provider
+  link?: ServiceLink
+  onDone: (link?: ServiceLink) => void
+}) {
+  const queryClient = useQueryClient()
+  const oauth = useBeginOAuth()
+  const twoSteps = provider.linkMethod === 'oauth2'
+
+  const begin = useMutation({
+    mutationFn: () =>
+      unwrap(api.POST('/pairings', { body: link ? { linkId: link.id } : { provider: provider.id } })),
+  })
+  const { mutate: start } = begin
+  // Once per panel, even when React runs effects twice in development.
+  const started = useRef(false)
+  useEffect(() => {
+    if (started.current) return
+    started.current = true
+    start()
+  }, [start])
+  const pairing: Pairing | undefined = begin.data
+
+  const status = useQuery({
+    queryKey: ['pairing', pairing?.id],
+    queryFn: () => unwrap(api.GET('/pairings/{id}', { params: { path: { id: pairing!.id } } })),
+    enabled: !!pairing,
+    retry: false,
+    refetchInterval: (q) => (q.state.data?.status === 'pending' || !q.state.data ? (pairing?.interval ?? 5) * 1000 : false),
+  })
+  const state = status.data?.status
+
+  useEffect(() => {
+    const linked = status.data?.link
+    if (state !== 'linked' || !linked) return
+    queryClient.setQueryData(linksQuery.queryKey, (ls = []) =>
+      ls.some((l) => l.id === linked.id) ? ls.map((l) => (l.id === linked.id ? linked : l)) : [...ls, linked],
+    )
+    onDone(linked)
+  }, [state, status.data, queryClient, onDone])
+
+  const error = begin.error ?? status.error ?? oauth.error
+  const verifyHost = pairing ? new URL(pairing.verifyUrl).host.replace(/^www\./, '') : ''
+
+  return (
+    <div className="flex flex-col gap-4">
+      {error ? (
+        <Notice>{errorMessage(error)}</Notice>
+      ) : state === 'approved' ? (
+        <div className="flex flex-col gap-2">
+          <p className="flex items-center gap-2 text-sm font-medium">
+            <Check className="size-4 text-success" />
+            Approved
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {twoSteps && 'Step 2 of 2: '}Sign in to {provider.name} with the same account to finish.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            {twoSteps && 'Step 1 of 2: '}Open {verifyHost || 'the link'} on any device signed in to {provider.name}, and
+            approve this code.
+          </p>
+          {pairing ? (
+            <p className="font-mono text-3xl font-semibold tracking-[0.2em]" aria-live="polite">
+              {pairing.userCode}
+            </p>
+          ) : (
+            <Skeleton className="h-9 w-40 rounded-xl" />
+          )}
+          {pairing && (
+            <p className="flex items-center gap-2 text-caption text-muted-foreground">
+              <LoaderCircle className="size-3 animate-spin" />
+              Waiting for you to approve it…
+            </p>
+          )}
+        </div>
+      )}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" onClick={() => onDone()}>
+          Cancel
+        </Button>
+        {error ? (
+          <Button onClick={() => start()} disabled={begin.isPending}>
+            <RefreshCw data-icon="inline-start" />
+            Try again
+          </Button>
+        ) : state === 'approved' ? (
+          <Button onClick={() => oauth.mutate({ pairingId: pairing!.id })} disabled={oauth.isPending}>
+            {oauth.isPending ? <LoaderCircle className="animate-spin" /> : <ExternalLink data-icon="inline-start" />}
+            Continue to {provider.name}
+          </Button>
+        ) : (
+          pairing && (
+            <Button asChild>
+              <a href={pairing.verifyUrl} target="_blank" rel="noreferrer">
+                <ExternalLink data-icon="inline-start" />
+                Open {verifyHost}
+              </a>
+            </Button>
+          )
+        )}
+      </div>
     </div>
   )
 }

@@ -26,6 +26,11 @@ var (
 	ErrRange = errors.New("provider: range not satisfiable")
 	// ErrUnsupported: the provider doesn't support this operation.
 	ErrUnsupported = errors.New("provider: not supported")
+	// ErrPending: DevicePairer.PollPairing is still waiting for the user.
+	ErrPending = errors.New("provider: waiting for approval")
+	// ErrNotPlayable: the service won't play this track for this account,
+	// though it exists. Retrying won't help.
+	ErrNotPlayable = errors.New("provider: the service won't play this track")
 )
 
 // RateLimitError is ErrRateLimited with the service's requested delay.

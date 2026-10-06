@@ -23,6 +23,8 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/navidrome"
+	"github.com/madeofpendletonwool/syncphony/server/internal/provider/spotify"
+	"github.com/madeofpendletonwool/syncphony/server/internal/provider/spotify/streaming"
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
@@ -54,6 +56,8 @@ type app struct {
 	db    *store.Store
 	bus   realtime.Bus
 	links *links.Service
+	// closeProviders releases providers' connections.
+	closeProviders func()
 }
 
 func setup(ctx context.Context) (*app, error) {
@@ -73,28 +77,48 @@ func setup(ctx context.Context) (*app, error) {
 	if created {
 		slog.Warn("generated a vault key for linked-service credentials; back it up, and for better protection move it out of the data directory (SYNCPHONY_VAULT_KEY or SYNCPHONY_VAULT_KEY_FILE)", "file", keyFile)
 	}
-	reg, err := providers(cfg)
+	reg, closeProviders, err := providers(cfg)
 	if err != nil {
 		return nil, err
 	}
 	db, err := store.Open(ctx, filepath.Join(cfg.DataDir, "syncphony.db"))
 	if err != nil {
+		closeProviders()
 		return nil, err
 	}
 	bus := realtime.NewLocal()
 	return &app{
-		cfg: cfg, db: db, bus: bus,
+		cfg: cfg, db: db, bus: bus, closeProviders: closeProviders,
 		links: links.New(db, v, reg, links.Config{BaseURL: cfg.BaseURL, Notifier: links.BusNotifier{Bus: bus}}),
 	}, nil
 }
 
-// providers builds the registry of linkable services.
-func providers(cfg config.Config) (*provider.Registry, error) {
+// providers builds the registry of linkable services, and returns a func
+// that closes their connections.
+func providers(cfg config.Config) (*provider.Registry, func(), error) {
 	ps := []provider.Provider{navidrome.New(navidrome.Options{})}
+	closeAll := func() {}
+	if cfg.SpotifyClientID != "" {
+		audio := streaming.New(nil)
+		sp, err := spotify.New(spotify.Options{ClientID: cfg.SpotifyClientID, ClientSecret: cfg.SpotifyClientSecret, Audio: audio})
+		if err != nil {
+			audio.Close()
+			return nil, nil, err
+		}
+		ps = append(ps, sp)
+		closeAll = func() { audio.Close() }
+	} else {
+		slog.Info("Spotify is off: set SYNCPHONY_SPOTIFY_CLIENT_ID and SYNCPHONY_SPOTIFY_CLIENT_SECRET to offer it")
+	}
 	if cfg.FakeProvider {
 		ps = append(ps, fake.New(fake.Options{}))
 	}
-	return provider.NewRegistry(ps...)
+	reg, err := provider.NewRegistry(ps...)
+	if err != nil {
+		closeAll()
+		return nil, nil, err
+	}
+	return reg, closeAll, nil
 }
 
 func run() error {
@@ -107,6 +131,7 @@ func run() error {
 	}
 	cfg, db := a.cfg, a.db
 	defer db.Close()
+	defer a.closeProviders()
 
 	accounts, err := auth.New(db, auth.Config{BaseURL: cfg.BaseURL})
 	if err != nil {

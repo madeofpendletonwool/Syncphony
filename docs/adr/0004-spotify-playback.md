@@ -1,0 +1,42 @@
+# ADR 0004: Spotify playback and linking
+
+- **Status:** accepted
+- **Date:** 2026-10-05
+- **Issue:** MAD-697
+
+## Context
+
+Syncphony plays every song through one speaker phone, from the account of the friend who queued it (ADR 0001, ADR 0003). Spotify offers two official ways to play: the Web Playback SDK, which doesn't run in mobile browsers, and Spotify Connect, which only targets devices logged into the *same* account. Neither lets one phone play songs from several friends' accounts.
+
+Spotify's own apps get audio over a streaming protocol: log into an "access point", ask for a track's decryption key, download the encrypted file from a CDN, and decrypt it with AES-CTR. [go-librespot](https://github.com/devgianlu/go-librespot) (GPL-3.0) implements it. The spike for this issue (not shipped) established:
+
+- **Our developer app can't log into the streaming protocol.** The access point accepts tokens only from Spotify's own client IDs. Logging in with go-librespot's (Spotify's desktop client ID) through a device pairing works: the user approves a code at `spotify.com/pair` on any device, phones included. It yields reusable credentials, so a friend pairs once.
+- **That token is no use for the Web API.** The public Web API rate-limited it on the first search.
+- **Users couldn't sign into our developer app.** Spotify's `/authorize` answered `server_error` after every login, for every account we tried, with any scopes, while the app's own token (the client credentials grant) worked. Spotify's developer forum reports the same for other development-mode apps.
+- **Decryption is seekable, and the files are Ogg Vorbis** with a 167-byte Spotify header in front. Strip the header and it's a normal Ogg file, so the server can proxy it like Navidrome audio, with range requests intact.
+- **Spotify refuses some tracks' keys.** About 30% of a sample of well-known tracks, at every bitrate, every time (key error code 1). The refusal is per track and account. go-librespot has the same limit. Getting around it means defeating Spotify's key obfuscation ("PlayPlay"), which is copy protection.
+- **Spotify throttles fast key requests** (code 2). One key every few minutes, a party's pace, is fine.
+- Everything we need builds with `CGO_ENABLED=0`. go-librespot's `session` package needs cgo for its decoders, so we use the lower-level packages and pass the Ogg through undecoded.
+
+## Decision
+
+**Stream Spotify through the server.** The provider is a `PlaybackStream` provider. Its `Audio` backend (`provider/spotify/streaming`) logs into the access point with the queuing friend's stored credentials, fetches the track's Ogg Vorbis file (the best one within the player's bitrate cap), decrypts it on the fly and strips the header. One connection per account is opened on first use and closed after 15 idle minutes.
+
+**Link by device pairing alone.** Linking is OAuth2's device code flow: the user approves a code at spotify.com/pair, and the pairing's streaming credentials are what's stored. Users never sign into our developer app. Search, metadata and artwork come from the Web API with the app's own token, shared by every session and refreshed as it expires; if Spotify refuses it, that's reported as an outage, not as the user's link expiring. To support this, the provider interface gains device pairing (ADR 0001, "One linking API"):
+
+- A new link method, `device`, and an optional `DevicePairer` interface (`BeginPairing`, `PollPairing`), modelled on RFC 8628. A `device` linker pairs as its only step. An `oauth2` linker may also implement `DevicePairer` to pair before its redirect, with the pairing's result in `LinkInput.Paired`; Spotify first linked that way, and it's kept for a provider that needs both.
+- `links.Service` keeps pending pairings server-side, like OAuth2 states, and asks the service at most once per polling interval. The API adds `POST /pairings` and `GET /pairings/{id}`, and `POST /links/oauth` takes an approved `pairingId`. `ProviderInfo.pairing` tells the web app to show the code.
+
+**Refuse unplayable songs when they're added.** A new optional session interface, `PlayChecker`, lets the queue ask before adding a single song. Spotify's asks for the key, which the backend caches (a day, or an hour for a refusal), so playing the song later costs no second request. A refused song is rejected with `not_playable` and a message naming the song. Adds of several songs (an album) aren't checked, because a key request per song would trip the throttle; a refused song among them is skipped with a notice when its turn comes, as any song that fails to play is. We don't work around the refusals.
+
+**Ship ffmpeg.** iOS Safari can't decode Ogg Vorbis, and the speaker can be any phone. The production image moves from distroless to Alpine with ffmpeg, keeping the same non-root UID. Transcoded streams start from the beginning and can't seek; Android and desktop browsers play the Ogg directly and can.
+
+## Consequences
+
+- Linking Spotify is one approval, from any device. With no user signing into the app, development mode's 5-user cap doesn't limit who can link.
+- No playlists from Spotify: development-mode apps can only read the tracks of a signed-in user's own playlists. They can come back as an optional sign-in step once Spotify's sign-in works for us, or through the streaming login.
+- Search results aren't tailored to each user's market, since the app's token has no user.
+- The streaming protocol is unofficial. Spotify can change it, and go-librespot then needs an update before we do. The rest of the app keeps working; Spotify songs skip until then.
+- Some songs can't be queued from Spotify. Phase 4's cross-service matching can fall back to the same song on Navidrome.
+- go-librespot is GPL-3.0, which may be combined with Syncphony's AGPL-3.0 (GPL-3.0 section 13). One adapted file, `streaming/clienttoken.go`, stays under GPL-3.0 and says so.
+- The image is larger (ffmpeg), and gains a shell and package manager it didn't have before.

@@ -29,6 +29,13 @@ describe('errorMessage', () => {
   it('shows the server message for invalid input', () => {
     expect(errorMessage(new ApiError(400, 'invalid_input', 'username is too short'))).toBe('Username is too short')
   })
+  it("shows the server message for a song the service won't play", () => {
+    const msg = 'Spotify won\'t let Syncphony play "Mr. Brightside". Try another version, or add it from another service.'
+    expect(errorMessage(new ApiError(422, 'not_playable', msg))).toBe(msg)
+  })
+  it('maps pairing codes', () => {
+    expect(errorMessage(new ApiError(410, 'pairing_expired', ''))).toBe('That code expired. Try again.')
+  })
   it('maps OAuth callback codes given as strings', () => {
     expect(errorMessage('denied')).toBe('Linking was cancelled.')
   })

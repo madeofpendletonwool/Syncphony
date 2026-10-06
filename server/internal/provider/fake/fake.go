@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Package fake is an in-memory provider for tests and UI development. It has
-// a small fixed library of sine-tone tracks, links with fixed credentials or
-// a pretend OAuth2 flow, and can play as either a Stream or a Remote
+// a small fixed library of sine-tone tracks, links with fixed credentials, a
+// pretend OAuth2 flow or a pretend device pairing, and can play as either a Stream or a Remote
 // provider. Tests can revoke links and inject faults.
 package fake
 
@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +38,12 @@ type Options struct {
 	Link     provider.LinkMethod
 	// Private makes links unshareable, like a personal subscription.
 	Private bool
+	// Pair makes an OAuth2 linker pair a device first, as Spotify's does.
+	// LinkDevice linkers always pair.
+	Pair bool
+	// NotPlayable lists track IDs the fake refuses to play, as Spotify does
+	// some tracks: CheckPlayable and Stream return ErrNotPlayable.
+	NotPlayable []string
 	// Now is the clock, for token expiry and remote playback position.
 	Now func() time.Time
 	// TokenTTL is how long OAuth2 access tokens last before the session
@@ -52,6 +59,7 @@ type Provider struct {
 	gen   map[string]int // per account; credentials from older generations are revoked
 	fault error
 	seq   int
+	polls map[string]int // pairing secret -> polls so far
 }
 
 var _ provider.Provider = (*Provider)(nil)
@@ -76,7 +84,7 @@ func New(opts Options) *Provider {
 	if opts.TokenTTL == 0 {
 		opts.TokenTTL = time.Hour
 	}
-	return &Provider{opts: opts, gen: map[string]int{}}
+	return &Provider{opts: opts, gen: map[string]int{}, polls: map[string]int{}}
 }
 
 // Info implements provider.Provider.
@@ -98,7 +106,16 @@ func (p *Provider) Info() provider.Info {
 }
 
 // Linker implements provider.Provider.
-func (p *Provider) Linker() provider.Linker { return linker{p} }
+func (p *Provider) Linker() provider.Linker {
+	if p.pairs() {
+		return pairingLinker{linker{p}}
+	}
+	return linker{p}
+}
+
+func (p *Provider) pairs() bool {
+	return p.opts.Link == provider.LinkDevice || (p.opts.Link == provider.LinkOAuth2 && p.opts.Pair)
+}
 
 // Revoke invalidates every credential issued so far for account, as if the
 // user revoked access on the service. Sessions start returning ErrAuthExpired.
@@ -190,11 +207,53 @@ func (l linker) Complete(_ context.Context, in provider.LinkInput) (provider.Cre
 			return nil, provider.AccountInfo{}, provider.ErrInvalidCredentials
 		}
 	}
+	if l.p.pairs() && !strings.HasPrefix(in.Paired, pairedPrefix) {
+		return nil, provider.AccountInfo{}, provider.ErrInvalidCredentials
+	}
 	b, err := json.Marshal(l.p.issue(Username))
 	if err != nil {
 		return nil, provider.AccountInfo{}, err
 	}
 	return b, provider.AccountInfo{ID: Username, Name: Username + " (" + l.p.opts.Name + ")"}, nil
+}
+
+// pairingLinker is a linker that pairs a device. Pairings are approved on
+// their second poll.
+type pairingLinker struct{ linker }
+
+const pairedPrefix = "paired:"
+
+func (l pairingLinker) BeginPairing(context.Context) (provider.Pairing, error) {
+	p := l.p
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.seq++
+	secret := fmt.Sprintf("pairing-%d", p.seq)
+	p.polls[secret] = 0
+	code := fmt.Sprintf("FAKE%04d", p.seq)
+	return provider.Pairing{
+		VerifyURL: "https://fake.invalid/pair?code=" + code,
+		UserCode:  code,
+		Interval:  time.Second,
+		ExpiresIn: 10 * time.Minute,
+		Secret:    secret,
+	}, nil
+}
+
+func (l pairingLinker) PollPairing(_ context.Context, secret string) (string, error) {
+	p := l.p
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	n, ok := p.polls[secret]
+	if !ok {
+		return "", provider.ErrInvalidCredentials
+	}
+	if n == 0 {
+		p.polls[secret] = 1
+		return "", provider.ErrPending
+	}
+	delete(p.polls, secret)
+	return pairedPrefix + secret, nil
 }
 
 // Open implements provider.Provider.

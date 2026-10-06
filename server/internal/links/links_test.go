@@ -303,6 +303,94 @@ func TestOAuth(t *testing.T) {
 	}
 }
 
+func TestDevicePairing(t *testing.T) {
+	h := newHarness(t, fake.New(fake.Options{ID: "pairy", Link: provider.LinkDevice}), fake.New(fake.Options{}))
+	ctx := t.Context()
+	if _, err := h.svc.BeginPairing(ctx, h.user.ID, "fake", ""); !errors.Is(err, ErrWrongMethod) {
+		t.Fatalf("pairing a credentials provider: %v", err)
+	}
+	p, err := h.svc.BeginPairing(ctx, h.user.ID, "pairy", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.ID == "" || p.UserCode == "" || p.VerifyURL == "" || !p.ExpiresAt.After(h.clock()) {
+		t.Fatalf("pairing %+v", p)
+	}
+	bob := h.newUser(t, "bob")
+	if _, err := h.svc.PollPairing(ctx, bob.ID, p.ID); !errors.Is(err, ErrPairingExpired) {
+		t.Fatalf("someone else's pairing: %v", err)
+	}
+	// Polling sooner than the interval doesn't ask the service: the fake
+	// approves on its second poll, so this would link otherwise.
+	for range 3 {
+		if st, err := h.svc.PollPairing(ctx, h.user.ID, p.ID); err != nil || st.State != PairingPending {
+			t.Fatalf("early poll: %+v, %v", st, err)
+		}
+	}
+	h.advance(p.Interval)
+	if st, err := h.svc.PollPairing(ctx, h.user.ID, p.ID); err != nil || st.State != PairingPending {
+		t.Fatalf("first poll: %+v, %v", st, err)
+	}
+	h.advance(p.Interval)
+	st, err := h.svc.PollPairing(ctx, h.user.ID, p.ID)
+	if err != nil || st.State != PairingLinked || st.Link.Provider != "pairy" {
+		t.Fatalf("second poll: %+v, %v", st, err)
+	}
+	if _, err := h.svc.Open(ctx, st.Link.ID); err != nil {
+		t.Fatalf("opening the paired link: %v", err)
+	}
+	if _, err := h.svc.PollPairing(ctx, h.user.ID, p.ID); !errors.Is(err, ErrPairingExpired) {
+		t.Fatalf("polling a finished pairing: %v", err)
+	}
+
+	// Pairings expire.
+	p, _ = h.svc.BeginPairing(ctx, h.user.ID, "", st.Link.ID)
+	h.advance(maxPairingTTL + time.Second)
+	if _, err := h.svc.PollPairing(ctx, h.user.ID, p.ID); !errors.Is(err, ErrPairingExpired) {
+		t.Fatalf("expired pairing: %v", err)
+	}
+}
+
+func TestPairingThenOAuth(t *testing.T) {
+	h := newHarness(t, fake.New(fake.Options{ID: "both", Link: provider.LinkOAuth2, Pair: true}))
+	ctx := t.Context()
+	if _, err := h.svc.BeginOAuth(ctx, h.user.ID, "both", ""); !errors.Is(err, ErrNotPaired) {
+		t.Fatalf("OAuth without pairing: %v", err)
+	}
+	p, err := h.svc.BeginPairing(ctx, h.user.ID, "both", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.svc.BeginOAuthPaired(ctx, h.user.ID, p.ID); !errors.Is(err, ErrNotPaired) {
+		t.Fatalf("OAuth before approval: %v", err)
+	}
+	for _, want := range []PairingState{PairingPending, PairingApproved, PairingApproved} {
+		h.advance(p.Interval)
+		if st, err := h.svc.PollPairing(ctx, h.user.ID, p.ID); err != nil || st.State != want {
+			t.Fatalf("poll: %+v, %v; want %s", st, err, want)
+		}
+	}
+	bob := h.newUser(t, "bob")
+	if _, err := h.svc.BeginOAuthPaired(ctx, bob.ID, p.ID); !errors.Is(err, ErrPairingExpired) {
+		t.Fatalf("someone else's pairing: %v", err)
+	}
+	authURL, err := h.svc.BeginOAuthPaired(ctx, h.user.ID, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.svc.BeginOAuthPaired(ctx, h.user.ID, p.ID); !errors.Is(err, ErrPairingExpired) {
+		t.Fatalf("reusing a pairing: %v", err)
+	}
+	u, _ := url.Parse(authURL)
+	l, err := h.svc.CompleteOAuth(ctx, h.user.ID, u.Query().Get("state"), fake.Code)
+	if err != nil {
+		t.Fatalf("completing with the pairing: %v", err)
+	}
+	if l.Provider != "both" {
+		t.Fatalf("link %+v", l)
+	}
+}
+
 func TestUnlink(t *testing.T) {
 	h := newHarness(t, fake.New(fake.Options{}))
 	ctx := t.Context()

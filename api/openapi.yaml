@@ -519,6 +519,58 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /pairings:
+    post:
+      operationId: beginPairing
+      summary: Start linking (or re-linking) by device pairing
+      description: |
+        For providers with `pairing` set. Show `userCode` and `verifyUrl`:
+        the user opens the URL on any device and approves the code. Then poll
+        `GET /pairings/{id}` every `interval` seconds until it's
+        approved (`oauth2` providers continue with `POST /links/oauth` and
+        `pairingId`) or linked (`device` providers).
+      tags: [links]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BeginPairingRequest"
+      responses:
+        "200":
+          description: The pairing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pairing"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /pairings/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: pollPairing
+      summary: Whether a device pairing was approved
+      description: |
+        Asks the service at most once per `interval`. An expired, finished or
+        unknown pairing is `pairing_expired`; a declined one is
+        `service_rejected_credentials`.
+      tags: [links]
+      responses:
+        "200":
+          description: The pairing's status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PairingStatus"
+        default:
+          $ref: "#/components/responses/Error"
+
   /links/oauth:
     post:
       operationId: beginOAuthLink
@@ -526,7 +578,8 @@ paths:
       description: |
         Send the browser to `authUrl`. The service redirects back to
         `/api/links/oauth/callback`, which lands on the web app's
-        `/settings/services` page.
+        `/settings/services` page. Providers with `pairing` set need their
+        approved pairing first (`not_paired` otherwise).
       tags: [links]
       requestBody:
         required: true
@@ -730,7 +783,9 @@ paths:
       description: |
         Each song is looked up on its service through one of your links, and
         its metadata is kept with the queue item. All are added, in order, or
-        none are.
+        none are. When you add one song, services that can tell ahead of time
+        that they won't play it (Spotify) are asked first, and the song is
+        refused with `not_playable` and a message to show.
       tags: [queue]
       requestBody:
         required: true
@@ -1380,7 +1435,7 @@ components:
 
     ProviderInfo:
       type: object
-      required: [id, name, icon, playback, linkMethod, fields, capabilities]
+      required: [id, name, icon, playback, linkMethod, pairing, fields, capabilities]
       properties:
         id:
           type: string
@@ -1394,10 +1449,16 @@ components:
           enum: [stream, remote]
         linkMethod:
           type: string
-          enum: [credentials, oauth2]
+          enum: [credentials, oauth2, device]
+        pairing:
+          type: boolean
+          description: |
+            Linking starts with a device pairing (`POST /pairings`):
+            always for `device` providers, and before the redirect for
+            `oauth2` providers that set it.
         fields:
           type: array
-          description: The form to show for `credentials` providers. Empty for `oauth2`.
+          description: The form to show for `credentials` providers. Empty otherwise.
           items:
             $ref: "#/components/schemas/LinkField"
         capabilities:
@@ -1681,12 +1742,56 @@ components:
 
     BeginOAuthLinkRequest:
       type: object
+      description: |
+        Set `provider` to link a new account, or `linkId` to re-link one. For
+        providers that pair first, set only `pairingId`, the approved pairing.
+      properties:
+        provider:
+          type: string
+        linkId:
+          type: string
+        pairingId:
+          type: string
+
+    BeginPairingRequest:
+      type: object
       description: Set `provider` to link a new account, or `linkId` to re-link one.
       properties:
         provider:
           type: string
         linkId:
           type: string
+
+    Pairing:
+      type: object
+      required: [id, verifyUrl, userCode, interval, expiresAt]
+      properties:
+        id:
+          type: string
+        verifyUrl:
+          type: string
+          description: Where to approve, with the code filled in when the service allows.
+        userCode:
+          type: string
+        interval:
+          type: integer
+          description: Seconds between polls.
+        expiresAt:
+          type: string
+          format: date-time
+
+    PairingStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [pending, approved, linked]
+          description: |
+            `approved`: continue with `POST /links/oauth` and `pairingId`.
+            `linked`: done; `link` is set.
+        link:
+          $ref: "#/components/schemas/ServiceLink"
 
     # --- Realtime ---------------------------------------------------------------
     # These are pushed over the WebSocket at /ws/rooms/{roomId}, not served

@@ -63,6 +63,8 @@ const messages: Record<string, string> = {
   denied: 'Linking was cancelled.',
   bad_request: "The service sent back something unexpected. Try again.",
   oauth_state: 'That link attempt expired. Try again.',
+  pairing_expired: 'That code expired. Try again.',
+  not_paired: 'Approve the code first.',
 }
 
 /** A sentence to show the user for an error from the API or the browser. */
@@ -73,7 +75,8 @@ export function errorMessage(err: unknown): string {
         ? `Too many attempts. Try again in ${formatWait(err.retryAfter)}.`
         : 'Too many attempts. Try again in a bit.'
     }
-    if (err.code === 'invalid_input' || err.code === 'bad_request') return capitalize(err.message)
+    // not_playable's message names the song and service.
+    if (err.code === 'invalid_input' || err.code === 'bad_request' || err.code === 'not_playable') return capitalize(err.message)
     return messages[err.code] ?? 'Something went wrong. Try again.'
   }
   if (typeof err === 'string') return messages[err] ?? 'Something went wrong. Try again.'

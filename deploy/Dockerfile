@@ -21,7 +21,14 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}"
 # An empty /data owned by nonroot, so a fresh volume mounted there is writable.
 RUN mkdir -p /out/data
 
-FROM gcr.io/distroless/static-debian12:nonroot
+# Alpine rather than distroless, for ffmpeg: players that can't decode a
+# song's format (iOS Safari and Spotify's Ogg Vorbis) get it transcoded.
+# nonroot is UID 65532, as in distroless, so existing /data volumes stay
+# writable.
+FROM alpine:3.22
+RUN apk add --no-cache ca-certificates ffmpeg tzdata \
+    && addgroup -S -g 65532 nonroot \
+    && adduser -S -D -H -u 65532 -G nonroot -h /data nonroot
 COPY --from=server /out/syncphony /usr/local/bin/syncphony
 COPY --from=server --chown=nonroot:nonroot /out/data /data
 ENV SYNCPHONY_ADDR=:8080 \

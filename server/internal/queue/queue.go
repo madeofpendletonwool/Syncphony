@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"sync"
 	"time"
@@ -29,6 +30,18 @@ var (
 	ErrNotQueued = errors.New("that song isn't waiting in the queue any more")
 )
 
+// NotPlayableError is a song its service said it won't play, refused when
+// it was added. It is provider.ErrNotPlayable.
+type NotPlayableError struct {
+	Service, Title string
+}
+
+func (e *NotPlayableError) Error() string {
+	return fmt.Sprintf("%s won't let Syncphony play %q. Try another version, or add it from another service.", e.Service, e.Title)
+}
+
+func (e *NotPlayableError) Unwrap() error { return provider.ErrNotPlayable }
+
 // InvalidInputError is a bad request, such as adding no songs.
 type InvalidInputError struct{ Message string }
 
@@ -45,6 +58,7 @@ const lanePositionStep = 1024
 // links.Service in production.
 type Tracks interface {
 	OpenFor(ctx context.Context, userID, linkID string) (provider.Session, error)
+	Provider(id string) (provider.Provider, error)
 }
 
 // Service changes room queues.
@@ -114,6 +128,12 @@ type TrackRef struct {
 // Add appends songs to the end of userID's lane, in the order given. It
 // looks each one up on its service first, so the queue keeps a snapshot of
 // its metadata.
+//
+// A single song is also checked with its service, if the service can say
+// ahead of time that it won't play it (provider.PlayChecker); a refused
+// song is a *NotPlayableError. Larger adds (an album) aren't checked: one
+// check per song would trip Spotify's throttling, and a song that won't
+// play is skipped with a notice when its turn comes.
 func (s *Service) Add(ctx context.Context, roomID, userID string, refs []TrackRef) (rooms.QueueSnapshot, error) {
 	if len(refs) == 0 {
 		return rooms.QueueSnapshot{}, &InvalidInputError{"add at least one song"}
@@ -178,9 +198,28 @@ func (s *Service) lookup(ctx context.Context, userID string, refs []TrackRef) ([
 		if err != nil {
 			return nil, err
 		}
+		if pc, ok := sess.(provider.PlayChecker); ok && len(refs) == 1 {
+			err := pc.CheckPlayable(ctx, r.TrackID)
+			switch {
+			case errors.Is(err, provider.ErrNotPlayable):
+				return nil, &NotPlayableError{Service: s.serviceName(t.Ref.Provider), Title: t.Title}
+			case err != nil:
+				// The service couldn't tell. Queue it; if it won't play,
+				// playback skips it.
+				slog.Debug("checking a song is playable", "link", r.LinkID, "track", r.TrackID, "err", err)
+			}
+		}
 		out[i] = t
 	}
 	return out, nil
+}
+
+// serviceName is a provider's display name, for messages.
+func (s *Service) serviceName(providerID string) string {
+	if p, err := s.tracks.Provider(providerID); err == nil {
+		return p.Info().Name
+	}
+	return providerID
 }
 
 // Item returns one of a room's queue items, in any state.
