@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/url"
+	"time"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
@@ -19,10 +20,12 @@ const linksPage = "/settings/services"
 func toProviderInfo(p provider.Provider) ProviderInfo {
 	info := p.Info()
 	l := p.Linker()
+	_, pairs := l.(provider.DevicePairer)
 	out := ProviderInfo{
 		Id: info.ID, Name: info.Name, Icon: info.Icon,
 		Playback:   ProviderInfoPlayback(info.Capabilities.Playback),
 		LinkMethod: ProviderInfoLinkMethod(l.Method()),
+		Pairing:    pairs,
 		Fields:     []LinkField{},
 	}
 	c := info.Capabilities
@@ -135,23 +138,74 @@ func (s *Server) Unlink(ctx context.Context, req UnlinkRequestObject) (UnlinkRes
 	return Unlink204Response{}, nil
 }
 
-// BeginOAuthLink starts an OAuth2 link.
+// BeginOAuthLink starts an OAuth2 link, or its OAuth2 step after a pairing.
 func (s *Server) BeginOAuthLink(ctx context.Context, req BeginOAuthLinkRequestObject) (BeginOAuthLinkResponseObject, error) {
-	var providerID, linkID string
-	if req.Body.Provider != nil {
-		providerID = *req.Body.Provider
+	userID := sessionFrom(ctx).User.ID
+	var authURL string
+	var err error
+	if pairingID := deref(req.Body.PairingId); pairingID != "" {
+		if req.Body.Provider != nil || req.Body.LinkId != nil {
+			return nil, &links.InvalidInputError{Field: "pairingId", Message: "set only pairingId; the pairing knows the rest"}
+		}
+		authURL, err = s.Links.BeginOAuthPaired(ctx, userID, pairingID)
+	} else {
+		providerID, linkID, targetErr := linkTarget(req.Body.Provider, req.Body.LinkId)
+		if targetErr != nil {
+			return nil, targetErr
+		}
+		authURL, err = s.Links.BeginOAuth(ctx, userID, providerID, linkID)
 	}
-	if req.Body.LinkId != nil {
-		linkID = *req.Body.LinkId
-	}
-	if (providerID == "") == (linkID == "") {
-		return nil, &links.InvalidInputError{Field: "provider", Message: "set exactly one of provider or linkId"}
-	}
-	authURL, err := s.Links.BeginOAuth(ctx, sessionFrom(ctx).User.ID, providerID, linkID)
 	if err != nil {
 		return nil, err
 	}
 	return BeginOAuthLink200JSONResponse{AuthUrl: authURL}, nil
+}
+
+// linkTarget checks that exactly one of a provider (to link a new account)
+// or a link ID (to re-link one) is set.
+func linkTarget(providerID, linkID *string) (string, string, error) {
+	p, l := deref(providerID), deref(linkID)
+	if (p == "") == (l == "") {
+		return "", "", &links.InvalidInputError{Field: "provider", Message: "set exactly one of provider or linkId"}
+	}
+	return p, l, nil
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// BeginPairing starts linking by device pairing.
+func (s *Server) BeginPairing(ctx context.Context, req BeginPairingRequestObject) (BeginPairingResponseObject, error) {
+	providerID, linkID, err := linkTarget(req.Body.Provider, req.Body.LinkId)
+	if err != nil {
+		return nil, err
+	}
+	p, err := s.Links.BeginPairing(ctx, sessionFrom(ctx).User.ID, providerID, linkID)
+	if err != nil {
+		return nil, err
+	}
+	return BeginPairing200JSONResponse{
+		Id: p.ID, VerifyUrl: p.VerifyURL, UserCode: p.UserCode,
+		Interval: int(p.Interval.Round(time.Second) / time.Second), ExpiresAt: p.ExpiresAt,
+	}, nil
+}
+
+// PollPairing reports whether a pairing was approved.
+func (s *Server) PollPairing(ctx context.Context, req PollPairingRequestObject) (PollPairingResponseObject, error) {
+	st, err := s.Links.PollPairing(ctx, sessionFrom(ctx).User.ID, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	out := PollPairing200JSONResponse{Status: PairingStatusStatus(st.State)}
+	if st.State == links.PairingLinked {
+		l := toServiceLink(st.Link)
+		out.Link = &l
+	}
+	return out, nil
 }
 
 // CompleteOAuthLink is the OAuth2 redirect target. It's public in the spec

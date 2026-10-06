@@ -45,6 +45,9 @@ server/                 Go module
   internal/provider/    provider interface, canonical types, registry
     fake/               in-memory provider for tests and UI development
     providertest/       conformance suite every provider runs
+    navidrome/          Navidrome (Subsonic API)
+    spotify/            Spotify: Web API, linking
+      streaming/        Spotify's streaming protocol, via go-librespot
   internal/transcode/   ffmpeg fallback for formats the player can't decode
   internal/webui/       embedded web app (production builds)
 web/                    React app
@@ -87,6 +90,14 @@ This serves on port 8080, ready for your existing reverse proxy. If you don't ha
 
 **Credential vault:** linked-service credentials are encrypted at rest with a master key. If you don't set one, the server generates `vault.key` in the data directory on first run. That's convenient, but a backup of the data directory then holds both the key and the credentials it protects. For better protection, set `SYNCPHONY_VAULT_KEY` (or `SYNCPHONY_VAULT_KEY_FILE`, e.g. a Docker secret) and keep the key somewhere else. To rotate the key, run `syncphony vault` for the steps (`docker compose exec syncphony syncphony vault rotate`). Losing the key means everyone links their services again; nothing else is lost.
 
+**Spotify:** to offer Spotify, register an app at [developer.spotify.com](https://developer.spotify.com/dashboard). The account that creates it must have Premium.
+
+1. Spotify asks for a redirect URI; `<SYNCPHONY_BASE_URL>/api/links/oauth/callback` will do. Nobody signs into the app, so it isn't used.
+2. Under **APIs used**, tick **Web API**.
+3. Put the app's client ID and secret in `SYNCPHONY_SPOTIFY_CLIENT_ID` and `SYNCPHONY_SPOTIFY_CLIENT_SECRET` (in `.env` next to `compose.yml`), and restart.
+
+Friends link Spotify by approving a code at spotify.com/pair, from any device. The server searches with the app's own token and streams through each friend's account, so every linked account needs Premium. Spotify playlists aren't available yet. Spotify won't let Syncphony play some songs; those are refused when you add them. [ADR 0004](docs/adr/0004-spotify-playback.md) explains why.
+
 Images are published to `ghcr.io/madeofpendletonwool/syncphony`: `:main` tracks the main branch, and `v*` tags publish `:X.Y.Z` and `:latest`. Pick one with `SYNCPHONY_TAG` (e.g. `SYNCPHONY_TAG=main`).
 
 ## Playing at a hangout
@@ -108,4 +119,4 @@ What works where (and what doesn't yet) is in [docs/player-mode.md](docs/player-
 
 ## License
 
-[AGPL-3.0](LICENSE). If you run a modified Syncphony as a service for others, you must share your changes.
+[AGPL-3.0](LICENSE). If you run a modified Syncphony as a service for others, you must share your changes. Spotify streaming uses [go-librespot](https://github.com/devgianlu/go-librespot) (GPL-3.0); `server/internal/provider/spotify/streaming/clienttoken.go` is adapted from it and stays under GPL-3.0.

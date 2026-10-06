@@ -17,12 +17,22 @@ import (
 
 func TestConformance(t *testing.T) {
 	for _, playback := range []provider.PlaybackMode{provider.PlaybackStream, provider.PlaybackRemote} {
-		for _, method := range []provider.LinkMethod{provider.LinkCredentials, provider.LinkOAuth2} {
+		for _, method := range []provider.LinkMethod{provider.LinkCredentials, provider.LinkOAuth2, provider.LinkDevice, "oauth2+pair"} {
 			t.Run(string(playback)+"/"+string(method), func(t *testing.T) {
-				p := fake.New(fake.Options{Playback: playback, Link: method})
+				opts := fake.Options{Playback: playback, Link: method}
+				if method == "oauth2+pair" {
+					opts.Link, opts.Pair = provider.LinkOAuth2, true
+				}
+				p := fake.New(opts)
 				bad := provider.LinkInput{Fields: map[string]string{"username": fake.Username, "password": "wrong"}}
-				if method == provider.LinkOAuth2 {
+				switch {
+				case opts.Pair:
+					// The right code, but no pairing.
+					bad = provider.LinkInput{Code: fake.Code, OAuthSecret: "x"}
+				case method == provider.LinkOAuth2:
 					bad = provider.LinkInput{Code: "denied", OAuthSecret: "x"}
+				case method == provider.LinkDevice:
+					bad = provider.LinkInput{Paired: "never-paired"}
 				}
 				providertest.Run(t, providertest.Harness{
 					Provider: p,
@@ -41,12 +51,24 @@ func link(t *testing.T, p *fake.Provider) provider.Link {
 	t.Helper()
 	l := p.Linker()
 	in := provider.LinkInput{Fields: map[string]string{"username": fake.Username, "password": fake.Password}}
+	if dp, ok := l.(provider.DevicePairer); ok {
+		pairing, err := dp.BeginPairing(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := dp.PollPairing(t.Context(), pairing.Secret); !errors.Is(err, provider.ErrPending) {
+			t.Fatalf("first poll: %v, want ErrPending", err)
+		}
+		if in.Paired, err = dp.PollPairing(t.Context(), pairing.Secret); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if l.Method() == provider.LinkOAuth2 {
 		start, err := l.BeginOAuth(t.Context(), provider.OAuthRequest{State: "s", RedirectURL: "https://example.com/cb"})
 		if err != nil {
 			t.Fatal(err)
 		}
-		in = provider.LinkInput{Code: fake.Code, OAuthSecret: start.Secret}
+		in.Code, in.OAuthSecret = fake.Code, start.Secret
 	}
 	creds, account, err := l.Complete(t.Context(), in)
 	if err != nil {

@@ -49,6 +49,17 @@ func (w *watcher) Artwork(ctx context.Context, ref provider.ArtworkRef, size int
 
 func (w *watcher) Close() error { return w.inner.Close() }
 
+// CheckPlayable implements provider.PlayChecker on every wrapped session, so
+// wrap needn't double its variants. Sessions that can't check return
+// ErrUnsupported, which callers already treat as "couldn't tell".
+func (w *watcher) CheckPlayable(ctx context.Context, trackID string) error {
+	pc, ok := w.inner.(provider.PlayChecker)
+	if !ok {
+		return provider.ErrUnsupported
+	}
+	return w.see(ctx, pc.CheckPlayable(ctx, trackID))
+}
+
 type streamer struct{ *watcher }
 
 func (w streamer) Stream(ctx context.Context, trackID string, opts provider.StreamOpts) (*provider.AudioStream, error) {

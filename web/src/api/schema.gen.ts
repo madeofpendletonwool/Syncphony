@@ -403,6 +403,54 @@ export interface paths {
         patch: operations["updateLink"];
         trace?: never;
     };
+    "/pairings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start linking (or re-linking) by device pairing
+         * @description For providers with `pairing` set. Show `userCode` and `verifyUrl`:
+         *     the user opens the URL on any device and approves the code. Then poll
+         *     `GET /pairings/{id}` every `interval` seconds until it's
+         *     approved (`oauth2` providers continue with `POST /links/oauth` and
+         *     `pairingId`) or linked (`device` providers).
+         */
+        post: operations["beginPairing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pairings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Whether a device pairing was approved
+         * @description Asks the service at most once per `interval`. An expired, finished or
+         *     unknown pairing is `pairing_expired`; a declined one is
+         *     `service_rejected_credentials`.
+         */
+        get: operations["pollPairing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/links/oauth": {
         parameters: {
             query?: never;
@@ -416,7 +464,8 @@ export interface paths {
          * Start linking (or re-linking) an OAuth2 provider
          * @description Send the browser to `authUrl`. The service redirects back to
          *     `/api/links/oauth/callback`, which lands on the web app's
-         *     `/settings/services` page.
+         *     `/settings/services` page. Providers with `pairing` set need their
+         *     approved pairing first (`not_paired` otherwise).
          */
         post: operations["beginOAuthLink"];
         delete?: never;
@@ -552,7 +601,9 @@ export interface paths {
          * Add songs to the end of your lane
          * @description Each song is looked up on its service through one of your links, and
          *     its metadata is kept with the queue item. All are added, in order, or
-         *     none are.
+         *     none are. When you add one song, services that can tell ahead of time
+         *     that they won't play it (Spotify) are asked first, and the song is
+         *     refused with `not_playable` and a message to show.
          */
         post: operations["addToQueue"];
         delete?: never;
@@ -915,8 +966,14 @@ export interface components {
             /** @enum {string} */
             playback: "stream" | "remote";
             /** @enum {string} */
-            linkMethod: "credentials" | "oauth2";
-            /** @description The form to show for `credentials` providers. Empty for `oauth2`. */
+            linkMethod: "credentials" | "oauth2" | "device";
+            /**
+             * @description Linking starts with a device pairing (`POST /pairings`):
+             *     always for `device` providers, and before the redirect for
+             *     `oauth2` providers that set it.
+             */
+            pairing: boolean;
+            /** @description The form to show for `credentials` providers. Empty otherwise. */
             fields: components["schemas"]["LinkField"][];
             capabilities: {
                 search: ("track" | "album" | "artist" | "playlist")[];
@@ -1053,10 +1110,38 @@ export interface components {
                 [key: string]: string;
             };
         };
-        /** @description Set `provider` to link a new account, or `linkId` to re-link one. */
+        /**
+         * @description Set `provider` to link a new account, or `linkId` to re-link one. For
+         *     providers that pair first, set only `pairingId`, the approved pairing.
+         */
         BeginOAuthLinkRequest: {
             provider?: string;
             linkId?: string;
+            pairingId?: string;
+        };
+        /** @description Set `provider` to link a new account, or `linkId` to re-link one. */
+        BeginPairingRequest: {
+            provider?: string;
+            linkId?: string;
+        };
+        Pairing: {
+            id: string;
+            /** @description Where to approve, with the code filled in when the service allows. */
+            verifyUrl: string;
+            userCode: string;
+            /** @description Seconds between polls. */
+            interval: number;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        PairingStatus: {
+            /**
+             * @description `approved`: continue with `POST /links/oauth` and `pairingId`.
+             *     `linked`: done; `link` is set.
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "linked";
+            link?: components["schemas"]["ServiceLink"];
         };
         /**
          * @description A message on the room WebSocket, `GET /ws/rooms/{roomId}?since=<version>`.
@@ -1888,6 +1973,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ServiceLink"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    beginPairing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BeginPairingRequest"];
+            };
+        };
+        responses: {
+            /** @description The pairing */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Pairing"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    pollPairing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pairing's status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairingStatus"];
                 };
             };
             default: components["responses"]["Error"];

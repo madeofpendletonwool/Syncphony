@@ -14,7 +14,8 @@ import (
 //
 // Optional features are separate interfaces (Streamer, Remote,
 // PlaylistLister, Lyricist), discovered with a type assertion and declared in
-// Capabilities.
+// Capabilities. PlayChecker is optional too, but needs no capability: the
+// core only uses it when it's there.
 type Session interface {
 	// Search returns matches for q. Asking for a kind the provider can't
 	// search is ErrUnsupported.
@@ -119,4 +120,12 @@ type PlaylistLister interface {
 // Lyricist is implemented by sessions of providers with the Lyrics capability.
 type Lyricist interface {
 	Lyrics(ctx context.Context, trackID string) (Lyrics, error)
+}
+
+// PlayChecker is implemented by sessions that can tell ahead of time that a
+// track won't play, so the queue can refuse it instead of skipping it later.
+type PlayChecker interface {
+	// CheckPlayable returns ErrNotPlayable for a track the service won't
+	// play. Other errors, ErrUnsupported included, mean it couldn't tell.
+	CheckPlayable(ctx context.Context, trackID string) error
 }

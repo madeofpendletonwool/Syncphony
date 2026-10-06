@@ -70,6 +70,7 @@ func Run(t *testing.T, h Harness) {
 	switch s.info.Capabilities.Playback {
 	case provider.PlaybackStream:
 		t.Run("Stream", s.testStream)
+		t.Run("PlayChecker", s.testPlayChecker)
 	case provider.PlaybackRemote:
 		t.Run("Remote", s.testRemote)
 	}
@@ -127,9 +128,9 @@ func (s *suite) testInfo(t *testing.T) {
 func (s *suite) testLinker(t *testing.T) {
 	l := s.Provider.Linker()
 	switch l.Method() {
-	case provider.LinkCredentials:
+	case provider.LinkCredentials, provider.LinkDevice:
 		if _, err := l.BeginOAuth(t.Context(), provider.OAuthRequest{State: "x", RedirectURL: "https://example.com/cb"}); !errors.Is(err, provider.ErrUnsupported) {
-			t.Errorf("BeginOAuth on a credentials linker: got %v, want ErrUnsupported", err)
+			t.Errorf("BeginOAuth on a %s linker: got %v, want ErrUnsupported", l.Method(), err)
 		}
 	case provider.LinkOAuth2:
 		const state = "providertest-state"
@@ -145,6 +146,9 @@ func (s *suite) testLinker(t *testing.T) {
 			t.Errorf("BeginOAuth URL state = %q, want %q", got, state)
 		}
 	}
+	if dp, ok := l.(provider.DevicePairer); ok {
+		s.testPairing(t, dp)
+	}
 	if s.BadInput != nil {
 		if _, _, err := l.Complete(t.Context(), *s.BadInput); !errors.Is(err, provider.ErrInvalidCredentials) {
 			t.Errorf("Complete(BadInput): got %v, want ErrInvalidCredentials", err)
@@ -156,6 +160,26 @@ func (s *suite) testLinker(t *testing.T) {
 	}
 	if link.Account.ID == "" {
 		t.Error("Link returned an empty account ID")
+	}
+}
+
+// testPairing checks a pairing starts, and is pending until approved.
+func (s *suite) testPairing(t *testing.T, dp provider.DevicePairer) {
+	p, err := dp.BeginPairing(t.Context())
+	if err != nil {
+		t.Fatalf("BeginPairing: %v", err)
+	}
+	if u, err := url.Parse(p.VerifyURL); err != nil || u.Scheme != "https" {
+		t.Errorf("BeginPairing VerifyURL %q: want an https URL (%v)", p.VerifyURL, err)
+	}
+	if p.UserCode == "" || p.Secret == "" {
+		t.Error("BeginPairing: empty UserCode or Secret")
+	}
+	if p.Interval <= 0 || p.ExpiresIn <= 0 {
+		t.Errorf("BeginPairing: Interval %v, ExpiresIn %v; want both positive", p.Interval, p.ExpiresIn)
+	}
+	if _, err := dp.PollPairing(t.Context(), p.Secret); !errors.Is(err, provider.ErrPending) {
+		t.Errorf("PollPairing before approval: got %v, want ErrPending", err)
 	}
 }
 
@@ -454,6 +478,23 @@ func (s *suite) testStream(t *testing.T) {
 	}
 	if !errors.Is(err, provider.ErrRange) {
 		t.Errorf("range past EOF: got %v, want ErrRange", err)
+	}
+}
+
+// testPlayChecker checks a found track passes CheckPlayable, if the session
+// implements it, and that a missing one doesn't.
+func (s *suite) testPlayChecker(t *testing.T) {
+	sess, _ := s.open(t)
+	pc, ok := sess.(provider.PlayChecker)
+	if !ok {
+		t.Skip("session doesn't implement PlayChecker")
+	}
+	tr := s.someTrack(t, sess)
+	if err := pc.CheckPlayable(t.Context(), tr.Ref.ID); err != nil {
+		t.Errorf("CheckPlayable(%s): %v", tr.Ref.ID, err)
+	}
+	if err := pc.CheckPlayable(t.Context(), s.MissingID); err == nil {
+		t.Errorf("CheckPlayable(%s): got nil for a missing track", s.MissingID)
 	}
 }
 

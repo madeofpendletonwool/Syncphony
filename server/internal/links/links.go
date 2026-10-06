@@ -34,6 +34,8 @@ var (
 	ErrDifferentAccount = errors.New("that's a different account; unlink this one and link the new one instead")
 	ErrOAuthState       = errors.New("the authorization request expired or isn't yours; try linking again")
 	ErrNotShareable     = errors.New("this service doesn't allow sharing an account")
+	ErrPairingExpired   = errors.New("the pairing code expired or isn't yours; try linking again")
+	ErrNotPaired        = errors.New("approve the pairing code first")
 )
 
 // InvalidInputError is a bad link form field.
@@ -92,14 +94,16 @@ type Service struct {
 	notifier Notifier
 	now      func() time.Time
 
-	mu    sync.Mutex
-	oauth map[string]*pendingOAuth // by state
+	mu       sync.Mutex
+	oauth    map[string]*pendingOAuth   // by state
+	pairings map[string]*pendingPairing // by ID
 
 	lastOK sync.Map // link ID -> time.Time of the last recorded success
 }
 
 type pendingOAuth struct {
 	userID, provider, relinkID, secret string
+	paired                             string // a DevicePairer's result, from the pairing before
 	expires                            time.Time
 }
 
@@ -113,7 +117,7 @@ func New(db *store.Store, v *vault.Vault, reg *provider.Registry, cfg Config) *S
 	}
 	return &Service{
 		db: db, vault: v, reg: reg, baseURL: strings.TrimRight(cfg.BaseURL, "/"),
-		notifier: cfg.Notifier, now: cfg.Now, oauth: map[string]*pendingOAuth{},
+		notifier: cfg.Notifier, now: cfg.Now, oauth: map[string]*pendingOAuth{}, pairings: map[string]*pendingPairing{},
 	}
 }
 
@@ -251,7 +255,8 @@ func checkFields(spec []provider.LinkField, in map[string]string) (map[string]st
 func (s *Service) CallbackURL() string { return s.baseURL + CallbackPath }
 
 // BeginOAuth starts linking providerID by OAuth2 and returns where to send
-// the user. relinkID, if set, is a link of userID's to replace.
+// the user. relinkID, if set, is a link of userID's to replace. Providers
+// that pair a device first start with BeginPairing instead.
 func (s *Service) BeginOAuth(ctx context.Context, userID, providerID, relinkID string) (string, error) {
 	if relinkID != "" {
 		row, err := s.userLink(ctx, userID, relinkID)
@@ -264,6 +269,35 @@ func (s *Service) BeginOAuth(ctx context.Context, userID, providerID, relinkID s
 	if err != nil {
 		return "", err
 	}
+	if _, pairs := p.Linker().(provider.DevicePairer); pairs {
+		return "", ErrNotPaired
+	}
+	return s.beginOAuth(ctx, p, &pendingOAuth{userID: userID, provider: providerID, relinkID: relinkID})
+}
+
+// BeginOAuthPaired starts the OAuth2 step of a link whose device pairing
+// (pairingID) the user has approved.
+func (s *Service) BeginOAuthPaired(ctx context.Context, userID, pairingID string) (string, error) {
+	s.mu.Lock()
+	pp, ok := s.pairings[pairingID]
+	if ok && pp.userID == userID && pp.paired != "" {
+		delete(s.pairings, pairingID)
+	}
+	s.mu.Unlock()
+	switch {
+	case !ok || pp.userID != userID || s.now().After(pp.expires):
+		return "", ErrPairingExpired
+	case pp.paired == "":
+		return "", ErrNotPaired
+	}
+	p, err := s.provider(pp.provider)
+	if err != nil {
+		return "", err
+	}
+	return s.beginOAuth(ctx, p, &pendingOAuth{userID: userID, provider: pp.provider, relinkID: pp.relinkID, paired: pp.paired})
+}
+
+func (s *Service) beginOAuth(ctx context.Context, p provider.Provider, pending *pendingOAuth) (string, error) {
 	if p.Linker().Method() != provider.LinkOAuth2 {
 		return "", ErrWrongMethod
 	}
@@ -280,7 +314,8 @@ func (s *Service) BeginOAuth(ctx context.Context, userID, providerID, relinkID s
 			delete(s.oauth, k)
 		}
 	}
-	s.oauth[state] = &pendingOAuth{userID: userID, provider: providerID, relinkID: relinkID, secret: start.Secret, expires: now.Add(oauthTTL)}
+	pending.secret, pending.expires = start.Secret, now.Add(oauthTTL)
+	s.oauth[state] = pending
 	return start.AuthURL, nil
 }
 
@@ -300,11 +335,174 @@ func (s *Service) CompleteOAuth(ctx context.Context, userID, state, code string)
 	if err != nil {
 		return store.ServiceLink{}, err
 	}
-	creds, account, err := p.Linker().Complete(ctx, provider.LinkInput{Code: code, RedirectURL: s.CallbackURL(), OAuthSecret: pending.secret})
+	creds, account, err := p.Linker().Complete(ctx, provider.LinkInput{Code: code, RedirectURL: s.CallbackURL(), OAuthSecret: pending.secret, Paired: pending.paired})
 	if err != nil {
 		return store.ServiceLink{}, err
 	}
 	return s.save(ctx, userID, pending.provider, pending.relinkID, creds, account)
+}
+
+// --- Linking by device pairing -------------------------------------------------
+
+// maxPairingTTL caps how long a pairing is kept, whatever the service says.
+const maxPairingTTL = 15 * time.Minute
+
+// slowDown is how much longer to wait between polls when the service says
+// we're polling too often.
+const slowDown = 5 * time.Second
+
+type pendingPairing struct {
+	userID, provider, relinkID, secret string
+	interval                           time.Duration
+	expires, nextPoll                  time.Time
+	// paired is the provider's result once the user approved, kept for
+	// the OAuth2 step that follows.
+	paired string
+}
+
+// Pairing is a device pairing waiting for the user to approve it.
+type Pairing struct {
+	ID        string
+	VerifyURL string
+	UserCode  string
+	// Interval is how often to poll.
+	Interval  time.Duration
+	ExpiresAt time.Time
+}
+
+// PairingState is how far a pairing has got.
+type PairingState string
+
+// Pairing states.
+const (
+	// PairingPending: the user hasn't approved it yet.
+	PairingPending PairingState = "pending"
+	// PairingApproved: approved; continue with BeginOAuthPaired.
+	PairingApproved PairingState = "approved"
+	// PairingLinked: approved, and the account is linked.
+	PairingLinked PairingState = "linked"
+)
+
+// PairingStatus is a pairing's state, and the link once it's linked.
+type PairingStatus struct {
+	State PairingState
+	Link  store.ServiceLink
+}
+
+// BeginPairing starts linking providerID (or re-linking relinkID) by
+// device pairing. The provider's linker must pair: as its method, or
+// before its OAuth2 step.
+func (s *Service) BeginPairing(ctx context.Context, userID, providerID, relinkID string) (Pairing, error) {
+	if relinkID != "" {
+		row, err := s.userLink(ctx, userID, relinkID)
+		if err != nil {
+			return Pairing{}, err
+		}
+		providerID = row.Provider
+	}
+	p, err := s.provider(providerID)
+	if err != nil {
+		return Pairing{}, err
+	}
+	dp, ok := p.Linker().(provider.DevicePairer)
+	if !ok {
+		return Pairing{}, ErrWrongMethod
+	}
+	start, err := dp.BeginPairing(ctx)
+	if err != nil {
+		return Pairing{}, err
+	}
+	ttl := min(start.ExpiresIn, maxPairingTTL)
+	if ttl <= 0 {
+		ttl = maxPairingTTL
+	}
+	interval := max(start.Interval, time.Second)
+	id := rand.Text()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	for k, v := range s.pairings {
+		if now.After(v.expires) {
+			delete(s.pairings, k)
+		}
+	}
+	pp := &pendingPairing{
+		userID: userID, provider: providerID, relinkID: relinkID, secret: start.Secret,
+		interval: interval, expires: now.Add(ttl), nextPoll: now.Add(interval),
+	}
+	s.pairings[id] = pp
+	return Pairing{ID: id, VerifyURL: start.VerifyURL, UserCode: start.UserCode, Interval: interval, ExpiresAt: pp.expires}, nil
+}
+
+// PollPairing checks whether the user approved a pairing. It asks the
+// service at most once per interval; polling sooner just reports pending.
+// Once approved, a LinkDevice provider's account is linked; an OAuth2
+// provider continues with BeginOAuthPaired.
+func (s *Service) PollPairing(ctx context.Context, userID, pairingID string) (PairingStatus, error) {
+	s.mu.Lock()
+	pp, ok := s.pairings[pairingID]
+	now := s.now()
+	switch {
+	case !ok || pp.userID != userID:
+		s.mu.Unlock()
+		return PairingStatus{}, ErrPairingExpired
+	case now.After(pp.expires):
+		delete(s.pairings, pairingID)
+		s.mu.Unlock()
+		return PairingStatus{}, ErrPairingExpired
+	case pp.paired != "":
+		s.mu.Unlock()
+		return PairingStatus{State: PairingApproved}, nil
+	case now.Before(pp.nextPoll):
+		s.mu.Unlock()
+		return PairingStatus{State: PairingPending}, nil
+	}
+	pp.nextPoll = now.Add(pp.interval)
+	secret, providerID, relinkID := pp.secret, pp.provider, pp.relinkID
+	s.mu.Unlock()
+
+	p, err := s.provider(providerID)
+	if err != nil {
+		return PairingStatus{}, err
+	}
+	dp, ok := p.Linker().(provider.DevicePairer)
+	if !ok {
+		return PairingStatus{}, ErrWrongMethod
+	}
+	paired, err := dp.PollPairing(ctx, secret)
+	switch {
+	case errors.Is(err, provider.ErrPending):
+		return PairingStatus{State: PairingPending}, nil
+	case errors.Is(err, provider.ErrRateLimited):
+		s.mu.Lock()
+		pp.interval += slowDown
+		pp.nextPoll = s.now().Add(pp.interval)
+		s.mu.Unlock()
+		return PairingStatus{State: PairingPending}, nil
+	case err != nil:
+		s.mu.Lock()
+		delete(s.pairings, pairingID)
+		s.mu.Unlock()
+		return PairingStatus{}, err
+	}
+	if p.Linker().Method() != provider.LinkDevice {
+		s.mu.Lock()
+		pp.paired = paired
+		s.mu.Unlock()
+		return PairingStatus{State: PairingApproved}, nil
+	}
+	s.mu.Lock()
+	delete(s.pairings, pairingID)
+	s.mu.Unlock()
+	creds, account, err := p.Linker().Complete(ctx, provider.LinkInput{Paired: paired})
+	if err != nil {
+		return PairingStatus{}, err
+	}
+	row, err := s.save(ctx, userID, providerID, relinkID, creds, account)
+	if err != nil {
+		return PairingStatus{}, err
+	}
+	return PairingStatus{State: PairingLinked, Link: row}, nil
 }
 
 // --- Storage -------------------------------------------------------------------

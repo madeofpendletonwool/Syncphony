@@ -316,13 +316,30 @@ func (s *session) Lyrics(ctx context.Context, trackID string) (provider.Lyrics, 
 
 type streamSession struct{ *session }
 
-func (s *streamSession) Stream(ctx context.Context, trackID string, opts provider.StreamOpts) (*provider.AudioStream, error) {
+// CheckPlayable implements provider.PlayChecker.
+func (s *streamSession) CheckPlayable(ctx context.Context, trackID string) error {
+	_, err := s.playable(ctx, trackID)
+	return err
+}
+
+func (s *streamSession) playable(ctx context.Context, trackID string) (*track, error) {
 	if err := s.begin(ctx); err != nil {
 		return nil, err
 	}
 	t, ok := get[*track](library, trackID)
 	if !ok {
 		return nil, fmt.Errorf("fake: track %q: %w", trackID, provider.ErrNotFound)
+	}
+	if slices.Contains(s.p.opts.NotPlayable, trackID) {
+		return nil, fmt.Errorf("fake: track %q: %w", trackID, provider.ErrNotPlayable)
+	}
+	return t, nil
+}
+
+func (s *streamSession) Stream(ctx context.Context, trackID string, opts provider.StreamOpts) (*provider.AudioStream, error) {
+	t, err := s.playable(ctx, trackID)
+	if err != nil {
+		return nil, err
 	}
 	b := wav(t.hz, t.duration)
 	size := int64(len(b))

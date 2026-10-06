@@ -9,7 +9,7 @@
 Syncphony plays one shared queue from many music services. Navidrome and Spotify come first. Jellyfin, Plex, YouTube Music, Apple Music and local files may follow. These services differ in almost every way that matters:
 
 - **How audio plays.** Navidrome hands us a file we can proxy to the player. Spotify Connect plays on Spotify's own device, and we can only tell it what to play.
-- **How accounts link.** Navidrome uses a form (URL, username, password). Spotify uses an OAuth2 redirect with PKCE and refresh tokens.
+- **How accounts link.** Navidrome uses a form (URL, username, password). Spotify uses a device pairing and an OAuth2 redirect (ADR 0004).
 - **What they can do.** Some have playlists, lyrics or ISRCs, and some don't.
 
 If the queue, playback and API code handled these differences directly, every new service would touch all three. We want adding a service to mean adding one package.
@@ -41,6 +41,7 @@ type Streamer interface { Stream(ctx, trackID, StreamOpts) (*AudioStream, error)
 type Remote interface   { Play; Pause; Resume; Seek; State }
 type PlaylistLister interface { Playlists; PlaylistTracks }
 type Lyricist interface { Lyrics(ctx, trackID) (Lyrics, error) }
+type PlayChecker interface { CheckPlayable(ctx, trackID) error }  // MAD-697
 ```
 
 The full definitions and doc comments are in the package. These are the main choices and why we made them.
@@ -51,7 +52,7 @@ The full definitions and doc comments are in the package. These are the main cho
 
 **Two playback modes.** `PlaybackStream` providers return an `AudioStream` (body, content type, offset/length/size, seekable). The server proxies it to the player and handles HTTP range requests. `PlaybackRemote` providers expose transport controls and a polled `RemoteState`. The playback engine branches on the mode once, and the queue never needs to know.
 
-**One linking API for forms and OAuth2.** A `Linker` declares its `Method`. Credential linkers describe their form with `Fields` (with kinds such as `FieldSecret`, so the UI masks them and logs skip them). OAuth2 linkers implement `BeginOAuth`. Both finish in `Complete(LinkInput) → (Credentials, AccountInfo)`. Compared with the first sketch:
+**One linking API for forms, OAuth2 and device pairing.** A `Linker` declares its `Method`. Credential linkers describe their form with `Fields` (with kinds such as `FieldSecret`, so the UI masks them and logs skip them). OAuth2 linkers implement `BeginOAuth`. Device-pairing linkers (`LinkDevice`, added for Spotify in MAD-697, ADR 0004) implement `DevicePairer`: the user approves a code on any device while the core polls. An OAuth2 linker may also implement `DevicePairer` to pair before its redirect. All finish in `Complete(LinkInput) → (Credentials, AccountInfo)`, with a pairing's result in `LinkInput.Paired`. Compared with the first sketch:
 
 - `BeginOAuth` takes the redirect URL. The core owns the callback route, so providers never need to know the server's base URL.
 - `BeginOAuth` returns an opaque `Secret` (for example, a PKCE verifier). The core keeps it server-side next to the state token and passes it back to `Complete`. Linkers stay stateless, so a restart between redirect and callback doesn't break linking.
@@ -75,5 +76,6 @@ The full definitions and doc comments are in the package. These are the main cho
 - Adding a provider means writing `internal/provider/<name>`, passing `providertest.Run`, and adding one line in `main`.
 - The core can't use a feature a service has unless the interface models it. That is deliberate. New optional interfaces can be added without breaking existing providers.
 - Capabilities and interfaces can drift apart. The suite catches this, but only if every provider runs it in CI.
-- Transcoding needs an ffmpeg binary. The production image is distroless and doesn't include one yet. When a client needs transcoding and ffmpeg is missing, the stream fails with `transcode.ErrNoTranscoder`. Shipping ffmpeg (or an image variant with it) is a follow-up decision.
+- Transcoding needs an ffmpeg binary. The production image ships one since MAD-697 (ADR 0004). Elsewhere, when a client needs transcoding and ffmpeg is missing, the stream fails with `transcode.ErrNoTranscoder`.
+- `PlayChecker` (MAD-697) needs no capability: the queue uses it when a session has it, to refuse a song the service says it won't play. Sessions from `links.Service` always have it and return `ErrUnsupported` when the provider's don't.
 - Remote providers report position by polling `State`. If a service offers push updates, its provider can poll faster internally. The interface doesn't need to change.

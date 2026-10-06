@@ -132,6 +132,10 @@ func Validate(p Provider) error {
 			seen[f.Name] = true
 		}
 	case LinkOAuth2:
+	case LinkDevice:
+		if _, ok := l.(DevicePairer); !ok {
+			return fmt.Errorf("provider %s: device linker doesn't implement DevicePairer", info.ID)
+		}
 	default:
 		return fmt.Errorf("provider %s: unknown link method %q", info.ID, l.Method())
 	}

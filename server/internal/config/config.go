@@ -33,6 +33,9 @@ type Config struct {
 	// FakeProvider registers the in-memory "fake" provider, for UI
 	// development without real services.
 	FakeProvider bool
+	// SpotifyClientID and SpotifyClientSecret are the Spotify developer
+	// app's. Spotify is offered only when the client ID is set.
+	SpotifyClientID, SpotifyClientSecret string
 }
 
 // defaultTrustedProxies are loopback and private networks, where a
@@ -65,6 +68,8 @@ func Load() (Config, error) {
 	default:
 		return Config{}, fmt.Errorf("SYNCPHONY_FAKE_PROVIDER %q: want true or false", v)
 	}
+	c.SpotifyClientID = strings.TrimSpace(os.Getenv("SYNCPHONY_SPOTIFY_CLIENT_ID"))
+	c.SpotifyClientSecret = strings.TrimSpace(os.Getenv("SYNCPHONY_SPOTIFY_CLIENT_SECRET"))
 	proxies := env("SYNCPHONY_TRUSTED_PROXIES", defaultTrustedProxies)
 	if proxies != "none" {
 		for p := range strings.SplitSeq(proxies, ",") {

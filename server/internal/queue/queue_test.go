@@ -48,7 +48,8 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	reg, err := provider.NewRegistry(fake.New(fake.Options{}))
+	// The fake won't play t05, as Spotify won't play some tracks.
+	reg, err := provider.NewRegistry(fake.New(fake.Options{NotPlayable: []string{"t05"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,6 +191,7 @@ func TestAddErrors(t *testing.T) {
 		{"someone else's link", e.room.ID, refs(e.bob, "t01"), is(links.ErrNotFound)},
 		{"unknown track, after a good one", e.room.ID, refs(e.alice, "t01", "nope"), is(provider.ErrNotFound)},
 		{"unknown room", "nope", refs(e.alice, "t01"), is(rooms.ErrNotFound)},
+		{"a song the service won't play", e.room.ID, refs(e.alice, "t05"), is(provider.ErrNotPlayable)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := e.q.Add(ctx, tc.room, e.alice.ID, tc.refs); !tc.want(err) {
@@ -203,6 +205,20 @@ func TestAddErrors(t *testing.T) {
 	}
 	if len(snap.Items) != 0 || snap.Version != 0 {
 		t.Errorf("failed adds changed the queue: %d items, version %d", len(snap.Items), snap.Version)
+	}
+}
+
+func TestAddNotPlayable(t *testing.T) {
+	e := newEnv(t)
+	_, err := e.q.Add(t.Context(), e.room.ID, e.alice.ID, refs(e.alice, "t05"))
+	var np *queue.NotPlayableError
+	if !errors.As(err, &np) || np.Service != "Fake" || !strings.Contains(err.Error(), "Fake won't let Syncphony play") {
+		t.Fatalf("adding t05: %v", err)
+	}
+	// Adding several songs doesn't check them: playback skips t05 later.
+	snap := e.add(e.alice, "t04", "t05")
+	if got, want := upNext(snap, e.alice), "alice:t04 alice:t05"; got != want {
+		t.Errorf("up next = %q, want %q", got, want)
 	}
 }
 

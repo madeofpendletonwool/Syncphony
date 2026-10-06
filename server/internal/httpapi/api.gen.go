@@ -90,6 +90,27 @@ func (e NowPlayingDriver) Valid() bool {
 	}
 }
 
+// Defines values for PairingStatusStatus.
+const (
+	Approved PairingStatusStatus = "approved"
+	Linked   PairingStatusStatus = "linked"
+	Pending  PairingStatusStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the PairingStatusStatus enum.
+func (e PairingStatusStatus) Valid() bool {
+	switch e {
+	case Approved:
+		return true
+	case Linked:
+		return true
+	case Pending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PlaybackCommandAction.
 const (
 	Pause PlaybackCommandAction = "pause"
@@ -216,6 +237,7 @@ func (e ProviderInfoCapabilitiesSearch) Valid() bool {
 // Defines values for ProviderInfoLinkMethod.
 const (
 	Credentials ProviderInfoLinkMethod = "credentials"
+	Device      ProviderInfoLinkMethod = "device"
 	Oauth2      ProviderInfoLinkMethod = "oauth2"
 )
 
@@ -223,6 +245,8 @@ const (
 func (e ProviderInfoLinkMethod) Valid() bool {
 	switch e {
 	case Credentials:
+		return true
+	case Device:
 		return true
 	case Oauth2:
 		return true
@@ -434,8 +458,16 @@ type ArtistResult struct {
 	Name    string  `json:"name"`
 }
 
-// BeginOAuthLinkRequest Set `provider` to link a new account, or `linkId` to re-link one.
+// BeginOAuthLinkRequest Set `provider` to link a new account, or `linkId` to re-link one. For
+// providers that pair first, set only `pairingId`, the approved pairing.
 type BeginOAuthLinkRequest struct {
+	LinkId    *string `json:"linkId,omitempty"`
+	PairingId *string `json:"pairingId,omitempty"`
+	Provider  *string `json:"provider,omitempty"`
+}
+
+// BeginPairingRequest Set `provider` to link a new account, or `linkId` to re-link one.
+type BeginPairingRequest struct {
 	LinkId   *string `json:"linkId,omitempty"`
 	Provider *string `json:"provider,omitempty"`
 }
@@ -613,6 +645,32 @@ type NowPlaying struct {
 // plays it on its own device, and the speaker just shows it.
 type NowPlayingDriver string
 
+// Pairing defines model for Pairing.
+type Pairing struct {
+	ExpiresAt time.Time `json:"expiresAt"`
+	Id        string    `json:"id"`
+
+	// Interval Seconds between polls.
+	Interval int    `json:"interval"`
+	UserCode string `json:"userCode"`
+
+	// VerifyUrl Where to approve, with the code filled in when the service allows.
+	VerifyUrl string `json:"verifyUrl"`
+}
+
+// PairingStatus defines model for PairingStatus.
+type PairingStatus struct {
+	Link *ServiceLink `json:"link,omitempty"`
+
+	// Status `approved`: continue with `POST /links/oauth` and `pairingId`.
+	// `linked`: done; `link` is set.
+	Status PairingStatusStatus `json:"status"`
+}
+
+// PairingStatusStatus `approved`: continue with `POST /links/oauth` and `pairingId`.
+// `linked`: done; `link` is set.
+type PairingStatusStatus string
+
 // Passkey defines model for Passkey.
 type Passkey struct {
 	CreatedAt time.Time `json:"createdAt"`
@@ -713,7 +771,7 @@ type ProviderInfo struct {
 		Shareable bool `json:"shareable"`
 	} `json:"capabilities"`
 
-	// Fields The form to show for `credentials` providers. Empty for `oauth2`.
+	// Fields The form to show for `credentials` providers. Empty otherwise.
 	Fields []LinkField `json:"fields"`
 	Icon   string      `json:"icon"`
 
@@ -721,7 +779,12 @@ type ProviderInfo struct {
 	Id         string                 `json:"id"`
 	LinkMethod ProviderInfoLinkMethod `json:"linkMethod"`
 	Name       string                 `json:"name"`
-	Playback   ProviderInfoPlayback   `json:"playback"`
+
+	// Pairing Linking starts with a device pairing (`POST /pairings`):
+	// always for `device` providers, and before the redirect for
+	// `oauth2` providers that set it.
+	Pairing  bool                 `json:"pairing"`
+	Playback ProviderInfoPlayback `json:"playback"`
 }
 
 // ProviderInfoCapabilitiesSearch defines model for ProviderInfo.Capabilities.Search.
@@ -1079,6 +1142,9 @@ type RenamePasskeyJSONRequestBody RenamePasskeyJSONBody
 // SetPasswordJSONRequestBody defines body for SetPassword for application/json ContentType.
 type SetPasswordJSONRequestBody = SetPasswordRequest
 
+// BeginPairingJSONRequestBody defines body for BeginPairing for application/json ContentType.
+type BeginPairingJSONRequestBody = BeginPairingRequest
+
 // CreateRoomJSONRequestBody defines body for CreateRoom for application/json ContentType.
 type CreateRoomJSONRequestBody = CreateRoomRequest
 
@@ -1195,6 +1261,12 @@ type ServerInterface interface {
 	// SetPassword Set or change your password
 	// (PUT /me/password)
 	SetPassword(w http.ResponseWriter, r *http.Request)
+	// BeginPairing Start linking (or re-linking) by device pairing
+	// (POST /pairings)
+	BeginPairing(w http.ResponseWriter, r *http.Request)
+	// PollPairing Whether a device pairing was approved
+	// (GET /pairings/{id})
+	PollPairing(w http.ResponseWriter, r *http.Request, id string)
 	// ListProviders Services that can be linked
 	// (GET /providers)
 	ListProviders(w http.ResponseWriter, r *http.Request)
@@ -1919,6 +1991,46 @@ func (siw *ServerInterfaceWrapper) SetPassword(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetPassword(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BeginPairing operation middleware
+func (siw *ServerInterfaceWrapper) BeginPairing(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BeginPairing(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PollPairing operation middleware
+func (siw *ServerInterfaceWrapper) PollPairing(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PollPairing(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2676,6 +2788,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/links/{id}", wrapper.Unlink)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/links/{id}", wrapper.UpdateLink)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/links/{id}", wrapper.Relink)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/pairings", wrapper.BeginPairing)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/pairings/{id}", wrapper.PollPairing)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/links/oauth", wrapper.BeginOAuthLink)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/oauth/callback", wrapper.CompleteOAuthLink)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/search", wrapper.Search)
@@ -3877,6 +3991,84 @@ func (response SetPassworddefaultJSONResponse) VisitSetPasswordResponse(w http.R
 	return err
 }
 
+type BeginPairingRequestObject struct {
+	Body *BeginPairingJSONRequestBody
+}
+
+type BeginPairingResponseObject interface {
+	VisitBeginPairingResponse(w http.ResponseWriter) error
+}
+
+type BeginPairing200JSONResponse Pairing
+
+func (response BeginPairing200JSONResponse) VisitBeginPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginPairingdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BeginPairingdefaultJSONResponse) VisitBeginPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollPairingRequestObject struct {
+	Id string `json:"id"`
+}
+
+type PollPairingResponseObject interface {
+	VisitPollPairingResponse(w http.ResponseWriter) error
+}
+
+type PollPairing200JSONResponse PairingStatus
+
+func (response PollPairing200JSONResponse) VisitPollPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollPairingdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response PollPairingdefaultJSONResponse) VisitPollPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListProvidersRequestObject struct {
 }
 
@@ -4759,6 +4951,12 @@ type StrictServerInterface interface {
 	// SetPassword Set or change your password
 	// (PUT /me/password)
 	SetPassword(ctx context.Context, request SetPasswordRequestObject) (SetPasswordResponseObject, error)
+	// BeginPairing Start linking (or re-linking) by device pairing
+	// (POST /pairings)
+	BeginPairing(ctx context.Context, request BeginPairingRequestObject) (BeginPairingResponseObject, error)
+	// PollPairing Whether a device pairing was approved
+	// (GET /pairings/{id})
+	PollPairing(ctx context.Context, request PollPairingRequestObject) (PollPairingResponseObject, error)
 	// ListProviders Services that can be linked
 	// (GET /providers)
 	ListProviders(ctx context.Context, request ListProvidersRequestObject) (ListProvidersResponseObject, error)
@@ -5719,6 +5917,63 @@ func (sh *strictHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetPasswordResponseObject); ok {
 		if err := validResponse.VisitSetPasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BeginPairing operation middleware
+func (sh *strictHandler) BeginPairing(w http.ResponseWriter, r *http.Request) {
+	var request BeginPairingRequestObject
+
+	var body BeginPairingJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BeginPairing(ctx, request.(BeginPairingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BeginPairing")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BeginPairingResponseObject); ok {
+		if err := validResponse.VisitBeginPairingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PollPairing operation middleware
+func (sh *strictHandler) PollPairing(w http.ResponseWriter, r *http.Request, id string) {
+	var request PollPairingRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PollPairing(ctx, request.(PollPairingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PollPairing")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PollPairingResponseObject); ok {
+		if err := validResponse.VisitPollPairingResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

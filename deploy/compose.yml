@@ -26,6 +26,9 @@ services:
       # The public URL people (and OAuth redirects) use to reach Syncphony.
       SYNCPHONY_BASE_URL: ${SYNCPHONY_BASE_URL:-http://localhost:8080}
       # SYNCPHONY_VAULT_KEY: ${SYNCPHONY_VAULT_KEY}
+      # Spotify developer app credentials; leave unset to not offer Spotify.
+      SYNCPHONY_SPOTIFY_CLIENT_ID: ${SYNCPHONY_SPOTIFY_CLIENT_ID:-}
+      SYNCPHONY_SPOTIFY_CLIENT_SECRET: ${SYNCPHONY_SPOTIFY_CLIENT_SECRET:-}
     volumes:
       - syncphony-data:/data
 
