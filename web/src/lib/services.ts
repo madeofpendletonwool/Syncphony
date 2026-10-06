@@ -1,5 +1,5 @@
 import { queryOptions, useQuery } from '@tanstack/react-query'
-import { AudioLines, FlaskConical, Music, Server } from 'lucide-react'
+import { AudioLines, FlaskConical, Music, Server, Ticket } from 'lucide-react'
 import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 
@@ -32,6 +32,7 @@ export function sourceName(providerName: string, ownerName: string | undefined, 
 const icons: Record<string, { icon: typeof Music; color: string }> = {
   navidrome: { icon: Server, color: '#3b82f6' },
   spotify: { icon: AudioLines, color: '#1db954' },
+  nugs: { icon: Ticket, color: '#e8590c' },
   fake: { icon: FlaskConical, color: '#a855f7' },
 }
 

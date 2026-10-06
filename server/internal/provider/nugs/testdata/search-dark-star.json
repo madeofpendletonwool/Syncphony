@@ -1,0 +1,507 @@
+{
+ "methodName": "catalog.search",
+ "responseAvailabilityCode": 0,
+ "responseAvailabilityCodeStr": "AVAILABLE",
+ "Response": {
+  "catalogSearchTypeContainers": [
+   {
+    "matchType": 1,
+    "catalogSearchContainers": [
+     {
+      "scHeader": "Artist: Dark Star Orchestra",
+      "catalogSearchResultItems": [
+       {
+        "containerName": "Dark Star Orchestra, 2016/02/18 The Orange Peel, Asheville, NC ",
+        "performanceDate": "2/18/2016",
+        "artistName": "Dark Star Orchestra",
+        "artistID": "291",
+        "clipURL": null,
+        "pageURL": "/live-music/0,14505/Dark-Star-Orchestra-mp3-flac-download-2-18-2016-The-Orange-Peel-Asheville-NC.html",
+        "containerID": 14505,
+        "trackID": 0,
+        "songID": 0,
+        "img": {
+         "picID": 22973,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/dso160218_01.jpg"
+        },
+        "venueCity": "Asheville",
+        "venueState": "NC",
+        "venueName": "The Orange Peel",
+        "venue": "The Orange Peel, Asheville, NC ",
+        "availability": 1,
+        "availabilityStr": "AVAILABLE"
+       },
+       {
+        "containerName": "Dark Star Orchestra, 2016/02/22 Mercury Ballroom, Louisville, KY ",
+        "performanceDate": "2/22/2016",
+        "artistName": "Dark Star Orchestra",
+        "artistID": "291",
+        "clipURL": null,
+        "pageURL": "/live-music/0,14506/Dark-Star-Orchestra-mp3-flac-download-2-22-2016-Mercury-Ballroom-Louisville-KY.html",
+        "containerID": 14506,
+        "trackID": 0,
+        "songID": 0,
+        "img": {
+         "picID": 22972,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/dso160222_01.jpg"
+        },
+        "venueCity": "Louisville",
+        "venueState": "KY",
+        "venueName": "Mercury Ballroom",
+        "venue": "Mercury Ballroom, Louisville, KY ",
+        "availability": 1,
+        "availabilityStr": "AVAILABLE"
+       },
+       {
+        "containerName": "Dark Star Orchestra, 2016/02/27 Murat Egyption Room, Indianapolis, IN ",
+        "performanceDate": "2/27/2016",
+        "artistName": "Dark Star Orchestra",
+        "artistID": "291",
+        "clipURL": null,
+        "pageURL": "/live-music/0,14470/Dark-Star-Orchestra-mp3-flac-download-2-27-2016-Murat-Egyption-Room-Indianapolis-IN.html",
+        "containerID": 14470,
+        "trackID": 0,
+        "songID": 0,
+        "img": {
+         "picID": 22950,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/dso160227_01.jpg"
+        },
+        "venueCity": "Indianapolis",
+        "venueState": "IN",
+        "venueName": "Murat Egyption Room",
+        "venue": "Murat Egyption Room, Indianapolis, IN ",
+        "availability": 1,
+        "availabilityStr": "AVAILABLE"
+       }
+      ],
+      "matchedStr": "Dark Star Orchestra",
+      "strMatchType": "Artist",
+      "matchType": 1
+     }
+    ]
+   },
+   {
+    "matchType": 2,
+    "catalogSearchContainers": [
+     {
+      "scHeader": "Song: Bright Direction (You're a Dark Star Now)",
+      "catalogSearchResultItems": [
+       {
+        "containerName": " School Daze: A Fundraiser for Durham Public Schools Students",
+        "performanceDate": null,
+        "artistName": "Hiss Golden Messenger",
+        "artistID": "1496",
+        "clipURL": "https://assets.nugs.net/clips2/hissSDd1_05_Bright_Direction_Youre_a_Dark_Star_Now_c.mp3",
+        "pageURL": "/music/0,30357/Hiss-Golden-Messenger-mp3-flac-download--School-Daze--A-Fundraiser-for-Durham-Public-Schools-Students.html",
+        "containerID": 30357,
+        "trackID": 542188,
+        "songID": 61610,
+        "img": {
+         "picID": 41243,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/hissSD_01.jpg"
+        },
+        "venueCity": null,
+        "venueState": null,
+        "venueName": null,
+        "venue": null,
+        "availability": 1,
+        "availabilityStr": "AVAILABLE"
+       },
+       {
+        "containerName": "Hiss Golden Messenger, 2021/12/11 The Pour House, Charleston, SC ",
+        "performanceDate": "12/11/2021",
+        "artistName": "Hiss Golden Messenger",
+        "artistID": "1496",
+        "clipURL": "https://assets.nugs.net/clips2/hiss211211d1_11_Bright_Direction_Youre_a_Dark_Star_Now_c.mp3",
+        "pageURL": "/live-music/0,29935/Hiss-Golden-Messenger-mp3-flac-download-12-11-2021-The-Pour-House-Charleston-SC.html",
+        "containerID": 29935,
+        "trackID": 535964,
+        "songID": 61610,
+        "img": {
+         "picID": 40836,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/hiss211211_01.jpg"
+        },
+        "venueCity": "Charleston",
+        "venueState": "SC",
+        "venueName": "The Pour House",
+        "venue": "The Pour House, Charleston, SC ",
+        "availability": 1,
+        "availabilityStr": "AVAILABLE"
+       },
+       {
+        "containerName": "Hiss Golden Messenger, 2022/02/25 Wise Eyes: Live at The Neptune, Seattle, WA ",
+        "performanceDate": "2/25/2022",
+        "artistName": "Hiss Golden Messenger",
+        "artistID": "1496",
+        "clipURL": "https://assets.nugs.net/clips2/hiss250225d1_05_Bright_Direction_Youre_a_Dark_Star_Now_c.mp3",
+        "pageURL": "/live-music/0,29656/Hiss-Golden-Messenger-mp3-flac-download-2-25-2022-Wise-Eyes--Live-at-The-Neptune-Seattle-WA.html",
+        "containerID": 29656,
+        "trackID": 531448,
+        "songID": 61610,
+        "img": {
+         "picID": 40527,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/hiss250225_01.jpg"
+        },
+        "venueCity": "Seattle",
+        "venueState": "WA",
+        "venueName": "Wise Eyes: Live at The Neptune",
+        "venue": "Wise Eyes: Live at The Neptune, Seattle, WA ",
+        "availability": 1,
+        "availabilityStr": "AVAILABLE"
+       }
+      ],
+      "matchedStr": "Bright Direction (You're a Dark Star Now)",
+      "strMatchType": "Song",
+      "matchType": 2
+     },
+     {
+      "scHeader": "Song: Dark Star",
+      "catalogSearchResultItems": [
+       {
+        "containerName": "ALO, 2024/10/26 River Oak Gardens, Chico, CA ",
+        "performanceDate": "10/26/2024",
+        "artistName": "ALO",
+        "artistID": "512",
+        "clipURL": "https://assets.nugs.net/clips2/alo241026d2_02_Dark_Star_c.mp3",
+        "pageURL": "/live-music/0,39571/ALO-mp3-flac-download-10-26-2024-River-Oak-Gardens-Chico-CA.html",
+        "containerID": 39571,
+        "trackID": 664838,
+        "songID": 15441,
+        "img": {
+         "picID": 51008,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/alo241026_01.jpg"
+        },
+        "venueCity": "Chico",
+        "venueState": "CA",
+        "venueName": "River Oak Gardens",
+        "venue": "River Oak Gardens, Chico, CA ",
+        "availability": 1,
+        "availabilityStr": "AVAILABLE"
+       },
+       {
+        "containerName": "ALO, 2024/10/26 River Oak Gardens, Chico, CA ",
+        "performanceDate": "10/26/2024",
+        "artistName": "ALO",
+        "artistID": "512",
+        "clipURL": "https://assets.nugs.net/clips2/alo241026d2_04_Dark_Star_c.mp3",
+        "pageURL": "/live-music/0,39571/ALO-mp3-flac-download-10-26-2024-River-Oak-Gardens-Chico-CA.html",
+        "containerID": 39571,
+        "trackID": 664840,
+        "songID": 15441,
+        "img": {
+         "picID": 51008,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/alo241026_01.jpg"
+        },
+        "venueCity": "Chico",
+        "venueState": "CA",
+        "venueName": "River Oak Gardens",
+        "venue": "River Oak Gardens, Chico, CA ",
+        "availability": 1,
+        "availabilityStr": "AVAILABLE"
+       },
+       {
+        "containerName": "ALO, 2024/10/26 River Oak Gardens, Chico, CA ",
+        "performanceDate": "10/26/2024",
+        "artistName": "ALO",
+        "artistID": "512",
+        "clipURL": "https://assets.nugs.net/clips2/alo241026d2_06_Dark_Star_c.mp3",
+        "pageURL": "/live-music/0,39571/ALO-mp3-flac-download-10-26-2024-River-Oak-Gardens-Chico-CA.html",
+        "containerID": 39571,
+        "trackID": 664842,
+        "songID": 15441,
+        "img": {
+         "picID": 51008,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/alo241026_01.jpg"
+        },
+        "venueCity": "Chico",
+        "venueState": "CA",
+        "venueName": "River Oak Gardens",
+        "venue": "River Oak Gardens, Chico, CA ",
+        "availability": 1,
+        "availabilityStr": "AVAILABLE"
+       }
+      ],
+      "matchedStr": "Dark Star",
+      "strMatchType": "Song",
+      "matchType": 2
+     },
+     {
+      "scHeader": "Song: Dark Star / Good Morning Little Schoolgirl",
+      "catalogSearchResultItems": [
+       {
+        "containerName": "Gov't Mule, 2022/08/09 State Theatre, Portland, ME ",
+        "performanceDate": "8/9/2022",
+        "artistName": "Gov't Mule",
+        "artistID": "709",
+        "clipURL": "https://assets.nugs.net/clips2/mule220809d2_06_Dark_Star__Good_Morning_Little_Schoolgirl_c.mp3",
+        "pageURL": "/live-music/0,29724/Govt-Mule-mp3-flac-download-8-9-2022-State-Theatre-Portland-ME.html",
+        "containerID": 29724,
+        "trackID": 532405,
+        "songID": 61741,
+        "img": {
+         "picID": 40593,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/mule220809_01.jpg"
+        },
+        "venueCity": "Portland",
+        "venueState": "ME",
+        "venueName": "State Theatre",
+        "venue": "State Theatre, Portland, ME ",
+        "availability": 1,
+        "availabilityStr": "AVAILABLE"
+       }
+      ],
+      "matchedStr": "Dark Star / Good Morning Little Schoolgirl",
+      "strMatchType": "Song",
+      "matchType": 2
+     }
+    ]
+   },
+   {
+    "matchType": 3,
+    "catalogSearchContainers": [
+     {
+      "scHeader": "Venue Name: Dark Star Jubilee",
+      "catalogSearchResultItems": [
+       {
+        "containerName": "Billy Strings, 2019/05/25 Dark Star Jubilee, Thornville, OH ",
+        "performanceDate": "5/25/2019",
+        "artistName": "Billy Strings",
+        "artistID": "1125",
+        "clipURL": null,
+        "pageURL": "/live-music/0,22169/Billy-Strings-mp3-flac-download-5-25-2019-Dark-Star-Jubilee-Thornville-OH.html",
+        "containerID": 22169,
+        "trackID": 0,
+        "songID": 0,
+        "img": {
+         "picID": 32355,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/bstr190525_01.jpg"
+        },
+        "venueCity": "Thornville",
+        "venueState": "OH",
+        "venueName": "Dark Star Jubilee",
+        "venue": "Dark Star Jubilee, Thornville, OH ",
+        "availability": 1,
+        "availabilityStr": "AVAILABLE"
+       },
+       {
+        "containerName": "Daniel Donato, 2024/05/26 Dark Star Jubilee, Thornville, OH ",
+        "performanceDate": "5/26/2024",
+        "artistName": "Daniel Donato",
+        "artistID": "1479",
+        "clipURL": null,
+        "pageURL": "/live-music/0,37382/Daniel-Donato-mp3-flac-download-5-26-2024-Dark-Star-Jubilee-Thornville-OH.html",
+        "containerID": 37382,
+        "trackID": 0,
+        "songID": 0,
+        "img": {
+         "picID": 48641,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/ddonato240526_01.jpg"
+        },
+        "venueCity": "Thornville",
+        "venueState": "OH",
+        "venueName": "Dark Star Jubilee",
+        "venue": "Dark Star Jubilee, Thornville, OH ",
+        "availability": 1,
+        "availabilityStr": "AVAILABLE"
+       },
+       {
+        "containerName": "Daniel Donato, 2025/05/25 Dark Star Jubilee, Thornville, OH ",
+        "performanceDate": "5/25/2025",
+        "artistName": "Daniel Donato",
+        "artistID": "1479",
+        "clipURL": null,
+        "pageURL": "/live-music/0,42733/Daniel-Donato-mp3-flac-download-5-25-2025-Dark-Star-Jubilee-Thornville-OH.html",
+        "containerID": 42733,
+        "trackID": 0,
+        "songID": 0,
+        "img": {
+         "picID": 54392,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/ddonato250525_01.jpg"
+        },
+        "venueCity": "Thornville",
+        "venueState": "OH",
+        "venueName": "Dark Star Jubilee",
+        "venue": "Dark Star Jubilee, Thornville, OH ",
+        "availability": 1,
+        "availabilityStr": "AVAILABLE"
+       }
+      ],
+      "matchedStr": "Dark Star Jubilee",
+      "strMatchType": "Venue Name",
+      "matchType": 3
+     },
+     {
+      "scHeader": "Venue Name: Dark Star Jubilee @ Legend Valley",
+      "catalogSearchResultItems": [
+       {
+        "containerName": "Dark Star Orchestra, 2026/05/22 Dark Star Jubilee @ Legend Valley, Thornville, OH ",
+        "performanceDate": "5/22/2026",
+        "artistName": "Dark Star Orchestra",
+        "artistID": "291",
+        "clipURL": null,
+        "pageURL": "/live-music/0,48533/Dark-Star-Orchestra-mp3-flac-download-5-22-2026-Dark-Star-Jubilee-@-Legend-Valley-Thornville-OH.html",
+        "containerID": 48533,
+        "trackID": 0,
+        "songID": 0,
+        "img": {
+         "picID": 60663,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/dso260522_01.jpg"
+        },
+        "venueCity": "Thornville",
+        "venueState": "OH",
+        "venueName": "Dark Star Jubilee @ Legend Valley",
+        "venue": "Dark Star Jubilee @ Legend Valley, Thornville, OH ",
+        "availability": 2,
+        "availabilityStr": "PREORDER"
+       },
+       {
+        "containerName": "Dark Star Orchestra, 2026/05/23 Dark Star Jubilee @ Legend Valley, Thornville, OH ",
+        "performanceDate": "5/23/2026",
+        "artistName": "Dark Star Orchestra",
+        "artistID": "291",
+        "clipURL": null,
+        "pageURL": "/live-music/0,48534/Dark-Star-Orchestra-mp3-flac-download-5-23-2026-Dark-Star-Jubilee-@-Legend-Valley-Thornville-OH.html",
+        "containerID": 48534,
+        "trackID": 0,
+        "songID": 0,
+        "img": {
+         "picID": 60732,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/dso260523_01.jpg"
+        },
+        "venueCity": "Thornville",
+        "venueState": "OH",
+        "venueName": "Dark Star Jubilee @ Legend Valley",
+        "venue": "Dark Star Jubilee @ Legend Valley, Thornville, OH ",
+        "availability": 2,
+        "availabilityStr": "PREORDER"
+       },
+       {
+        "containerName": "Dark Star Orchestra, 2026/05/24 Dark Star Jubilee @ Legend Valley, Thornville, OH ",
+        "performanceDate": "5/24/2026",
+        "artistName": "Dark Star Orchestra",
+        "artistID": "291",
+        "clipURL": null,
+        "pageURL": "/live-music/0,48535/Dark-Star-Orchestra-mp3-flac-download-5-24-2026-Dark-Star-Jubilee-@-Legend-Valley-Thornville-OH.html",
+        "containerID": 48535,
+        "trackID": 0,
+        "songID": 0,
+        "img": {
+         "picID": 60731,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/dso260524_01.jpg"
+        },
+        "venueCity": "Thornville",
+        "venueState": "OH",
+        "venueName": "Dark Star Jubilee @ Legend Valley",
+        "venue": "Dark Star Jubilee @ Legend Valley, Thornville, OH ",
+        "availability": 2,
+        "availabilityStr": "PREORDER"
+       }
+      ],
+      "matchedStr": "Dark Star Jubilee @ Legend Valley",
+      "strMatchType": "Venue Name",
+      "matchType": 3
+     },
+     {
+      "scHeader": "Venue Name: Dark Star Jubilee DSO Setlist",
+      "catalogSearchResultItems": [
+       {
+        "containerName": "Dark Star Orchestra, 2016/05/28 Dark Star Jubilee DSO Setlist, Thornville, OH ",
+        "performanceDate": "5/28/2016",
+        "artistName": "Dark Star Orchestra",
+        "artistID": "291",
+        "clipURL": null,
+        "pageURL": "/live-music/0,14794/Dark-Star-Orchestra-mp3-flac-download-5-28-2016-Dark-Star-Jubilee-DSO-Setlist-Thornville-OH.html",
+        "containerID": 14794,
+        "trackID": 0,
+        "songID": 0,
+        "img": {
+         "picID": 48008,
+         "orderID": 1,
+         "height": 160,
+         "width": 290,
+         "caption": "",
+         "url": "/images/shows/dso160528_02.jpg"
+        },
+        "venueCity": "Thornville",
+        "venueState": "OH",
+        "venueName": "Dark Star Jubilee DSO Setlist",
+        "venue": "Dark Star Jubilee DSO Setlist, Thornville, OH ",
+        "availability": 1,
+        "availabilityStr": "AVAILABLE"
+       }
+      ],
+      "matchedStr": "Dark Star Jubilee DSO Setlist",
+      "strMatchType": "Venue Name",
+      "matchType": 3
+     }
+    ]
+   }
+  ],
+  "searchError": 0,
+  "searchErrorStr": "VALID"
+ }
+}

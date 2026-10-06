@@ -31,6 +31,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/navidrome"
+	"github.com/madeofpendletonwool/syncphony/server/internal/provider/nugs"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/spotify"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/spotify/streaming"
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
@@ -123,6 +124,9 @@ func providers(cfg config.Config) (*provider.Registry, func(), error) {
 		closeAll = func() { audio.Close() }
 	} else {
 		slog.Info("Spotify is off: set SYNCPHONY_SPOTIFY_CLIENT_ID and SYNCPHONY_SPOTIFY_CLIENT_SECRET to offer it")
+	}
+	if cfg.Nugs {
+		ps = append(ps, nugs.New(nugs.Options{}))
 	}
 	if cfg.FakeProvider {
 		ps = append(ps, fake.New(fake.Options{}))

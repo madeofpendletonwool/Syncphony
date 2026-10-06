@@ -36,6 +36,8 @@ type Config struct {
 	// SpotifyClientID and SpotifyClientSecret are the Spotify developer
 	// app's. Spotify is offered only when the client ID is set.
 	SpotifyClientID, SpotifyClientSecret string
+	// Nugs offers nugs.net, through its apps' private API. On by default.
+	Nugs bool
 	// LRCLIBURL is the LRCLIB instance asked for lyrics a song's own
 	// service doesn't have, e.g. a self-hosted one. Empty turns it off.
 	LRCLIBURL string
@@ -76,6 +78,13 @@ func Load() (Config, error) {
 	case "false", "0":
 	default:
 		return Config{}, fmt.Errorf("SYNCPHONY_FAKE_PROVIDER %q: want true or false", v)
+	}
+	switch v := env("SYNCPHONY_NUGS", "true"); v {
+	case "true", "1":
+		c.Nugs = true
+	case "false", "0":
+	default:
+		return Config{}, fmt.Errorf("SYNCPHONY_NUGS %q: want true or false", v)
 	}
 	c.SpotifyClientID = strings.TrimSpace(os.Getenv("SYNCPHONY_SPOTIFY_CLIENT_ID"))
 	c.SpotifyClientSecret = strings.TrimSpace(os.Getenv("SYNCPHONY_SPOTIFY_CLIENT_SECRET"))

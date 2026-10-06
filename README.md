@@ -2,7 +2,7 @@
 
 One shared music queue for a group of friends, across everyone's streaming services.
 
-Each friend links their own service (self-hosted Navidrome, Spotify, and more later). Everyone searches and adds songs. Syncphony plays them in **fair turns** from whichever service each song came from, through one player: usually a phone running the web app, connected to a Bluetooth speaker.
+Each friend links their own service (self-hosted Navidrome, Spotify, nugs.net, and more later). Everyone searches and adds songs. Syncphony plays them in **fair turns** from whichever service each song came from, through one player: usually a phone running the web app, connected to a Bluetooth speaker.
 
 > **Status:** early. Phases 0–2 are in place: you can host a hangout with Navidrome and a phone on a Bluetooth speaker. See the roadmap below.
 
@@ -46,6 +46,7 @@ server/                 Go module
     fake/               in-memory provider for tests and UI development
     providertest/       conformance suite every provider runs
     navidrome/          Navidrome (Subsonic API)
+    nugs/               nugs.net live recordings (its apps' private API)
     spotify/            Spotify: Web API, linking
       streaming/        Spotify's streaming protocol, via go-librespot
   internal/transcode/   ffmpeg fallback for formats the player can't decode
@@ -97,6 +98,8 @@ This serves on port 8080, ready for your existing reverse proxy. If you don't ha
 3. Put the app's client ID and secret in `SYNCPHONY_SPOTIFY_CLIENT_ID` and `SYNCPHONY_SPOTIFY_CLIENT_SECRET` (in `.env` next to `compose.yml`), and restart.
 
 Friends link Spotify by approving a code at spotify.com/pair, from any device. The server searches with the app's own token and streams through each friend's account, so every linked account needs Premium. Your Liked Songs and Spotify playlists, most recently played first, show on the Search screen before you search. Spotify won't let Syncphony play some songs; those are refused when you add them. [ADR 0004](docs/adr/0004-spotify-playback.md) explains why.
+
+**nugs.net:** offered out of the box (set `SYNCPHONY_NUGS=false` to hide it). Friends link with their nugs.net email and password, which are used once to sign in; Syncphony keeps a sign-in token, not the password. Playing needs an active subscription. Search finds songs, artists, venues and albums; every performance of a song is listed, titled by the show's date and venue. nugs.net has no public API, so this uses the one its apps use, and may break if nugs.net changes it. [ADR 0009](docs/adr/0009-nugs.md) has the details.
 
 Images are published to `ghcr.io/madeofpendletonwool/syncphony`: `:main` tracks the main branch, and `v*` tags publish `:X.Y.Z` and `:latest`. Pick one with `SYNCPHONY_TAG` (e.g. `SYNCPHONY_TAG=main`).
 
