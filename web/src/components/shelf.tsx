@@ -1,41 +1,84 @@
-import { motion } from 'motion/react'
-import { useEffect, useRef, type ReactNode } from 'react'
+import { cn } from 'cn'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { motion, useReducedMotion } from 'motion/react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Button } from '@/components/ui/button'
 import { stagger } from '@/lib/motion'
 
-/** A sideways-scrolling row that bleeds to the screen edges. */
+/**
+ * A sideways-scrolling row that bleeds to the screen edges. Fingers and
+ * trackpads swipe it; mouse users get a thin scrollbar and, on hover,
+ * arrows that page through it (MAD-738).
+ */
 export function Shelf({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
+  const reduced = useReducedMotion()
+  const [ends, setEnds] = useState({ start: true, end: true })
 
-  // A mouse wheel only spins vertically and the scrollbar is hidden on
-  // touch screens, so a shelf could not be scrolled on desktop at all
-  // (MAD-738). Turn a vertical wheel over the shelf into sideways
-  // scrolling, and hand the wheel back to the page once the row reaches
-  // its end.
+  const measure = useCallback(() => {
+    const el = ref.current
+    if (!el) return
+    // A pixel of slack: scrollLeft is fractional on zoomed or HiDPI screens.
+    const start = el.scrollLeft <= 1
+    const end = el.scrollLeft >= el.scrollWidth - el.clientWidth - 1
+    setEnds((e) => (e.start === start && e.end === end ? e : { start, end }))
+  }, [])
+
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    const onWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.deltaX !== 0 || e.deltaY === 0) return
-      const delta = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * 33 : e.deltaY
-      const max = el.scrollWidth - el.clientWidth
-      const next = Math.min(Math.max(el.scrollLeft + delta, 0), max)
-      if (max <= 0 || next === el.scrollLeft) return
-      e.preventDefault()
-      el.scrollLeft = next
+    el.addEventListener('scroll', measure, { passive: true })
+    const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure)
+    resize?.observe(el)
+    return () => {
+      el.removeEventListener('scroll', measure)
+      resize?.disconnect()
     }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-  }, [])
+  }, [measure])
+
+  // New cards change the row's width without resizing the row itself.
+  useEffect(measure, [measure, children])
+
+  // Most of a screen at a time, so the last card in view stays in sight;
+  // scroll snapping then lines the row up on a card.
+  const page = (dir: 1 | -1) => {
+    const el = ref.current
+    el?.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: reduced ? 'auto' : 'smooth' })
+  }
 
   return (
-    <motion.div
-      ref={ref}
-      variants={stagger}
-      initial="hidden"
-      animate="show"
-      className="-mx-gutter flex snap-x snap-mandatory scroll-px-gutter gap-4 overflow-x-auto px-gutter pb-2 no-scrollbar"
+    <div className="group/shelf relative -mx-gutter">
+      <motion.div
+        ref={ref}
+        variants={stagger}
+        initial="hidden"
+        animate="show"
+        className="flex snap-x snap-mandatory scroll-px-gutter gap-4 overflow-x-auto px-gutter pb-2 shelf-scrollbar"
+      >
+        {children}
+      </motion.div>
+      {!ends.start && <Arrow side="start" onClick={() => page(-1)} />}
+      {!ends.end && <Arrow side="end" onClick={() => page(1)} />}
+    </div>
+  )
+}
+
+// Mouse only: touch screens swipe, and keyboard users tab through the cards,
+// which scrolls them into view.
+function Arrow({ side, onClick }: { side: 'start' | 'end'; onClick: () => void }) {
+  return (
+    <Button
+      variant="glass"
+      size="icon"
+      tabIndex={-1}
+      aria-label={side === 'start' ? 'Scroll back' : 'Scroll forward'}
+      onClick={onClick}
+      className={cn(
+        'absolute top-1/2 hidden -translate-y-1/2 opacity-0 shadow-lg group-hover/shelf:opacity-100 pointer-fine:inline-flex',
+        side === 'start' ? 'left-2' : 'right-2',
+      )}
     >
-      {children}
-    </motion.div>
+      {side === 'start' ? <ChevronLeft className="size-5" /> : <ChevronRight className="size-5" />}
+    </Button>
   )
 }

@@ -364,7 +364,7 @@
  * users need one — fully hidden, a desktop row could not be scrolled at
  * all (MAD-738). Fine pointers get a thin, quiet bar.
  */
-@utility no-scrollbar {
+@utility shelf-scrollbar {
   scrollbar-width: none;
   &::-webkit-scrollbar {
     display: none;
