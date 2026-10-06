@@ -1055,6 +1055,59 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /random-tracks:
+    get:
+      operationId: getRandomTracks
+      summary: Songs picked at random from services you can use
+      description: |
+        For "surprise me": songs from your links and shared ones whose
+        service can pick at random, mixed together.
+      tags: [browse]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 5
+      responses:
+        "200":
+          description: Random songs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackList"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /links/{id}/collection:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getCollection
+      summary: Shortcuts into the library of one of your links or a shared one
+      description: >-
+        Saved albums and artists, and albums recently added, played most,
+        and played lately, for something to pick before searching. Saved
+        songs are a playlist instead. A list the service can't make is
+        empty. `not_found` if the service has none of this (its
+        `capabilities.collection` is false).
+      tags: [browse]
+      responses:
+        "200":
+          description: The link's collection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkCollection"
+        default:
+          $ref: "#/components/responses/Error"
+
   /links/{id}/artwork:
     parameters:
       - name: id
@@ -1338,6 +1391,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QueueSnapshot"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/queue/{itemId}/similar:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getQueueItemSimilar
+      summary: Songs like one the room queued, from services you can use
+      description: |
+        For "more like what's playing". Asks each of your links and the
+        shared ones whose service recommends (Navidrome through Last.fm,
+        say), finding the song there first if it came from elsewhere.
+        Most alike first, taking turns between services. Empty when no
+        service knows anything similar.
+      tags: [browse]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Similar songs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackList"
         default:
           $ref: "#/components/responses/Error"
 
@@ -2745,7 +2834,7 @@ components:
             $ref: "#/components/schemas/LinkField"
         capabilities:
           type: object
-          required: [search, playlists, artwork, lyrics, isrc, shareable]
+          required: [search, playlists, collection, recommendations, artwork, lyrics, isrc, shareable]
           properties:
             search:
               type: array
@@ -2754,6 +2843,12 @@ components:
                 enum: [track, album, artist, playlist]
             playlists:
               type: boolean
+            collection:
+              type: boolean
+              description: The service has saved albums and artists, and lists of albums (`GET /links/{id}/collection`).
+            recommendations:
+              type: boolean
+              description: The service suggests similar and random songs (autopilot, `/random-tracks`, a queued song's `similar`).
             artwork:
               type: boolean
             lyrics:
@@ -3272,6 +3367,47 @@ components:
         next:
           type: string
           description: Cursor for the next page; absent on the last.
+
+    TrackList:
+      type: object
+      required: [tracks]
+      properties:
+        tracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrackResult"
+
+    LinkCollection:
+      type: object
+      required: [linkId, provider, savedAlbums, savedArtists, recentlyAdded, mostPlayed, recentlyPlayed]
+      properties:
+        linkId:
+          type: string
+        provider:
+          type: string
+        savedAlbums:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlbumResult"
+        savedArtists:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArtistResult"
+        recentlyAdded:
+          type: array
+          description: Albums added to the library lately, newest first.
+          items:
+            $ref: "#/components/schemas/AlbumResult"
+        mostPlayed:
+          type: array
+          description: The albums the account plays most, by the service's count.
+          items:
+            $ref: "#/components/schemas/AlbumResult"
+        recentlyPlayed:
+          type: array
+          description: Albums the account played lately, most recent first.
+          items:
+            $ref: "#/components/schemas/AlbumResult"
 
     PlaylistTracks:
       type: object

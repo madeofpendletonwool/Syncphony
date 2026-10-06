@@ -204,11 +204,39 @@ type response struct {
 	SimilarSongs2 *songList      `json:"similarSongs2"`
 	TopSongs      *songList      `json:"topSongs"`
 	RandomSongs   *songList      `json:"randomSongs"`
+	Playlists     *playlists     `json:"playlists"`
+	Playlist      *playlist      `json:"playlist"`
+	Starred2      *starred       `json:"starred2"`
+	AlbumList2    *albumList     `json:"albumList2"`
 }
 
 // songList is the shape of the methods that return a list of songs.
 type songList struct {
 	Song []song `json:"song"`
+}
+
+type playlists struct {
+	Playlist []playlist `json:"playlist"`
+}
+
+type playlist struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Owner     string `json:"owner"`
+	SongCount int    `json:"songCount"`
+	CoverArt  string `json:"coverArt"`
+	Entry     []song `json:"entry"`
+}
+
+// starred is getStarred2's result.
+type starred struct {
+	Artist []artist `json:"artist"`
+	Album  []album  `json:"album"`
+	Song   []song   `json:"song"`
+}
+
+type albumList struct {
+	Album []album `json:"album"`
 }
 
 type apiError struct {

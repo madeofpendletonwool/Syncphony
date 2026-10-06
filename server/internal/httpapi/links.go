@@ -30,7 +30,7 @@ func toProviderInfo(p provider.Provider) ProviderInfo {
 	}
 	c := info.Capabilities
 	out.Capabilities.Artwork, out.Capabilities.Isrc, out.Capabilities.Lyrics, out.Capabilities.Playlists = c.Artwork, c.ISRC, c.Lyrics, c.Playlists
-	out.Capabilities.Shareable = c.Shareable
+	out.Capabilities.Shareable, out.Capabilities.Collection, out.Capabilities.Recommendations = c.Shareable, c.Collection, c.Recommendations
 	out.Capabilities.Search = []ProviderInfoCapabilitiesSearch{}
 	for _, k := range c.Search {
 		out.Capabilities.Search = append(out.Capabilities.Search, ProviderInfoCapabilitiesSearch(k))

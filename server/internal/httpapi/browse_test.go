@@ -194,3 +194,74 @@ func TestPlaylists(t *testing.T) {
 		}
 	}
 }
+
+func TestCollection(t *testing.T) {
+	e := newEnv(t)
+	alice := e.admin()
+	bob := e.member(alice, "bob")
+	var l httpapi.ServiceLink
+	alice.want(http.StatusCreated, "POST", "/links", httpapi.CreateLinkRequest{Provider: "fake", Fields: demoFields}).decode(t, &l)
+
+	var c httpapi.LinkCollection
+	alice.want(http.StatusOK, "GET", "/links/"+l.Id+"/collection", nil).decode(t, &c)
+	if c.LinkId != l.Id || c.Provider != "fake" || len(c.SavedAlbums) != 3 || len(c.SavedArtists) != 1 {
+		t.Fatalf("collection: %+v", c)
+	}
+	if len(c.RecentlyAdded) != 6 || c.RecentlyAdded[0].Title != "Overtones" || len(c.MostPlayed) != 6 || len(c.RecentlyPlayed) != 3 {
+		t.Fatalf("album lists: %d added, %d most played, %d recently played", len(c.RecentlyAdded), len(c.MostPlayed), len(c.RecentlyPlayed))
+	}
+
+	if r := bob.do("GET", "/links/"+l.Id+"/collection", nil); r.status != http.StatusNotFound {
+		t.Fatalf("bob browsing alice's link: %d", r.status)
+	}
+	e.fake.Fail(provider.ErrUnavailable)
+	if r := alice.do("GET", "/links/"+l.Id+"/collection", nil); r.status != http.StatusBadGateway {
+		t.Fatalf("outage: %d", r.status)
+	}
+}
+
+func TestSuggestions(t *testing.T) {
+	e := newEnv(t)
+	alice := e.admin()
+	bob := e.member(alice, "bob")
+	var l httpapi.ServiceLink
+	alice.want(http.StatusCreated, "POST", "/links", httpapi.CreateLinkRequest{Provider: "fake", Fields: demoFields}).decode(t, &l)
+	tr := search(t, alice, "Reference Tone").Groups[0].Tracks[0]
+
+	var room httpapi.Room
+	alice.want(http.StatusCreated, "POST", "/rooms", httpapi.CreateRoomRequest{Name: "Den"}).decode(t, &room)
+	var snap httpapi.QueueSnapshot
+	alice.want(http.StatusOK, "POST", "/rooms/"+room.Id+"/queue", httpapi.AddToQueueRequest{
+		Items: []httpapi.TrackToQueue{{LinkId: &tr.LinkId, TrackId: &tr.TrackId}},
+	}).decode(t, &snap)
+	path := "/rooms/" + room.Id + "/queue/" + snap.Items[0].Id + "/similar"
+
+	var similar httpapi.TrackList
+	alice.want(http.StatusOK, "GET", path+"?limit=3", nil).decode(t, &similar)
+	if len(similar.Tracks) == 0 || len(similar.Tracks) > 3 {
+		t.Fatalf("similar: %d tracks", len(similar.Tracks))
+	}
+	for _, s := range similar.Tracks {
+		if s.Title == tr.Title || s.LinkId != l.Id {
+			t.Errorf("similar track: %+v", s)
+		}
+	}
+	// Bob has no services of his own, so nothing to suggest from.
+	bob.want(http.StatusOK, "GET", path, nil).decode(t, &similar)
+	if len(similar.Tracks) != 0 {
+		t.Fatalf("bob's similar: %+v", similar.Tracks)
+	}
+	if r := alice.do("GET", "/rooms/"+room.Id+"/queue/nope/similar", nil); r.status != http.StatusNotFound {
+		t.Fatalf("missing item: %d", r.status)
+	}
+
+	var random httpapi.TrackList
+	alice.want(http.StatusOK, "GET", "/random-tracks?limit=2", nil).decode(t, &random)
+	if len(random.Tracks) != 2 || random.Tracks[0].LinkId != l.Id {
+		t.Fatalf("random: %+v", random.Tracks)
+	}
+	bob.want(http.StatusOK, "GET", "/random-tracks", nil).decode(t, &random)
+	if len(random.Tracks) != 0 {
+		t.Fatalf("bob's random: %+v", random.Tracks)
+	}
+}

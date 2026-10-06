@@ -970,6 +970,23 @@ type LinerNotesRelease struct {
 	Type *string `json:"type,omitempty"`
 }
 
+// LinkCollection defines model for LinkCollection.
+type LinkCollection struct {
+	LinkId string `json:"linkId"`
+
+	// MostPlayed The albums the account plays most, by the service's count.
+	MostPlayed []AlbumResult `json:"mostPlayed"`
+	Provider   string        `json:"provider"`
+
+	// RecentlyAdded Albums added to the library lately, newest first.
+	RecentlyAdded []AlbumResult `json:"recentlyAdded"`
+
+	// RecentlyPlayed Albums the account played lately, most recent first.
+	RecentlyPlayed []AlbumResult  `json:"recentlyPlayed"`
+	SavedAlbums    []AlbumResult  `json:"savedAlbums"`
+	SavedArtists   []ArtistResult `json:"savedArtists"`
+}
+
 // LinkField defines model for LinkField.
 type LinkField struct {
 	Help *string `json:"help,omitempty"`
@@ -1332,11 +1349,17 @@ type ProfileUpdate struct {
 // ProviderInfo defines model for ProviderInfo.
 type ProviderInfo struct {
 	Capabilities struct {
-		Artwork   bool                             `json:"artwork"`
-		Isrc      bool                             `json:"isrc"`
-		Lyrics    bool                             `json:"lyrics"`
-		Playlists bool                             `json:"playlists"`
-		Search    []ProviderInfoCapabilitiesSearch `json:"search"`
+		Artwork bool `json:"artwork"`
+
+		// Collection The service has saved albums and artists, and lists of albums (`GET /links/{id}/collection`).
+		Collection bool `json:"collection"`
+		Isrc       bool `json:"isrc"`
+		Lyrics     bool `json:"lyrics"`
+		Playlists  bool `json:"playlists"`
+
+		// Recommendations The service suggests similar and random songs (autopilot, `/random-tracks`, a queued song's `similar`).
+		Recommendations bool                             `json:"recommendations"`
+		Search          []ProviderInfoCapabilitiesSearch `json:"search"`
 
 		// Shareable Links to this service can be shared with everyone on the server.
 		Shareable bool `json:"shareable"`
@@ -1827,6 +1850,11 @@ type TrackCount struct {
 	Plays int       `json:"plays"`
 }
 
+// TrackList defines model for TrackList.
+type TrackList struct {
+	Tracks []TrackResult `json:"tracks"`
+}
+
 // TrackResult A track you can queue with `linkId` and `trackId`.
 type TrackResult struct {
 	Album   *AlbumCredit   `json:"album,omitempty"`
@@ -1984,6 +2012,11 @@ type RenamePasskeyJSONBody struct {
 	Name string `json:"name"`
 }
 
+// GetRandomTracksParams defines parameters for GetRandomTracks.
+type GetRandomTracksParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // GetHistoryParams defines parameters for GetHistory.
 type GetHistoryParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
@@ -2009,6 +2042,11 @@ type ReleasePlayerParams struct {
 type GetQueueItemArtworkParams struct {
 	// Size Wanted width in pixels; a hint.
 	Size *int `form:"size,omitempty" json:"size,omitempty"`
+}
+
+// GetQueueItemSimilarParams defines parameters for GetQueueItemSimilar.
+type GetQueueItemSimilarParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListSessionsParams defines parameters for ListSessions.
@@ -2234,6 +2272,9 @@ type ServerInterface interface {
 	// GetLinkArtwork An image from one of your links or a shared one
 	// (GET /links/{id}/artwork)
 	GetLinkArtwork(w http.ResponseWriter, r *http.Request, id string, params GetLinkArtworkParams)
+	// GetCollection Shortcuts into the library of one of your links or a shared one
+	// (GET /links/{id}/collection)
+	GetCollection(w http.ResponseWriter, r *http.Request, id string)
 	// ListPlaylists The playlists of one of your links or a shared one
 	// (GET /links/{id}/playlists)
 	ListPlaylists(w http.ResponseWriter, r *http.Request, id string, params ListPlaylistsParams)
@@ -2291,6 +2332,9 @@ type ServerInterface interface {
 	// ListProviders Services that can be linked
 	// (GET /providers)
 	ListProviders(w http.ResponseWriter, r *http.Request)
+	// GetRandomTracks Songs picked at random from services you can use
+	// (GET /random-tracks)
+	GetRandomTracks(w http.ResponseWriter, r *http.Request, params GetRandomTracksParams)
 	// ListResetLinks Reset links waiting to be used (admin)
 	// (GET /reset-links)
 	ListResetLinks(w http.ResponseWriter, r *http.Request)
@@ -2402,6 +2446,9 @@ type ServerInterface interface {
 	// GetQueueItemPalette A queued song's artwork colors
 	// (GET /rooms/{roomId}/queue/{itemId}/palette)
 	GetQueueItemPalette(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
+	// GetQueueItemSimilar Songs like one the room queued, from services you can use
+	// (GET /rooms/{roomId}/queue/{itemId}/similar)
+	GetQueueItemSimilar(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params GetQueueItemSimilarParams)
 	// SendReaction Send an emoji reaction to the room
 	// (POST /rooms/{roomId}/reactions)
 	SendReaction(w http.ResponseWriter, r *http.Request, roomId RoomId)
@@ -3066,6 +3113,32 @@ func (siw *ServerInterfaceWrapper) GetLinkArtwork(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// GetCollection operation middleware
+func (siw *ServerInterfaceWrapper) GetCollection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCollection(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListPlaylists operation middleware
 func (siw *ServerInterfaceWrapper) ListPlaylists(w http.ResponseWriter, r *http.Request) {
 
@@ -3457,6 +3530,39 @@ func (siw *ServerInterfaceWrapper) ListProviders(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListProviders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRandomTracks operation middleware
+func (siw *ServerInterfaceWrapper) GetRandomTracks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetRandomTracksParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRandomTracks(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4590,6 +4696,57 @@ func (siw *ServerInterfaceWrapper) GetQueueItemPalette(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// GetQueueItemSimilar operation middleware
+func (siw *ServerInterfaceWrapper) GetQueueItemSimilar(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetQueueItemSimilarParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetQueueItemSimilar(w, r, roomId, itemId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SendReaction operation middleware
 func (siw *ServerInterfaceWrapper) SendReaction(w http.ResponseWriter, r *http.Request) {
 
@@ -5187,6 +5344,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artists/{artistId}", wrapper.GetArtist)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/playlists", wrapper.ListPlaylists)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/playlists/{playlistId}/tracks", wrapper.GetPlaylistTracks)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/random-tracks", wrapper.GetRandomTracks)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/collection", wrapper.GetCollection)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artwork", wrapper.GetLinkArtwork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.GetQueue)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.AddToQueue)
@@ -5196,6 +5355,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/suggestions", wrapper.GetSuggestions)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.RemoveQueueItem)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.MoveQueueItem)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/similar", wrapper.GetQueueItemSimilar)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/artwork", wrapper.GetQueueItemArtwork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/palette", wrapper.GetQueueItemPalette)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/lyrics", wrapper.GetQueueItemLyrics)
@@ -6314,6 +6474,45 @@ func (response GetLinkArtworkdefaultJSONResponse) VisitGetLinkArtworkResponse(w 
 	return err
 }
 
+type GetCollectionRequestObject struct {
+	Id string `json:"id"`
+}
+
+type GetCollectionResponseObject interface {
+	VisitGetCollectionResponse(w http.ResponseWriter) error
+}
+
+type GetCollection200JSONResponse LinkCollection
+
+func (response GetCollection200JSONResponse) VisitGetCollectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCollectiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetCollectiondefaultJSONResponse) VisitGetCollectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListPlaylistsRequestObject struct {
 	Id     string `json:"id"`
 	Params ListPlaylistsParams
@@ -7007,6 +7206,45 @@ type ListProvidersdefaultJSONResponse struct {
 }
 
 func (response ListProvidersdefaultJSONResponse) VisitListProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRandomTracksRequestObject struct {
+	Params GetRandomTracksParams
+}
+
+type GetRandomTracksResponseObject interface {
+	VisitGetRandomTracksResponse(w http.ResponseWriter) error
+}
+
+type GetRandomTracks200JSONResponse TrackList
+
+func (response GetRandomTracks200JSONResponse) VisitGetRandomTracksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRandomTracksdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetRandomTracksdefaultJSONResponse) VisitGetRandomTracksResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -8481,6 +8719,47 @@ func (response GetQueueItemPalettedefaultJSONResponse) VisitGetQueueItemPaletteR
 	return err
 }
 
+type GetQueueItemSimilarRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	ItemId string `json:"itemId"`
+	Params GetQueueItemSimilarParams
+}
+
+type GetQueueItemSimilarResponseObject interface {
+	VisitGetQueueItemSimilarResponse(w http.ResponseWriter) error
+}
+
+type GetQueueItemSimilar200JSONResponse TrackList
+
+func (response GetQueueItemSimilar200JSONResponse) VisitGetQueueItemSimilarResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQueueItemSimilardefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetQueueItemSimilardefaultJSONResponse) VisitGetQueueItemSimilarResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SendReactionRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 	Body   *SendReactionJSONRequestBody
@@ -8992,6 +9271,9 @@ type StrictServerInterface interface {
 	// GetLinkArtwork An image from one of your links or a shared one
 	// (GET /links/{id}/artwork)
 	GetLinkArtwork(ctx context.Context, request GetLinkArtworkRequestObject) (GetLinkArtworkResponseObject, error)
+	// GetCollection Shortcuts into the library of one of your links or a shared one
+	// (GET /links/{id}/collection)
+	GetCollection(ctx context.Context, request GetCollectionRequestObject) (GetCollectionResponseObject, error)
 	// ListPlaylists The playlists of one of your links or a shared one
 	// (GET /links/{id}/playlists)
 	ListPlaylists(ctx context.Context, request ListPlaylistsRequestObject) (ListPlaylistsResponseObject, error)
@@ -9049,6 +9331,9 @@ type StrictServerInterface interface {
 	// ListProviders Services that can be linked
 	// (GET /providers)
 	ListProviders(ctx context.Context, request ListProvidersRequestObject) (ListProvidersResponseObject, error)
+	// GetRandomTracks Songs picked at random from services you can use
+	// (GET /random-tracks)
+	GetRandomTracks(ctx context.Context, request GetRandomTracksRequestObject) (GetRandomTracksResponseObject, error)
 	// ListResetLinks Reset links waiting to be used (admin)
 	// (GET /reset-links)
 	ListResetLinks(ctx context.Context, request ListResetLinksRequestObject) (ListResetLinksResponseObject, error)
@@ -9160,6 +9445,9 @@ type StrictServerInterface interface {
 	// GetQueueItemPalette A queued song's artwork colors
 	// (GET /rooms/{roomId}/queue/{itemId}/palette)
 	GetQueueItemPalette(ctx context.Context, request GetQueueItemPaletteRequestObject) (GetQueueItemPaletteResponseObject, error)
+	// GetQueueItemSimilar Songs like one the room queued, from services you can use
+	// (GET /rooms/{roomId}/queue/{itemId}/similar)
+	GetQueueItemSimilar(ctx context.Context, request GetQueueItemSimilarRequestObject) (GetQueueItemSimilarResponseObject, error)
 	// SendReaction Send an emoji reaction to the room
 	// (POST /rooms/{roomId}/reactions)
 	SendReaction(ctx context.Context, request SendReactionRequestObject) (SendReactionResponseObject, error)
@@ -10007,6 +10295,32 @@ func (sh *strictHandler) GetLinkArtwork(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// GetCollection operation middleware
+func (sh *strictHandler) GetCollection(w http.ResponseWriter, r *http.Request, id string) {
+	var request GetCollectionRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCollection(ctx, request.(GetCollectionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCollection")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCollectionResponseObject); ok {
+		if err := validResponse.VisitGetCollectionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListPlaylists operation middleware
 func (sh *strictHandler) ListPlaylists(w http.ResponseWriter, r *http.Request, id string, params ListPlaylistsParams) {
 	var request ListPlaylistsRequestObject
@@ -10513,6 +10827,32 @@ func (sh *strictHandler) ListProviders(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListProvidersResponseObject); ok {
 		if err := validResponse.VisitListProvidersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRandomTracks operation middleware
+func (sh *strictHandler) GetRandomTracks(w http.ResponseWriter, r *http.Request, params GetRandomTracksParams) {
+	var request GetRandomTracksRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRandomTracks(ctx, request.(GetRandomTracksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRandomTracks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRandomTracksResponseObject); ok {
+		if err := validResponse.VisitGetRandomTracksResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -11569,6 +11909,34 @@ func (sh *strictHandler) GetQueueItemPalette(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetQueueItemPaletteResponseObject); ok {
 		if err := validResponse.VisitGetQueueItemPaletteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetQueueItemSimilar operation middleware
+func (sh *strictHandler) GetQueueItemSimilar(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params GetQueueItemSimilarParams) {
+	var request GetQueueItemSimilarRequestObject
+
+	request.RoomId = roomId
+	request.ItemId = itemId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetQueueItemSimilar(ctx, request.(GetQueueItemSimilarRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetQueueItemSimilar")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetQueueItemSimilarResponseObject); ok {
+		if err := validResponse.VisitGetQueueItemSimilarResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

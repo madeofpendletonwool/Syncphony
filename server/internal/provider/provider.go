@@ -51,6 +51,8 @@ type Capabilities struct {
 	Search []EntityKind
 	// Playlists means sessions implement PlaylistLister.
 	Playlists bool
+	// Collection means sessions implement Collection.
+	Collection bool
 	// Artwork means Session.Artwork returns images.
 	Artwork bool
 	// Lyrics means sessions implement Lyricist.

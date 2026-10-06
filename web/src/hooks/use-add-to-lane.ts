@@ -6,6 +6,7 @@ import { useMe } from '@/lib/auth'
 import { isMine } from '@/lib/autopilot'
 import { trackKey, type TrackResult } from '@/lib/browse'
 import { tap } from '@/lib/haptics'
+import type { QueueItem } from '@/lib/playback'
 import { queueQuery, useCurrentRoom, type QueueSnapshot } from '@/lib/room'
 import { createStore, useStore } from '@/lib/store'
 import { toast } from '@/lib/toast'
@@ -14,6 +15,23 @@ export type LaneStatus = 'idle' | 'adding' | 'added'
 
 /** A song to add: from search, or one the room had (`fromItemId`), again. */
 export type LaneTrack = TrackResult & { fromItemId?: string }
+
+/** A song the room had, to add again. linkId is the item's own (it has one). */
+export function laneTrackOf(item: QueueItem, linkId: string): LaneTrack {
+  const t = item.track
+  return {
+    fromItemId: item.id,
+    linkId,
+    provider: t.provider,
+    trackId: t.trackId,
+    title: t.title,
+    artists: t.artists.map((name, i) => ({ name, id: t.artistIds?.[i] || undefined })),
+    album: t.album ? { title: t.album, id: t.albumId } : undefined,
+    durationMs: t.durationMs,
+    explicit: t.explicit,
+    artwork: t.artwork,
+  }
+}
 
 // Tracks being added right now, shared by every list on screen, so a song
 // shows as added the moment it's tapped.

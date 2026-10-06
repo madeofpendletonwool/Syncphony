@@ -77,6 +77,9 @@ func Run(t *testing.T, h Harness) {
 	if s.info.Capabilities.Playlists {
 		t.Run("Playlists", s.testPlaylists)
 	}
+	if s.info.Capabilities.Collection {
+		t.Run("Collection", s.testCollection)
+	}
 	if s.info.Capabilities.Lyrics {
 		t.Run("Lyrics", s.testLyrics)
 	}
@@ -197,11 +200,13 @@ func (s *suite) testCapabilities(t *testing.T) {
 	_, streamer := sess.(provider.Streamer)
 	_, remote := sess.(provider.Remote)
 	_, playlists := sess.(provider.PlaylistLister)
+	_, collection := sess.(provider.Collection)
 	_, lyrics := sess.(provider.Lyricist)
 	_, recommends := sess.(provider.Recommender)
 	check("Streamer", c.Playback == provider.PlaybackStream, streamer)
 	check("Remote", c.Playback == provider.PlaybackRemote, remote)
 	check("PlaylistLister", c.Playlists, playlists)
+	check("Collection", c.Collection, collection)
 	check("Lyricist", c.Lyrics, lyrics)
 	check("Recommender", c.Recommendations, recommends)
 }
@@ -587,6 +592,48 @@ func (s *suite) testPlaylists(t *testing.T) {
 	}
 	if _, err := pl.PlaylistTracks(ctx, s.MissingID, ""); !errors.Is(err, provider.ErrNotFound) {
 		t.Errorf("PlaylistTracks(missing): got %v, want ErrNotFound", err)
+	}
+}
+
+func (s *suite) testCollection(t *testing.T) {
+	sess, _ := s.open(t)
+	c := sess.(provider.Collection)
+	ctx := t.Context()
+	saved, err := c.Saved(ctx)
+	if err != nil {
+		t.Fatalf("Saved: %v", err)
+	}
+	for _, a := range saved.Albums {
+		if a.ID == "" || a.Title == "" {
+			t.Errorf("saved album %+v needs an ID and title", a)
+		}
+	}
+	for _, a := range saved.Artists {
+		if a.ID == "" || a.Name == "" {
+			t.Errorf("saved artist %+v needs an ID and name", a)
+		}
+	}
+	const limit = 3
+	for _, kind := range []provider.AlbumListKind{provider.AlbumsNewest, provider.AlbumsFrequent, provider.AlbumsRecent} {
+		albums, err := c.AlbumList(ctx, kind, limit)
+		if errors.Is(err, provider.ErrUnsupported) {
+			continue
+		}
+		if err != nil {
+			t.Errorf("AlbumList(%s): %v", kind, err)
+			continue
+		}
+		if len(albums) > limit {
+			t.Errorf("AlbumList(%s): %d albums, want at most %d", kind, len(albums), limit)
+		}
+		for _, a := range albums {
+			if a.ID == "" || a.Title == "" {
+				t.Errorf("AlbumList(%s): album %+v needs an ID and title", kind, a)
+			}
+		}
+	}
+	if _, err := c.AlbumList(ctx, "no-such-list", limit); !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("AlbumList(no-such-list): got %v, want ErrUnsupported", err)
 	}
 }
 

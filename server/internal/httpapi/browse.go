@@ -180,6 +180,79 @@ func (s *Server) GetPlaylistTracks(ctx context.Context, req GetPlaylistTracksReq
 	return GetPlaylistTracks200JSONResponse(out), nil
 }
 
+// collectionLimit is how many albums each of a collection's lists holds.
+const collectionLimit = 20
+
+// GetCollection returns a link's saved albums and artists and its album
+// lists, fetched at once. A list that fails is left empty, unless they
+// all do.
+func (s *Server) GetCollection(ctx context.Context, req GetCollectionRequestObject) (GetCollectionResponseObject, error) {
+	l, sess, err := s.openUsable(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	defer sess.Close()
+	// Every link's session is a Collection; the capability says whether
+	// it's a real one.
+	p, err := s.Links.Provider(l.Provider)
+	if err != nil {
+		return nil, err
+	}
+	c, ok := sess.(provider.Collection)
+	if !ok || !p.Info().Capabilities.Collection {
+		return nil, fmt.Errorf("%s has no collection: %w", l.Provider, provider.ErrNotFound)
+	}
+	out := LinkCollection{
+		LinkId: l.ID, Provider: l.Provider,
+		SavedAlbums: []AlbumResult{}, SavedArtists: []ArtistResult{},
+		RecentlyAdded: []AlbumResult{}, MostPlayed: []AlbumResult{}, RecentlyPlayed: []AlbumResult{},
+	}
+	lists := []struct {
+		kind provider.AlbumListKind
+		into *[]AlbumResult
+	}{
+		{provider.AlbumsNewest, &out.RecentlyAdded},
+		{provider.AlbumsFrequent, &out.MostPlayed},
+		{provider.AlbumsRecent, &out.RecentlyPlayed},
+	}
+	errs := make([]error, len(lists)+1)
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		saved, err := c.Saved(ctx)
+		errs[0] = err
+		for _, a := range saved.Albums {
+			out.SavedAlbums = append(out.SavedAlbums, toAlbumResult(a))
+		}
+		for _, a := range saved.Artists {
+			out.SavedArtists = append(out.SavedArtists, toArtistResult(a))
+		}
+	})
+	for i, list := range lists {
+		wg.Go(func() {
+			albums, err := c.AlbumList(ctx, list.kind, collectionLimit)
+			if errors.Is(err, provider.ErrUnsupported) {
+				return
+			}
+			errs[i+1] = err
+			for _, a := range albums {
+				*list.into = append(*list.into, toAlbumResult(a))
+			}
+		})
+	}
+	wg.Wait()
+	failed := 0
+	for _, err := range errs {
+		if err != nil {
+			failed++
+			slog.Warn("collection list failed", "provider", l.Provider, "err", err)
+		}
+	}
+	if failed == len(errs) {
+		return nil, errors.Join(errs...)
+	}
+	return GetCollection200JSONResponse(out), nil
+}
+
 // openPlaylists opens a link the caller may use, if its service has
 // playlists.
 func (s *Server) openPlaylists(ctx context.Context, linkID string) (store.ServiceLink, provider.PlaylistLister, func(), error) {

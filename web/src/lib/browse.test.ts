@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { artworkUrl, interleave, totalDuration, trackKey, type SearchGroup } from './browse'
+import { artworkUrl, interleave, pickRandom, totalDuration, trackKey, type SearchGroup } from './browse'
 
 const group = (linkId: string, titles: string[]): SearchGroup => ({
   linkId,
@@ -50,4 +50,25 @@ describe('totalDuration', () => {
 
 it('trackKey separates the same song on two links', () => {
   expect(trackKey({ linkId: 'a', trackId: '1' })).not.toBe(trackKey({ linkId: 'b', trackId: '1' }))
+})
+
+describe('pickRandom', () => {
+  it('picks n distinct items', () => {
+    const items = Array.from({ length: 50 }, (_, i) => i)
+    const picked = pickRandom(items, 20)
+    expect(picked).toHaveLength(20)
+    expect(new Set(picked).size).toBe(20)
+    expect(picked.every((i) => items.includes(i))).toBe(true)
+    expect(items).toHaveLength(50)
+  })
+
+  it('shuffles with the random source', () => {
+    // Always swapping in the last item: 4 first, then what was swapped out.
+    expect(pickRandom([1, 2, 3, 4], 4, () => 0.999)).toEqual([4, 1, 2, 3])
+    expect(pickRandom([1, 2, 3, 4], 2, () => 0)).toEqual([1, 2])
+  })
+
+  it('returns everything when asked for more than there is', () => {
+    expect(pickRandom([1, 2], 5).sort()).toEqual([1, 2])
+  })
 })

@@ -23,6 +23,15 @@ export const historyPagesQuery = (roomId: string, userId?: string) =>
     getNextPageParam: (last) => (last.length < PAGE ? undefined : last.at(-1)?.startedAt),
   })
 
+/** One person's latest songs in a room, newest first. */
+export const myHistoryQuery = (roomId: string, userId: string) =>
+  queryOptions({
+    queryKey: ['history', roomId, 'recent', userId],
+    queryFn: () =>
+      unwrap(api.GET('/rooms/{roomId}/history', { params: { path: { roomId }, query: { limit: 40, userId } } })),
+    staleTime: 60_000,
+  })
+
 /** A stretch of time; open ends mean all of it. */
 export type Range = { from?: string; to?: string }
 

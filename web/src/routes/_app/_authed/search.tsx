@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { ChevronRight, LoaderCircle, Search as SearchIcon, Waypoints, X } from 'lucide-react'
+import { ChevronRight, Dices, History, LoaderCircle, Search as SearchIcon, Waypoints, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { errorMessage } from '@/api/errors'
@@ -17,11 +17,28 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { VibeSuggestions } from '@/components/vibe-suggestions'
-import { useAddToLane } from '@/hooks/use-add-to-lane'
+import { laneTrackOf, useAddToLane, type LaneTrack } from '@/hooks/use-add-to-lane'
 import { useMe } from '@/lib/auth'
-import { interleave, playlistsQuery, searchQuery, trackKey, type SearchGroup } from '@/lib/browse'
+import {
+  collectionQuery,
+  interleave,
+  playlistsQuery,
+  randomTracks,
+  searchQuery,
+  similarQuery,
+  trackKey,
+  type AlbumResult,
+  type ArtistResult,
+  type LinkCollection,
+  type SearchGroup,
+} from '@/lib/browse'
+import { myHistoryQuery } from '@/lib/history'
 import { fadeUp, stagger } from '@/lib/motion'
+import { playbackQuery } from '@/lib/playback'
+import { clearSearches, forgetSearch, rememberSearch, useRecentSearches } from '@/lib/recent-searches'
+import { useCurrentRoom } from '@/lib/room'
 import { providersQuery, sourceName, usableLinksQuery } from '@/lib/services'
+import { toast } from '@/lib/toast'
 import { usersQuery } from '@/lib/users'
 import { cn } from '@/lib/utils'
 
@@ -56,6 +73,20 @@ function Search() {
   const links = useQuery(usableLinksQuery)
   const results = useQuery({ ...searchQuery(q), enabled: q !== '', placeholderData: keepPreviousData })
 
+  // A search is worth remembering once it found something and the typing
+  // has settled.
+  const found = results.data?.query === q && results.data.groups.some((g) => g.tracks.length + g.albums.length + g.artists.length > 0)
+  useEffect(() => {
+    if (!found) return
+    const t = setTimeout(() => rememberSearch(q), 1500)
+    return () => clearTimeout(t)
+  }, [found, q])
+
+  const searchFor = (next: string) => {
+    setText(next)
+    void navigate({ search: (s) => ({ ...s, q: next, tab: undefined }), replace: true })
+  }
+
   return (
     <>
       <PageHeader title="Search" />
@@ -66,6 +97,7 @@ function Search() {
           onSubmit={(e) => {
             e.preventDefault()
             inputRef.current?.blur()
+            if (text.trim()) rememberSearch(text)
             void navigate({ search: (s) => ({ ...s, q: text.trim() || undefined }), replace: true })
           }}
         >
@@ -122,10 +154,7 @@ function Search() {
       {links.data && links.data.length === 0 ? (
         <NoLinks />
       ) : !q ? (
-        <>
-          <VibeSuggestions className="mt-6" />
-          {links.data && <Browse links={links.data} />}
-        </>
+        links.data && <Browse links={links.data} onSearch={searchFor} />
       ) : results.isPending ? (
         <ResultsSkeleton />
       ) : results.isError ? (
@@ -254,32 +283,233 @@ function Results({ groups, tab }: { groups: SearchGroup[]; tab: Tab }) {
   )
 }
 
-/** Before searching: the playlists of every link whose service has them. */
-function Browse({ links }: { links: ServiceLink[] }) {
+/**
+ * Before searching: quick picks. Your recent searches, a surprise, songs
+ * like what's playing, like the room's vibe, and ones you queued lately, then from every link
+ * its playlists (Liked Songs and starred songs among them), albums played
+ * lately and most, new additions, and favorites, each kind grouped across
+ * links.
+ */
+function Browse({ links, onSearch }: { links: ServiceLink[]; onSearch: (q: string) => void }) {
   const providers = useQuery(providersQuery)
-  const withPlaylists = links.filter((l) => providers.data?.find((p) => p.id === l.provider)?.capabilities.playlists)
-  if (withPlaylists.length === 0) {
-    return (
-      <p className="mt-16 text-center text-sm text-muted-foreground">Search every service you&apos;ve linked, all at once.</p>
-    )
-  }
+  const recent = useRecentSearches()
+  const can = (l: ServiceLink, cap: 'playlists' | 'collection' | 'recommendations') =>
+    providers.data?.find((p) => p.id === l.provider)?.capabilities[cap] ?? false
+  const withPlaylists = links.filter((l) => can(l, 'playlists'))
+  const withCollection = links.filter((l) => can(l, 'collection'))
+  const recommends = links.some((l) => can(l, 'recommendations'))
+  // Name the source only when shelves of a kind come from more than one.
+  const named = withCollection.length > 1
   return (
     <div className="mt-6 flex flex-col gap-8">
+      {recent.length > 0 && <RecentSearches searches={recent} onSearch={onSearch} />}
+      {recommends && <SurpriseMe />}
+      {recommends && <LikeWhatsPlaying />}
+      <VibeSuggestions />
+      <RecentAdds links={links} />
       {withPlaylists.map((l) => (
         <PlaylistShelf key={l.id} link={l} />
+      ))}
+      {shelves.map((shelf) =>
+        withCollection.map((l) => <CollectionShelf key={`${shelf.key}:${l.id}`} link={l} shelf={shelf} named={named} />),
+      )}
+      {withPlaylists.length + withCollection.length === 0 && !recommends && recent.length === 0 && (
+        <p className="mt-10 text-center text-sm text-muted-foreground">Search every service you&apos;ve linked, all at once.</p>
+      )}
+    </div>
+  )
+}
+
+function RecentSearches({ searches, onSearch }: { searches: string[]; onSearch: (q: string) => void }) {
+  return (
+    <Section title="Recent searches" action={{ label: 'Clear', onClick: clearSearches }}>
+      <ul className="flex flex-wrap gap-2">
+        {searches.map((q) => (
+          <li key={q} className="glass flex items-center rounded-full text-sm">
+            <button
+              type="button"
+              onClick={() => onSearch(q)}
+              className="flex items-center gap-1.5 rounded-full py-1.5 pl-3 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              <History className="size-3.5 text-muted-foreground" />
+              {q}
+            </button>
+            <button
+              type="button"
+              aria-label={`Forget “${q}”`}
+              onClick={() => forgetSearch(q)}
+              className="grid size-7 place-items-center rounded-full text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              <X className="size-3.5" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Section>
+  )
+}
+
+/** How many songs a surprise adds. */
+const SURPRISE_COUNT = 5
+
+/** Adds a few songs picked at random to your lane. */
+function SurpriseMe() {
+  const { add } = useAddToLane()
+  const [busy, setBusy] = useState(false)
+  const surprise = async () => {
+    setBusy(true)
+    try {
+      const { tracks } = await randomTracks(SURPRISE_COUNT)
+      if (tracks.length === 0) toast({ message: 'Couldn’t find anything to pick from right now.', tone: 'error' })
+      else add(tracks)
+    } catch (err) {
+      toast({ message: errorMessage(err), tone: 'error' })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <motion.button
+      variants={fadeUp}
+      initial="hidden"
+      animate="show"
+      type="button"
+      disabled={busy}
+      onClick={() => void surprise()}
+      className="glass group flex items-center gap-4 rounded-3xl p-4 text-left outline-none transition-transform active:scale-[0.99] focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-70"
+    >
+      <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary/15 text-primary">
+        {busy ? <LoaderCircle className="size-6 animate-spin" /> : <Dices className="size-6 transition-transform group-hover:rotate-12" />}
+      </span>
+      <span className="min-w-0">
+        <span className="block font-medium">Surprise me</span>
+        <span className="block text-sm text-muted-foreground">Add {SURPRISE_COUNT} random songs to your lane</span>
+      </span>
+    </motion.button>
+  )
+}
+
+/** Songs like the one the room is playing, while it plays. */
+function LikeWhatsPlaying() {
+  const { room } = useCurrentRoom()
+  const playback = useQuery({ ...playbackQuery(room?.id ?? ''), enabled: !!room })
+  const item = playback.data?.item
+  const similar = useQuery({ ...similarQuery(room?.id ?? '', item?.id ?? ''), enabled: !!room && !!item })
+  const { add, status } = useAddToLane()
+  if (!room || !item || similar.isError || similar.data?.tracks.length === 0) return null
+  return (
+    <Section title={`More like “${item.track.title}”`}>
+      {similar.data ? (
+        <motion.ul variants={stagger} initial="hidden" animate="show" className="flex flex-col">
+          {similar.data.tracks.slice(0, 5).map((t) => (
+            <TrackRow key={trackKey(t)} track={t} status={status(t)} onAdd={() => add([t])} />
+          ))}
+        </motion.ul>
+      ) : (
+        <RowsSkeleton rows={3} />
+      )}
+    </Section>
+  )
+}
+
+/** Songs you queued lately in this room, to queue again. */
+function RecentAdds({ links }: { links: ServiceLink[] }) {
+  const me = useMe()
+  const { room } = useCurrentRoom()
+  const history = useQuery({ ...myHistoryQuery(room?.id ?? '', me.id), enabled: !!room })
+  const { add, status } = useAddToLane()
+  if (!room || !history.data) return null
+  const usable = new Set(links.filter((l) => l.status === 'ok').map((l) => l.id))
+  const seen = new Set<string>()
+  const tracks: LaneTrack[] = []
+  for (const { item } of history.data) {
+    const linkId = item.track.linkId
+    if (!linkId || item.autopilot || !(usable.has(linkId) || room.matching.borrow)) continue
+    const t = laneTrackOf(item, linkId)
+    if (seen.has(trackKey(t))) continue
+    seen.add(trackKey(t))
+    tracks.push(t)
+    if (tracks.length === 5) break
+  }
+  if (tracks.length === 0) return null
+  return (
+    <Section title="Your recent adds">
+      <motion.ul variants={stagger} initial="hidden" animate="show" className="flex flex-col">
+        {tracks.map((t) => (
+          <TrackRow key={trackKey(t)} track={t} status={status(t)} onAdd={() => add([t])} />
+        ))}
+      </motion.ul>
+    </Section>
+  )
+}
+
+type ShelfSpec = { key: keyof Omit<LinkCollection, 'linkId' | 'provider'>; title: string; artists?: boolean }
+
+const shelves: ShelfSpec[] = [
+  { key: 'recentlyPlayed', title: 'Played lately' },
+  { key: 'mostPlayed', title: 'On repeat' },
+  { key: 'recentlyAdded', title: 'Recently added' },
+  { key: 'savedAlbums', title: 'Favorite albums' },
+  { key: 'savedArtists', title: 'Favorite artists', artists: true },
+]
+
+/** One of a link's collection lists, or nothing if it's empty. */
+function CollectionShelf({ link, shelf, named }: { link: ServiceLink; shelf: ShelfSpec; named: boolean }) {
+  const collection = useQuery(collectionQuery(link.id))
+  const source = useSourceName(link)
+  const title = named ? `${shelf.title} · ${source}` : shelf.title
+
+  // A failing service already shows on its playlists shelf, or will when searched.
+  if (collection.isError) return null
+  if (!collection.data) {
+    return (
+      <Section title={title}>
+        <ShelfSkeleton round={shelf.artists} />
+      </Section>
+    )
+  }
+  const items = collection.data[shelf.key]
+  if (items.length === 0) return null
+  return (
+    <Section title={title}>
+      <Shelf>
+        {shelf.artists
+          ? (items as ArtistResult[]).map((a) => (
+              <div key={a.id} className="w-28 shrink-0 snap-start">
+                <ArtistCard artist={a} linkId={link.id} />
+              </div>
+            ))
+          : (items as AlbumResult[]).map((a) => (
+              <AlbumCard key={a.id} album={a} linkId={link.id} className="w-36 shrink-0 snap-start" />
+            ))}
+      </Shelf>
+    </Section>
+  )
+}
+
+/** What to call a link: "Navidrome", or "Sam's Navidrome" when it's shared. */
+function useSourceName(link: ServiceLink) {
+  const me = useMe()
+  const providers = useQuery(providersQuery)
+  const users = useQuery(usersQuery)
+  const p = providers.data?.find((p) => p.id === link.provider)
+  const owner = users.data?.find((u) => u.id === link.ownerId)
+  return sourceName(p?.name ?? link.provider, owner?.displayName, link.ownerId === me.id)
+}
+
+function ShelfSkeleton({ round }: { round?: boolean }) {
+  return (
+    <div className="flex gap-4 overflow-hidden">
+      {Array.from({ length: round ? 4 : 3 }, (_, i) => (
+        <Skeleton key={i} className={cn('shrink-0', round ? 'size-28 rounded-full' : 'size-36 rounded-2xl')} />
       ))}
     </div>
   )
 }
 
 function PlaylistShelf({ link }: { link: ServiceLink }) {
-  const me = useMe()
-  const providers = useQuery(providersQuery)
-  const users = useQuery(usersQuery)
   const playlists = useQuery(playlistsQuery(link.id))
-  const p = providers.data?.find((p) => p.id === link.provider)
-  const owner = users.data?.find((u) => u.id === link.ownerId)
-  const title = `${sourceName(p?.name ?? link.provider, owner?.displayName, link.ownerId === me.id)} playlists`
+  const title = `${useSourceName(link)} playlists`
 
   if (playlists.isError) {
     return (
@@ -298,25 +528,36 @@ function PlaylistShelf({ link }: { link: ServiceLink }) {
           ))}
         </Shelf>
       ) : (
-        <div className="flex gap-4 overflow-hidden">
-          {Array.from({ length: 3 }, (_, i) => (
-            <Skeleton key={i} className="size-36 shrink-0 rounded-2xl" />
-          ))}
-        </div>
+        <ShelfSkeleton />
       )}
     </Section>
   )
 }
 
-function Section({ title, more, children }: { title: string; more?: () => void; children: ReactNode }) {
+function Section({
+  title,
+  more,
+  action,
+  children,
+}: {
+  title: string
+  more?: () => void
+  action?: { label: string; onClick: () => void }
+  children: ReactNode
+}) {
   return (
     <section>
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-headline">{title}</h2>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h2 className="min-w-0 truncate text-headline">{title}</h2>
         {more && (
           <Button variant="ghost" size="sm" onClick={more} className="-mr-2 text-muted-foreground">
             See all
             <ChevronRight data-icon="inline-end" />
+          </Button>
+        )}
+        {action && (
+          <Button variant="ghost" size="sm" onClick={action.onClick} className="-mr-2 text-muted-foreground">
+            {action.label}
           </Button>
         )}
       </div>
@@ -326,9 +567,13 @@ function Section({ title, more, children }: { title: string; more?: () => void; 
 }
 
 function ResultsSkeleton() {
+  return <RowsSkeleton rows={6} className="mt-6" />
+}
+
+function RowsSkeleton({ rows, className }: { rows: number; className?: string }) {
   return (
-    <div className="mt-6 flex flex-col gap-3">
-      {Array.from({ length: 6 }, (_, i) => (
+    <div className={cn('flex flex-col gap-3', className)}>
+      {Array.from({ length: rows }, (_, i) => (
         <div key={i} className="flex items-center gap-3 py-1.5">
           <Skeleton className="size-12 rounded-lg" />
           <div className="flex flex-1 flex-col gap-2">

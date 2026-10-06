@@ -111,6 +111,28 @@ func (w *watcher) RandomTracks(ctx context.Context, limit int) ([]provider.Track
 	return ts, w.see(ctx, err)
 }
 
+// Collection is on every wrapped session too, like Recommender. Sessions
+// without one return ErrUnsupported; callers go by the provider's
+// Collection capability.
+func (w *watcher) Saved(ctx context.Context) (provider.Saved, error) {
+	c, ok := w.inner.(provider.Collection)
+	if !ok {
+		return provider.Saved{}, provider.ErrUnsupported
+	}
+	saved, err := c.Saved(ctx)
+	return saved, w.see(ctx, err)
+}
+
+// AlbumList implements provider.Collection.
+func (w *watcher) AlbumList(ctx context.Context, kind provider.AlbumListKind, limit int) ([]provider.Album, error) {
+	c, ok := w.inner.(provider.Collection)
+	if !ok {
+		return nil, provider.ErrUnsupported
+	}
+	albums, err := c.AlbumList(ctx, kind, limit)
+	return albums, w.see(ctx, err)
+}
+
 type streamer struct{ *watcher }
 
 func (w streamer) Stream(ctx context.Context, trackID string, opts provider.StreamOpts) (*provider.AudioStream, error) {
