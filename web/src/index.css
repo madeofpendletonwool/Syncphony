@@ -13,6 +13,17 @@
  * --album-h / --album-c on <html>. They're registered properties, so the
  * whole app eases from one album's color to the next.
  *
+ * The full palette (MAD-714) rides along as --pal-* variables, set by
+ * applyPalette (src/lib/palette.ts) from colors the server extracts once per
+ * song. Each role has a background and text that passes WCAG AA on it:
+ *   --pal-dominant, --pal-vibrant, --pal-muted, --pal-dark, --pal-light
+ *   --pal-on-<role>     text on that color
+ *   --pal-surface       a panel tinted by the art, for the current theme
+ *   --pal-on-surface    its text
+ *   --pal-text          the vibrant color, readable on --background
+ * They're registered too, so they crossfade between songs. Big-screen mode
+ * and the lyrics view build on them.
+ *
  * Lane colors are per user (`#rrggbb` from the API). Components set --lane
  * inline (see laneStyle in src/lib/lane.ts) and use it as `bg-(--lane)`,
  * `text-(--lane)`, `ring-(--lane)/40`, and so on.
@@ -28,6 +39,103 @@
   syntax: "<number>";
   inherits: true;
   initial-value: 0.16;
+}
+
+/* Defaults: the palette of the default violet accent. */
+@property --pal-dominant {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.450 0.1120 295.00);
+}
+
+@property --pal-on-dominant {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.980 0.0105 295.00);
+}
+
+@property --pal-vibrant {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.650 0.1600 295.00);
+}
+
+@property --pal-on-vibrant {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.180 0.0300 295.00);
+}
+
+@property --pal-muted {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.550 0.0600 295.00);
+}
+
+@property --pal-on-muted {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.980 0.0105 295.00);
+}
+
+@property --pal-dark {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.220 0.0500 295.00);
+}
+
+@property --pal-on-dark {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.980 0.0105 295.00);
+}
+
+@property --pal-light {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.920 0.0400 295.00);
+}
+
+@property --pal-on-light {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.180 0.0300 295.00);
+}
+
+@property --pal-surface-dark {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.220 0.0500 295.00);
+}
+
+@property --pal-on-surface-dark {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.980 0.0105 295.00);
+}
+
+@property --pal-text-dark {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.650 0.1600 295.00);
+}
+
+@property --pal-surface-light {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.940 0.0320 295.00);
+}
+
+@property --pal-on-surface-light {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.180 0.0300 295.00);
+}
+
+@property --pal-text-light {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: oklch(0.565 0.1600 295.00);
 }
 
 @theme {
@@ -123,7 +231,29 @@
   --glass-border: oklch(0.2 0.03 var(--album-h) / 0.08);
   --glow: oklch(0.75 var(--album-c) var(--album-h) / 0.35);
 
-  transition: --album-h 1.2s var(--ease-out-expo), --album-c 1.2s var(--ease-out-expo);
+  --pal-surface: var(--pal-surface-light);
+  --pal-on-surface: var(--pal-on-surface-light);
+  --pal-text: var(--pal-text-light);
+
+  transition:
+    --album-h 1.2s var(--ease-out-expo),
+    --album-c 1.2s var(--ease-out-expo),
+    --pal-dominant 1.2s var(--ease-out-expo),
+    --pal-on-dominant 1.2s var(--ease-out-expo),
+    --pal-vibrant 1.2s var(--ease-out-expo),
+    --pal-on-vibrant 1.2s var(--ease-out-expo),
+    --pal-muted 1.2s var(--ease-out-expo),
+    --pal-on-muted 1.2s var(--ease-out-expo),
+    --pal-dark 1.2s var(--ease-out-expo),
+    --pal-on-dark 1.2s var(--ease-out-expo),
+    --pal-light 1.2s var(--ease-out-expo),
+    --pal-on-light 1.2s var(--ease-out-expo),
+    --pal-surface-dark 1.2s var(--ease-out-expo),
+    --pal-on-surface-dark 1.2s var(--ease-out-expo),
+    --pal-text-dark 1.2s var(--ease-out-expo),
+    --pal-surface-light 1.2s var(--ease-out-expo),
+    --pal-on-surface-light 1.2s var(--ease-out-expo),
+    --pal-text-light 1.2s var(--ease-out-expo);
 }
 
 .dark {
@@ -152,6 +282,10 @@
   --glass-border: oklch(1 0 0 / 0.08);
   --glow: oklch(0.6 var(--album-c) var(--album-h) / 0.45);
 
+  --pal-surface: var(--pal-surface-dark);
+  --pal-on-surface: var(--pal-on-surface-dark);
+  --pal-text: var(--pal-text-dark);
+
   color-scheme: dark;
 }
 
@@ -166,6 +300,39 @@
   background-color: var(--glass-strong);
   border: 1px solid var(--glass-border);
   backdrop-filter: blur(40px) saturate(180%);
+}
+
+/*
+ * The palette mesh behind the room and the player: soft blobs of the art's
+ * colors, drifting slowly. Each blob takes a different path and period so
+ * the pattern never visibly repeats.
+ */
+@keyframes mesh-drift-a {
+  0%, 100% { transform: translate(-8%, -6%) scale(1); }
+  50% { transform: translate(10%, 8%) scale(1.15); }
+}
+
+@keyframes mesh-drift-b {
+  0%, 100% { transform: translate(6%, 4%) scale(1.1); }
+  50% { transform: translate(-12%, -4%) scale(0.95); }
+}
+
+@keyframes mesh-drift-c {
+  0%, 100% { transform: translate(0, 10%) scale(1); }
+  33% { transform: translate(-10%, -6%) scale(1.2); }
+  66% { transform: translate(8%, -2%) scale(0.9); }
+}
+
+@utility mesh-a {
+  animation: mesh-drift-a 31s ease-in-out infinite;
+}
+
+@utility mesh-b {
+  animation: mesh-drift-b 43s ease-in-out infinite;
+}
+
+@utility mesh-c {
+  animation: mesh-drift-c 53s ease-in-out infinite;
 }
 
 @utility pb-safe {

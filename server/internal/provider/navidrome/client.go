@@ -198,6 +198,8 @@ type response struct {
 	Song          *song          `json:"song"`
 	Album         *album         `json:"album"`
 	Artist        *artist        `json:"artist"`
+	LyricsList    *lyricsList    `json:"lyricsList"`
+	Lyrics        *legacyLyrics  `json:"lyrics"`
 }
 
 type apiError struct {
@@ -231,6 +233,8 @@ type song struct {
 	Artists        []credit `json:"artists"`
 	ISRC           []string `json:"isrc"`
 	ExplicitStatus string   `json:"explicitStatus"`
+	// MusicBrainzID is the recording's MBID, from tags.
+	MusicBrainzID string `json:"musicBrainzId"`
 }
 
 type album struct {
@@ -252,4 +256,30 @@ type artist struct {
 	Name     string  `json:"name"`
 	CoverArt string  `json:"coverArt"`
 	Album    []album `json:"album"`
+}
+
+// lyricsList is OpenSubsonic's getLyricsBySongId result: one entry per
+// language, and per kind (synced or not).
+type lyricsList struct {
+	StructuredLyrics []structuredLyrics `json:"structuredLyrics"`
+}
+
+type structuredLyrics struct {
+	Lang   string `json:"lang"`
+	Synced bool   `json:"synced"`
+	// Offset shifts every line, in ms. Positive shows lines sooner.
+	Offset int64       `json:"offset"`
+	Line   []lyricLine `json:"line"`
+}
+
+type lyricLine struct {
+	Start int64  `json:"start"` // ms; only set when synced
+	Value string `json:"value"`
+}
+
+// legacyLyrics is plain Subsonic's getLyrics result.
+type legacyLyrics struct {
+	Artist string `json:"artist"`
+	Title  string `json:"title"`
+	Value  string `json:"value"`
 }

@@ -698,6 +698,36 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /links/{id}/tracks/{trackId}/lyrics:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: trackId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getTrackLyrics
+      summary: A track's lyrics, through one of your links or a shared one
+      description: |
+        From the track's own service when it has them (Navidrome reads
+        embedded tags and `.lrc` files), and otherwise from LRCLIB. Results,
+        and misses, are cached. 404 if none are found.
+      tags: [browse]
+      responses:
+        "200":
+          description: The lyrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lyrics"
+        default:
+          $ref: "#/components/responses/Error"
+
   /links/{id}/artists/{artistId}:
     parameters:
       - name: id
@@ -1038,7 +1068,10 @@ paths:
       summary: A queued song's artwork
       description: |
         Loaded through the link of whoever queued the song, so everyone in
-        the room can see it. 404 if the song has none or its link is gone.
+        the room can see it. When that's missing, or smaller than `size`,
+        the release's front cover from the Cover Art Archive is sent instead
+        if it's bigger, once the song has been matched on MusicBrainz. 404
+        if there's none.
       tags: [queue]
       parameters:
         - name: size
@@ -1056,6 +1089,58 @@ paths:
               schema:
                 type: string
                 format: binary
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/queue/{itemId}/palette:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getQueueItemPalette
+      summary: A queued song's artwork colors
+      description: |
+        The palette `palette` on the queue item will carry, worked out now
+        if it isn't yet. 404 if the song has no artwork the server can read
+        (an SVG, say); the client can fall back to the image itself.
+      tags: [queue]
+      responses:
+        "200":
+          description: The palette
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Palette"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/queue/{itemId}/lyrics:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getQueueItemLyrics
+      summary: A queued song's lyrics
+      description: |
+        Like `/links/{id}/tracks/{trackId}/lyrics`, but through the link of
+        whoever queued the song, so everyone in the room can read along.
+        If that link is gone, LRCLIB is still asked. 404 if none are found.
+      tags: [queue]
+      responses:
+        "200":
+          description: The lyrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lyrics"
         default:
           $ref: "#/components/responses/Error"
 
@@ -1815,6 +1900,40 @@ components:
           items:
             $ref: "#/components/schemas/SearchGroup"
 
+    Lyrics:
+      type: object
+      required: [source, synced, instrumental, plain, lines]
+      properties:
+        source:
+          type: string
+          description: Where they came from, a provider ID (`navidrome`) or `lrclib`.
+        synced:
+          type: boolean
+          description: Whether `lines` has timings. If not, show `plain`.
+        instrumental:
+          type: boolean
+          description: The song is known to have no words; `plain` and `lines` are empty.
+        plain:
+          type: string
+          description: The words, one line per line.
+        lines:
+          type: array
+          description: Time-synced lines, in order. Empty unless `synced`.
+          items:
+            $ref: "#/components/schemas/LyricLine"
+
+    LyricLine:
+      type: object
+      required: [atMs, text]
+      properties:
+        atMs:
+          type: integer
+          format: int64
+          description: When the line starts, from the start of the song.
+        text:
+          type: string
+          description: The line. Empty for a pause.
+
     AlbumDetail:
       type: object
       required: [linkId, provider, album, tracks]
@@ -2102,6 +2221,65 @@ components:
           $ref: "#/components/schemas/QueuedTrack"
         via:
           $ref: "#/components/schemas/PlaysVia"
+        palette:
+          $ref: "#/components/schemas/Palette"
+
+    Palette:
+      type: object
+      description: |
+        The colors of a song's artwork, worked out once on the server so
+        every phone in the room matches. On a queue item once it's ready
+        (usually soon after it's queued); `/rooms/{roomId}/queue/{itemId}/palette`
+        works it out on the spot. Every role is set: when the art has
+        nothing that fits one, it's derived from the others.
+      required: [accent, dominant, vibrant, muted, dark, light]
+      properties:
+        accent:
+          description: The dominant vivid hue, which tints the app; null for grayscale art.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Accent"
+        dominant:
+          $ref: "#/components/schemas/OklchColor"
+        vibrant:
+          $ref: "#/components/schemas/OklchColor"
+        muted:
+          $ref: "#/components/schemas/OklchColor"
+        dark:
+          $ref: "#/components/schemas/OklchColor"
+        light:
+          $ref: "#/components/schemas/OklchColor"
+
+    Accent:
+      type: object
+      required: [h, c]
+      properties:
+        h:
+          type: number
+          format: double
+          description: Hue, in degrees.
+        c:
+          type: number
+          format: double
+          description: Chroma, clamped to read well in both themes.
+
+    OklchColor:
+      type: object
+      description: An OKLCH color, as CSS `oklch(l c h)`.
+      required: [l, c, h]
+      properties:
+        l:
+          type: number
+          format: double
+          description: Lightness, 0-1.
+        c:
+          type: number
+          format: double
+          description: Chroma, about 0-0.37.
+        h:
+          type: number
+          format: double
+          description: Hue, in degrees.
 
     PlaysVia:
       type: object

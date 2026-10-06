@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import type { components } from '@/api/schema.gen'
+import type { Palette } from './palette'
 
 export type Track = components['schemas']['QueuedTrack']
 export type User = components['schemas']['User']
@@ -18,6 +19,8 @@ export type NowPlaying = {
   via?: string
   /** A URL the browser can load; Track.artwork is a provider ref. */
   artworkUrl?: string
+  /** The artwork's colors, once the server has worked them out. */
+  palette?: Palette
   /** Who queued it. Their lane color tints the player. */
   requester?: Pick<User, 'id' | 'displayName' | 'color' | 'avatar'>
   paused: boolean

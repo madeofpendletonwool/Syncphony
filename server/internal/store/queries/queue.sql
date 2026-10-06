@@ -139,3 +139,10 @@ LIMIT ?;
 -- SetQueueItemVia records where an item plays from instead of its own link.
 -- name: SetQueueItemVia :exec
 UPDATE queue_items SET via_provider = ?, via_link_id = ?, via_track_id = ?, updated_at = ? WHERE id = ?;
+
+-- SetTrackPalette saves a song's palette on every waiting or playing item
+-- that's that song, and on the given item.
+-- name: SetTrackPalette :exec
+UPDATE queue_items SET palette = sqlc.arg(palette)
+WHERE provider = sqlc.arg(provider) AND track_id = sqlc.arg(track_id)
+  AND (state IN ('queued', 'playing') OR id = sqlc.arg(item_id));

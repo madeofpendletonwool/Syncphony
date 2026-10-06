@@ -435,6 +435,15 @@ func (e ListLinksParamsInclude) Valid() bool {
 	}
 }
 
+// Accent defines model for Accent.
+type Accent struct {
+	// C Chroma, clamped to read well in both themes.
+	C float64 `json:"c"`
+
+	// H Hue, in degrees.
+	H float64 `json:"h"`
+}
+
 // AddToQueueRequest defines model for AddToQueueRequest.
 type AddToQueueRequest struct {
 	Items []TrackToQueue `json:"items"`
@@ -649,6 +658,33 @@ type LoginRequest struct {
 	Username string `json:"username"`
 }
 
+// LyricLine defines model for LyricLine.
+type LyricLine struct {
+	// AtMs When the line starts, from the start of the song.
+	AtMs int64 `json:"atMs"`
+
+	// Text The line. Empty for a pause.
+	Text string `json:"text"`
+}
+
+// Lyrics defines model for Lyrics.
+type Lyrics struct {
+	// Instrumental The song is known to have no words; `plain` and `lines` are empty.
+	Instrumental bool `json:"instrumental"`
+
+	// Lines Time-synced lines, in order. Empty unless `synced`.
+	Lines []LyricLine `json:"lines"`
+
+	// Plain The words, one line per line.
+	Plain string `json:"plain"`
+
+	// Source Where they came from, a provider ID (`navidrome`) or `lrclib`.
+	Source string `json:"source"`
+
+	// Synced Whether `lines` has timings. If not, show `plain`.
+	Synced bool `json:"synced"`
+}
+
 // Me defines model for Me.
 type Me struct {
 	// Avatar Image URL. Absent means show initials on `color`.
@@ -710,6 +746,18 @@ type NowPlaying struct {
 // plays it on its own device, and the speaker just shows it.
 type NowPlayingDriver string
 
+// OklchColor An OKLCH color, as CSS `oklch(l c h)`.
+type OklchColor struct {
+	// C Chroma, about 0-0.37.
+	C float64 `json:"c"`
+
+	// H Hue, in degrees.
+	H float64 `json:"h"`
+
+	// L Lightness, 0-1.
+	L float64 `json:"l"`
+}
+
 // Pairing defines model for Pairing.
 type Pairing struct {
 	ExpiresAt time.Time `json:"expiresAt"`
@@ -735,6 +783,31 @@ type PairingStatus struct {
 // PairingStatusStatus `approved`: continue with `POST /links/oauth` and `pairingId`.
 // `linked`: done; `link` is set.
 type PairingStatusStatus string
+
+// Palette The colors of a song's artwork, worked out once on the server so
+// every phone in the room matches. On a queue item once it's ready
+// (usually soon after it's queued); `/rooms/{roomId}/queue/{itemId}/palette`
+// works it out on the spot. Every role is set: when the art has
+// nothing that fits one, it's derived from the others.
+type Palette struct {
+	// Accent The dominant vivid hue, which tints the app; null for grayscale art.
+	Accent *Accent `json:"accent"`
+
+	// Dark An OKLCH color, as CSS `oklch(l c h)`.
+	Dark OklchColor `json:"dark"`
+
+	// Dominant An OKLCH color, as CSS `oklch(l c h)`.
+	Dominant OklchColor `json:"dominant"`
+
+	// Light An OKLCH color, as CSS `oklch(l c h)`.
+	Light OklchColor `json:"light"`
+
+	// Muted An OKLCH color, as CSS `oklch(l c h)`.
+	Muted OklchColor `json:"muted"`
+
+	// Vibrant An OKLCH color, as CSS `oklch(l c h)`.
+	Vibrant OklchColor `json:"vibrant"`
+}
 
 // Passkey defines model for Passkey.
 type Passkey struct {
@@ -920,10 +993,17 @@ type QueueItem struct {
 	AddedAt time.Time `json:"addedAt"`
 
 	// AddedBy User ID.
-	AddedBy      string         `json:"addedBy"`
-	Id           string         `json:"id"`
-	LanePosition int64          `json:"lanePosition"`
-	State        QueueItemState `json:"state"`
+	AddedBy      string `json:"addedBy"`
+	Id           string `json:"id"`
+	LanePosition int64  `json:"lanePosition"`
+
+	// Palette The colors of a song's artwork, worked out once on the server so
+	// every phone in the room matches. On a queue item once it's ready
+	// (usually soon after it's queued); `/rooms/{roomId}/queue/{itemId}/palette`
+	// works it out on the spot. Every role is set: when the art has
+	// nothing that fits one, it's derived from the others.
+	Palette *Palette       `json:"palette,omitempty"`
+	State   QueueItemState `json:"state"`
 
 	// Track The track as it was when queued; still shown if its service is offline.
 	Track QueuedTrack `json:"track"`
@@ -1530,6 +1610,9 @@ type ServerInterface interface {
 	// GetPlaylistTracks A page of a playlist's tracks, through one of your links or a shared one
 	// (GET /links/{id}/playlists/{playlistId}/tracks)
 	GetPlaylistTracks(w http.ResponseWriter, r *http.Request, id string, playlistId string, params GetPlaylistTracksParams)
+	// GetTrackLyrics A track's lyrics, through one of your links or a shared one
+	// (GET /links/{id}/tracks/{trackId}/lyrics)
+	GetTrackLyrics(w http.ResponseWriter, r *http.Request, id string, trackId string)
 	// GetMe The signed-in user
 	// (GET /me)
 	GetMe(w http.ResponseWriter, r *http.Request)
@@ -1611,6 +1694,12 @@ type ServerInterface interface {
 	// GetQueueItemArtwork A queued song's artwork
 	// (GET /rooms/{roomId}/queue/{itemId}/artwork)
 	GetQueueItemArtwork(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params GetQueueItemArtworkParams)
+	// GetQueueItemLyrics A queued song's lyrics
+	// (GET /rooms/{roomId}/queue/{itemId}/lyrics)
+	GetQueueItemLyrics(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
+	// GetQueueItemPalette A queued song's artwork colors
+	// (GET /rooms/{roomId}/queue/{itemId}/palette)
+	GetQueueItemPalette(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
 	// ListSessions The room's listening sessions, newest first
 	// (GET /rooms/{roomId}/sessions)
 	ListSessions(w http.ResponseWriter, r *http.Request, roomId RoomId, params ListSessionsParams)
@@ -2236,6 +2325,41 @@ func (siw *ServerInterfaceWrapper) GetPlaylistTracks(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetPlaylistTracks(w, r, id, playlistId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTrackLyrics operation middleware
+func (siw *ServerInterfaceWrapper) GetTrackLyrics(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "trackId" -------------
+	var trackId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "trackId", r.PathValue("trackId"), &trackId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "trackId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTrackLyrics(w, r, id, trackId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2916,6 +3040,76 @@ func (siw *ServerInterfaceWrapper) GetQueueItemArtwork(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// GetQueueItemLyrics operation middleware
+func (siw *ServerInterfaceWrapper) GetQueueItemLyrics(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetQueueItemLyrics(w, r, roomId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetQueueItemPalette operation middleware
+func (siw *ServerInterfaceWrapper) GetQueueItemPalette(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetQueueItemPalette(w, r, roomId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListSessions operation middleware
 func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.Request) {
 
@@ -3312,6 +3506,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/oauth/callback", wrapper.CompleteOAuthLink)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/search", wrapper.Search)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/albums/{albumId}", wrapper.GetAlbum)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/tracks/{trackId}/lyrics", wrapper.GetTrackLyrics)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artists/{artistId}", wrapper.GetArtist)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/playlists", wrapper.ListPlaylists)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/playlists/{playlistId}/tracks", wrapper.GetPlaylistTracks)
@@ -3324,6 +3519,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.RemoveQueueItem)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.MoveQueueItem)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/artwork", wrapper.GetQueueItemArtwork)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/palette", wrapper.GetQueueItemPalette)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/lyrics", wrapper.GetQueueItemLyrics)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms", wrapper.ListRooms)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms", wrapper.CreateRoom)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}", wrapper.GetRoom)
@@ -4259,6 +4456,46 @@ type GetPlaylistTracksdefaultJSONResponse struct {
 }
 
 func (response GetPlaylistTracksdefaultJSONResponse) VisitGetPlaylistTracksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackLyricsRequestObject struct {
+	Id      string `json:"id"`
+	TrackId string `json:"trackId"`
+}
+
+type GetTrackLyricsResponseObject interface {
+	VisitGetTrackLyricsResponse(w http.ResponseWriter) error
+}
+
+type GetTrackLyrics200JSONResponse Lyrics
+
+func (response GetTrackLyrics200JSONResponse) VisitGetTrackLyricsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrackLyricsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetTrackLyricsdefaultJSONResponse) VisitGetTrackLyricsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -5313,6 +5550,86 @@ func (response GetQueueItemArtworkdefaultJSONResponse) VisitGetQueueItemArtworkR
 	return err
 }
 
+type GetQueueItemLyricsRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	ItemId string `json:"itemId"`
+}
+
+type GetQueueItemLyricsResponseObject interface {
+	VisitGetQueueItemLyricsResponse(w http.ResponseWriter) error
+}
+
+type GetQueueItemLyrics200JSONResponse Lyrics
+
+func (response GetQueueItemLyrics200JSONResponse) VisitGetQueueItemLyricsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQueueItemLyricsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetQueueItemLyricsdefaultJSONResponse) VisitGetQueueItemLyricsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQueueItemPaletteRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	ItemId string `json:"itemId"`
+}
+
+type GetQueueItemPaletteResponseObject interface {
+	VisitGetQueueItemPaletteResponse(w http.ResponseWriter) error
+}
+
+type GetQueueItemPalette200JSONResponse Palette
+
+func (response GetQueueItemPalette200JSONResponse) VisitGetQueueItemPaletteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQueueItemPalettedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetQueueItemPalettedefaultJSONResponse) VisitGetQueueItemPaletteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListSessionsRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 	Params ListSessionsParams
@@ -5613,6 +5930,9 @@ type StrictServerInterface interface {
 	// GetPlaylistTracks A page of a playlist's tracks, through one of your links or a shared one
 	// (GET /links/{id}/playlists/{playlistId}/tracks)
 	GetPlaylistTracks(ctx context.Context, request GetPlaylistTracksRequestObject) (GetPlaylistTracksResponseObject, error)
+	// GetTrackLyrics A track's lyrics, through one of your links or a shared one
+	// (GET /links/{id}/tracks/{trackId}/lyrics)
+	GetTrackLyrics(ctx context.Context, request GetTrackLyricsRequestObject) (GetTrackLyricsResponseObject, error)
 	// GetMe The signed-in user
 	// (GET /me)
 	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
@@ -5694,6 +6014,12 @@ type StrictServerInterface interface {
 	// GetQueueItemArtwork A queued song's artwork
 	// (GET /rooms/{roomId}/queue/{itemId}/artwork)
 	GetQueueItemArtwork(ctx context.Context, request GetQueueItemArtworkRequestObject) (GetQueueItemArtworkResponseObject, error)
+	// GetQueueItemLyrics A queued song's lyrics
+	// (GET /rooms/{roomId}/queue/{itemId}/lyrics)
+	GetQueueItemLyrics(ctx context.Context, request GetQueueItemLyricsRequestObject) (GetQueueItemLyricsResponseObject, error)
+	// GetQueueItemPalette A queued song's artwork colors
+	// (GET /rooms/{roomId}/queue/{itemId}/palette)
+	GetQueueItemPalette(ctx context.Context, request GetQueueItemPaletteRequestObject) (GetQueueItemPaletteResponseObject, error)
 	// ListSessions The room's listening sessions, newest first
 	// (GET /rooms/{roomId}/sessions)
 	ListSessions(ctx context.Context, request ListSessionsRequestObject) (ListSessionsResponseObject, error)
@@ -6419,6 +6745,33 @@ func (sh *strictHandler) GetPlaylistTracks(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetPlaylistTracksResponseObject); ok {
 		if err := validResponse.VisitGetPlaylistTracksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTrackLyrics operation middleware
+func (sh *strictHandler) GetTrackLyrics(w http.ResponseWriter, r *http.Request, id string, trackId string) {
+	var request GetTrackLyricsRequestObject
+
+	request.Id = id
+	request.TrackId = trackId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTrackLyrics(ctx, request.(GetTrackLyricsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTrackLyrics")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTrackLyricsResponseObject); ok {
+		if err := validResponse.VisitGetTrackLyricsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -7189,6 +7542,60 @@ func (sh *strictHandler) GetQueueItemArtwork(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetQueueItemArtworkResponseObject); ok {
 		if err := validResponse.VisitGetQueueItemArtworkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetQueueItemLyrics operation middleware
+func (sh *strictHandler) GetQueueItemLyrics(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string) {
+	var request GetQueueItemLyricsRequestObject
+
+	request.RoomId = roomId
+	request.ItemId = itemId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetQueueItemLyrics(ctx, request.(GetQueueItemLyricsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetQueueItemLyrics")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetQueueItemLyricsResponseObject); ok {
+		if err := validResponse.VisitGetQueueItemLyricsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetQueueItemPalette operation middleware
+func (sh *strictHandler) GetQueueItemPalette(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string) {
+	var request GetQueueItemPaletteRequestObject
+
+	request.RoomId = roomId
+	request.ItemId = itemId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetQueueItemPalette(ctx, request.(GetQueueItemPaletteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetQueueItemPalette")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetQueueItemPaletteResponseObject); ok {
+		if err := validResponse.VisitGetQueueItemPaletteResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

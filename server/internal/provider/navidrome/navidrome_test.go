@@ -65,6 +65,12 @@ func (s *server) serve(w http.ResponseWriter, r *http.Request) {
 		fail(w, r)
 		return
 	}
+	s.route(w, r)
+}
+
+// route answers the methods the server knows.
+func (s *server) route(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
 	switch strings.TrimPrefix(r.URL.Path, "/rest/") {
 	case "ping":
 		ok(w, "")
@@ -73,7 +79,7 @@ func (s *server) serve(w http.ResponseWriter, r *http.Request) {
 			subsonicError(w, 70, "Song not found")
 			return
 		}
-		ok(w, `"song":{"id":"s1","title":"Rolloff","album":"Low Pass","albumId":"al1","artist":"The Square Roots","artistId":"ar1","duration":20,"bitRate":900,"contentType":"audio/flac","coverArt":"al-al1","isrc":["USAAA2600001"],"explicitStatus":"explicit"}`)
+		ok(w, `"song":{"id":"s1","title":"Rolloff","album":"Low Pass","albumId":"al1","artist":"The Square Roots","artistId":"ar1","duration":20,"bitRate":900,"contentType":"audio/flac","coverArt":"al-al1","isrc":["USAAA2600001"],"explicitStatus":"explicit","musicBrainzId":"8f3471b5-7e6a-48da-86a9-c1c07a0f47ae"}`)
 	case "stream":
 		if q.Get("id") != "s1" {
 			subsonicError(w, 70, "data not found")
@@ -321,6 +327,7 @@ func TestTrackMetadata(t *testing.T) {
 		Album:    provider.AlbumCredit{ID: "al1", Title: "Low Pass"},
 		Duration: 20 * time.Second,
 		ISRC:     "USAAA2600001",
+		MBID:     "8f3471b5-7e6a-48da-86a9-c1c07a0f47ae",
 		Explicit: true,
 		Artwork:  "al-al1",
 	}

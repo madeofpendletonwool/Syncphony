@@ -1,0 +1,11 @@
+{"created":"2026-10-05T12:00:00.000Z","count":3,"offset":0,"recordings":[
+ {"id":"dd000000-0000-4000-8000-000000000001","score":100,"title":"Rolloff","length":312000,"video":null,
+  "artist-credit":[{"name":"The Square Roots","artist":{"id":"0b3a1c55-2f0c-4a35-9a3e-6a1f33a0e001","name":"The Square Roots","sort-name":"Square Roots, The"}}],
+  "releases":[{"id":"aa000000-0000-4000-8000-000000000011","title":"Extended Mixes","status":"Official","date":"2021","release-group":{"id":"bb000000-0000-4000-8000-000000000011","primary-type":"Album","secondary-types":[]}}]},
+ {"id":"8f3471b5-7e6a-48da-86a9-c1c07a0f47ae","score":97,"title":"Rolloff","length":20133,"video":null,
+  "artist-credit":[{"name":"The Square Roots","artist":{"id":"0b3a1c55-2f0c-4a35-9a3e-6a1f33a0e001","name":"The Square Roots","sort-name":"Square Roots, The"}}],
+  "releases":[{"id":"aa000000-0000-4000-8000-000000000002","title":"Low Pass","status":"Official","date":"2019-03-01","release-group":{"id":"bb000000-0000-4000-8000-000000000002","primary-type":"Album","secondary-types":[]}}]},
+ {"id":"dd000000-0000-4000-8000-000000000003","score":60,"title":"Roll Off","length":20000,"video":null,
+  "artist-credit":[{"name":"The Square Roots","artist":{"id":"0b3a1c55-2f0c-4a35-9a3e-6a1f33a0e001","name":"The Square Roots","sort-name":"Square Roots, The"}}],
+  "releases":[]}
+]}

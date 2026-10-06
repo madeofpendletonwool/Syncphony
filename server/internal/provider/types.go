@@ -21,7 +21,9 @@ type Track struct {
 	Album    AlbumCredit
 	Duration time.Duration
 	// ISRC is set when the provider has the ISRC capability and knows it.
-	ISRC     string
+	ISRC string
+	// MBID is the MusicBrainz recording ID, when the provider knows it.
+	MBID     string
 	Explicit bool
 	Artwork  ArtworkRef
 }

@@ -3,6 +3,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/artcache"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
@@ -209,7 +211,7 @@ func (s *Server) GetLinkArtwork(ctx context.Context, req GetLinkArtworkRequestOb
 	if err != nil {
 		return nil, err
 	}
-	a, err := artwork(ctx, sess, provider.ArtworkRef(req.Params.Ref), req.Params.Size)
+	a, err := linkArtwork(ctx, sess, provider.ArtworkRef(req.Params.Ref), req.Params.Size)
 	if err != nil {
 		return nil, err
 	}
@@ -217,31 +219,61 @@ func (s *Server) GetLinkArtwork(ctx context.Context, req GetLinkArtworkRequestOb
 }
 
 // GetQueueItemArtwork loads a queued song's artwork through the link of
-// whoever queued it, so the whole room sees it.
+// whoever queued it, so the whole room sees it. When that's missing, or
+// smaller than asked for, the Cover Art Archive's is used if it's bigger.
 func (s *Server) GetQueueItemArtwork(ctx context.Context, req GetQueueItemArtworkRequestObject) (GetQueueItemArtworkResponseObject, error) {
 	it, err := s.Queue.Item(ctx, req.RoomId, req.ItemId)
 	if err != nil {
 		return nil, err
 	}
-	// metadata is the provider.Track snapshot taken when the item was queued.
-	var t provider.Track
-	if err := json.Unmarshal([]byte(it.Metadata), &t); err != nil || t.Artwork == "" || !it.LinkID.Valid {
+	t, err := queuedTrack(it)
+	if err != nil {
 		return nil, provider.ErrNotFound
 	}
-	sess, err := s.Links.Open(ctx, it.LinkID.String)
+	px := 0
+	if req.Params.Size != nil {
+		px = *req.Params.Size
+	}
+	img, err := s.Artwork.ForTrack(ctx, t, px)
 	if err != nil {
 		return nil, err
 	}
-	a, err := artwork(ctx, sess, t.Artwork, req.Params.Size)
-	if err != nil {
-		return nil, err
-	}
-	return a, nil
+	return imageResponse(img), nil
 }
 
-// artwork loads an image, refusing anything that isn't one. It takes over
+// GetQueueItemPalette returns a queued song's artwork colors, working
+// them out if they haven't been.
+func (s *Server) GetQueueItemPalette(ctx context.Context, req GetQueueItemPaletteRequestObject) (GetQueueItemPaletteResponseObject, error) {
+	it, err := s.Queue.Item(ctx, req.RoomId, req.ItemId)
+	if err != nil {
+		return nil, err
+	}
+	t, err := queuedTrack(it)
+	if err != nil {
+		return nil, provider.ErrNotFound
+	}
+	p, err := s.Palettes.ForItem(ctx, it, t)
+	if err != nil {
+		return nil, err
+	}
+	return GetQueueItemPalette200JSONResponse(toPalette(p)), nil
+}
+
+// queuedTrack is the provider.Track snapshot taken when it was queued.
+func queuedTrack(it store.QueueItem) (provider.Track, error) {
+	var t provider.Track
+	err := json.Unmarshal([]byte(it.Metadata), &t)
+	t.Ref = provider.TrackRef{Provider: it.Provider, LinkID: it.LinkID.String, ID: it.TrackID}
+	return t, err
+}
+
+func imageResponse(img artcache.Image) artworkResponse {
+	return artworkResponse{body: io.NopCloser(bytes.NewReader(img.Data)), ct: img.ContentType}
+}
+
+// linkArtwork loads an image, refusing anything that isn't one. It takes over
 // sess: the response closes it once the image is sent.
-func artwork(ctx context.Context, sess provider.Session, ref provider.ArtworkRef, size *int) (artworkResponse, error) {
+func linkArtwork(ctx context.Context, sess provider.Session, ref provider.ArtworkRef, size *int) (artworkResponse, error) {
 	px := 0
 	if size != nil {
 		px = *size
@@ -265,6 +297,7 @@ func artwork(ctx context.Context, sess provider.Session, ref provider.ArtworkRef
 type artworkResponse struct {
 	body io.ReadCloser
 	ct   string
+	// sess, if set, is closed once the image is sent.
 	sess provider.Session
 }
 
@@ -275,7 +308,9 @@ func (r artworkResponse) VisitGetQueueItemArtworkResponse(w http.ResponseWriter)
 }
 
 func (r artworkResponse) write(w http.ResponseWriter) error {
-	defer r.sess.Close()
+	if r.sess != nil {
+		defer r.sess.Close()
+	}
 	defer r.body.Close()
 	h := w.Header()
 	h.Set("Content-Type", r.ct)

@@ -34,6 +34,29 @@ type Invite struct {
 	UsedAt    sql.NullTime
 }
 
+type LyricsCache struct {
+	Provider     string
+	TrackID      string
+	Source       string
+	Instrumental bool
+	Plain        string
+	Synced       string
+	FetchedAt    time.Time
+	ExpiresAt    time.Time
+}
+
+type MusicbrainzTrack struct {
+	Provider         string
+	TrackID          string
+	RecordingMbid    string
+	ReleaseMbid      string
+	ReleaseGroupMbid string
+	ArtistMbid       string
+	Method           string
+	ResolvedAt       time.Time
+	ExpiresAt        time.Time
+}
+
 type PlayHistory struct {
 	ID          string
 	RoomID      string
@@ -58,6 +81,7 @@ type QueueItem struct {
 	ViaProvider  sql.NullString
 	ViaLinkID    sql.NullString
 	ViaTrackID   sql.NullString
+	Palette      sql.NullString
 }
 
 type Room struct {
