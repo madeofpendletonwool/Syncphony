@@ -359,6 +359,33 @@
   padding-top: env(safe-area-inset-top);
 }
 
+/*
+ * Sideways shelves: no scrollbar where a finger swipes them, but mouse
+ * users need one — fully hidden, a desktop row could not be scrolled at
+ * all (MAD-738). Fine pointers get a thin, quiet bar.
+ */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  @media (pointer: fine) {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, currentColor 22%, transparent) transparent;
+    &::-webkit-scrollbar {
+      display: block;
+      height: 0.375rem;
+    }
+    &::-webkit-scrollbar-thumb {
+      border-radius: 9999px;
+      background-color: color-mix(in oklch, currentColor 22%, transparent);
+    }
+    &::-webkit-scrollbar-track {
+      background-color: transparent;
+    }
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
