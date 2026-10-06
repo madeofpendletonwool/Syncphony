@@ -536,6 +536,12 @@ type CreateLinkRequest struct {
 
 // CreateRoomRequest defines model for CreateRoomRequest.
 type CreateRoomRequest struct {
+	// Fairness Tunes the room's fairness mode. While someone else has songs
+	// waiting, nobody gets more than `maxInARow` songs in a row, and
+	// `cooldown` other songs play between one person's songs; when
+	// nobody else is waiting, the music keeps going anyway. In round
+	// robin, `weights` give some people more songs per turn.
+	Fairness     *RoomFairness `json:"fairness,omitempty"`
 	FairnessMode *FairnessMode `json:"fairnessMode,omitempty"`
 	Name         string        `json:"name"`
 
@@ -902,7 +908,14 @@ type Role string
 
 // Room defines model for Room.
 type Room struct {
-	CreatedAt    time.Time       `json:"createdAt"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Fairness Tunes the room's fairness mode. While someone else has songs
+	// waiting, nobody gets more than `maxInARow` songs in a row, and
+	// `cooldown` other songs play between one person's songs; when
+	// nobody else is waiting, the music keeps going anyway. In round
+	// robin, `weights` give some people more songs per turn.
+	Fairness     RoomFairness    `json:"fairness"`
 	FairnessMode FairnessMode    `json:"fairnessMode"`
 	Id           string          `json:"id"`
 	Name         string          `json:"name"`
@@ -943,6 +956,26 @@ type RoomEvent struct {
 
 // RoomEventType defines model for RoomEvent.Type.
 type RoomEventType string
+
+// RoomFairness Tunes the room's fairness mode. While someone else has songs
+// waiting, nobody gets more than `maxInARow` songs in a row, and
+// `cooldown` other songs play between one person's songs; when
+// nobody else is waiting, the music keeps going anyway. In round
+// robin, `weights` give some people more songs per turn.
+type RoomFairness struct {
+	// Cooldown Songs by others between one person's songs. 0 is none.
+	Cooldown int `json:"cooldown"`
+
+	// MaxInARow 0 is no cap.
+	MaxInARow int `json:"maxInARow"`
+
+	// RepeatWindowMinutes Refuse songs already waiting or playing, or started within this
+	// many minutes. 0 is off.
+	RepeatWindowMinutes int `json:"repeatWindowMinutes"`
+
+	// Weights Songs per turn (2 to 4) by user ID, in round robin. Everyone else gets 1.
+	Weights map[string]int `json:"weights"`
+}
 
 // RoomHello defines model for RoomHello.
 type RoomHello struct {
@@ -1097,6 +1130,12 @@ type UpdateLinkRequest struct {
 
 // UpdateRoomRequest defines model for UpdateRoomRequest.
 type UpdateRoomRequest struct {
+	// Fairness Tunes the room's fairness mode. While someone else has songs
+	// waiting, nobody gets more than `maxInARow` songs in a row, and
+	// `cooldown` other songs play between one person's songs; when
+	// nobody else is waiting, the music keeps going anyway. In round
+	// robin, `weights` give some people more songs per turn.
+	Fairness     *RoomFairness `json:"fairness,omitempty"`
 	FairnessMode *FairnessMode `json:"fairnessMode,omitempty"`
 	Name         *string       `json:"name,omitempty"`
 

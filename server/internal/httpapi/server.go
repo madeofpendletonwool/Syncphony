@@ -239,7 +239,10 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var invalidRoom *rooms.InvalidInputError
 	var invalidPlayback *playback.InvalidInputError
 	var notPlayable *queue.NotPlayableError
+	var repeat *queue.RepeatError
 	switch {
+	case errors.As(err, &repeat):
+		writeJSONError(w, http.StatusConflict, "repeat", repeat.Error())
 	case errors.As(err, &notPlayable):
 		writeJSONError(w, http.StatusUnprocessableEntity, "not_playable", notPlayable.Error())
 	case errors.As(err, &invalidRoom):

@@ -25,6 +25,9 @@ func (s *Server) ListRooms(ctx context.Context, _ ListRoomsRequestObject) (ListR
 // CreateRoom makes a room owned by the caller.
 func (s *Server) CreateRoom(ctx context.Context, req CreateRoomRequestObject) (CreateRoomResponseObject, error) {
 	st := rooms.Settings{Permissions: fromPermissionsChange(req.Body.Permissions), SkipVotePercent: req.Body.SkipVotePercent}
+	if f := req.Body.Fairness; f != nil {
+		st.Fairness = fromFairness(*f)
+	}
 	var mode string
 	if req.Body.FairnessMode != nil {
 		mode = string(*req.Body.FairnessMode)
@@ -53,6 +56,9 @@ func (s *Server) UpdateRoom(ctx context.Context, req UpdateRoomRequestObject) (U
 	if req.Body.FairnessMode != nil {
 		u.FairnessMode = ptr(string(*req.Body.FairnessMode))
 	}
+	if f := req.Body.Fairness; f != nil {
+		u.Fairness = ptr(fromFairness(*f))
+	}
 	r, err := s.Rooms.Update(ctx, sessionFrom(ctx).User.ID, req.RoomId, u)
 	if err != nil {
 		return nil, err
@@ -63,14 +69,26 @@ func (s *Server) UpdateRoom(ctx context.Context, req UpdateRoomRequestObject) (U
 func toRoom(r store.Room) Room {
 	st := rooms.ParseSettings(r.Settings)
 	p := st.Permissions
-	return Room{
+	out := Room{
 		Id: r.ID, Name: r.Name, OwnerId: r.OwnerID, FairnessMode: FairnessMode(r.FairnessMode),
 		Permissions: RoomPermissions{
 			PlayPause: PermissionLevel(p.PlayPause), Seek: PermissionLevel(p.Seek),
 			Skip: SkipPermission(p.Skip), Speaker: PermissionLevel(p.Speaker),
 		},
 		SkipVotePercent: *st.SkipVotePercent, CreatedAt: r.CreatedAt,
+		Fairness: RoomFairness{
+			MaxInARow: st.Fairness.MaxInARow, Cooldown: st.Fairness.Cooldown,
+			Weights: st.Fairness.Weights, RepeatWindowMinutes: st.Fairness.RepeatWindowMinutes,
+		},
 	}
+	if out.Fairness.Weights == nil {
+		out.Fairness.Weights = map[string]int{}
+	}
+	return out
+}
+
+func fromFairness(f RoomFairness) rooms.Fairness {
+	return rooms.Fairness{MaxInARow: f.MaxInARow, Cooldown: f.Cooldown, Weights: f.Weights, RepeatWindowMinutes: f.RepeatWindowMinutes}
 }
 
 // fromPermissionsChange reads the permissions a request sets; the rest

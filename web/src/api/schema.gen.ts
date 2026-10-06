@@ -604,6 +604,12 @@ export interface paths {
          *     none are. When you add one song, services that can tell ahead of time
          *     that they won't play it (Spotify) are asked first, and the song is
          *     refused with `not_playable` and a message to show.
+         *
+         *     If the room has a repeat window (`fairness.repeatWindowMinutes`),
+         *     songs already waiting or playing, or started within the window, are
+         *     left out, matched by track or by ISRC across services. If that
+         *     leaves nothing, the add is refused with `repeat` (409) and a
+         *     message to show.
          */
         post: operations["addToQueue"];
         delete?: never;
@@ -721,7 +727,9 @@ export interface paths {
         head?: never;
         /**
          * Change a room you own
-         * @description Everyone in the room gets `room.updated`. A new fairness mode reorders the queue at once.
+         * @description Everyone in the room gets `room.updated`. A new fairness mode or
+         *     `fairness` reorders the queue at once; `fairness` replaces the
+         *     room's as a whole.
          */
         patch: operations["updateRoom"];
         trace?: never;
@@ -1367,11 +1375,34 @@ export interface components {
          * @default 50
          */
         SkipVotePercent: number;
+        /**
+         * @description Tunes the room's fairness mode. While someone else has songs
+         *     waiting, nobody gets more than `maxInARow` songs in a row, and
+         *     `cooldown` other songs play between one person's songs; when
+         *     nobody else is waiting, the music keeps going anyway. In round
+         *     robin, `weights` give some people more songs per turn.
+         */
+        RoomFairness: {
+            /** @description 0 is no cap. */
+            maxInARow: number;
+            /** @description Songs by others between one person's songs. 0 is none. */
+            cooldown: number;
+            /** @description Songs per turn (2 to 4) by user ID, in round robin. Everyone else gets 1. */
+            weights: {
+                [key: string]: number;
+            };
+            /**
+             * @description Refuse songs already waiting or playing, or started within this
+             *     many minutes. 0 is off.
+             */
+            repeatWindowMinutes: number;
+        };
         Room: {
             id: string;
             name: string;
             ownerId: string;
             fairnessMode: components["schemas"]["FairnessMode"];
+            fairness: components["schemas"]["RoomFairness"];
             permissions: components["schemas"]["RoomPermissions"];
             skipVotePercent: components["schemas"]["SkipVotePercent"];
             /** Format: date-time */
@@ -1380,12 +1411,14 @@ export interface components {
         CreateRoomRequest: {
             name: string;
             fairnessMode?: components["schemas"]["FairnessMode"];
+            fairness?: components["schemas"]["RoomFairness"];
             permissions?: components["schemas"]["RoomPermissionsChange"];
             skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };
         UpdateRoomRequest: {
             name?: string;
             fairnessMode?: components["schemas"]["FairnessMode"];
+            fairness?: components["schemas"]["RoomFairness"];
             permissions?: components["schemas"]["RoomPermissionsChange"];
             skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };

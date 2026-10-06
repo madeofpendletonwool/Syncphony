@@ -175,9 +175,110 @@ func TestFIFO(t *testing.T) {
 	}
 }
 
+func TestOptions(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mode   string
+		lanes  map[string][]fairness.Item
+		recent []string
+		opts   fairness.Options
+		want   string
+	}{
+		{
+			name:  "FIFO caps songs in a row",
+			mode:  "fifo",
+			lanes: lanes("a: a1@0 a2@1 a3@2 a4@3", "b: b1@4 b2@5"),
+			opts:  fairness.Options{MaxInARow: 2},
+			want:  "a1 a2 b1 a3 a4 b2",
+		},
+		{
+			name:   "the cap counts songs already played",
+			mode:   "fifo",
+			lanes:  lanes("a: a1@0 a2@1", "b: b1@4"),
+			recent: []string{"a", "a"},
+			opts:   fairness.Options{MaxInARow: 2},
+			want:   "b1 a1 a2",
+		},
+		{
+			name:  "the cap gives way when nobody else is waiting",
+			mode:  "fifo",
+			lanes: lanes("a: a1@0 a2@1 a3@2"),
+			opts:  fairness.Options{MaxInARow: 1},
+			want:  "a1 a2 a3",
+		},
+		{
+			name:  "FIFO cooldown spaces one person's songs",
+			mode:  "fifo",
+			lanes: lanes("a: a1@0 a2@1 a3@2", "b: b1@3 b2@4", "c: c1@5"),
+			opts:  fairness.Options{Cooldown: 2},
+			want:  "a1 b1 c1 a2 b2 a3",
+		},
+		{
+			name:   "cooldown counts songs already played",
+			mode:   "fifo",
+			lanes:  lanes("a: a1@0", "b: b1@3", "c: c1@5"),
+			recent: []string{"b", "a"},
+			opts:   fairness.Options{Cooldown: 2},
+			want:   "c1 a1 b1",
+		},
+		{
+			name:  "a weight of 2 is two songs a turn",
+			lanes: lanes("a: a1@0 a2@0 a3@0 a4@0", "b: b1@1 b2@1 b3@1"),
+			opts:  fairness.Options{Weights: map[string]int{"a": 2}},
+			want:  "a1 a2 b1 a3 a4 b2 b3",
+		},
+		{
+			name:   "a weighted turn already under way carries on",
+			lanes:  lanes("a: a2@0 a3@0", "b: b1@1"),
+			recent: []string{"a", "b"},
+			opts:   fairness.Options{Weights: map[string]int{"a": 2}},
+			want:   "a2 b1 a3",
+		},
+		{
+			name:   "a finished weighted turn passes on",
+			lanes:  lanes("a: a3@0", "b: b1@1"),
+			recent: []string{"a", "a"},
+			opts:   fairness.Options{Weights: map[string]int{"a": 2}},
+			want:   "b1 a3",
+		},
+		{
+			name:  "the cap cuts a weighted turn short",
+			lanes: lanes("a: a1@0 a2@0 a3@0", "b: b1@1 b2@1"),
+			opts:  fairness.Options{Weights: map[string]int{"a": 3}, MaxInARow: 2},
+			want:  "a1 a2 b1 a3 b2",
+		},
+		{
+			name:  "FIFO ignores weights",
+			mode:  "fifo",
+			lanes: lanes("a: a1@0 a2@2", "b: b1@1"),
+			opts:  fairness.Options{Weights: map[string]int{"a": 2}},
+			want:  "a1 b1 a2",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := fairness.State{Lanes: tc.lanes, Recent: tc.recent}
+			if len(tc.recent) > 0 {
+				s.Playing = tc.recent[0]
+			}
+			if got := ids(fairness.ForMode(tc.mode, tc.opts).Order(s)); got != tc.want {
+				t.Errorf("got  %q\nwant %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestReach(t *testing.T) {
+	if got := (fairness.Options{}).Reach(); got != 1 {
+		t.Errorf("plain: %d", got)
+	}
+	if got := (fairness.Options{MaxInARow: 3, Cooldown: 2, Weights: map[string]int{"a": 4}}).Reach(); got != 4 {
+		t.Errorf("tuned: %d", got)
+	}
+}
+
 func TestForMode(t *testing.T) {
 	for mode, want := range map[string]string{"round_robin": "round_robin", "fifo": "fifo", "": "round_robin", "weighted": "round_robin"} {
-		if got := fairness.ForMode(mode).Mode(); got != want {
+		if got := fairness.ForMode(mode, fairness.Options{}).Mode(); got != want {
 			t.Errorf("ForMode(%q) = %q, want %q", mode, got, want)
 		}
 	}
@@ -203,6 +304,9 @@ func randomState(r *rand.Rand) fairness.State {
 			s.Playing = user
 		}
 	}
+	for range r.IntN(4) {
+		s.Recent = append(s.Recent, string("abcdef"[r.IntN(6)]))
+	}
 	return s
 }
 
@@ -213,6 +317,7 @@ func clone(s fairness.State) fairness.State {
 		c.Lanes[u] = slices.Clone(l)
 	}
 	c.LastPlayed = maps.Clone(s.LastPlayed)
+	c.Recent = slices.Clone(s.Recent)
 	return c
 }
 
@@ -221,8 +326,9 @@ func clone(s fairness.State) fairness.State {
 // input untouched.
 func TestPolicyContract(t *testing.T) {
 	r := rand.New(rand.NewPCG(1, 2)) //nolint:gosec // seeded on purpose, for repeatable tests
-	for _, p := range []fairness.Policy{fairness.RoundRobin{}, fairness.FIFO{}} {
-		t.Run(p.Mode(), func(t *testing.T) {
+	tuned := fairness.Options{MaxInARow: 2, Cooldown: 1, Weights: map[string]int{"a": 3, "c": 2}}
+	for _, p := range []fairness.Policy{fairness.RoundRobin{}, fairness.FIFO{}, fairness.RoundRobin{Options: tuned}, fairness.FIFO{Options: tuned}} {
+		t.Run(fmt.Sprintf("%s %+v", p.Mode(), p), func(t *testing.T) {
 			for range 500 {
 				s := randomState(r)
 				orig := clone(s)
@@ -275,6 +381,34 @@ func TestRoundRobinTurns(t *testing.T) {
 				if u != it.User && left[u] > 0 && played[it.User] > played[u]+1 {
 					t.Fatalf("%s took a 2nd turn ahead of %s, who's still waiting: %q", it.User, u, ids(order))
 				}
+			}
+		}
+	}
+}
+
+// TestLimits checks MaxInARow and Cooldown on random input: within the
+// simulated order, neither is broken while someone else has songs waiting.
+func TestLimits(t *testing.T) {
+	r := rand.New(rand.NewPCG(5, 6)) //nolint:gosec // as above
+	o := fairness.Options{MaxInARow: 2, Cooldown: 1, Weights: map[string]int{"a": 3}}
+	for _, p := range []fairness.Policy{fairness.RoundRobin{Options: o}, fairness.FIFO{Options: o}} {
+		for range 500 {
+			s := randomState(r)
+			s.Recent = nil
+			order := p.Order(s)
+			left := map[string]int{}
+			for u, l := range s.Lanes {
+				left[u] = len(l)
+			}
+			for i, it := range order {
+				others := false
+				for u, n := range left {
+					others = others || (u != it.User && n > 0)
+				}
+				if others && i > 0 && order[i-1].User == it.User {
+					t.Fatalf("%s: %s played again within the cooldown while others waited: %q", p.Mode(), it.User, ids(order))
+				}
+				left[it.User]--
 			}
 		}
 	}

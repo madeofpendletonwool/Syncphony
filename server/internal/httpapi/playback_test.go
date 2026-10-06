@@ -45,6 +45,22 @@ func TestRoomsAPI(t *testing.T) {
 	if pushed.Permissions.Skip != "vote" || pushed.SkipVotePercent != 66 {
 		t.Fatalf("pushed: %+v", pushed)
 	}
+	if room.Fairness.Weights == nil || room.Fairness.MaxInARow != 0 {
+		t.Fatalf("default fairness: %+v", room.Fairness)
+	}
+	bobID := me(t, bob).Id
+	alice.want(http.StatusOK, "PATCH", "/rooms/"+room.Id, httpapi.UpdateRoomRequest{
+		Fairness: &httpapi.RoomFairness{MaxInARow: 2, Cooldown: 1, Weights: map[string]int{bobID: 2}, RepeatWindowMinutes: 90},
+	}).decode(t, &room)
+	if f := room.Fairness; f.MaxInARow != 2 || f.Cooldown != 1 || f.Weights[bobID] != 2 || f.RepeatWindowMinutes != 90 || room.Permissions.Skip != "vote" {
+		t.Fatalf("fairness: %+v", room)
+	}
+	// The repeat guard refuses a song that's already waiting.
+	aliceLink := linkFake(t, alice)
+	alice.want(http.StatusOK, "POST", "/rooms/"+room.Id+"/queue", addReq(aliceLink, "t01"))
+	if r := alice.do("POST", "/rooms/"+room.Id+"/queue", addReq(aliceLink, "t01")); r.status != http.StatusConflict || r.code() != "repeat" {
+		t.Errorf("repeat: %d %s", r.status, r.body)
+	}
 	bob.want(http.StatusOK, "GET", "/rooms/"+room.Id, nil).decode(t, &room)
 
 	for _, tc := range []struct {
@@ -57,6 +73,7 @@ func TestRoomsAPI(t *testing.T) {
 	}{
 		{"bob changes alice's room", bob, "PATCH", "/rooms/" + room.Id, httpapi.UpdateRoomRequest{Name: ptr("Mine")}, http.StatusForbidden, "forbidden"},
 		{"blank name", alice, "POST", "/rooms", httpapi.CreateRoomRequest{Name: "  "}, http.StatusBadRequest, "invalid_input"},
+		{"weight out of range", alice, "PATCH", "/rooms/" + room.Id, httpapi.UpdateRoomRequest{Fairness: &httpapi.RoomFairness{Weights: map[string]int{"x": 9}}}, http.StatusBadRequest, "invalid_input"},
 		{"vote percent out of range", alice, "PATCH", "/rooms/" + room.Id, httpapi.UpdateRoomRequest{SkipVotePercent: ptr(100)}, http.StatusBadRequest, "invalid_input"},
 		{"missing room", bob, "GET", "/rooms/nope", nil, http.StatusNotFound, "not_found"},
 		{"bob claims in an owner-controlled room", bob, "PUT", "/rooms/" + room.Id + "/player", httpapi.ClaimPlayerRequest{DeviceId: "tablet", Name: "Tablet"}, http.StatusForbidden, "forbidden"},

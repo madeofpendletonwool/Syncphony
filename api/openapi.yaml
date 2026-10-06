@@ -786,6 +786,12 @@ paths:
         none are. When you add one song, services that can tell ahead of time
         that they won't play it (Spotify) are asked first, and the song is
         refused with `not_playable` and a message to show.
+
+        If the room has a repeat window (`fairness.repeatWindowMinutes`),
+        songs already waiting or playing, or started within the window, are
+        left out, matched by track or by ISRC across services. If that
+        leaves nothing, the add is refused with `repeat` (409) and a
+        message to show.
       tags: [queue]
       requestBody:
         required: true
@@ -967,7 +973,10 @@ paths:
     patch:
       operationId: updateRoom
       summary: Change a room you own
-      description: Everyone in the room gets `room.updated`. A new fairness mode reorders the queue at once.
+      description: |
+        Everyone in the room gets `room.updated`. A new fairness mode or
+        `fairness` reorders the queue at once; `fairness` replaces the
+        room's as a whole.
       tags: [rooms]
       requestBody:
         required: true
@@ -2144,9 +2153,44 @@ components:
         A skip vote passes once more than this percent of the room has
         voted (not counting whoever queued the song): 50 is a majority.
 
+    RoomFairness:
+      type: object
+      description: |
+        Tunes the room's fairness mode. While someone else has songs
+        waiting, nobody gets more than `maxInARow` songs in a row, and
+        `cooldown` other songs play between one person's songs; when
+        nobody else is waiting, the music keeps going anyway. In round
+        robin, `weights` give some people more songs per turn.
+      required: [maxInARow, cooldown, weights, repeatWindowMinutes]
+      properties:
+        maxInARow:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: 0 is no cap.
+        cooldown:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: Songs by others between one person's songs. 0 is none.
+        weights:
+          type: object
+          description: Songs per turn (2 to 4) by user ID, in round robin. Everyone else gets 1.
+          additionalProperties:
+            type: integer
+            minimum: 1
+            maximum: 4
+        repeatWindowMinutes:
+          type: integer
+          minimum: 0
+          maximum: 1440
+          description: |
+            Refuse songs already waiting or playing, or started within this
+            many minutes. 0 is off.
+
     Room:
       type: object
-      required: [id, name, ownerId, fairnessMode, permissions, skipVotePercent, createdAt]
+      required: [id, name, ownerId, fairnessMode, fairness, permissions, skipVotePercent, createdAt]
       properties:
         id:
           type: string
@@ -2156,6 +2200,8 @@ components:
           type: string
         fairnessMode:
           $ref: "#/components/schemas/FairnessMode"
+        fairness:
+          $ref: "#/components/schemas/RoomFairness"
         permissions:
           $ref: "#/components/schemas/RoomPermissions"
         skipVotePercent:
@@ -2174,6 +2220,8 @@ components:
           maxLength: 64
         fairnessMode:
           $ref: "#/components/schemas/FairnessMode"
+        fairness:
+          $ref: "#/components/schemas/RoomFairness"
         permissions:
           $ref: "#/components/schemas/RoomPermissionsChange"
         skipVotePercent:
@@ -2188,6 +2236,8 @@ components:
           maxLength: 64
         fairnessMode:
           $ref: "#/components/schemas/FairnessMode"
+        fairness:
+          $ref: "#/components/schemas/RoomFairness"
         permissions:
           $ref: "#/components/schemas/RoomPermissionsChange"
         skipVotePercent:

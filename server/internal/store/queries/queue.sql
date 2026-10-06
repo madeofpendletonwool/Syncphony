@@ -70,3 +70,32 @@ WHERE play_history.room_id = sqlc.arg(room_id)
 -- most one: the playing item's.
 -- name: EndOpenPlays :exec
 UPDATE play_history SET ended_at = ?, end_reason = ? WHERE room_id = ? AND ended_at IS NULL;
+
+-- RecentPlayers is who queued the songs that most recently started in a
+-- room, newest first, for fairness rules that look back a few songs.
+-- name: RecentPlayers :many
+SELECT queue_items.added_by
+FROM play_history
+JOIN queue_items ON queue_items.id = play_history.queue_item_id
+WHERE play_history.room_id = ?
+ORDER BY play_history.started_at DESC, play_history.id DESC
+LIMIT ?;
+
+-- RecentDuplicates counts a room's items for the same song (the same
+-- track, or the same ISRC on any service) that are waiting, playing, or
+-- started playing since a time, for the repeat guard. metadata is a
+-- provider.Track, whose ISRC field has no JSON tag.
+-- name: RecentDuplicates :one
+SELECT count(*) FROM queue_items
+WHERE queue_items.room_id = sqlc.arg(room_id)
+  AND (
+    (queue_items.provider = sqlc.arg(provider) AND queue_items.track_id = sqlc.arg(track_id))
+    OR (CAST(sqlc.arg(isrc) AS TEXT) != '' AND json_extract(queue_items.metadata, '$.ISRC') = sqlc.arg(isrc))
+  )
+  AND (
+    queue_items.state IN ('queued', 'playing')
+    OR EXISTS (
+      SELECT 1 FROM play_history
+      WHERE play_history.queue_item_id = queue_items.id AND play_history.started_at >= sqlc.arg(since)
+    )
+  );

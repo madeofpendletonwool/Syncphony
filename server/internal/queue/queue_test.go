@@ -49,7 +49,8 @@ func newEnv(t *testing.T) *env {
 	}
 	t.Cleanup(func() { db.Close() })
 	// The fake won't play t05, as Spotify won't play some tracks.
-	reg, err := provider.NewRegistry(fake.New(fake.Options{NotPlayable: []string{"t05"}}))
+	// fake2 has the same catalog (and ISRCs) under another service.
+	reg, err := provider.NewRegistry(fake.New(fake.Options{NotPlayable: []string{"t05"}}), fake.New(fake.Options{ID: "fake2", Name: "Fake 2"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,5 +413,87 @@ func TestConcurrentChanges(t *testing.T) {
 	}
 	if len(snap.Items) != n || len(snap.UpNext) != n || snap.Version != n {
 		t.Errorf("%d items, %d up next, version %d; want %d each", len(snap.Items), len(snap.UpNext), snap.Version, n)
+	}
+}
+
+// setSettings stores raw room settings, as rooms.Service would.
+func (e *env) setSettings(raw string) {
+	e.t.Helper()
+	r, err := e.db.UpdateRoom(e.t.Context(), store.UpdateRoomParams{Name: e.room.Name, FairnessMode: e.room.FairnessMode, Settings: raw, ID: e.room.ID})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	e.room = r
+}
+
+func TestRepeatGuard(t *testing.T) {
+	e := newEnv(t)
+	ctx := t.Context()
+	e.setSettings(`{"fairness":{"repeatWindowMinutes":60}}`)
+	e.add(e.alice, "t01", "t02")
+
+	var repeat *queue.RepeatError
+	if _, err := e.q.Add(ctx, e.room.ID, e.bob.ID, refs(e.bob, "t01")); !errors.As(err, &repeat) || repeat.Minutes != 60 || !strings.Contains(err.Error(), "hour") {
+		t.Fatalf("queued song again: %v", err)
+	}
+	// A bigger add leaves the repeats out, including one given twice.
+	snap := e.add(e.bob, "t01", "t03", "t04", "t04")
+	var bobs []string
+	for _, it := range snap.Items {
+		if it.AddedBy == e.bob.ID {
+			bobs = append(bobs, it.TrackID)
+		}
+	}
+	if got := strings.Join(bobs, " "); got != "t03 t04" {
+		t.Fatalf("bob's lane: %q", got)
+	}
+	// The same song from another service is a repeat too (same ISRC).
+	l2, err := e.links.LinkWithCredentials(ctx, e.bob.ID, "fake2", map[string]string{"username": fake.Username, "password": fake.Password})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.q.Add(ctx, e.room.ID, e.bob.ID, []queue.TrackRef{{LinkID: l2.ID, TrackID: "t02"}}); !errors.As(err, &repeat) {
+		t.Fatalf("same song on another service: %v", err)
+	}
+
+	// Once t01 has played and the window has passed, it can come back.
+	id := itemID(t, snap, e.alice, "t01")
+	if _, err := e.q.Change(ctx, e.room.ID, func(q *store.Queries, _ store.Room) error {
+		if err := q.SetQueueItemState(ctx, store.SetQueueItemStateParams{State: store.ItemPlayed, UpdatedAt: e.clock(), ID: id}); err != nil {
+			return err
+		}
+		_, err := q.StartPlay(ctx, store.StartPlayParams{ID: store.NewID(), RoomID: e.room.ID, QueueItemID: id, StartedAt: e.clock()})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.q.Add(ctx, e.room.ID, e.bob.ID, refs(e.bob, "t01")); !errors.As(err, &repeat) {
+		t.Fatalf("just played: %v", err)
+	}
+	e.mu.Lock()
+	e.now = e.now.Add(61 * time.Minute)
+	e.mu.Unlock()
+	e.add(e.bob, "t01")
+
+	// With the guard off, anything goes.
+	e.setSettings(`{}`)
+	e.add(e.alice, "t03")
+}
+
+func TestFairnessOptions(t *testing.T) {
+	e := newEnv(t)
+	e.room = e.newRoom(e.alice.ID, store.FairnessFIFO)
+	e.setSettings(`{"fairness":{"maxInARow":1}}`)
+	e.add(e.alice, "t01", "t02", "t03")
+	snap := e.add(e.bob, "t04")
+	if got, want := upNext(snap, e.alice, e.bob), "alice:t01 bob:t04 alice:t02 alice:t03"; got != want {
+		t.Errorf("FIFO with a cap: %q, want %q", got, want)
+	}
+	e.room = e.newRoom(e.alice.ID, store.FairnessRoundRobin)
+	e.setSettings(fmt.Sprintf(`{"fairness":{"weights":{%q:2}}}`, e.bob.ID))
+	e.add(e.alice, "t01", "t02")
+	snap = e.add(e.bob, "t04", "t06", "t07")
+	if got, want := upNext(snap, e.alice, e.bob), "alice:t01 bob:t04 bob:t06 alice:t02 bob:t07"; got != want {
+		t.Errorf("bob weighted 2: %q, want %q", got, want)
 	}
 }

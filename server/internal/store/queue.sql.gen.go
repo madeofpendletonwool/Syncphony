@@ -365,6 +365,86 @@ func (q *Queries) NextLanePosition(ctx context.Context, arg NextLanePositionPara
 	return column_1, err
 }
 
+const recentDuplicates = `-- name: RecentDuplicates :one
+SELECT count(*) FROM queue_items
+WHERE queue_items.room_id = ?1
+  AND (
+    (queue_items.provider = ?2 AND queue_items.track_id = ?3)
+    OR (CAST(?4 AS TEXT) != '' AND json_extract(queue_items.metadata, '$.ISRC') = ?4)
+  )
+  AND (
+    queue_items.state IN ('queued', 'playing')
+    OR EXISTS (
+      SELECT 1 FROM play_history
+      WHERE play_history.queue_item_id = queue_items.id AND play_history.started_at >= ?5
+    )
+  )
+`
+
+type RecentDuplicatesParams struct {
+	RoomID   string
+	Provider string
+	TrackID  string
+	Isrc     string
+	Since    time.Time
+}
+
+// RecentDuplicates counts a room's items for the same song (the same
+// track, or the same ISRC on any service) that are waiting, playing, or
+// started playing since a time, for the repeat guard. metadata is a
+// provider.Track, whose ISRC field has no JSON tag.
+func (q *Queries) RecentDuplicates(ctx context.Context, arg RecentDuplicatesParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, recentDuplicates,
+		arg.RoomID,
+		arg.Provider,
+		arg.TrackID,
+		arg.Isrc,
+		arg.Since,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const recentPlayers = `-- name: RecentPlayers :many
+SELECT queue_items.added_by
+FROM play_history
+JOIN queue_items ON queue_items.id = play_history.queue_item_id
+WHERE play_history.room_id = ?
+ORDER BY play_history.started_at DESC, play_history.id DESC
+LIMIT ?
+`
+
+type RecentPlayersParams struct {
+	RoomID string
+	Limit  int64
+}
+
+// RecentPlayers is who queued the songs that most recently started in a
+// room, newest first, for fairness rules that look back a few songs.
+func (q *Queries) RecentPlayers(ctx context.Context, arg RecentPlayersParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, recentPlayers, arg.RoomID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var added_by string
+		if err := rows.Scan(&added_by); err != nil {
+			return nil, err
+		}
+		items = append(items, added_by)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setQueueItemState = `-- name: SetQueueItemState :exec
 UPDATE queue_items SET state = ?, updated_at = ? WHERE id = ?
 `

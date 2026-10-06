@@ -42,6 +42,29 @@ func (e *NotPlayableError) Error() string {
 
 func (e *NotPlayableError) Unwrap() error { return provider.ErrNotPlayable }
 
+// RepeatError is a song refused by the room's repeat guard: it's already
+// waiting or playing, or played too recently.
+type RepeatError struct {
+	Title string
+	// Minutes is the room's repeat window.
+	Minutes int
+}
+
+func (e *RepeatError) Error() string {
+	return fmt.Sprintf("%q is already in the queue or played in the last %s. This room doesn't repeat songs that soon.", e.Title, window(e.Minutes))
+}
+
+func window(minutes int) string {
+	switch {
+	case minutes == 60:
+		return "hour"
+	case minutes%60 == 0:
+		return fmt.Sprintf("%d hours", minutes/60)
+	default:
+		return fmt.Sprintf("%d minutes", minutes)
+	}
+}
+
 // InvalidInputError is a bad request, such as adding no songs.
 type InvalidInputError struct{ Message string }
 
@@ -134,6 +157,10 @@ type TrackRef struct {
 // song is a *NotPlayableError. Larger adds (an album) aren't checked: one
 // check per song would trip Spotify's throttling, and a song that won't
 // play is skipped with a notice when its turn comes.
+//
+// If the room has a repeat window, songs that are already waiting or
+// playing, or started within the window, are left out. If that leaves
+// nothing to add, it's a *RepeatError.
 func (s *Service) Add(ctx context.Context, roomID, userID string, refs []TrackRef) (rooms.QueueSnapshot, error) {
 	if len(refs) == 0 {
 		return rooms.QueueSnapshot{}, &InvalidInputError{"add at least one song"}
@@ -149,12 +176,16 @@ func (s *Service) Add(ctx context.Context, roomID, userID string, refs []TrackRe
 	if err != nil {
 		return rooms.QueueSnapshot{}, err
 	}
-	return s.Change(ctx, roomID, func(q *store.Queries, _ store.Room) error {
+	return s.Change(ctx, roomID, func(q *store.Queries, room store.Room) error {
+		now := s.Now()
+		tracks, err := s.withoutRepeats(ctx, q, room, tracks, now)
+		if err != nil {
+			return err
+		}
 		pos, err := q.NextLanePosition(ctx, store.NextLanePositionParams{RoomID: roomID, AddedBy: userID})
 		if err != nil {
 			return err
 		}
-		now := s.Now()
 		for _, t := range tracks {
 			meta, err := json.Marshal(t)
 			if err != nil {
@@ -171,6 +202,41 @@ func (s *Service) Add(ctx context.Context, roomID, userID string, refs []TrackRe
 		}
 		return nil
 	})
+}
+
+// withoutRepeats drops the songs the room's repeat guard refuses, including
+// a song given twice. It's a *RepeatError if none are left.
+func (s *Service) withoutRepeats(ctx context.Context, q *store.Queries, room store.Room, tracks []provider.Track, now time.Time) ([]provider.Track, error) {
+	minutes := rooms.ParseSettings(room.Settings).Fairness.RepeatWindowMinutes
+	if minutes == 0 {
+		return tracks, nil
+	}
+	since := now.Add(-time.Duration(minutes) * time.Minute)
+	seen := map[string]bool{}
+	out := make([]provider.Track, 0, len(tracks))
+	for _, t := range tracks {
+		key := t.Ref.Provider + "\x00" + t.Ref.ID
+		if seen[key] || (t.ISRC != "" && seen["isrc\x00"+t.ISRC]) {
+			continue
+		}
+		seen[key] = true
+		if t.ISRC != "" {
+			seen["isrc\x00"+t.ISRC] = true
+		}
+		n, err := q.RecentDuplicates(ctx, store.RecentDuplicatesParams{
+			RoomID: room.ID, Provider: t.Ref.Provider, TrackID: t.Ref.ID, Isrc: t.ISRC, Since: since,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			out = append(out, t)
+		}
+	}
+	if len(out) == 0 {
+		return nil, &RepeatError{Title: tracks[0].Title, Minutes: minutes}
+	}
+	return out, nil
 }
 
 // lookup fetches each track's metadata, opening each link once.

@@ -120,12 +120,31 @@ func TestUpdateSettings(t *testing.T) {
 	if e := <-sub.C; e.Type != realtime.RoomUpdated {
 		t.Errorf("published %s", e.Type)
 	}
+	// New fairness options reorder the queue, so a snapshot goes out.
+	r, err = s.Update(ctx, owner.ID, r.ID, rooms.Update{Fairness: &rooms.Fairness{MaxInARow: 2, Weights: map[string]int{"x": 1, "y": 3}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := rooms.ParseSettings(r.Settings).Fairness; f.MaxInARow != 2 || len(f.Weights) != 1 || f.Weights["y"] != 3 {
+		t.Errorf("fairness: %+v", f)
+	}
+	var types []string
+	for range 2 {
+		types = append(types, (<-sub.C).Type)
+	}
+	if types[0] != realtime.RoomUpdated || types[1] != realtime.QueueUpdated {
+		t.Errorf("published %v", types)
+	}
 	var invalid *rooms.InvalidInputError
 	for _, u := range []rooms.Update{
 		{Permissions: rooms.Permissions{Seek: rooms.Vote}},
 		{Permissions: rooms.Permissions{Skip: "anyone"}},
 		{SkipVotePercent: new(100)},
 		{SkipVotePercent: new(-1)},
+		{Fairness: &rooms.Fairness{MaxInARow: 11}},
+		{Fairness: &rooms.Fairness{Cooldown: -1}},
+		{Fairness: &rooms.Fairness{Weights: map[string]int{"x": 5}}},
+		{Fairness: &rooms.Fairness{RepeatWindowMinutes: 24*60 + 1}},
 	} {
 		if _, err := s.Update(ctx, owner.ID, r.ID, u); !errors.As(err, &invalid) {
 			t.Errorf("%+v: %v", u, err)

@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -77,7 +79,70 @@ type Settings struct {
 	Permissions Permissions `json:"permissions"`
 	// SkipVotePercent: a skip vote passes once more than this percent of
 	// the room has voted (see VotesNeeded). 0 to 99.
-	SkipVotePercent *int `json:"skipVotePercent,omitempty"`
+	SkipVotePercent *int     `json:"skipVotePercent,omitempty"`
+	Fairness        Fairness `json:"fairness"`
+}
+
+// Fairness tunes a room's fairness mode. The zero value is plain round
+// robin or FIFO.
+type Fairness struct {
+	// MaxInARow caps one person's songs in a row while others wait: 0
+	// (no cap) to MaxLimit.
+	MaxInARow int `json:"maxInARow,omitempty"`
+	// Cooldown is how many other songs play between one person's songs
+	// while others wait: 0 to MaxLimit.
+	Cooldown int `json:"cooldown,omitempty"`
+	// Weights are songs per turn in round robin, by user ID: 2 to
+	// MaxWeight. Everyone else gets 1.
+	Weights map[string]int `json:"weights,omitempty"`
+	// RepeatWindowMinutes refuses a song that's waiting, playing, or
+	// started within this many minutes: 0 (off) to MaxRepeatWindow.
+	RepeatWindowMinutes int `json:"repeatWindowMinutes,omitempty"`
+}
+
+// Fairness limits.
+const (
+	MaxLimit        = 10
+	MaxWeight       = 4
+	MaxWeights      = 64
+	MaxRepeatWindow = 24 * 60
+)
+
+// Options are the fairness engine's view of f.
+func (f Fairness) Options() fairness.Options {
+	return fairness.Options{MaxInARow: f.MaxInARow, Cooldown: f.Cooldown, Weights: f.Weights}
+}
+
+// Equal reports whether f and g order the queue alike.
+func (f Fairness) Equal(g Fairness) bool {
+	return f.MaxInARow == g.MaxInARow && f.Cooldown == g.Cooldown && maps.Equal(f.Weights, g.Weights)
+}
+
+// clean drops weights of 1, which are the default.
+func (f *Fairness) clean() {
+	maps.DeleteFunc(f.Weights, func(_ string, w int) bool { return w == 1 })
+	if len(f.Weights) == 0 {
+		f.Weights = nil
+	}
+}
+
+func (f Fairness) validate() error {
+	switch {
+	case f.MaxInARow < 0 || f.MaxInARow > MaxLimit:
+		return &InvalidInputError{fmt.Sprintf("songs in a row is 0 (no cap) to %d", MaxLimit)}
+	case f.Cooldown < 0 || f.Cooldown > MaxLimit:
+		return &InvalidInputError{fmt.Sprintf("the cooldown is 0 to %d songs", MaxLimit)}
+	case len(f.Weights) > MaxWeights:
+		return &InvalidInputError{fmt.Sprintf("weight at most %d people", MaxWeights)}
+	case f.RepeatWindowMinutes < 0 || f.RepeatWindowMinutes > MaxRepeatWindow:
+		return &InvalidInputError{fmt.Sprintf("the repeat window is 0 (off) to %d minutes", MaxRepeatWindow)}
+	}
+	for _, w := range f.Weights {
+		if w < 1 || w > MaxWeight {
+			return &InvalidInputError{fmt.Sprintf("a weight is 1 to %d songs a turn", MaxWeight)}
+		}
+	}
+	return nil
 }
 
 // ParseSettings reads a room's settings, filling in defaults. Unknown or
@@ -101,6 +166,10 @@ func ParseSettings(raw string) Settings {
 	}
 	if st.SkipVotePercent == nil || *st.SkipVotePercent < 0 || *st.SkipVotePercent > 99 {
 		st.SkipVotePercent = ptr(DefaultSkipVotePercent)
+	}
+	st.Fairness.clean()
+	if st.Fairness.validate() != nil {
+		st.Fairness = Fairness{}
 	}
 	return st
 }
@@ -141,6 +210,8 @@ type Update struct {
 	Name, FairnessMode *string
 	Permissions        Permissions
 	SkipVotePercent    *int
+	// Fairness, if set, replaces the room's fairness options.
+	Fairness *Fairness
 }
 
 // Update changes a room. Only its owner may. Everyone in the room hears
@@ -176,6 +247,10 @@ func (s *Service) Update(ctx context.Context, userID, id string, u Update) (stor
 	if u.SkipVotePercent != nil {
 		st.SkipVotePercent = u.SkipVotePercent
 	}
+	before := ParseSettings(r.Settings).Fairness
+	if u.Fairness != nil {
+		st.Fairness = *u.Fairness
+	}
 	name, raw, err := validate(name, mode, st)
 	if err != nil {
 		return r, err
@@ -188,7 +263,7 @@ func (s *Service) Update(ctx context.Context, userID, id string, u Update) (stor
 	if s.OnUpdate != nil {
 		s.OnUpdate(updated)
 	}
-	if mode != r.FairnessMode {
+	if mode != r.FairnessMode || !before.Equal(ParseSettings(raw).Fairness) {
 		if _, err := s.QueueChanged(ctx, id); err != nil {
 			return updated, err
 		}
@@ -224,6 +299,10 @@ func validate(name, mode string, st Settings) (string, string, error) {
 	if *st.SkipVotePercent < 0 || *st.SkipVotePercent > 99 {
 		return "", "", &InvalidInputError{"the skip vote percent is 0 to 99"}
 	}
+	if err := st.Fairness.validate(); err != nil {
+		return "", "", err
+	}
+	st.Fairness.clean()
 	st.Controls = ""
 	raw, err := json.Marshal(st)
 	return name, string(raw), err
@@ -362,7 +441,14 @@ func SnapshotTx(ctx context.Context, q *store.Queries, id string) (QueueSnapshot
 	if err != nil {
 		return QueueSnapshot{}, err
 	}
-	order := fairness.ForMode(r.FairnessMode).Order(fairnessState(items, history))
+	opts := ParseSettings(r.Settings).Fairness.Options()
+	recent, err := q.RecentPlayers(ctx, store.RecentPlayersParams{RoomID: id, Limit: int64(opts.Reach())})
+	if err != nil {
+		return QueueSnapshot{}, err
+	}
+	fs := fairnessState(items, history)
+	fs.Recent = recent
+	order := fairness.ForMode(r.FairnessMode, opts).Order(fs)
 	upNext := make([]string, len(order))
 	for i, it := range order {
 		upNext[i] = it.ID
