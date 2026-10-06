@@ -1,8 +1,10 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { components } from '@/api/schema.gen'
 import { meQuery } from './auth'
+import { syncServerClock } from './clock'
 import { newer, playbackQuery, type Playback } from './playback'
+import { addReaction, type Reaction } from './reactions'
 import { queueQuery, roomsQuery, type QueueSnapshot, type Room } from './room'
 import { linksQuery, usableLinksQuery } from './services'
 import { createStore } from './store'
@@ -25,12 +27,23 @@ export const live = createStore<Live>({ status: 'connecting', members: [] })
 const SESSION_ENDED = 4001
 const FELL_BEHIND = 1013
 
+type SocketOptions = {
+  /** A big screen: watches the room without counting as being in it. */
+  display?: boolean
+  /** The session (or the display's pairing) ended. Default: signs out. */
+  onSessionEnded?: () => void
+}
+
 /**
  * Keeps the current room's queue and playback live over its WebSocket:
  * every event lands in the query cache, so screens just read queries.
  * Reconnects with backoff and resumes from the last queue version.
  */
-export function useRoomSocket(roomId: string | undefined) {
+export function useRoomSocket(roomId: string | undefined, { display = false, onSessionEnded }: SocketOptions = {}) {
+  const ended = useRef(onSessionEnded)
+  useEffect(() => {
+    ended.current = onSessionEnded
+  })
   const queryClient = useQueryClient()
 
   useEffect(() => {
@@ -45,7 +58,11 @@ export function useRoomSocket(roomId: string | undefined) {
       clearTimeout(retry)
       const version = queryClient.getQueryData(queueQuery(roomId).queryKey)?.version
       const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-      const url = `${proto}://${location.host}/ws/rooms/${encodeURIComponent(roomId)}${version !== undefined ? `?since=${version}` : ''}`
+      const query = new URLSearchParams()
+      if (version !== undefined) query.set('since', String(version))
+      if (display) query.set('display', '1')
+      const qs = query.toString()
+      const url = `${proto}://${location.host}/ws/rooms/${encodeURIComponent(roomId)}${qs ? `?${qs}` : ''}`
       const sock = new WebSocket(url)
       ws = sock
       sock.onmessage = (e) => {
@@ -55,7 +72,8 @@ export function useRoomSocket(roomId: string | undefined) {
       sock.onclose = (e) => {
         if (closed || ws !== sock) return
         if (e.code === SESSION_ENDED) {
-          queryClient.setQueryData(meQuery.queryKey, null)
+          if (ended.current) ended.current()
+          else queryClient.setQueryData(meQuery.queryKey, null)
           return
         }
         live.set((l) => ({ ...l, status: 'reconnecting' }))
@@ -83,13 +101,14 @@ export function useRoomSocket(roomId: string | undefined) {
       window.removeEventListener('online', wake)
       ws?.close()
     }
-  }, [roomId, queryClient])
+  }, [roomId, display, queryClient])
 }
 
 function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
   switch (ev.type) {
     case 'hello': {
       const hello = ev.data as components['schemas']['RoomHello']
+      syncServerClock(hello.serverTime)
       live.set({ roomId, status: 'live', members: hello.members })
       hello.members.forEach((u) => upsertUser(queryClient, u))
       break
@@ -123,6 +142,9 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
       queryClient.setQueryData(roomsQuery.queryKey, (rs) => rs?.map((r) => (r.id === room.id ? room : r)))
       break
     }
+    case 'reaction.sent':
+      addReaction(ev.data as Reaction)
+      break
     case 'link.status': {
       const link = ev.data as ServiceLink
       queryClient.setQueryData(linksQuery.queryKey, (ls) => ls?.map((l) => (l.id === link.id ? link : l)))

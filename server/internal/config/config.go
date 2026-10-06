@@ -42,6 +42,9 @@ type Config struct {
 	// MusicBrainzURL is the MusicBrainz server queued songs are matched on,
 	// for Cover Art Archive artwork. Empty turns both off.
 	MusicBrainzURL string
+	// WikipediaURL is the Wikipedia artist bios in liner notes come from;
+	// its language is theirs. Empty turns bios off.
+	WikipediaURL string
 }
 
 // defaultTrustedProxies are loopback and private networks, where a
@@ -89,6 +92,13 @@ func Load() (Config, error) {
 		c.MusicBrainzURL = u
 	default:
 		return Config{}, fmt.Errorf("SYNCPHONY_MUSICBRAINZ_URL %q: want an http(s) URL, or off", u)
+	}
+	switch u := strings.TrimRight(strings.TrimSpace(env("SYNCPHONY_WIKIPEDIA_URL", "https://en.wikipedia.org")), "/"); {
+	case u == "off" || u == "none":
+	case strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://"):
+		c.WikipediaURL = u
+	default:
+		return Config{}, fmt.Errorf("SYNCPHONY_WIKIPEDIA_URL %q: want an http(s) URL, or off", u)
 	}
 	proxies := env("SYNCPHONY_TRUSTED_PROXIES", defaultTrustedProxies)
 	if proxies != "none" {

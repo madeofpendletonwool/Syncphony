@@ -1,8 +1,9 @@
-import { ChevronDown, ListMusic } from 'lucide-react'
+import { ChevronDown, ListMusic, Mic2 } from 'lucide-react'
 import { AnimatePresence, motion, useDragControls } from 'motion/react'
 import { Dialog } from 'radix-ui'
 import { useRef, useState } from 'react'
 import { Artwork } from '@/components/artwork'
+import { LyricsView } from '@/components/lyrics/lyrics-view'
 import { SourceTag } from '@/components/service-tag'
 import { AlbumLink, ArtistLinks } from '@/components/track-credits'
 import { Badge } from '@/components/ui/badge'
@@ -28,6 +29,8 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
   // While scrubbing, show the thumb where the finger is, not the live position.
   const [scrub, setScrub] = useState<number>()
   const queueRef = useRef<HTMLElement>(null)
+  // Lyrics take the artwork's place.
+  const [lyrics, setLyrics] = useState(false)
   const close = () => onOpenChange(false)
 
   return (
@@ -71,22 +74,41 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
                     </Button>
                   </Dialog.Close>
                   <span aria-hidden className="h-1.5 w-10 rounded-full bg-foreground/25" />
-                  <span className="size-10" />
+                  {np.roomId ? (
+                    <Button
+                      size="icon"
+                      variant={lyrics ? 'default' : 'glass'}
+                      aria-label="Lyrics"
+                      aria-pressed={lyrics}
+                      onClick={() => setLyrics((l) => !l)}
+                      onPointerDown={(e) => e.stopPropagation()}
+                    >
+                      <Mic2 />
+                    </Button>
+                  ) : (
+                    <span className="size-10" />
+                  )}
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:overflow-hidden">
                   <div className="flex min-h-full flex-col lg:min-h-0 lg:overflow-y-auto">
-                    <div
-                      onPointerDown={(e) => drag.start(e)}
-                      className="flex flex-1 touch-none items-center justify-center px-8 py-4"
-                    >
-                      <Artwork
-                        src={np.artworkUrl}
-                        alt={np.track.album ? `${np.track.album} cover` : ''}
-                        layoutId="now-playing-artwork"
-                        className="w-full max-w-[min(26rem,46dvh)] rounded-3xl shadow-[0_30px_80px_-20px_var(--glow)]"
-                      />
-                    </div>
+                    {lyrics ? (
+                      <div className="mx-auto flex h-[min(34rem,52dvh)] w-full max-w-xl flex-col px-gutter py-2">
+                        <LyricsView np={np} variant="sheet" onSeek={commands.seek} className="h-full" />
+                      </div>
+                    ) : (
+                      <div
+                        onPointerDown={(e) => drag.start(e)}
+                        className="flex flex-1 touch-none items-center justify-center px-8 py-4"
+                      >
+                        <Artwork
+                          src={np.artworkUrl}
+                          alt={np.track.album ? `${np.track.album} cover` : ''}
+                          layoutId="now-playing-artwork"
+                          className="w-full max-w-[min(26rem,46dvh)] rounded-3xl shadow-[0_30px_80px_-20px_var(--glow)]"
+                        />
+                      </div>
+                    )}
 
                     <div className="mx-auto w-full max-w-xl px-gutter">
                       <motion.div

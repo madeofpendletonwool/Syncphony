@@ -335,6 +335,22 @@
   animation: mesh-drift-c 53s ease-in-out infinite;
 }
 
+/*
+ * Big screens (/tv) never stay still: the whole layout wanders a few
+ * pixels over minutes, so nothing burns into a plasma or OLED panel.
+ */
+@keyframes burn-in-drift {
+  0% { transform: translate(-10px, -6px); }
+  25% { transform: translate(8px, -10px); }
+  50% { transform: translate(12px, 8px); }
+  75% { transform: translate(-6px, 10px); }
+  100% { transform: translate(-10px, -6px); }
+}
+
+@utility burn-in-drift {
+  animation: burn-in-drift 900s linear infinite;
+}
+
 @utility pb-safe {
   padding-bottom: env(safe-area-inset-bottom);
 }

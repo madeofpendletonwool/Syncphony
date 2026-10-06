@@ -64,6 +64,10 @@ type Service struct {
 	// Failed attempts, by client IP and by username.
 	byIP   *limiter
 	byUser *limiter
+
+	// Displays waiting to pair, and wrong pairing codes by user.
+	pairings  *pairings
+	pairFails *limiter
 }
 
 // New returns a Service.
@@ -89,6 +93,8 @@ func New(db *store.Store, cfg Config) (*Service, error) {
 		cers:      &ceremonies{now: cfg.Now, byID: map[string]*ceremony{}},
 		byIP:      newLimiter(30, 15*time.Minute, cfg.Now),
 		byUser:    newLimiter(10, 15*time.Minute, cfg.Now),
+		pairings:  &pairings{bySecret: map[string]*pairing{}, byCode: map[string]string{}},
+		pairFails: newLimiter(10, 15*time.Minute, cfg.Now),
 	}, nil
 }
 

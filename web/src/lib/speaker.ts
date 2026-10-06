@@ -1,5 +1,6 @@
 import { api } from '@/api/client'
 import { ApiError, errorMessage, unwrap } from '@/api/errors'
+import { serverNow } from './clock'
 import { queueArtworkUrl, sendCommand, type Playback, type QueueItem } from './playback'
 import { createStore } from './store'
 import { toast } from './toast'
@@ -64,7 +65,7 @@ export function acceptedTypes(probe: (type: string) => string = (t) => new Audio
 }
 
 /** Where the speaker should be in a song right now, per the server. */
-export function targetPosition(p: Playback, now = Date.now()) {
+export function targetPosition(p: Playback, now = serverNow()) {
   if (p.state !== 'playing') return p.positionMs
   return p.positionMs + Math.max(0, now - Date.parse(p.at))
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
@@ -39,8 +40,22 @@ func (s *Server) RoomSocket() http.Handler {
 		if c, err := r.Cookie(SessionCookie); err == nil {
 			token = c.Value
 		}
-		sess, err := s.Auth.Authenticate(ctx, token)
-		if err != nil {
+		rc := &roomConn{s: s, token: token, display: r.URL.Query().Get("display") == "1"}
+		if sess, err := s.Auth.Authenticate(ctx, token); err == nil {
+			rc.user = sess.User
+		} else if c, derr := r.Cookie(DisplayCookie); derr == nil && errors.Is(err, auth.ErrUnauthenticated) {
+			// A paired display, which may watch its own room only.
+			d, derr := s.Auth.AuthenticateDisplay(ctx, c.Value)
+			if derr != nil {
+				writeError(w, r, derr)
+				return
+			}
+			if d.Display.RoomID != r.PathValue("id") {
+				writeError(w, r, auth.ErrForbidden)
+				return
+			}
+			rc.token, rc.paired, rc.display = c.Value, true, true
+		} else {
 			writeError(w, r, err)
 			return
 		}
@@ -67,7 +82,8 @@ func (s *Server) RoomSocket() http.Handler {
 			return
 		}
 		defer func() { _ = c.CloseNow() }()
-		(&roomConn{s: s, c: c, user: sess.User, token: token, room: room, sent: since}).serve(ctx)
+		rc.c, rc.room, rc.sent = c, room, since
+		rc.serve(ctx)
 	})
 }
 
@@ -77,7 +93,11 @@ type roomConn struct {
 	c     *websocket.Conn
 	user  store.User
 	token string
-	room  store.Room
+	// display: the connection is a big screen, which isn't in the room
+	// (no presence). paired: it's a paired display, with no user at all;
+	// token is then the display's.
+	display, paired bool
+	room            store.Room
 	// sent is the last queue version the client has.
 	sent int64
 }
@@ -89,19 +109,27 @@ func (rc *roomConn) serve(ctx context.Context) {
 	ctx = rc.c.CloseRead(ctx)
 
 	// Subscribe before reading snapshots, so nothing falls in between.
-	sub := s.Bus.Subscribe(realtime.RoomTopic(roomID), realtime.UserTopic(userID))
+	topics := []string{realtime.RoomTopic(roomID)}
+	if !rc.paired {
+		topics = append(topics, realtime.UserTopic(userID))
+	}
+	sub := s.Bus.Subscribe(topics...)
 	defer sub.Close()
 
-	if s.Presence.Join(roomID, userID) {
-		s.Bus.Publish(realtime.RoomTopic(roomID), realtime.Event{Type: realtime.MemberJoined, Data: rc.user})
-		s.Playback.MembersChanged(roomID)
-	}
-	defer func() {
-		if s.Presence.Leave(roomID, userID) {
-			s.Bus.Publish(realtime.RoomTopic(roomID), realtime.Event{Type: realtime.MemberLeft, Data: rc.user})
+	// A big screen watches the room without being in it: it doesn't
+	// count toward who's here, or skip votes.
+	if !rc.display {
+		if s.Presence.Join(roomID, userID) {
+			s.Bus.Publish(realtime.RoomTopic(roomID), realtime.Event{Type: realtime.MemberJoined, Data: rc.user})
 			s.Playback.MembersChanged(roomID)
 		}
-	}()
+		defer func() {
+			if s.Presence.Leave(roomID, userID) {
+				s.Bus.Publish(realtime.RoomTopic(roomID), realtime.Event{Type: realtime.MemberLeft, Data: rc.user})
+				s.Playback.MembersChanged(roomID)
+			}
+		}()
+	}
 
 	if err := rc.hello(ctx); err != nil {
 		rc.fail(err)
@@ -130,7 +158,7 @@ func (rc *roomConn) serve(ctx context.Context) {
 				return
 			}
 		case <-ping.C:
-			if err := s.Auth.Check(ctx, rc.token); err != nil {
+			if err := rc.check(ctx); err != nil {
 				rc.c.Close(closeSessionEnded, "session ended")
 				return
 			}
@@ -142,6 +170,14 @@ func (rc *roomConn) serve(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// check reports whether the connection's session, or display, is still good.
+func (rc *roomConn) check(ctx context.Context) error {
+	if rc.paired {
+		return rc.s.Auth.CheckDisplay(ctx, rc.token)
+	}
+	return rc.s.Auth.Check(ctx, rc.token)
 }
 
 // hello sends who's here, then the queue (unless the client is current)
@@ -156,7 +192,7 @@ func (rc *roomConn) hello(ctx context.Context) error {
 	for _, id := range s.Presence.Members(rc.room.ID) {
 		present[id] = true
 	}
-	hello := RoomHello{RoomId: rc.room.ID, RoomName: rc.room.Name, You: rc.user.ID, Members: []User{}}
+	hello := RoomHello{RoomId: rc.room.ID, RoomName: rc.room.Name, You: rc.user.ID, Members: []User{}, ServerTime: time.Now().UTC()}
 	for _, u := range users {
 		if present[u.ID] {
 			hello.Members = append(hello.Members, toUser(u))
@@ -211,6 +247,8 @@ func (rc *roomConn) send(ctx context.Context, e realtime.Event) error {
 		data = toServiceLink(d)
 	case store.Room:
 		data = toRoom(d)
+	case Reaction:
+		data = d
 	default:
 		slog.Error("realtime: no API form for event", "type", e.Type, "data", e.Data)
 		return nil

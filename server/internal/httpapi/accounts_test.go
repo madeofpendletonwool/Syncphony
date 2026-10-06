@@ -20,6 +20,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/artwork"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
+	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
 	"github.com/madeofpendletonwool/syncphony/server/internal/match"
@@ -107,8 +108,9 @@ func newEnv(t *testing.T) *env {
 	e.playback = playback.New(db, e.rooms, qs, e.links, playback.Config{Now: e.clock, Presence: presence, Matcher: match.New(db, e.links, presence)})
 	t.Cleanup(e.playback.Close)
 	ly := lyrics.New(db, lyrics.Options{LRCLIB: &lyrics.LRCLIB{BaseURL: newLRCLIB(t).URL}, Now: e.clock})
+	notes := linernotes.New(db, e.mb, linernotes.Options{WikipediaURL: mbURL, WikidataURL: mbURL, Now: e.clock})
 	api := &httpapi.Server{
-		Version: "test", Auth: e.svc, Links: e.links, Lyrics: ly, Artwork: art, Palettes: e.palettes, Rooms: e.rooms, Queue: qs, Playback: e.playback, Bus: e.bus, Presence: presence,
+		Version: "test", Auth: e.svc, Links: e.links, Lyrics: ly, LinerNotes: notes, Artwork: art, Palettes: e.palettes, Rooms: e.rooms, Queue: qs, Playback: e.playback, Bus: e.bus, Presence: presence,
 		BaseURL: e.base, PingEvery: 50 * time.Millisecond,
 	}
 	mux := http.NewServeMux()

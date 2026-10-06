@@ -156,8 +156,9 @@ type recording struct {
 }
 
 type artistCredit struct {
-	Name   string `json:"name"`
-	Artist struct {
+	Name       string `json:"name"`
+	JoinPhrase string `json:"joinphrase"`
+	Artist     struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"artist"`

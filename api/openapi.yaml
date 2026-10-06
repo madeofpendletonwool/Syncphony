@@ -344,6 +344,9 @@ paths:
       operationId: listUsers
       summary: Everyone on this server
       tags: [account]
+      security:
+        - session: []
+        - display: []
       responses:
         "200":
           description: Users, oldest first
@@ -864,6 +867,9 @@ paths:
       summary: The room's queue and its fair play order
       description: The same snapshot `queue.updated` pushes over the room WebSocket.
       tags: [queue]
+      security:
+        - session: []
+        - display: []
       responses:
         "200":
           description: The queue
@@ -1081,6 +1087,9 @@ paths:
             type: integer
             minimum: 0
             maximum: 2048
+      security:
+        - session: []
+        - display: []
       responses:
         "200":
           description: The image
@@ -1108,6 +1117,9 @@ paths:
         if it isn't yet. 404 if the song has no artwork the server can read
         (an SVG, say); the client can fall back to the image itself.
       tags: [queue]
+      security:
+        - session: []
+        - display: []
       responses:
         "200":
           description: The palette
@@ -1134,6 +1146,9 @@ paths:
         whoever queued the song, so everyone in the room can read along.
         If that link is gone, LRCLIB is still asked. 404 if none are found.
       tags: [queue]
+      security:
+        - session: []
+        - display: []
       responses:
         "200":
           description: The lyrics
@@ -1141,6 +1156,190 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Lyrics"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/queue/{itemId}/liner-notes:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getQueueItemLinerNotes
+      summary: A queued song's liner notes
+      description: |
+        The release, credits and a few facts from MusicBrainz, and the
+        artist's bio from Wikipedia. The first ask for a song can take a
+        few seconds (MusicBrainz allows a request a second); after that
+        they're cached. 404 if MusicBrainz doesn't know the song, or
+        MusicBrainz is turned off.
+      tags: [queue]
+      security:
+        - session: []
+        - display: []
+      responses:
+        "200":
+          description: The liner notes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinerNotes"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/reactions:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    post:
+      operationId: sendReaction
+      summary: Send an emoji reaction to the room
+      description: |
+        Floats up on the room's big screen, and reaches everyone on the room
+        socket as `reaction.sent`. Reactions aren't kept. Limited to a few a
+        second per person (`rate_limited`).
+      tags: [rooms]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReactionRequest"
+      responses:
+        "202":
+          description: Sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reaction"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/displays:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: listDisplays
+      summary: The room's paired displays
+      tags: [displays]
+      responses:
+        "200":
+          description: Displays, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Display"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: pairDisplay
+      summary: Pair a display with the room
+      description: |
+        Type in the code a display (a TV at `/tv`) is showing. It then shows
+        this room's big screen until it's unpaired. `pairing_invalid` if no
+        display is showing the code; wrong codes are rate limited.
+      tags: [displays]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PairDisplayRequest"
+      responses:
+        "201":
+          description: Paired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Display"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/displays/{displayId}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: displayId
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: unpairDisplay
+      summary: Unpair a display
+      description: The room's owner, whoever paired it, or an admin.
+      tags: [displays]
+      responses:
+        "204":
+          description: Unpaired; the display goes back to showing a code
+        default:
+          $ref: "#/components/responses/Error"
+
+  /display/pairing:
+    post:
+      operationId: beginDisplayPairing
+      summary: Start pairing this device as a display
+      description: |
+        Returns a short code for the display to show, and sets a pairing
+        cookie. Poll `GET /display/pairing` until someone in a room types the
+        code in. Codes last 10 minutes.
+      tags: [displays]
+      security: []
+      responses:
+        "201":
+          description: A code to show
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisplayPairing"
+        default:
+          $ref: "#/components/responses/Error"
+    get:
+      operationId: pollDisplayPairing
+      summary: Check whether this display has been paired
+      description: |
+        Reads the pairing cookie. Once paired, sets the display cookie and
+        returns the room. `pairing_expired` (410) when the code timed out:
+        start again.
+      tags: [displays]
+      security: []
+      responses:
+        "200":
+          description: The pairing's status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisplayPairingStatus"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /display:
+    get:
+      operationId: getDisplay
+      summary: This display, and its room
+      description: Reads the display cookie. `unauthenticated` (401) if this device isn't a paired display.
+      tags: [displays]
+      security: []
+      responses:
+        "200":
+          description: The display
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisplayMe"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: leaveDisplay
+      summary: Unpair this display, from the display
+      tags: [displays]
+      security: []
+      responses:
+        "204":
+          description: Unpaired; the display cookie is cleared
         default:
           $ref: "#/components/responses/Error"
 
@@ -1187,6 +1386,9 @@ paths:
       operationId: getRoom
       summary: A room
       tags: [rooms]
+      security:
+        - session: []
+        - display: []
       responses:
         "200":
           description: The room
@@ -1228,6 +1430,9 @@ paths:
       summary: What the room is playing
       description: The same state `nowplaying.updated` pushes over the room WebSocket.
       tags: [playback]
+      security:
+        - session: []
+        - display: []
       responses:
         "200":
           description: The playback state
@@ -1403,6 +1608,14 @@ components:
         Set by the sign-in endpoints. httpOnly, SameSite=Lax, and Secure when
         the server is served over HTTPS. Mutating requests must come from the
         app's own origin (checked with Sec-Fetch-Site / Origin).
+    display:
+      type: apiKey
+      in: cookie
+      name: syncphony_display
+      description: |
+        A paired display's token (see `/display/pairing`). It can read its
+        own room and nothing else: the operations that list it here, and
+        the room socket.
 
   parameters:
     InviteCode:
@@ -1934,6 +2147,187 @@ components:
           type: string
           description: The line. Empty for a pause.
 
+    LinerNotes:
+      type: object
+      required: [title, recordingMbid, credits, facts]
+      properties:
+        title:
+          type: string
+          description: The recording's title on MusicBrainz.
+        recordingMbid:
+          type: string
+        year:
+          type: integer
+          description: When the recording first came out.
+        release:
+          $ref: "#/components/schemas/LinerNotesRelease"
+        artist:
+          $ref: "#/components/schemas/LinerNotesArtist"
+        credits:
+          type: array
+          description: Who did what, writers first.
+          items:
+            $ref: "#/components/schemas/LinerNotesCredit"
+        facts:
+          type: array
+          description: Short fun facts, for rotating cards.
+          items:
+            $ref: "#/components/schemas/LinerNotesFact"
+
+    LinerNotesRelease:
+      type: object
+      required: [title, labels]
+      properties:
+        title:
+          type: string
+        type:
+          type: string
+          description: Album, Single, EP...
+        date:
+          type: string
+          description: YYYY, YYYY-MM or YYYY-MM-DD.
+        labels:
+          type: array
+          items:
+            type: string
+
+    LinerNotesArtist:
+      type: object
+      required: [mbid, name]
+      properties:
+        mbid:
+          type: string
+        name:
+          type: string
+        about:
+          type: string
+          description: A one-liner, like "Group from Seattle".
+        bio:
+          type: string
+          description: A short summary from Wikipedia.
+        bioUrl:
+          type: string
+          description: The Wikipedia article.
+
+    LinerNotesCredit:
+      type: object
+      required: [role, names]
+      properties:
+        role:
+          type: string
+          description: '"Written by", "Produced by", "Guitar"...'
+        names:
+          type: array
+          items:
+            type: string
+
+    LinerNotesFact:
+      type: object
+      required: [kind, text]
+      properties:
+        kind:
+          type: string
+          enum: [cover, live, samples, sampled_by, origin, first_released]
+        text:
+          type: string
+
+    ReactionEmoji:
+      type: string
+      description: The reactions a room can send.
+      enum: ["🔥", "❤️", "🙌", "😂", "💃", "🎉", "😮", "👏"]
+
+    ReactionRequest:
+      type: object
+      required: [emoji]
+      properties:
+        emoji:
+          $ref: "#/components/schemas/ReactionEmoji"
+
+    Reaction:
+      type: object
+      required: [id, roomId, userId, emoji, at]
+      properties:
+        id:
+          type: string
+        roomId:
+          type: string
+        userId:
+          type: string
+        emoji:
+          $ref: "#/components/schemas/ReactionEmoji"
+        at:
+          type: string
+          format: date-time
+
+    Display:
+      type: object
+      required: [id, roomId, name, createdAt, lastSeenAt]
+      properties:
+        id:
+          type: string
+        roomId:
+          type: string
+        name:
+          type: string
+        pairedBy:
+          type: string
+          description: The user who paired it, if they're still around.
+        createdAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+
+    PairDisplayRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: The code the display shows. Case, spaces and dashes don't matter.
+          minLength: 1
+          maxLength: 16
+        name:
+          type: string
+          description: What to call it. Default "TV".
+          maxLength: 40
+
+    DisplayPairing:
+      type: object
+      required: [code, expiresAt]
+      properties:
+        code:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    DisplayPairingStatus:
+      type: object
+      required: [status, code, expiresAt]
+      properties:
+        status:
+          type: string
+          enum: [waiting, paired]
+        code:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        roomId:
+          type: string
+          description: Set once paired.
+
+    DisplayMe:
+      type: object
+      required: [display, room]
+      properties:
+        display:
+          $ref: "#/components/schemas/Display"
+        room:
+          $ref: "#/components/schemas/Room"
+
     AlbumDetail:
       type: object
       required: [linkId, provider, album, tracks]
@@ -2142,6 +2536,11 @@ components:
           the room opened, or their last one closed.
         - `link.status`: ServiceLink. One of your links changed status.
         - `room.updated`: Room. The room's name or settings changed.
+        - `reaction.sent`: Reaction. Someone sent an emoji to the big screen.
+
+        A paired display connects with its display cookie instead, to its
+        own room only. So does a signed-in user with `display=1`: either way
+        the connection doesn't count as being in the room.
 
         Close code 1013 (try again later) means the client fell behind and
         missed events: reconnect with `since` set to the last version seen.
@@ -2150,7 +2549,7 @@ components:
       properties:
         type:
           type: string
-          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated]
+          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated, reaction.sent]
         version:
           type: integer
           format: int64
@@ -2160,7 +2559,7 @@ components:
 
     RoomHello:
       type: object
-      required: [roomId, roomName, you, members]
+      required: [roomId, roomName, you, members, serverTime]
       properties:
         roomId:
           type: string
@@ -2168,7 +2567,14 @@ components:
           type: string
         you:
           type: string
-          description: Your user ID.
+          description: Your user ID; empty for a paired display.
+        serverTime:
+          type: string
+          format: date-time
+          description: |
+            The server's clock as it sent this, to the millisecond. Clients
+            correct for their own clock's offset when working out the playback
+            position, so every screen in the room shows the same lyric line.
         members:
           type: array
           description: Everyone connected to the room right now, you included.
