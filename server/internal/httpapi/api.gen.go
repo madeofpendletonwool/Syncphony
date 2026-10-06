@@ -830,6 +830,37 @@ type PlayerReport struct {
 // PlayerReportEvent defines model for PlayerReport.Event.
 type PlayerReportEvent string
 
+// PlaylistList defines model for PlaylistList.
+type PlaylistList struct {
+	LinkId string `json:"linkId"`
+
+	// Next Cursor for the next page; absent on the last.
+	Next      *string          `json:"next,omitempty"`
+	Playlists []PlaylistResult `json:"playlists"`
+	Provider  string           `json:"provider"`
+}
+
+// PlaylistResult defines model for PlaylistResult.
+type PlaylistResult struct {
+	Artwork *string `json:"artwork,omitempty"`
+	Id      string  `json:"id"`
+	Name    string  `json:"name"`
+
+	// Owner The owner's username on the service.
+	Owner      *string `json:"owner,omitempty"`
+	TrackCount *int    `json:"trackCount,omitempty"`
+}
+
+// PlaylistTracks defines model for PlaylistTracks.
+type PlaylistTracks struct {
+	LinkId string `json:"linkId"`
+
+	// Next Cursor for the next page; absent on the last.
+	Next     *string       `json:"next,omitempty"`
+	Provider string        `json:"provider"`
+	Tracks   []TrackResult `json:"tracks"`
+}
+
 // PlaysVia Where the song plays from instead of its own service, which
 // couldn't play it: the same recording, found on another service in
 // the room. Show "playing from Navidrome instead of Spotify".
@@ -1291,6 +1322,18 @@ type GetLinkArtworkParams struct {
 	Size *int `form:"size,omitempty" json:"size,omitempty"`
 }
 
+// ListPlaylistsParams defines parameters for ListPlaylists.
+type ListPlaylistsParams struct {
+	// Cursor The previous page's `next`.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// GetPlaylistTracksParams defines parameters for GetPlaylistTracks.
+type GetPlaylistTracksParams struct {
+	// Cursor The previous page's `next`.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // RenamePasskeyJSONBody defines parameters for RenamePasskey.
 type RenamePasskeyJSONBody struct {
 	Name string `json:"name"`
@@ -1481,6 +1524,12 @@ type ServerInterface interface {
 	// GetLinkArtwork An image from one of your links or a shared one
 	// (GET /links/{id}/artwork)
 	GetLinkArtwork(w http.ResponseWriter, r *http.Request, id string, params GetLinkArtworkParams)
+	// ListPlaylists The playlists of one of your links or a shared one
+	// (GET /links/{id}/playlists)
+	ListPlaylists(w http.ResponseWriter, r *http.Request, id string, params ListPlaylistsParams)
+	// GetPlaylistTracks A page of a playlist's tracks, through one of your links or a shared one
+	// (GET /links/{id}/playlists/{playlistId}/tracks)
+	GetPlaylistTracks(w http.ResponseWriter, r *http.Request, id string, playlistId string, params GetPlaylistTracksParams)
 	// GetMe The signed-in user
 	// (GET /me)
 	GetMe(w http.ResponseWriter, r *http.Request)
@@ -2094,6 +2143,99 @@ func (siw *ServerInterfaceWrapper) GetLinkArtwork(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetLinkArtwork(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPlaylists operation middleware
+func (siw *ServerInterfaceWrapper) ListPlaylists(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPlaylistsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPlaylists(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPlaylistTracks operation middleware
+func (siw *ServerInterfaceWrapper) GetPlaylistTracks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "playlistId" -------------
+	var playlistId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "playlistId", r.PathValue("playlistId"), &playlistId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playlistId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPlaylistTracksParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPlaylistTracks(w, r, id, playlistId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3171,6 +3313,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/search", wrapper.Search)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/albums/{albumId}", wrapper.GetAlbum)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artists/{artistId}", wrapper.GetArtist)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/playlists", wrapper.ListPlaylists)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/playlists/{playlistId}/tracks", wrapper.GetPlaylistTracks)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artwork", wrapper.GetLinkArtwork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.GetQueue)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.AddToQueue)
@@ -4034,6 +4178,87 @@ type GetLinkArtworkdefaultJSONResponse struct {
 }
 
 func (response GetLinkArtworkdefaultJSONResponse) VisitGetLinkArtworkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlaylistsRequestObject struct {
+	Id     string `json:"id"`
+	Params ListPlaylistsParams
+}
+
+type ListPlaylistsResponseObject interface {
+	VisitListPlaylistsResponse(w http.ResponseWriter) error
+}
+
+type ListPlaylists200JSONResponse PlaylistList
+
+func (response ListPlaylists200JSONResponse) VisitListPlaylistsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlaylistsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListPlaylistsdefaultJSONResponse) VisitListPlaylistsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlaylistTracksRequestObject struct {
+	Id         string `json:"id"`
+	PlaylistId string `json:"playlistId"`
+	Params     GetPlaylistTracksParams
+}
+
+type GetPlaylistTracksResponseObject interface {
+	VisitGetPlaylistTracksResponse(w http.ResponseWriter) error
+}
+
+type GetPlaylistTracks200JSONResponse PlaylistTracks
+
+func (response GetPlaylistTracks200JSONResponse) VisitGetPlaylistTracksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlaylistTracksdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetPlaylistTracksdefaultJSONResponse) VisitGetPlaylistTracksResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -5382,6 +5607,12 @@ type StrictServerInterface interface {
 	// GetLinkArtwork An image from one of your links or a shared one
 	// (GET /links/{id}/artwork)
 	GetLinkArtwork(ctx context.Context, request GetLinkArtworkRequestObject) (GetLinkArtworkResponseObject, error)
+	// ListPlaylists The playlists of one of your links or a shared one
+	// (GET /links/{id}/playlists)
+	ListPlaylists(ctx context.Context, request ListPlaylistsRequestObject) (ListPlaylistsResponseObject, error)
+	// GetPlaylistTracks A page of a playlist's tracks, through one of your links or a shared one
+	// (GET /links/{id}/playlists/{playlistId}/tracks)
+	GetPlaylistTracks(ctx context.Context, request GetPlaylistTracksRequestObject) (GetPlaylistTracksResponseObject, error)
 	// GetMe The signed-in user
 	// (GET /me)
 	GetMe(ctx context.Context, request GetMeRequestObject) (GetMeResponseObject, error)
@@ -6133,6 +6364,61 @@ func (sh *strictHandler) GetLinkArtwork(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetLinkArtworkResponseObject); ok {
 		if err := validResponse.VisitGetLinkArtworkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPlaylists operation middleware
+func (sh *strictHandler) ListPlaylists(w http.ResponseWriter, r *http.Request, id string, params ListPlaylistsParams) {
+	var request ListPlaylistsRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPlaylists(ctx, request.(ListPlaylistsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPlaylists")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPlaylistsResponseObject); ok {
+		if err := validResponse.VisitListPlaylistsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPlaylistTracks operation middleware
+func (sh *strictHandler) GetPlaylistTracks(w http.ResponseWriter, r *http.Request, id string, playlistId string, params GetPlaylistTracksParams) {
+	var request GetPlaylistTracksRequestObject
+
+	request.Id = id
+	request.PlaylistId = playlistId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPlaylistTracks(ctx, request.(GetPlaylistTracksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPlaylistTracks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPlaylistTracksResponseObject); ok {
+		if err := validResponse.VisitGetPlaylistTracksResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

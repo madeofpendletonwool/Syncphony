@@ -149,7 +149,8 @@ func retryAfter(h string) time.Duration {
 
 // The JSON shapes we read. Spotify sends many more fields.
 
-type image struct {
+// Image is one size of an image. Width is 0 when Spotify doesn't say.
+type Image struct {
 	URL   string `json:"url"`
 	Width int    `json:"width"`
 }
@@ -162,7 +163,7 @@ type artistCredit struct {
 type artist struct {
 	ID     string  `json:"id"`
 	Name   string  `json:"name"`
-	Images []image `json:"images"`
+	Images []Image `json:"images"`
 }
 
 type album struct {
@@ -171,7 +172,7 @@ type album struct {
 	Artists     []artistCredit `json:"artists"`
 	ReleaseDate string         `json:"release_date"` // "2024", "2024-03" or "2024-03-01"
 	TotalTracks int            `json:"total_tracks"`
-	Images      []image        `json:"images"`
+	Images      []Image        `json:"images"`
 	// Tracks is only set by GET /albums/{id}, and its tracks have no album.
 	Tracks *paging[track] `json:"tracks"`
 }

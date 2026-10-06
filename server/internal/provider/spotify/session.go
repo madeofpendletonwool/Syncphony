@@ -272,9 +272,9 @@ type sized struct {
 	url   string
 }
 
-func (s *session) artworkRef(images []image) provider.ArtworkRef {
+func (s *session) artworkRef(images []Image) provider.ArtworkRef {
 	images = slices.Clone(images)
-	slices.SortStableFunc(images, func(a, b image) int { return b.Width - a.Width })
+	slices.SortStableFunc(images, func(a, b Image) int { return b.Width - a.Width })
 	var parts []string
 	for _, im := range images {
 		var target string

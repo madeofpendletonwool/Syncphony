@@ -101,7 +101,10 @@ func providers(cfg config.Config) (*provider.Registry, func(), error) {
 	closeAll := func() {}
 	if cfg.SpotifyClientID != "" {
 		audio := streaming.New(nil)
-		sp, err := spotify.New(spotify.Options{ClientID: cfg.SpotifyClientID, ClientSecret: cfg.SpotifyClientSecret, Audio: audio})
+		sp, err := spotify.New(spotify.Options{
+			ClientID: cfg.SpotifyClientID, ClientSecret: cfg.SpotifyClientSecret,
+			Audio: audio, Library: audio,
+		})
 		if err != nil {
 			audio.Close()
 			return nil, nil, err

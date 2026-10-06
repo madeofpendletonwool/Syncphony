@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -373,5 +374,77 @@ func TestCheckPlayable(t *testing.T) {
 	}
 	if err := s.CheckPlayable(t.Context(), "bad"); !errors.Is(err, provider.ErrNotFound) {
 		t.Errorf("malformed ID: %v", err)
+	}
+}
+
+func TestPlaylists(t *testing.T) {
+	f := newFake(t)
+	p, _ := newProvider(t, f)
+	if !p.Info().Capabilities.Playlists {
+		t.Error("no Playlists capability with a library")
+	}
+	pl := open(t, p, link(t, p, f)).(provider.PlaylistLister)
+	ctx := t.Context()
+
+	page, err := pl.Playlists(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []provider.Playlist{
+		{ID: playlistSines, Name: "Sines", Owner: "alice", TrackCount: 3, Artwork: "300:playlistSines300"},
+		{ID: playlistLong, Name: "Long", Owner: "spotify", TrackCount: 150},
+	}
+	if !slices.Equal(page.Items, want) || page.Next != "" {
+		t.Errorf("Playlists: %+v", page)
+	}
+	if _, err := pl.Playlists(ctx, "1"); err == nil {
+		t.Error("Playlists with a cursor succeeded")
+	}
+
+	tp, err := pl.PlaylistTracks(ctx, playlistSines, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tp.Items) != 2 || tp.Next != "" {
+		t.Fatalf("Sines: %+v", tp)
+	}
+	first := tp.Items[0]
+	if first.Ref != (provider.TrackRef{Provider: spotify.ID, LinkID: "link-1", ID: trackSine}) || first.Title != "Sine Wave" ||
+		first.Album != (provider.AlbumCredit{ID: albumSine, Title: "Sine Language"}) || first.Duration != 181*time.Second ||
+		first.Artwork != "640:albumSine640,64:albumSine64" || len(first.Artists) != 1 {
+		t.Errorf("track %+v", first)
+	}
+	if !tp.Items[1].Explicit {
+		t.Errorf("track %+v isn't explicit", tp.Items[1])
+	}
+
+	// Pages cover a fixed number of items, so a page can hold fewer tracks.
+	tp, err = pl.PlaylistTracks(ctx, playlistLong, "")
+	if err != nil || len(tp.Items) != 1 || tp.Items[0].Ref.ID != trackSquare || tp.Next != "100" {
+		t.Fatalf("Long, page 1: %+v, %v", tp, err)
+	}
+	tp, err = pl.PlaylistTracks(ctx, playlistLong, tp.Next)
+	if err != nil || len(tp.Items) != 1 || tp.Items[0].Ref.ID != trackSine || tp.Next != "" {
+		t.Fatalf("Long, page 2: %+v, %v", tp, err)
+	}
+
+	for _, id := range []string{sid("playlistNone"), "not an ID"} {
+		if _, err := pl.PlaylistTracks(ctx, id, ""); !errors.Is(err, provider.ErrNotFound) {
+			t.Errorf("PlaylistTracks(%q): %v, want ErrNotFound", id, err)
+		}
+	}
+	if _, err := pl.PlaylistTracks(ctx, playlistSines, "-1"); err == nil {
+		t.Error("PlaylistTracks with a bad cursor succeeded")
+	}
+}
+
+func TestNoLibrary(t *testing.T) {
+	f := newFake(t)
+	p, _ := newProvider(t, f, func(o *spotify.Options) { o.Library = nil })
+	if p.Info().Capabilities.Playlists {
+		t.Error("Playlists capability without a library")
+	}
+	if _, ok := open(t, p, link(t, p, f)).(provider.PlaylistLister); ok {
+		t.Error("session lists playlists without a library")
 	}
 }

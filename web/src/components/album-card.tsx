@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { Artwork } from '@/components/artwork'
 import { ProviderIcon } from '@/components/provider-icon'
-import { artistNames, artworkUrl, type AlbumResult, type ArtistResult } from '@/lib/browse'
+import { artistNames, artworkUrl, type AlbumResult, type ArtistResult, type PlaylistResult } from '@/lib/browse'
 import { fadeUp } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
@@ -63,6 +63,28 @@ export function ArtistCard({ artist, linkId, providerIcon }: { artist: ArtistRes
         </div>
         <p className="mt-2 w-full truncate text-sm font-medium">{artist.name}</p>
         <p className="text-caption text-muted-foreground">Artist</p>
+      </Link>
+    </motion.div>
+  )
+}
+
+export function PlaylistCard({ playlist, linkId, className }: { playlist: PlaylistResult; linkId: string; className?: string }) {
+  const count = playlist.trackCount
+  return (
+    <motion.div variants={fadeUp} className={cn('min-w-0', className)}>
+      <Link
+        to="/playlist/$linkId/$playlistId"
+        params={{ linkId, playlistId: playlist.id }}
+        className="group block rounded-2xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <Artwork
+          src={artworkUrl(linkId, playlist.artwork, 400)}
+          className="w-full rounded-2xl transition-transform duration-300 ease-out-expo group-hover:scale-[1.02] group-active:scale-[0.98]"
+        />
+        <p className="mt-2 truncate text-sm font-medium">{playlist.name}</p>
+        <p className="truncate text-caption text-muted-foreground">
+          {count ? `${count} song${count === 1 ? '' : 's'}` : 'Playlist'}
+        </p>
       </Link>
     </motion.div>
   )

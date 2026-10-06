@@ -724,6 +724,72 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /links/{id}/playlists:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: listPlaylists
+      summary: The playlists of one of your links or a shared one
+      description: >-
+        In the service's order. `not_found` if the service has no playlists
+        (its `capabilities.playlists` is false).
+      tags: [browse]
+      parameters:
+        - name: cursor
+          in: query
+          description: The previous page's `next`.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of playlists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaylistList"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /links/{id}/playlists/{playlistId}/tracks:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: playlistId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getPlaylistTracks
+      summary: A page of a playlist's tracks, through one of your links or a shared one
+      description: >-
+        In playlist order. A page can be short, or even empty, when the
+        playlist holds things that can't be queued (podcast episodes, local
+        files); keep going while there's a `next`.
+      tags: [browse]
+      parameters:
+        - name: cursor
+          in: query
+          description: The previous page's `next`.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of tracks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaylistTracks"
+        default:
+          $ref: "#/components/responses/Error"
+
   /links/{id}/artwork:
     parameters:
       - name: id
@@ -1779,6 +1845,54 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AlbumResult"
+
+    PlaylistResult:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        owner:
+          type: string
+          description: The owner's username on the service.
+        trackCount:
+          type: integer
+        artwork:
+          type: string
+
+    PlaylistList:
+      type: object
+      required: [linkId, provider, playlists]
+      properties:
+        linkId:
+          type: string
+        provider:
+          type: string
+        playlists:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlaylistResult"
+        next:
+          type: string
+          description: Cursor for the next page; absent on the last.
+
+    PlaylistTracks:
+      type: object
+      required: [linkId, provider, tracks]
+      properties:
+        linkId:
+          type: string
+        provider:
+          type: string
+        tracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrackResult"
+        next:
+          type: string
+          description: Cursor for the next page; absent on the last.
 
     AddToQueueRequest:
       type: object

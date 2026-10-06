@@ -39,7 +39,7 @@ func TestLive(t *testing.T) {
 
 	audio := streaming.New(nil)
 	defer audio.Close()
-	p, err := spotify.New(spotify.Options{ClientID: id, ClientSecret: secret, Audio: audio})
+	p, err := spotify.New(spotify.Options{ClientID: id, ClientSecret: secret, Audio: audio, Library: audio})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,4 +77,68 @@ func TestLive(t *testing.T) {
 		t.Errorf("stream starts %q (%v), want an Ogg page", head, err)
 	}
 	t.Logf("streamed %s: %s, %d bytes", playable, a.ContentType, a.Size)
+
+	pl := sess.(provider.PlaylistLister)
+	lists, err := pl.Playlists(t.Context(), "")
+	if err != nil {
+		t.Fatalf("Playlists: %v", err)
+	}
+	t.Logf("%d playlists", len(lists.Items))
+	withArt := 0
+	for _, l := range lists.Items {
+		if l.Artwork == "" {
+			continue
+		}
+		withArt++
+		if withArt > 3 {
+			continue
+		}
+		img, ct, err := sess.Artwork(t.Context(), l.Artwork, 300)
+		if err != nil {
+			t.Errorf("artwork of playlist %s (%s): %v", l.ID, l.Artwork, err)
+			continue
+		}
+		img.Close()
+		t.Logf("playlist %s artwork: %s", l.ID, ct)
+	}
+	t.Logf("%d playlists have artwork", withArt)
+	// The biggest playlist, to page through it.
+	var big provider.Playlist
+	for _, l := range lists.Items {
+		if l.TrackCount > big.TrackCount {
+			big = l
+		}
+	}
+	if big.ID == "" {
+		return
+	}
+	n, pages := 0, 0
+	for cursor := ""; pages < 20; pages++ {
+		tp, err := pl.PlaylistTracks(t.Context(), big.ID, cursor)
+		if err != nil {
+			t.Fatalf("PlaylistTracks(%s, %q): %v", big.ID, cursor, err)
+		}
+		for _, tr := range tp.Items {
+			if tr.Title == "" || len(tr.Artists) == 0 || tr.Duration <= 0 || tr.Artwork == "" {
+				t.Errorf("playlist track %+v", tr)
+			}
+		}
+		if pages == 0 && len(tp.Items) > 0 {
+			img, ct, err := sess.Artwork(t.Context(), tp.Items[0].Artwork, 300)
+			if err != nil {
+				t.Errorf("artwork of track %s: %v", tp.Items[0].Ref.ID, err)
+			} else {
+				img.Close()
+				t.Logf("track artwork: %s", ct)
+			}
+		}
+		n += len(tp.Items)
+		if cursor = tp.Next; cursor == "" {
+			break
+		}
+	}
+	t.Logf("biggest playlist: %d tracks listed of %d items, in %d pages", n, big.TrackCount, pages+1)
+	if n == 0 {
+		t.Error("biggest playlist listed no tracks")
+	}
 }

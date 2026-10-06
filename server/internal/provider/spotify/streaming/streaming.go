@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package streaming is the Spotify provider's Audio backend. It speaks
+// Package streaming is the Spotify provider's Audio and Library backend. It speaks
 // Spotify's streaming protocol, the one the Spotify apps use, through
 // go-librespot's lower-level packages (GPL-3.0): access point login, audio
 // keys, spclient metadata and storage, and AES decryption. Audio is passed
