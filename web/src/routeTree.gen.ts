@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as TvRouteImport } from './routes/tv'
 import { Route as AppAuthedRouteImport } from './routes/_app/_authed'
 import { Route as AppDesignRouteImport } from './routes/_app/design'
 import { Route as InviteCodeRouteImport } from './routes/invite.$code'
@@ -32,6 +33,11 @@ const AppRoute = AppRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TvRoute = TvRouteImport.update({
+  id: '/tv',
+  path: '/tv',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppAuthedRoute = AppAuthedRouteImport.update({
@@ -106,6 +112,7 @@ const AppAuthedPlaylistLinkIdPlaylistIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof AppAuthedIndexRoute
   '/login': typeof LoginRoute
+  '/tv': typeof TvRoute
   '/design': typeof AppDesignRoute
   '/invite/$code': typeof InviteCodeRoute
   '/history': typeof AppAuthedHistoryRoute
@@ -121,6 +128,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof AppAuthedIndexRoute
   '/login': typeof LoginRoute
+  '/tv': typeof TvRoute
   '/design': typeof AppDesignRoute
   '/invite/$code': typeof InviteCodeRoute
   '/history': typeof AppAuthedHistoryRoute
@@ -137,6 +145,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/tv': typeof TvRoute
   '/_app/_authed': typeof AppAuthedRouteWithChildren
   '/_app/design': typeof AppDesignRoute
   '/invite/$code': typeof InviteCodeRoute
@@ -156,6 +165,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/tv'
     | '/design'
     | '/invite/$code'
     | '/history'
@@ -171,6 +181,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/tv'
     | '/design'
     | '/invite/$code'
     | '/history'
@@ -186,6 +197,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/login'
+    | '/tv'
     | '/_app/_authed'
     | '/_app/design'
     | '/invite/$code'
@@ -204,6 +216,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
+  TvRoute: typeof TvRoute
   InviteCodeRoute: typeof InviteCodeRoute
 }
 
@@ -221,6 +234,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tv': {
+      id: '/tv'
+      path: '/tv'
+      fullPath: '/tv'
+      preLoaderRoute: typeof TvRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/_authed': {
@@ -363,6 +383,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
+  TvRoute: TvRoute,
   InviteCodeRoute: InviteCodeRoute,
 }
 export const routeTree = rootRouteImport

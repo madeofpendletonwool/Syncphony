@@ -2,6 +2,7 @@ import { queryOptions } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import type { components } from '@/api/schema.gen'
+import { toLocalTime } from './clock'
 import type { NowPlaying } from './now-playing'
 import type { Room } from './room'
 
@@ -82,6 +83,6 @@ export function toNowPlaying(roomId: string, p: Playback, users: NowPlaying['req
     requester: users?.find((u) => u?.id === p.item?.addedBy),
     paused: p.state !== 'playing',
     positionMs: p.positionMs,
-    at: Date.parse(p.at),
+    at: toLocalTime(Date.parse(p.at)),
   }
 }

@@ -65,6 +65,8 @@ const messages: Record<string, string> = {
   oauth_state: 'That link attempt expired. Try again.',
   pairing_expired: 'That code expired. Try again.',
   not_paired: 'Approve the code first.',
+  pairing_invalid: "No screen is showing that code. Check it and try again.",
+  too_many_pairings: 'Too many screens are waiting to pair. Try again in a few minutes.',
 }
 
 /** A sentence to show the user for an error from the API or the browser. */

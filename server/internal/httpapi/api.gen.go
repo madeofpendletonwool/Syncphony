@@ -18,6 +18,24 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for DisplayPairingStatusStatus.
+const (
+	Paired  DisplayPairingStatusStatus = "paired"
+	Waiting DisplayPairingStatusStatus = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the DisplayPairingStatusStatus enum.
+func (e DisplayPairingStatusStatus) Valid() bool {
+	switch e {
+	case Paired:
+		return true
+	case Waiting:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FairnessMode.
 const (
 	Fifo       FairnessMode = "fifo"
@@ -45,6 +63,36 @@ const (
 func (e HealthStatus) Valid() bool {
 	switch e {
 	case HealthStatusOk:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LinerNotesFactKind.
+const (
+	Cover         LinerNotesFactKind = "cover"
+	FirstReleased LinerNotesFactKind = "first_released"
+	Live          LinerNotesFactKind = "live"
+	Origin        LinerNotesFactKind = "origin"
+	SampledBy     LinerNotesFactKind = "sampled_by"
+	Samples       LinerNotesFactKind = "samples"
+)
+
+// Valid indicates whether the value is a known member of the LinerNotesFactKind enum.
+func (e LinerNotesFactKind) Valid() bool {
+	switch e {
+	case Cover:
+		return true
+	case FirstReleased:
+		return true
+	case Live:
+		return true
+	case Origin:
+		return true
+	case SampledBy:
+		return true
+	case Samples:
 		return true
 	default:
 		return false
@@ -324,6 +372,42 @@ func (e QueueItemState) Valid() bool {
 	}
 }
 
+// Defines values for ReactionEmoji.
+const (
+	Empty ReactionEmoji = "🔥"
+	N1    ReactionEmoji = "❤️"
+	N2    ReactionEmoji = "🙌"
+	N3    ReactionEmoji = "😂"
+	N4    ReactionEmoji = "💃"
+	N5    ReactionEmoji = "🎉"
+	N6    ReactionEmoji = "😮"
+	N7    ReactionEmoji = "👏"
+)
+
+// Valid indicates whether the value is a known member of the ReactionEmoji enum.
+func (e ReactionEmoji) Valid() bool {
+	switch e {
+	case Empty:
+		return true
+	case N1:
+		return true
+	case N2:
+		return true
+	case N3:
+		return true
+	case N4:
+		return true
+	case N5:
+		return true
+	case N6:
+		return true
+	case N7:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Role.
 const (
 	Admin  Role = "admin"
@@ -351,6 +435,7 @@ const (
 	RoomEventTypeNowplayingUpdated RoomEventType = "nowplaying.updated"
 	RoomEventTypePlaybackNotice    RoomEventType = "playback.notice"
 	RoomEventTypeQueueUpdated      RoomEventType = "queue.updated"
+	RoomEventTypeReactionSent      RoomEventType = "reaction.sent"
 	RoomEventTypeRoomUpdated       RoomEventType = "room.updated"
 )
 
@@ -370,6 +455,8 @@ func (e RoomEventType) Valid() bool {
 	case RoomEventTypePlaybackNotice:
 		return true
 	case RoomEventTypeQueueUpdated:
+		return true
+	case RoomEventTypeReactionSent:
 		return true
 	case RoomEventTypeRoomUpdated:
 		return true
@@ -571,6 +658,43 @@ type CreateRoomRequest struct {
 	SkipVotePercent *SkipVotePercent `json:"skipVotePercent,omitempty"`
 }
 
+// Display defines model for Display.
+type Display struct {
+	CreatedAt  time.Time `json:"createdAt"`
+	Id         string    `json:"id"`
+	LastSeenAt time.Time `json:"lastSeenAt"`
+	Name       string    `json:"name"`
+
+	// PairedBy The user who paired it, if they're still around.
+	PairedBy *string `json:"pairedBy,omitempty"`
+	RoomId   string  `json:"roomId"`
+}
+
+// DisplayMe defines model for DisplayMe.
+type DisplayMe struct {
+	Display Display `json:"display"`
+	Room    Room    `json:"room"`
+}
+
+// DisplayPairing defines model for DisplayPairing.
+type DisplayPairing struct {
+	Code      string    `json:"code"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// DisplayPairingStatus defines model for DisplayPairingStatus.
+type DisplayPairingStatus struct {
+	Code      string    `json:"code"`
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// RoomId Set once paired.
+	RoomId *string                    `json:"roomId,omitempty"`
+	Status DisplayPairingStatusStatus `json:"status"`
+}
+
+// DisplayPairingStatusStatus defines model for DisplayPairingStatus.Status.
+type DisplayPairingStatusStatus string
+
 // Error defines model for Error.
 type Error struct {
 	// Code Stable, machine-readable error code.
@@ -625,6 +749,67 @@ type Invite struct {
 type InviteInfo struct {
 	ExpiresAt time.Time `json:"expiresAt"`
 	Role      Role      `json:"role"`
+}
+
+// LinerNotes defines model for LinerNotes.
+type LinerNotes struct {
+	Artist *LinerNotesArtist `json:"artist,omitempty"`
+
+	// Credits Who did what, writers first.
+	Credits []LinerNotesCredit `json:"credits"`
+
+	// Facts Short fun facts, for rotating cards.
+	Facts         []LinerNotesFact   `json:"facts"`
+	RecordingMbid string             `json:"recordingMbid"`
+	Release       *LinerNotesRelease `json:"release,omitempty"`
+
+	// Title The recording's title on MusicBrainz.
+	Title string `json:"title"`
+
+	// Year When the recording first came out.
+	Year *int `json:"year,omitempty"`
+}
+
+// LinerNotesArtist defines model for LinerNotesArtist.
+type LinerNotesArtist struct {
+	// About A one-liner, like "Group from Seattle".
+	About *string `json:"about,omitempty"`
+
+	// Bio A short summary from Wikipedia.
+	Bio *string `json:"bio,omitempty"`
+
+	// BioUrl The Wikipedia article.
+	BioUrl *string `json:"bioUrl,omitempty"`
+	Mbid   string  `json:"mbid"`
+	Name   string  `json:"name"`
+}
+
+// LinerNotesCredit defines model for LinerNotesCredit.
+type LinerNotesCredit struct {
+	Names []string `json:"names"`
+
+	// Role "Written by", "Produced by", "Guitar"...
+	Role string `json:"role"`
+}
+
+// LinerNotesFact defines model for LinerNotesFact.
+type LinerNotesFact struct {
+	Kind LinerNotesFactKind `json:"kind"`
+	Text string             `json:"text"`
+}
+
+// LinerNotesFactKind defines model for LinerNotesFact.Kind.
+type LinerNotesFactKind string
+
+// LinerNotesRelease defines model for LinerNotesRelease.
+type LinerNotesRelease struct {
+	// Date YYYY, YYYY-MM or YYYY-MM-DD.
+	Date   *string  `json:"date,omitempty"`
+	Labels []string `json:"labels"`
+	Title  string   `json:"title"`
+
+	// Type Album, Single, EP...
+	Type *string `json:"type,omitempty"`
 }
 
 // LinkField defines model for LinkField.
@@ -756,6 +941,15 @@ type OklchColor struct {
 
 	// L Lightness, 0-1.
 	L float64 `json:"l"`
+}
+
+// PairDisplayRequest defines model for PairDisplayRequest.
+type PairDisplayRequest struct {
+	// Code The code the display shows. Case, spaces and dashes don't matter.
+	Code string `json:"code"`
+
+	// Name What to call it. Default "TV".
+	Name *string `json:"name,omitempty"`
 }
 
 // Pairing defines model for Pairing.
@@ -1052,6 +1246,26 @@ type QueuedTrack struct {
 	TrackId  string  `json:"trackId"`
 }
 
+// Reaction defines model for Reaction.
+type Reaction struct {
+	At time.Time `json:"at"`
+
+	// Emoji The reactions a room can send.
+	Emoji  ReactionEmoji `json:"emoji"`
+	Id     string        `json:"id"`
+	RoomId string        `json:"roomId"`
+	UserId string        `json:"userId"`
+}
+
+// ReactionEmoji The reactions a room can send.
+type ReactionEmoji string
+
+// ReactionRequest defines model for ReactionRequest.
+type ReactionRequest struct {
+	// Emoji The reactions a room can send.
+	Emoji ReactionEmoji `json:"emoji"`
+}
+
 // RelinkRequest defines model for RelinkRequest.
 type RelinkRequest struct {
 	Fields map[string]string `json:"fields"`
@@ -1099,6 +1313,11 @@ type Room struct {
 //     the room opened, or their last one closed.
 //   - `link.status`: ServiceLink. One of your links changed status.
 //   - `room.updated`: Room. The room's name or settings changed.
+//   - `reaction.sent`: Reaction. Someone sent an emoji to the big screen.
+//
+// A paired display connects with its display cookie instead, to its
+// own room only. So does a signed-in user with `display=1`: either way
+// the connection doesn't count as being in the room.
 //
 // Close code 1013 (try again later) means the client fell behind and
 // missed events: reconnect with `since` set to the last version seen.
@@ -1141,7 +1360,12 @@ type RoomHello struct {
 	RoomId   string `json:"roomId"`
 	RoomName string `json:"roomName"`
 
-	// You Your user ID.
+	// ServerTime The server's clock as it sent this, to the millisecond. Clients
+	// correct for their own clock's offset when working out the playback
+	// position, so every screen in the room shows the same lyric line.
+	ServerTime time.Time `json:"serverTime"`
+
+	// You Your user ID; empty for a paired display.
 	You string `json:"you"`
 }
 
@@ -1521,6 +1745,9 @@ type CreateRoomJSONRequestBody = CreateRoomRequest
 // UpdateRoomJSONRequestBody defines body for UpdateRoom for application/json ContentType.
 type UpdateRoomJSONRequestBody = UpdateRoomRequest
 
+// PairDisplayJSONRequestBody defines body for PairDisplay for application/json ContentType.
+type PairDisplayJSONRequestBody = PairDisplayRequest
+
 // ControlPlaybackJSONRequestBody defines body for ControlPlayback for application/json ContentType.
 type ControlPlaybackJSONRequestBody = PlaybackCommand
 
@@ -1535,6 +1762,9 @@ type AddToQueueJSONRequestBody = AddToQueueRequest
 
 // MoveQueueItemJSONRequestBody defines body for MoveQueueItem for application/json ContentType.
 type MoveQueueItemJSONRequestBody = MoveQueueItemRequest
+
+// SendReactionJSONRequestBody defines body for SendReaction for application/json ContentType.
+type SendReactionJSONRequestBody = ReactionRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -1559,6 +1789,18 @@ type ServerInterface interface {
 	// FinishPasskeySignup Finish creating an account with a passkey
 	// (POST /auth/signup/passkey/finish)
 	FinishPasskeySignup(w http.ResponseWriter, r *http.Request)
+	// LeaveDisplay Unpair this display, from the display
+	// (DELETE /display)
+	LeaveDisplay(w http.ResponseWriter, r *http.Request)
+	// GetDisplay This display, and its room
+	// (GET /display)
+	GetDisplay(w http.ResponseWriter, r *http.Request)
+	// PollDisplayPairing Check whether this display has been paired
+	// (GET /display/pairing)
+	PollDisplayPairing(w http.ResponseWriter, r *http.Request)
+	// BeginDisplayPairing Start pairing this device as a display
+	// (POST /display/pairing)
+	BeginDisplayPairing(w http.ResponseWriter, r *http.Request)
 	// GetHealth Liveness and build info
 	// (GET /healthz)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -1661,6 +1903,15 @@ type ServerInterface interface {
 	// UpdateRoom Change a room you own
 	// (PATCH /rooms/{roomId})
 	UpdateRoom(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// ListDisplays The room's paired displays
+	// (GET /rooms/{roomId}/displays)
+	ListDisplays(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// PairDisplay Pair a display with the room
+	// (POST /rooms/{roomId}/displays)
+	PairDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// UnpairDisplay Unpair a display
+	// (DELETE /rooms/{roomId}/displays/{displayId})
+	UnpairDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId, displayId string)
 	// GetHistory Songs the room played, newest first
 	// (GET /rooms/{roomId}/history)
 	GetHistory(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetHistoryParams)
@@ -1694,12 +1945,18 @@ type ServerInterface interface {
 	// GetQueueItemArtwork A queued song's artwork
 	// (GET /rooms/{roomId}/queue/{itemId}/artwork)
 	GetQueueItemArtwork(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params GetQueueItemArtworkParams)
+	// GetQueueItemLinerNotes A queued song's liner notes
+	// (GET /rooms/{roomId}/queue/{itemId}/liner-notes)
+	GetQueueItemLinerNotes(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
 	// GetQueueItemLyrics A queued song's lyrics
 	// (GET /rooms/{roomId}/queue/{itemId}/lyrics)
 	GetQueueItemLyrics(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
 	// GetQueueItemPalette A queued song's artwork colors
 	// (GET /rooms/{roomId}/queue/{itemId}/palette)
 	GetQueueItemPalette(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
+	// SendReaction Send an emoji reaction to the room
+	// (POST /rooms/{roomId}/reactions)
+	SendReaction(w http.ResponseWriter, r *http.Request, roomId RoomId)
 	// ListSessions The room's listening sessions, newest first
 	// (GET /rooms/{roomId}/sessions)
 	ListSessions(w http.ResponseWriter, r *http.Request, roomId RoomId, params ListSessionsParams)
@@ -1815,6 +2072,62 @@ func (siw *ServerInterfaceWrapper) FinishPasskeySignup(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.FinishPasskeySignup(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LeaveDisplay operation middleware
+func (siw *ServerInterfaceWrapper) LeaveDisplay(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LeaveDisplay(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDisplay operation middleware
+func (siw *ServerInterfaceWrapper) GetDisplay(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDisplay(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PollDisplayPairing operation middleware
+func (siw *ServerInterfaceWrapper) PollDisplayPairing(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PollDisplayPairing(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BeginDisplayPairing operation middleware
+func (siw *ServerInterfaceWrapper) BeginDisplayPairing(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BeginDisplayPairing(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2653,6 +2966,93 @@ func (siw *ServerInterfaceWrapper) UpdateRoom(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// ListDisplays operation middleware
+func (siw *ServerInterfaceWrapper) ListDisplays(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDisplays(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PairDisplay operation middleware
+func (siw *ServerInterfaceWrapper) PairDisplay(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PairDisplay(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnpairDisplay operation middleware
+func (siw *ServerInterfaceWrapper) UnpairDisplay(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "displayId" -------------
+	var displayId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "displayId", r.PathValue("displayId"), &displayId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "displayId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnpairDisplay(w, r, roomId, displayId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHistory operation middleware
 func (siw *ServerInterfaceWrapper) GetHistory(w http.ResponseWriter, r *http.Request) {
 
@@ -3040,6 +3440,41 @@ func (siw *ServerInterfaceWrapper) GetQueueItemArtwork(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// GetQueueItemLinerNotes operation middleware
+func (siw *ServerInterfaceWrapper) GetQueueItemLinerNotes(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetQueueItemLinerNotes(w, r, roomId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetQueueItemLyrics operation middleware
 func (siw *ServerInterfaceWrapper) GetQueueItemLyrics(w http.ResponseWriter, r *http.Request) {
 
@@ -3101,6 +3536,32 @@ func (siw *ServerInterfaceWrapper) GetQueueItemPalette(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetQueueItemPalette(w, r, roomId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendReaction operation middleware
+func (siw *ServerInterfaceWrapper) SendReaction(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendReaction(w, r, roomId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3521,6 +3982,15 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/artwork", wrapper.GetQueueItemArtwork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/palette", wrapper.GetQueueItemPalette)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/lyrics", wrapper.GetQueueItemLyrics)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/liner-notes", wrapper.GetQueueItemLinerNotes)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/reactions", wrapper.SendReaction)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/displays", wrapper.ListDisplays)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/displays", wrapper.PairDisplay)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/displays/{displayId}", wrapper.UnpairDisplay)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/display/pairing", wrapper.PollDisplayPairing)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/display/pairing", wrapper.BeginDisplayPairing)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/display", wrapper.LeaveDisplay)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/display", wrapper.GetDisplay)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms", wrapper.ListRooms)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms", wrapper.CreateRoom)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}", wrapper.GetRoom)
@@ -3822,6 +4292,152 @@ type FinishPasskeySignupdefaultJSONResponse struct {
 }
 
 func (response FinishPasskeySignupdefaultJSONResponse) VisitFinishPasskeySignupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LeaveDisplayRequestObject struct {
+}
+
+type LeaveDisplayResponseObject interface {
+	VisitLeaveDisplayResponse(w http.ResponseWriter) error
+}
+
+type LeaveDisplay204Response struct {
+}
+
+func (response LeaveDisplay204Response) VisitLeaveDisplayResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type LeaveDisplaydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response LeaveDisplaydefaultJSONResponse) VisitLeaveDisplayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDisplayRequestObject struct {
+}
+
+type GetDisplayResponseObject interface {
+	VisitGetDisplayResponse(w http.ResponseWriter) error
+}
+
+type GetDisplay200JSONResponse DisplayMe
+
+func (response GetDisplay200JSONResponse) VisitGetDisplayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDisplaydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetDisplaydefaultJSONResponse) VisitGetDisplayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollDisplayPairingRequestObject struct {
+}
+
+type PollDisplayPairingResponseObject interface {
+	VisitPollDisplayPairingResponse(w http.ResponseWriter) error
+}
+
+type PollDisplayPairing200JSONResponse DisplayPairingStatus
+
+func (response PollDisplayPairing200JSONResponse) VisitPollDisplayPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollDisplayPairingdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response PollDisplayPairingdefaultJSONResponse) VisitPollDisplayPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginDisplayPairingRequestObject struct {
+}
+
+type BeginDisplayPairingResponseObject interface {
+	VisitBeginDisplayPairingResponse(w http.ResponseWriter) error
+}
+
+type BeginDisplayPairing201JSONResponse DisplayPairing
+
+func (response BeginDisplayPairing201JSONResponse) VisitBeginDisplayPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginDisplayPairingdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BeginDisplayPairingdefaultJSONResponse) VisitBeginDisplayPairingResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -5103,6 +5719,119 @@ func (response UpdateRoomdefaultJSONResponse) VisitUpdateRoomResponse(w http.Res
 	return err
 }
 
+type ListDisplaysRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type ListDisplaysResponseObject interface {
+	VisitListDisplaysResponse(w http.ResponseWriter) error
+}
+
+type ListDisplays200JSONResponse []Display
+
+func (response ListDisplays200JSONResponse) VisitListDisplaysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDisplaysdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListDisplaysdefaultJSONResponse) VisitListDisplaysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PairDisplayRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Body   *PairDisplayJSONRequestBody
+}
+
+type PairDisplayResponseObject interface {
+	VisitPairDisplayResponse(w http.ResponseWriter) error
+}
+
+type PairDisplay201JSONResponse Display
+
+func (response PairDisplay201JSONResponse) VisitPairDisplayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PairDisplaydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response PairDisplaydefaultJSONResponse) VisitPairDisplayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnpairDisplayRequestObject struct {
+	RoomId    RoomId `json:"roomId"`
+	DisplayId string `json:"displayId"`
+}
+
+type UnpairDisplayResponseObject interface {
+	VisitUnpairDisplayResponse(w http.ResponseWriter) error
+}
+
+type UnpairDisplay204Response struct {
+}
+
+func (response UnpairDisplay204Response) VisitUnpairDisplayResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UnpairDisplaydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UnpairDisplaydefaultJSONResponse) VisitUnpairDisplayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetHistoryRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 	Params GetHistoryParams
@@ -5550,6 +6279,46 @@ func (response GetQueueItemArtworkdefaultJSONResponse) VisitGetQueueItemArtworkR
 	return err
 }
 
+type GetQueueItemLinerNotesRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	ItemId string `json:"itemId"`
+}
+
+type GetQueueItemLinerNotesResponseObject interface {
+	VisitGetQueueItemLinerNotesResponse(w http.ResponseWriter) error
+}
+
+type GetQueueItemLinerNotes200JSONResponse LinerNotes
+
+func (response GetQueueItemLinerNotes200JSONResponse) VisitGetQueueItemLinerNotesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQueueItemLinerNotesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetQueueItemLinerNotesdefaultJSONResponse) VisitGetQueueItemLinerNotesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetQueueItemLyricsRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 	ItemId string `json:"itemId"`
@@ -5619,6 +6388,46 @@ type GetQueueItemPalettedefaultJSONResponse struct {
 }
 
 func (response GetQueueItemPalettedefaultJSONResponse) VisitGetQueueItemPaletteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendReactionRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Body   *SendReactionJSONRequestBody
+}
+
+type SendReactionResponseObject interface {
+	VisitSendReactionResponse(w http.ResponseWriter) error
+}
+
+type SendReaction202JSONResponse Reaction
+
+func (response SendReaction202JSONResponse) VisitSendReactionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendReactiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SendReactiondefaultJSONResponse) VisitSendReactionResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -5879,6 +6688,18 @@ type StrictServerInterface interface {
 	// FinishPasskeySignup Finish creating an account with a passkey
 	// (POST /auth/signup/passkey/finish)
 	FinishPasskeySignup(ctx context.Context, request FinishPasskeySignupRequestObject) (FinishPasskeySignupResponseObject, error)
+	// LeaveDisplay Unpair this display, from the display
+	// (DELETE /display)
+	LeaveDisplay(ctx context.Context, request LeaveDisplayRequestObject) (LeaveDisplayResponseObject, error)
+	// GetDisplay This display, and its room
+	// (GET /display)
+	GetDisplay(ctx context.Context, request GetDisplayRequestObject) (GetDisplayResponseObject, error)
+	// PollDisplayPairing Check whether this display has been paired
+	// (GET /display/pairing)
+	PollDisplayPairing(ctx context.Context, request PollDisplayPairingRequestObject) (PollDisplayPairingResponseObject, error)
+	// BeginDisplayPairing Start pairing this device as a display
+	// (POST /display/pairing)
+	BeginDisplayPairing(ctx context.Context, request BeginDisplayPairingRequestObject) (BeginDisplayPairingResponseObject, error)
 	// GetHealth Liveness and build info
 	// (GET /healthz)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
@@ -5981,6 +6802,15 @@ type StrictServerInterface interface {
 	// UpdateRoom Change a room you own
 	// (PATCH /rooms/{roomId})
 	UpdateRoom(ctx context.Context, request UpdateRoomRequestObject) (UpdateRoomResponseObject, error)
+	// ListDisplays The room's paired displays
+	// (GET /rooms/{roomId}/displays)
+	ListDisplays(ctx context.Context, request ListDisplaysRequestObject) (ListDisplaysResponseObject, error)
+	// PairDisplay Pair a display with the room
+	// (POST /rooms/{roomId}/displays)
+	PairDisplay(ctx context.Context, request PairDisplayRequestObject) (PairDisplayResponseObject, error)
+	// UnpairDisplay Unpair a display
+	// (DELETE /rooms/{roomId}/displays/{displayId})
+	UnpairDisplay(ctx context.Context, request UnpairDisplayRequestObject) (UnpairDisplayResponseObject, error)
 	// GetHistory Songs the room played, newest first
 	// (GET /rooms/{roomId}/history)
 	GetHistory(ctx context.Context, request GetHistoryRequestObject) (GetHistoryResponseObject, error)
@@ -6014,12 +6844,18 @@ type StrictServerInterface interface {
 	// GetQueueItemArtwork A queued song's artwork
 	// (GET /rooms/{roomId}/queue/{itemId}/artwork)
 	GetQueueItemArtwork(ctx context.Context, request GetQueueItemArtworkRequestObject) (GetQueueItemArtworkResponseObject, error)
+	// GetQueueItemLinerNotes A queued song's liner notes
+	// (GET /rooms/{roomId}/queue/{itemId}/liner-notes)
+	GetQueueItemLinerNotes(ctx context.Context, request GetQueueItemLinerNotesRequestObject) (GetQueueItemLinerNotesResponseObject, error)
 	// GetQueueItemLyrics A queued song's lyrics
 	// (GET /rooms/{roomId}/queue/{itemId}/lyrics)
 	GetQueueItemLyrics(ctx context.Context, request GetQueueItemLyricsRequestObject) (GetQueueItemLyricsResponseObject, error)
 	// GetQueueItemPalette A queued song's artwork colors
 	// (GET /rooms/{roomId}/queue/{itemId}/palette)
 	GetQueueItemPalette(ctx context.Context, request GetQueueItemPaletteRequestObject) (GetQueueItemPaletteResponseObject, error)
+	// SendReaction Send an emoji reaction to the room
+	// (POST /rooms/{roomId}/reactions)
+	SendReaction(ctx context.Context, request SendReactionRequestObject) (SendReactionResponseObject, error)
 	// ListSessions The room's listening sessions, newest first
 	// (GET /rooms/{roomId}/sessions)
 	ListSessions(ctx context.Context, request ListSessionsRequestObject) (ListSessionsResponseObject, error)
@@ -6272,6 +7108,102 @@ func (sh *strictHandler) FinishPasskeySignup(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(FinishPasskeySignupResponseObject); ok {
 		if err := validResponse.VisitFinishPasskeySignupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LeaveDisplay operation middleware
+func (sh *strictHandler) LeaveDisplay(w http.ResponseWriter, r *http.Request) {
+	var request LeaveDisplayRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LeaveDisplay(ctx, request.(LeaveDisplayRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LeaveDisplay")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LeaveDisplayResponseObject); ok {
+		if err := validResponse.VisitLeaveDisplayResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDisplay operation middleware
+func (sh *strictHandler) GetDisplay(w http.ResponseWriter, r *http.Request) {
+	var request GetDisplayRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDisplay(ctx, request.(GetDisplayRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDisplay")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDisplayResponseObject); ok {
+		if err := validResponse.VisitGetDisplayResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PollDisplayPairing operation middleware
+func (sh *strictHandler) PollDisplayPairing(w http.ResponseWriter, r *http.Request) {
+	var request PollDisplayPairingRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PollDisplayPairing(ctx, request.(PollDisplayPairingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PollDisplayPairing")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PollDisplayPairingResponseObject); ok {
+		if err := validResponse.VisitPollDisplayPairingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BeginDisplayPairing operation middleware
+func (sh *strictHandler) BeginDisplayPairing(w http.ResponseWriter, r *http.Request) {
+	var request BeginDisplayPairingRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BeginDisplayPairing(ctx, request.(BeginDisplayPairingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BeginDisplayPairing")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BeginDisplayPairingResponseObject); ok {
+		if err := validResponse.VisitBeginDisplayPairingResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -7222,6 +8154,92 @@ func (sh *strictHandler) UpdateRoom(w http.ResponseWriter, r *http.Request, room
 	}
 }
 
+// ListDisplays operation middleware
+func (sh *strictHandler) ListDisplays(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request ListDisplaysRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDisplays(ctx, request.(ListDisplaysRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDisplays")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDisplaysResponseObject); ok {
+		if err := validResponse.VisitListDisplaysResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PairDisplay operation middleware
+func (sh *strictHandler) PairDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request PairDisplayRequestObject
+
+	request.RoomId = roomId
+
+	var body PairDisplayJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PairDisplay(ctx, request.(PairDisplayRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PairDisplay")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PairDisplayResponseObject); ok {
+		if err := validResponse.VisitPairDisplayResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnpairDisplay operation middleware
+func (sh *strictHandler) UnpairDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId, displayId string) {
+	var request UnpairDisplayRequestObject
+
+	request.RoomId = roomId
+	request.DisplayId = displayId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnpairDisplay(ctx, request.(UnpairDisplayRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnpairDisplay")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnpairDisplayResponseObject); ok {
+		if err := validResponse.VisitUnpairDisplayResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetHistory operation middleware
 func (sh *strictHandler) GetHistory(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetHistoryParams) {
 	var request GetHistoryRequestObject
@@ -7549,6 +8567,33 @@ func (sh *strictHandler) GetQueueItemArtwork(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// GetQueueItemLinerNotes operation middleware
+func (sh *strictHandler) GetQueueItemLinerNotes(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string) {
+	var request GetQueueItemLinerNotesRequestObject
+
+	request.RoomId = roomId
+	request.ItemId = itemId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetQueueItemLinerNotes(ctx, request.(GetQueueItemLinerNotesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetQueueItemLinerNotes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetQueueItemLinerNotesResponseObject); ok {
+		if err := validResponse.VisitGetQueueItemLinerNotesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetQueueItemLyrics operation middleware
 func (sh *strictHandler) GetQueueItemLyrics(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string) {
 	var request GetQueueItemLyricsRequestObject
@@ -7596,6 +8641,39 @@ func (sh *strictHandler) GetQueueItemPalette(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetQueueItemPaletteResponseObject); ok {
 		if err := validResponse.VisitGetQueueItemPaletteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SendReaction operation middleware
+func (sh *strictHandler) SendReaction(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request SendReactionRequestObject
+
+	request.RoomId = roomId
+
+	var body SendReactionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendReaction(ctx, request.(SendReactionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendReaction")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendReactionResponseObject); ok {
+		if err := validResponse.VisitSendReactionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

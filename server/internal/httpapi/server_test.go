@@ -39,6 +39,47 @@ func TestPublicOpsMatchSpec(t *testing.T) {
 	}
 }
 
+// TestDisplayOpsMatchSpec checks displayOps lists exactly the operations
+// the spec lets the display cookie call, and that displayRoom knows the
+// room of each that has one.
+func TestDisplayOpsMatchSpec(t *testing.T) {
+	spec, err := openapi3.NewLoader().LoadFromFile("../../../api/openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, item := range spec.Paths.Map() {
+		for method, op := range item.Operations() {
+			id := strings.ToUpper(op.OperationID[:1]) + op.OperationID[1:]
+			display := false
+			if op.Security != nil {
+				for _, req := range *op.Security {
+					if _, ok := req["display"]; ok {
+						display = true
+					}
+				}
+			}
+			if display != displayOps[id] {
+				t.Errorf("%s %s (%s): display in spec = %v, in displayOps = %v", method, path, id, display, displayOps[id])
+			}
+			if display && strings.Contains(path, "{roomId}") {
+				if _, ok := displayRoom(displayRequests[id]); !ok {
+					t.Errorf("%s: displayRoom doesn't know its room", id)
+				}
+			}
+		}
+	}
+}
+
+var displayRequests = map[string]any{
+	"GetRoom":                GetRoomRequestObject{},
+	"GetQueue":               GetQueueRequestObject{},
+	"GetPlayback":            GetPlaybackRequestObject{},
+	"GetQueueItemArtwork":    GetQueueItemArtworkRequestObject{},
+	"GetQueueItemPalette":    GetQueueItemPaletteRequestObject{},
+	"GetQueueItemLyrics":     GetQueueItemLyricsRequestObject{},
+	"GetQueueItemLinerNotes": GetQueueItemLinerNotesRequestObject{},
+}
+
 func TestClientIP(t *testing.T) {
 	s := &Server{TrustedProxies: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}}
 	for _, tc := range []struct {

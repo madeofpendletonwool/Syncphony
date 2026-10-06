@@ -863,6 +863,154 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/queue/{itemId}/liner-notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A queued song's liner notes
+         * @description The release, credits and a few facts from MusicBrainz, and the
+         *     artist's bio from Wikipedia. The first ask for a song can take a
+         *     few seconds (MusicBrainz allows a request a second); after that
+         *     they're cached. 404 if MusicBrainz doesn't know the song, or
+         *     MusicBrainz is turned off.
+         */
+        get: operations["getQueueItemLinerNotes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/reactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send an emoji reaction to the room
+         * @description Floats up on the room's big screen, and reaches everyone on the room
+         *     socket as `reaction.sent`. Reactions aren't kept. Limited to a few a
+         *     second per person (`rate_limited`).
+         */
+        post: operations["sendReaction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/displays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /** The room's paired displays */
+        get: operations["listDisplays"];
+        put?: never;
+        /**
+         * Pair a display with the room
+         * @description Type in the code a display (a TV at `/tv`) is showing. It then shows
+         *     this room's big screen until it's unpaired. `pairing_invalid` if no
+         *     display is showing the code; wrong codes are rate limited.
+         */
+        post: operations["pairDisplay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/displays/{displayId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                displayId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unpair a display
+         * @description The room's owner, whoever paired it, or an admin.
+         */
+        delete: operations["unpairDisplay"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/display/pairing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check whether this display has been paired
+         * @description Reads the pairing cookie. Once paired, sets the display cookie and
+         *     returns the room. `pairing_expired` (410) when the code timed out:
+         *     start again.
+         */
+        get: operations["pollDisplayPairing"];
+        put?: never;
+        /**
+         * Start pairing this device as a display
+         * @description Returns a short code for the display to show, and sets a pairing
+         *     cookie. Poll `GET /display/pairing` until someone in a room types the
+         *     code in. Codes last 10 minutes.
+         */
+        post: operations["beginDisplayPairing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/display": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This display, and its room
+         * @description Reads the display cookie. `unauthenticated` (401) if this device isn't a paired display.
+         */
+        get: operations["getDisplay"];
+        put?: never;
+        post?: never;
+        /** Unpair this display, from the display */
+        delete: operations["leaveDisplay"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms": {
         parameters: {
             query?: never;
@@ -1280,6 +1428,98 @@ export interface components {
             /** @description The line. Empty for a pause. */
             text: string;
         };
+        LinerNotes: {
+            /** @description The recording's title on MusicBrainz. */
+            title: string;
+            recordingMbid: string;
+            /** @description When the recording first came out. */
+            year?: number;
+            release?: components["schemas"]["LinerNotesRelease"];
+            artist?: components["schemas"]["LinerNotesArtist"];
+            /** @description Who did what, writers first. */
+            credits: components["schemas"]["LinerNotesCredit"][];
+            /** @description Short fun facts, for rotating cards. */
+            facts: components["schemas"]["LinerNotesFact"][];
+        };
+        LinerNotesRelease: {
+            title: string;
+            /** @description Album, Single, EP... */
+            type?: string;
+            /** @description YYYY, YYYY-MM or YYYY-MM-DD. */
+            date?: string;
+            labels: string[];
+        };
+        LinerNotesArtist: {
+            mbid: string;
+            name: string;
+            /** @description A one-liner, like "Group from Seattle". */
+            about?: string;
+            /** @description A short summary from Wikipedia. */
+            bio?: string;
+            /** @description The Wikipedia article. */
+            bioUrl?: string;
+        };
+        LinerNotesCredit: {
+            /** @description "Written by", "Produced by", "Guitar"... */
+            role: string;
+            names: string[];
+        };
+        LinerNotesFact: {
+            /** @enum {string} */
+            kind: "cover" | "live" | "samples" | "sampled_by" | "origin" | "first_released";
+            text: string;
+        };
+        /**
+         * @description The reactions a room can send.
+         * @enum {string}
+         */
+        ReactionEmoji: "🔥" | "❤️" | "🙌" | "😂" | "💃" | "🎉" | "😮" | "👏";
+        ReactionRequest: {
+            emoji: components["schemas"]["ReactionEmoji"];
+        };
+        Reaction: {
+            id: string;
+            roomId: string;
+            userId: string;
+            emoji: components["schemas"]["ReactionEmoji"];
+            /** Format: date-time */
+            at: string;
+        };
+        Display: {
+            id: string;
+            roomId: string;
+            name: string;
+            /** @description The user who paired it, if they're still around. */
+            pairedBy?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastSeenAt: string;
+        };
+        PairDisplayRequest: {
+            /** @description The code the display shows. Case, spaces and dashes don't matter. */
+            code: string;
+            /** @description What to call it. Default "TV". */
+            name?: string;
+        };
+        DisplayPairing: {
+            code: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        DisplayPairingStatus: {
+            /** @enum {string} */
+            status: "waiting" | "paired";
+            code: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @description Set once paired. */
+            roomId?: string;
+        };
+        DisplayMe: {
+            display: components["schemas"]["Display"];
+            room: components["schemas"]["Room"];
+        };
         AlbumDetail: {
             linkId: string;
             provider: string;
@@ -1393,6 +1633,11 @@ export interface components {
          *       the room opened, or their last one closed.
          *     - `link.status`: ServiceLink. One of your links changed status.
          *     - `room.updated`: Room. The room's name or settings changed.
+         *     - `reaction.sent`: Reaction. Someone sent an emoji to the big screen.
+         *
+         *     A paired display connects with its display cookie instead, to its
+         *     own room only. So does a signed-in user with `display=1`: either way
+         *     the connection doesn't count as being in the room.
          *
          *     Close code 1013 (try again later) means the client fell behind and
          *     missed events: reconnect with `since` set to the last version seen.
@@ -1400,7 +1645,7 @@ export interface components {
          */
         RoomEvent: {
             /** @enum {string} */
-            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated";
+            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "reaction.sent";
             /**
              * Format: int64
              * @description Queue version, on `queue.updated` only.
@@ -1411,8 +1656,15 @@ export interface components {
         RoomHello: {
             roomId: string;
             roomName: string;
-            /** @description Your user ID. */
+            /** @description Your user ID; empty for a paired display. */
             you: string;
+            /**
+             * Format: date-time
+             * @description The server's clock as it sent this, to the millisecond. Clients
+             *     correct for their own clock's offset when working out the playback
+             *     position, so every screen in the room shows the same lyric line.
+             */
+            serverTime: string;
             /** @description Everyone connected to the room right now, you included. */
             members: components["schemas"]["User"][];
         };
@@ -2929,6 +3181,211 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Lyrics"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getQueueItemLinerNotes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The liner notes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinerNotes"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    sendReaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReactionRequest"];
+            };
+        };
+        responses: {
+            /** @description Sent */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Reaction"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listDisplays: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Displays, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Display"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    pairDisplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairDisplayRequest"];
+            };
+        };
+        responses: {
+            /** @description Paired */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Display"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    unpairDisplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                displayId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unpaired; the display goes back to showing a code */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    pollDisplayPairing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pairing's status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisplayPairingStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    beginDisplayPairing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A code to show */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisplayPairing"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getDisplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The display */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisplayMe"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    leaveDisplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unpaired; the display cookie is cleared */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };

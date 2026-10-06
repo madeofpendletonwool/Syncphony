@@ -1,14 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Check, ChevronDown, History, LogOut, Plus, Settings2, Sparkles, Speaker } from 'lucide-react'
+import { Check, ChevronDown, History, LogOut, MonitorPlay, Plus, Settings2, Sparkles, Speaker } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { DropdownMenu } from 'radix-ui'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Artwork } from '@/components/artwork'
 import { PageHeader } from '@/components/page-header'
+import { BigScreenDialog } from '@/components/room/big-screen-dialog'
 import { MyLane } from '@/components/room/my-lane'
 import { QueueRow } from '@/components/room/queue-row'
+import { ReactionBar } from '@/components/room/reaction-bar'
 import { RoomSettings } from '@/components/room/room-settings'
+import { SongDetails } from '@/components/room/song-details'
 import { SpeakerPanel } from '@/components/room/speaker-panel'
 import { TransportControls } from '@/components/shell/player-controls'
 import { SourceTag } from '@/components/service-tag'
@@ -32,6 +35,9 @@ import { usersQuery } from '@/lib/users'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/_app/_authed/room')({
+  // ?join=<roomId>: the big screen's QR code drops you into its room.
+  validateSearch: (search: Record<string, unknown>): { join?: string } =>
+    typeof search.join === 'string' && search.join ? { join: search.join } : {},
   component: Room,
 })
 
@@ -41,6 +47,14 @@ const UP_NEXT_SHOWN = 12
 function Room() {
   const me = useMe()
   const { room, rooms } = useCurrentRoom()
+  const { join } = Route.useSearch()
+  const navigate = Route.useNavigate()
+  const { nowPlaying: np, commands } = usePlayer()
+  useEffect(() => {
+    if (!join || !rooms.data) return
+    if (rooms.data.some((r) => r.id === join)) chooseRoom(join)
+    void navigate({ search: {}, replace: true })
+  }, [join, rooms.data, navigate])
   const queue = useQuery({ ...queueQuery(room?.id ?? ''), enabled: !!room })
   const users = useQuery(usersQuery)
   const userById = (id: string) => users.data?.find((u) => u.id === id)
@@ -77,6 +91,8 @@ function Room() {
 
       <motion.div variants={stagger} initial="hidden" animate="show" className="flex flex-col gap-6">
         <NowPlayingCard room={room} waiting={upNext.length} />
+        {np && <ReactionBar roomId={room.id} />}
+        {np && <SongDetails np={np} commands={commands} />}
 
         {before !== undefined && (
           <motion.p
@@ -143,6 +159,7 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
   const me = useMe()
   const { members, status } = useStore(live)
   const [settings, setSettings] = useState(false)
+  const [bigScreen, setBigScreen] = useState(false)
   const others = rooms.filter((r) => r.id !== room.id)
   const title = (
     <DropdownMenu.Root>
@@ -175,6 +192,10 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
               <span className="flex-1">History and recaps</span>
             </Link>
           </DropdownMenu.Item>
+          <DropdownMenu.Item onSelect={() => setBigScreen(true)} className={menuItem}>
+            <MonitorPlay className="size-4 text-muted-foreground" />
+            <span className="flex-1">Big screen</span>
+          </DropdownMenu.Item>
           {room.ownerId === me.id && (
             <DropdownMenu.Item onSelect={() => setSettings(true)} className={menuItem}>
               <Settings2 className="size-4 text-muted-foreground" />
@@ -193,6 +214,7 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
   return (
     <header className="flex items-end justify-between gap-4 pt-10 pb-6">
       <RoomSettings room={room} open={settings} onOpenChange={setSettings} />
+      <BigScreenDialog room={room} open={bigScreen} onOpenChange={setBigScreen} />
       <div className="min-w-0">
         <h1 className="text-display">{title}</h1>
         <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">

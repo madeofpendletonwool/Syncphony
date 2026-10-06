@@ -24,6 +24,17 @@ type CredentialsPassword struct {
 	UpdatedAt time.Time
 }
 
+type Display struct {
+	ID         string
+	TokenHash  []byte
+	RoomID     string
+	Name       string
+	PairedBy   sql.NullString
+	CreatedAt  time.Time
+	LastSeenAt time.Time
+	ExpiresAt  time.Time
+}
+
 type Invite struct {
 	Code      string
 	CreatedBy sql.NullString
@@ -32,6 +43,15 @@ type Invite struct {
 	ExpiresAt time.Time
 	UsedBy    sql.NullString
 	UsedAt    sql.NullTime
+}
+
+type LinerNotesCache struct {
+	Provider  string
+	TrackID   string
+	Found     bool
+	Notes     string
+	FetchedAt time.Time
+	ExpiresAt time.Time
 }
 
 type LyricsCache struct {

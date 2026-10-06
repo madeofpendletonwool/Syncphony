@@ -19,6 +19,7 @@ import (
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/artwork"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
+	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
 	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
@@ -40,6 +41,8 @@ type Server struct {
 	Auth    *auth.Service
 	Links   *links.Service
 	Lyrics  *lyrics.Service
+	// LinerNotes writes songs' liner notes. Nil when MusicBrainz is off.
+	LinerNotes *linernotes.Service
 	// Artwork picks queued songs' covers.
 	Artwork *artwork.Service
 	// Palettes works out queued songs' artwork colors.
@@ -59,6 +62,8 @@ type Server struct {
 	// TrustedProxies are the reverse proxies whose X-Forwarded-For is
 	// believed, for rate limiting by client IP.
 	TrustedProxies []netip.Prefix
+
+	reactions reactionLimiter
 }
 
 var _ StrictServerInterface = (*Server)(nil)
@@ -115,6 +120,11 @@ var publicOps = map[string]bool{
 	"FinishPasskeyLogin":  true,
 	"Logout":              true,
 	"CompleteOAuthLink":   true,
+	// Displays sign in with their own cookie, which these read.
+	"BeginDisplayPairing": true,
+	"PollDisplayPairing":  true,
+	"GetDisplay":          true,
+	"LeaveDisplay":        true,
 }
 
 type ctxKey int
@@ -127,6 +137,10 @@ const (
 // request is what handlers need from the HTTP request.
 type request struct {
 	ip, userAgent, token string
+	// display and pairing are a display's cookies.
+	display, pairing string
+	// setCookie adds a cookie to the response.
+	setCookie func(*http.Cookie)
 }
 
 func requestFrom(ctx context.Context) request {
@@ -135,21 +149,35 @@ func requestFrom(ctx context.Context) request {
 }
 
 // sessionFrom returns the signed-in session. Only call it from handlers
-// that aren't in publicOps.
+// that aren't in publicOps or displayOps.
 func sessionFrom(ctx context.Context) *auth.Session {
 	return ctx.Value(ctxSession).(*auth.Session)
 }
 
 // authenticate puts request details in the context and, except for public
-// operations, requires a session.
+// operations, requires a session, or for displayOps, a paired display.
 func (s *Server) authenticate(f StrictHandlerFunc, operationID string) StrictHandlerFunc {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request, req any) (any, error) {
-		info := request{ip: s.clientIP(r), userAgent: r.UserAgent()}
+		info := request{ip: s.clientIP(r), userAgent: r.UserAgent(), setCookie: func(c *http.Cookie) { http.SetCookie(w, c) }}
 		if c, err := r.Cookie(SessionCookie); err == nil {
 			info.token = c.Value
 		}
+		if c, err := r.Cookie(DisplayCookie); err == nil {
+			info.display = c.Value
+		}
+		if c, err := r.Cookie(pairingCookie); err == nil {
+			info.pairing = c.Value
+		}
 		ctx = context.WithValue(ctx, ctxRequest, info)
 		if publicOps[operationID] {
+			return f(ctx, w, r, req)
+		}
+		// A display; a signed-in user's session wins if the device is both.
+		if displayOps[operationID] && info.display != "" && (info.token == "" || s.Auth.Check(ctx, info.token) != nil) {
+			ctx, err := s.authenticateDisplay(ctx, w, r, req)
+			if err != nil {
+				return nil, err
+			}
 			return f(ctx, w, r, req)
 		}
 		sess, err := s.Auth.Authenticate(ctx, info.token)
@@ -295,6 +323,9 @@ var errorCodes = []struct {
 	{auth.ErrLastCredential, http.StatusConflict, "last_credential"},
 	{auth.ErrCeremonyExpired, http.StatusBadRequest, "ceremony_expired"},
 	{auth.ErrPasskeyFailed, http.StatusBadRequest, "passkey_failed"},
+	{auth.ErrPairingInvalid, http.StatusNotFound, "pairing_invalid"},
+	{auth.ErrPairingExpired, http.StatusGone, "pairing_expired"},
+	{auth.ErrTooManyPairings, http.StatusServiceUnavailable, "too_many_pairings"},
 
 	{links.ErrUnknownProvider, http.StatusNotFound, "unknown_provider"},
 	{links.ErrNotFound, http.StatusNotFound, "not_found"},

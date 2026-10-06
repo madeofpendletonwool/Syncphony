@@ -19,6 +19,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/config"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
+	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
 	"github.com/madeofpendletonwool/syncphony/server/internal/match"
@@ -163,13 +164,18 @@ func run() error {
 	}
 	lyricsSvc := lyrics.New(db, lyricsOpts)
 	var mb *musicbrainz.Service
+	var notes *linernotes.Service
 	if cfg.MusicBrainzURL != "" {
 		mb = musicbrainz.New(db, musicbrainz.Options{BaseURL: cfg.MusicBrainzURL, UserAgent: userAgent})
 		go mb.Run(ctx)
+		notes = linernotes.New(db, mb, linernotes.Options{WikipediaURL: cfg.WikipediaURL, UserAgent: userAgent})
+		if cfg.WikipediaURL == "" {
+			slog.Info("Wikipedia is off: liner notes have no artist bios")
+		}
 	} else {
-		slog.Info("MusicBrainz is off: artwork comes only from linked services")
+		slog.Info("MusicBrainz is off: artwork comes only from linked services, and there are no liner notes")
 	}
-	go sweep(ctx, db, lyricsSvc, mb)
+	go sweep(ctx, db, accounts, lyricsSvc, mb, notes)
 
 	roomSvc := rooms.New(db, a.bus)
 	queueSvc := queue.New(db, roomSvc, a.links)
@@ -195,7 +201,7 @@ func run() error {
 	defer player.Close()
 	go player.Run(ctx)
 	api := &httpapi.Server{
-		Version: version, Auth: accounts, Links: a.links, Lyrics: lyricsSvc, Artwork: art, Palettes: palettes,
+		Version: version, Auth: accounts, Links: a.links, Lyrics: lyricsSvc, LinerNotes: notes, Artwork: art, Palettes: palettes,
 		Rooms: roomSvc, Queue: queueSvc, Playback: player, Bus: a.bus, Presence: presence,
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	}
@@ -234,9 +240,9 @@ func run() error {
 	return nil
 }
 
-// sweep deletes expired sessions, cached lyrics and MusicBrainz matches
-// every hour until ctx is done.
-func sweep(ctx context.Context, db *store.Store, ly *lyrics.Service, mb *musicbrainz.Service) {
+// sweep deletes expired sessions and displays, cached lyrics, MusicBrainz
+// matches and liner notes every hour until ctx is done.
+func sweep(ctx context.Context, db *store.Store, accounts *auth.Service, ly *lyrics.Service, mb *musicbrainz.Service, notes *linernotes.Service) {
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()
 	for {
@@ -245,12 +251,18 @@ func sweep(ctx context.Context, db *store.Store, ly *lyrics.Service, mb *musicbr
 		} else if n > 0 {
 			slog.Debug("swept expired sessions", "count", n)
 		}
+		if err := accounts.SweepDisplays(ctx); err != nil {
+			slog.Warn("sweeping expired displays", "err", err)
+		}
 		if err := ly.Sweep(ctx); err != nil {
 			slog.Warn("sweeping expired lyrics", "err", err)
 		}
 		if mb != nil {
 			if err := mb.Sweep(ctx); err != nil {
 				slog.Warn("sweeping expired MusicBrainz matches", "err", err)
+			}
+			if err := notes.Sweep(ctx); err != nil {
+				slog.Warn("sweeping expired liner notes", "err", err)
 			}
 		}
 		select {

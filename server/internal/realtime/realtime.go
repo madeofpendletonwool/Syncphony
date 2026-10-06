@@ -32,6 +32,8 @@ const (
 	// LinkStatus carries one of the user's service links whose status
 	// changed. Sent on the user's topic, so it reaches every room they're in.
 	LinkStatus = "link.status"
+	// ReactionSent carries an emoji someone sent to the room's big screen.
+	ReactionSent = "reaction.sent"
 )
 
 // Event is something that happened. Data holds domain values (store rows,
