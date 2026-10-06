@@ -47,9 +47,12 @@ var version = "dev"
 
 func main() {
 	var err error
-	if len(os.Args) > 1 && os.Args[1] == "vault" {
+	switch {
+	case len(os.Args) > 1 && os.Args[1] == "vault":
 		err = vaultCommand(os.Args[2:])
-	} else {
+	case len(os.Args) > 1 && os.Args[1] == "admin":
+		err = adminCommand(os.Args[2:])
+	default:
 		err = run()
 	}
 	if err != nil {

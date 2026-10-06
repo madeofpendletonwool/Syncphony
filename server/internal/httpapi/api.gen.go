@@ -699,6 +699,11 @@ type CreateLinkRequest struct {
 	Provider string            `json:"provider"`
 }
 
+// CreateResetLinkRequest defines model for CreateResetLinkRequest.
+type CreateResetLinkRequest struct {
+	ExpiresInHours *int `json:"expiresInHours,omitempty"`
+}
+
 // CreateRoomRequest defines model for CreateRoomRequest.
 type CreateRoomRequest struct {
 	// Autopilot When the queue runs dry, autopilot adds songs like the ones the
@@ -1416,6 +1421,34 @@ type RelinkRequest struct {
 	Fields map[string]string `json:"fields"`
 }
 
+// ResetLink defines model for ResetLink.
+type ResetLink struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// CreatedBy The admin who made it. Absent for links made on the command line.
+	CreatedBy *string   `json:"createdBy,omitempty"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Id        string    `json:"id"`
+
+	// Url Only when the link is created.
+	Url    *string `json:"url,omitempty"`
+	UserId string  `json:"userId"`
+}
+
+// ResetLinkInfo defines model for ResetLinkInfo.
+type ResetLinkInfo struct {
+	Avatar      *string   `json:"avatar,omitempty"`
+	Color       string    `json:"color"`
+	DisplayName string    `json:"displayName"`
+	ExpiresAt   time.Time `json:"expiresAt"`
+	Username    string    `json:"username"`
+}
+
+// ResetPasswordRequest defines model for ResetPasswordRequest.
+type ResetPasswordRequest struct {
+	NewPassword Password `json:"newPassword"`
+}
+
 // Role defines model for Role.
 type Role string
 
@@ -1823,6 +1856,9 @@ type Username = string
 // InviteCode defines model for InviteCode.
 type InviteCode = string
 
+// ResetCode defines model for ResetCode.
+type ResetCode = string
+
 // RoomId defines model for RoomId.
 type RoomId = string
 
@@ -1976,6 +2012,12 @@ type SetPasswordJSONRequestBody = SetPasswordRequest
 // BeginPairingJSONRequestBody defines body for BeginPairing for application/json ContentType.
 type BeginPairingJSONRequestBody = BeginPairingRequest
 
+// FinishResetPasskeyJSONRequestBody defines body for FinishResetPasskey for application/json ContentType.
+type FinishResetPasskeyJSONRequestBody = FinishCeremony
+
+// ResetPasswordJSONRequestBody defines body for ResetPassword for application/json ContentType.
+type ResetPasswordJSONRequestBody = ResetPasswordRequest
+
 // CreateRoomJSONRequestBody defines body for CreateRoom for application/json ContentType.
 type CreateRoomJSONRequestBody = CreateRoomRequest
 
@@ -2005,6 +2047,9 @@ type MoveQueueItemJSONRequestBody = MoveQueueItemRequest
 
 // SendReactionJSONRequestBody defines body for SendReaction for application/json ContentType.
 type SendReactionJSONRequestBody = ReactionRequest
+
+// CreateResetLinkJSONRequestBody defines body for CreateResetLink for application/json ContentType.
+type CreateResetLinkJSONRequestBody = CreateResetLinkRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -2149,6 +2194,21 @@ type ServerInterface interface {
 	// ListProviders Services that can be linked
 	// (GET /providers)
 	ListProviders(w http.ResponseWriter, r *http.Request)
+	// ListResetLinks Reset links waiting to be used (admin)
+	// (GET /reset-links)
+	ListResetLinks(w http.ResponseWriter, r *http.Request)
+	// GetResetLink Check a reset link before using it
+	// (GET /reset-links/{code})
+	GetResetLink(w http.ResponseWriter, r *http.Request, code ResetCode)
+	// BeginResetPasskey Start adding a passkey with a reset link
+	// (POST /reset-links/{code}/passkey/begin)
+	BeginResetPasskey(w http.ResponseWriter, r *http.Request, code ResetCode)
+	// FinishResetPasskey Finish adding a passkey with a reset link
+	// (POST /reset-links/{code}/passkey/finish)
+	FinishResetPasskey(w http.ResponseWriter, r *http.Request, code ResetCode)
+	// ResetPassword Set a new password with a reset link
+	// (POST /reset-links/{code}/password)
+	ResetPassword(w http.ResponseWriter, r *http.Request, code ResetCode)
 	// ListRooms Every room
 	// (GET /rooms)
 	ListRooms(w http.ResponseWriter, r *http.Request)
@@ -2263,6 +2323,12 @@ type ServerInterface interface {
 	// GetUserAvatar Someone's uploaded profile picture
 	// (GET /users/{id}/avatar)
 	GetUserAvatar(w http.ResponseWriter, r *http.Request, id string)
+	// RevokeResetLink Cancel someone's reset link (admin)
+	// (DELETE /users/{id}/reset-link)
+	RevokeResetLink(w http.ResponseWriter, r *http.Request, id string)
+	// CreateResetLink Make a one-time reset link for someone (admin)
+	// (POST /users/{id}/reset-link)
+	CreateResetLink(w http.ResponseWriter, r *http.Request, id string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -3288,6 +3354,124 @@ func (siw *ServerInterfaceWrapper) ListProviders(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListProviders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListResetLinks operation middleware
+func (siw *ServerInterfaceWrapper) ListResetLinks(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListResetLinks(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetResetLink operation middleware
+func (siw *ServerInterfaceWrapper) GetResetLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code ResetCode
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetResetLink(w, r, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BeginResetPasskey operation middleware
+func (siw *ServerInterfaceWrapper) BeginResetPasskey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code ResetCode
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BeginResetPasskey(w, r, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// FinishResetPasskey operation middleware
+func (siw *ServerInterfaceWrapper) FinishResetPasskey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code ResetCode
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.FinishResetPasskey(w, r, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResetPassword operation middleware
+func (siw *ServerInterfaceWrapper) ResetPassword(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code ResetCode
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResetPassword(w, r, code)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4562,6 +4746,58 @@ func (siw *ServerInterfaceWrapper) GetUserAvatar(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// RevokeResetLink operation middleware
+func (siw *ServerInterfaceWrapper) RevokeResetLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeResetLink(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateResetLink operation middleware
+func (siw *ServerInterfaceWrapper) CreateResetLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateResetLink(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -4692,6 +4928,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/passkey/begin", wrapper.BeginPasskeyLogin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/passkey/finish", wrapper.FinishPasskeyLogin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/logout", wrapper.Logout)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/reset-links/{code}", wrapper.GetResetLink)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/reset-links/{code}/password", wrapper.ResetPassword)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/reset-links/{code}/passkey/begin", wrapper.BeginResetPasskey)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/reset-links/{code}/passkey/finish", wrapper.FinishResetPasskey)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me", wrapper.GetMe)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/me", wrapper.UpdateMe)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/me/password", wrapper.DeletePassword)
@@ -4707,6 +4947,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/me/sessions/{id}", wrapper.RevokeMySession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/users", wrapper.ListUsers)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/users/{id}/avatar", wrapper.GetUserAvatar)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/users/{id}/reset-link", wrapper.RevokeResetLink)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/users/{id}/reset-link", wrapper.CreateResetLink)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/reset-links", wrapper.ListResetLinks)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/invites", wrapper.ListInvites)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/invites", wrapper.CreateInvite)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/providers", wrapper.ListProviders)
@@ -6554,6 +6797,208 @@ func (response ListProvidersdefaultJSONResponse) VisitListProvidersResponse(w ht
 	return err
 }
 
+type ListResetLinksRequestObject struct {
+}
+
+type ListResetLinksResponseObject interface {
+	VisitListResetLinksResponse(w http.ResponseWriter) error
+}
+
+type ListResetLinks200JSONResponse []ResetLink
+
+func (response ListResetLinks200JSONResponse) VisitListResetLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListResetLinksdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListResetLinksdefaultJSONResponse) VisitListResetLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetResetLinkRequestObject struct {
+	Code ResetCode `json:"code"`
+}
+
+type GetResetLinkResponseObject interface {
+	VisitGetResetLinkResponse(w http.ResponseWriter) error
+}
+
+type GetResetLink200JSONResponse ResetLinkInfo
+
+func (response GetResetLink200JSONResponse) VisitGetResetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetResetLinkdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetResetLinkdefaultJSONResponse) VisitGetResetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginResetPasskeyRequestObject struct {
+	Code ResetCode `json:"code"`
+}
+
+type BeginResetPasskeyResponseObject interface {
+	VisitBeginResetPasskeyResponse(w http.ResponseWriter) error
+}
+
+type BeginResetPasskey200JSONResponse struct{ CeremonyJSONResponse }
+
+func (response BeginResetPasskey200JSONResponse) VisitBeginResetPasskeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginResetPasskeydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BeginResetPasskeydefaultJSONResponse) VisitBeginResetPasskeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishResetPasskeyRequestObject struct {
+	Code ResetCode `json:"code"`
+	Body *FinishResetPasskeyJSONRequestBody
+}
+
+type FinishResetPasskeyResponseObject interface {
+	VisitFinishResetPasskeyResponse(w http.ResponseWriter) error
+}
+
+type FinishResetPasskey200JSONResponse struct{ SignedInJSONResponse }
+
+func (response FinishResetPasskey200JSONResponse) VisitFinishResetPasskeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishResetPasskeydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response FinishResetPasskeydefaultJSONResponse) VisitFinishResetPasskeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetPasswordRequestObject struct {
+	Code ResetCode `json:"code"`
+	Body *ResetPasswordJSONRequestBody
+}
+
+type ResetPasswordResponseObject interface {
+	VisitResetPasswordResponse(w http.ResponseWriter) error
+}
+
+type ResetPassword200JSONResponse struct{ SignedInJSONResponse }
+
+func (response ResetPassword200JSONResponse) VisitResetPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetPassworddefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ResetPassworddefaultJSONResponse) VisitResetPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListRoomsRequestObject struct {
 }
 
@@ -8086,6 +8531,79 @@ func (response GetUserAvatardefaultJSONResponse) VisitGetUserAvatarResponse(w ht
 	return err
 }
 
+type RevokeResetLinkRequestObject struct {
+	Id string `json:"id"`
+}
+
+type RevokeResetLinkResponseObject interface {
+	VisitRevokeResetLinkResponse(w http.ResponseWriter) error
+}
+
+type RevokeResetLink204Response struct {
+}
+
+func (response RevokeResetLink204Response) VisitRevokeResetLinkResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeResetLinkdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RevokeResetLinkdefaultJSONResponse) VisitRevokeResetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateResetLinkRequestObject struct {
+	Id   string `json:"id"`
+	Body *CreateResetLinkJSONRequestBody
+}
+
+type CreateResetLinkResponseObject interface {
+	VisitCreateResetLinkResponse(w http.ResponseWriter) error
+}
+
+type CreateResetLink201JSONResponse ResetLink
+
+func (response CreateResetLink201JSONResponse) VisitCreateResetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateResetLinkdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateResetLinkdefaultJSONResponse) VisitCreateResetLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// Login Sign in with a username and password
@@ -8229,6 +8747,21 @@ type StrictServerInterface interface {
 	// ListProviders Services that can be linked
 	// (GET /providers)
 	ListProviders(ctx context.Context, request ListProvidersRequestObject) (ListProvidersResponseObject, error)
+	// ListResetLinks Reset links waiting to be used (admin)
+	// (GET /reset-links)
+	ListResetLinks(ctx context.Context, request ListResetLinksRequestObject) (ListResetLinksResponseObject, error)
+	// GetResetLink Check a reset link before using it
+	// (GET /reset-links/{code})
+	GetResetLink(ctx context.Context, request GetResetLinkRequestObject) (GetResetLinkResponseObject, error)
+	// BeginResetPasskey Start adding a passkey with a reset link
+	// (POST /reset-links/{code}/passkey/begin)
+	BeginResetPasskey(ctx context.Context, request BeginResetPasskeyRequestObject) (BeginResetPasskeyResponseObject, error)
+	// FinishResetPasskey Finish adding a passkey with a reset link
+	// (POST /reset-links/{code}/passkey/finish)
+	FinishResetPasskey(ctx context.Context, request FinishResetPasskeyRequestObject) (FinishResetPasskeyResponseObject, error)
+	// ResetPassword Set a new password with a reset link
+	// (POST /reset-links/{code}/password)
+	ResetPassword(ctx context.Context, request ResetPasswordRequestObject) (ResetPasswordResponseObject, error)
 	// ListRooms Every room
 	// (GET /rooms)
 	ListRooms(ctx context.Context, request ListRoomsRequestObject) (ListRoomsResponseObject, error)
@@ -8343,6 +8876,12 @@ type StrictServerInterface interface {
 	// GetUserAvatar Someone's uploaded profile picture
 	// (GET /users/{id}/avatar)
 	GetUserAvatar(ctx context.Context, request GetUserAvatarRequestObject) (GetUserAvatarResponseObject, error)
+	// RevokeResetLink Cancel someone's reset link (admin)
+	// (DELETE /users/{id}/reset-link)
+	RevokeResetLink(ctx context.Context, request RevokeResetLinkRequestObject) (RevokeResetLinkResponseObject, error)
+	// CreateResetLink Make a one-time reset link for someone (admin)
+	// (POST /users/{id}/reset-link)
+	CreateResetLink(ctx context.Context, request CreateResetLinkRequestObject) (CreateResetLinkResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -9673,6 +10212,148 @@ func (sh *strictHandler) ListProviders(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListResetLinks operation middleware
+func (sh *strictHandler) ListResetLinks(w http.ResponseWriter, r *http.Request) {
+	var request ListResetLinksRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListResetLinks(ctx, request.(ListResetLinksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListResetLinks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListResetLinksResponseObject); ok {
+		if err := validResponse.VisitListResetLinksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetResetLink operation middleware
+func (sh *strictHandler) GetResetLink(w http.ResponseWriter, r *http.Request, code ResetCode) {
+	var request GetResetLinkRequestObject
+
+	request.Code = code
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetResetLink(ctx, request.(GetResetLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetResetLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetResetLinkResponseObject); ok {
+		if err := validResponse.VisitGetResetLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BeginResetPasskey operation middleware
+func (sh *strictHandler) BeginResetPasskey(w http.ResponseWriter, r *http.Request, code ResetCode) {
+	var request BeginResetPasskeyRequestObject
+
+	request.Code = code
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BeginResetPasskey(ctx, request.(BeginResetPasskeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BeginResetPasskey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BeginResetPasskeyResponseObject); ok {
+		if err := validResponse.VisitBeginResetPasskeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// FinishResetPasskey operation middleware
+func (sh *strictHandler) FinishResetPasskey(w http.ResponseWriter, r *http.Request, code ResetCode) {
+	var request FinishResetPasskeyRequestObject
+
+	request.Code = code
+
+	var body FinishResetPasskeyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.FinishResetPasskey(ctx, request.(FinishResetPasskeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "FinishResetPasskey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(FinishResetPasskeyResponseObject); ok {
+		if err := validResponse.VisitFinishResetPasskeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResetPassword operation middleware
+func (sh *strictHandler) ResetPassword(w http.ResponseWriter, r *http.Request, code ResetCode) {
+	var request ResetPasswordRequestObject
+
+	request.Code = code
+
+	var body ResetPasswordJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResetPassword(ctx, request.(ResetPasswordRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResetPassword")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResetPasswordResponseObject); ok {
+		if err := validResponse.VisitResetPasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListRooms operation middleware
 func (sh *strictHandler) ListRooms(w http.ResponseWriter, r *http.Request) {
 	var request ListRoomsRequestObject
@@ -10737,6 +11418,68 @@ func (sh *strictHandler) GetUserAvatar(w http.ResponseWriter, r *http.Request, i
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetUserAvatarResponseObject); ok {
 		if err := validResponse.VisitGetUserAvatarResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeResetLink operation middleware
+func (sh *strictHandler) RevokeResetLink(w http.ResponseWriter, r *http.Request, id string) {
+	var request RevokeResetLinkRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeResetLink(ctx, request.(RevokeResetLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeResetLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeResetLinkResponseObject); ok {
+		if err := validResponse.VisitRevokeResetLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateResetLink operation middleware
+func (sh *strictHandler) CreateResetLink(w http.ResponseWriter, r *http.Request, id string) {
+	var request CreateResetLinkRequestObject
+
+	request.Id = id
+
+	var body CreateResetLinkJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateResetLink(ctx, request.(CreateResetLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateResetLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateResetLinkResponseObject); ok {
+		if err := validResponse.VisitCreateResetLinkResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

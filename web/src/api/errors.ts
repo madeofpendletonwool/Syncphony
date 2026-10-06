@@ -42,6 +42,7 @@ export async function unwrap<T>(call: Promise<Result<T>>): Promise<T> {
 const messages: Record<string, string> = {
   invalid_credentials: "That username and password don't match.",
   invite_invalid: 'This invite has expired or was already used. Ask for a new one.',
+  reset_link_invalid: 'This reset link has expired or was already used. Ask an admin for a new one.',
   username_taken: 'That username is taken. Try another.',
   passkey_failed: "Your passkey couldn't be verified. Try again.",
   ceremony_expired: 'That took too long. Try again.',

@@ -182,6 +182,87 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  # --- Account recovery -----------------------------------------------------
+
+  /reset-links/{code}:
+    parameters:
+      - $ref: "#/components/parameters/ResetCode"
+    get:
+      operationId: getResetLink
+      summary: Check a reset link before using it
+      description: Returns 404 if the link doesn't exist, was used, or expired.
+      tags: [auth]
+      security: []
+      responses:
+        "200":
+          description: The link can be used
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResetLinkInfo"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /reset-links/{code}/password:
+    parameters:
+      - $ref: "#/components/parameters/ResetCode"
+    post:
+      operationId: resetPassword
+      summary: Set a new password with a reset link
+      description: |
+        Uses up the link, signs the user out everywhere, and signs them in
+        here.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/SignedIn"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /reset-links/{code}/passkey/begin:
+    parameters:
+      - $ref: "#/components/parameters/ResetCode"
+    post:
+      operationId: beginResetPasskey
+      summary: Start adding a passkey with a reset link
+      tags: [auth]
+      security: []
+      responses:
+        "200":
+          $ref: "#/components/responses/Ceremony"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /reset-links/{code}/passkey/finish:
+    parameters:
+      - $ref: "#/components/parameters/ResetCode"
+    post:
+      operationId: finishResetPasskey
+      summary: Finish adding a passkey with a reset link
+      description: |
+        Saves the passkey, uses up the link, signs the user out everywhere,
+        and signs them in here.
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinishCeremony"
+      responses:
+        "200":
+          $ref: "#/components/responses/SignedIn"
+        default:
+          $ref: "#/components/responses/Error"
+
   # --- The signed-in user ---------------------------------------------------
 
   /me:
@@ -452,6 +533,61 @@ paths:
               schema:
                 type: string
                 format: binary
+        default:
+          $ref: "#/components/responses/Error"
+
+  /users/{id}/reset-link:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: createResetLink
+      summary: Make a one-time reset link for someone (admin)
+      description: |
+        For someone who can't sign in. Replaces any reset link they had.
+        The link is only returned now: the server keeps just its hash.
+      tags: [admin]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateResetLinkRequest"
+      responses:
+        "201":
+          description: The link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResetLink"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: revokeResetLink
+      summary: Cancel someone's reset link (admin)
+      tags: [admin]
+      responses:
+        "204":
+          description: Cancelled
+        default:
+          $ref: "#/components/responses/Error"
+
+  /reset-links:
+    get:
+      operationId: listResetLinks
+      summary: Reset links waiting to be used (admin)
+      tags: [admin]
+      responses:
+        "200":
+          description: Unused, unexpired links, newest first. Without URLs.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResetLink"
         default:
           $ref: "#/components/responses/Error"
 
@@ -1978,6 +2114,13 @@ components:
       schema:
         type: string
 
+    ResetCode:
+      name: code
+      in: path
+      required: true
+      schema:
+        type: string
+
     RoomId:
       name: roomId
       in: path
@@ -2407,6 +2550,59 @@ components:
         usedAt:
           type: string
           format: date-time
+
+    ResetLink:
+      type: object
+      required: [id, userId, createdAt, expiresAt]
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        url:
+          type: string
+          description: Only when the link is created.
+        createdBy:
+          type: string
+          description: The admin who made it. Absent for links made on the command line.
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    ResetLinkInfo:
+      type: object
+      required: [username, displayName, color, expiresAt]
+      properties:
+        username:
+          type: string
+        displayName:
+          type: string
+        avatar:
+          type: string
+        color:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    CreateResetLinkRequest:
+      type: object
+      properties:
+        expiresInHours:
+          type: integer
+          minimum: 1
+          maximum: 168
+          default: 24
+
+    ResetPasswordRequest:
+      type: object
+      required: [newPassword]
+      properties:
+        newPassword:
+          $ref: "#/components/schemas/Password"
 
     CreateInviteRequest:
       type: object
