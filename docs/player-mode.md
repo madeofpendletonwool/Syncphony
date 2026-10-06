@@ -44,11 +44,15 @@ Record what happens in the matrix above, especially anything under the iOS notes
 
 These come from how Safari is documented and known to behave, **not** from device testing yet. Each is something to confirm or rule out on a real iPhone. Together they feed the Capacitor decision in Phases 4–5.
 
-- **Starting a song in the background is the biggest risk.** A playing media element keeps going when the screen locks. But the gapless handoff starts the *other* `<audio>` element from the `ended` handler. iOS may refuse to start a different element while the page is in the background. If that happens, the symptom is that the queue stops after the first song once the phone is locked. The fallback is to reuse one element and swap its `src` on `ended`. That's slightly less gapless, but generally allowed in the background.
+- **Starting a song in the background is the biggest risk.** A playing media element keeps going when the screen locks. But the gapless handoff starts the *other* `<audio>` element from the `ended` handler. iOS may refuse to start a different element while the page is in the background. If that happens, the symptom is that the queue stops after the first song once the phone is locked. **Handled (MAD-705):** if the browser refuses, the speaker plays the next song in the element that just ended, by swapping its `src`. That's slightly less gapless, but generally allowed in the background. It then keeps doing that for songs that start while hidden. When testing, check that step 3 plays several songs in a row while locked.
 - **JavaScript is throttled while locked.** Progress reports may arrive late or not at all while the screen is off. The server pauses a room only after 2 minutes without reports, and media events (`ended`, `timeupdate`) usually still fire while audio plays. Watch for the room pausing itself during step 3.
 - **The WebSocket may be suspended in the background.** The speaker doesn't need the socket to keep playing songs it already knows about, but it won't hear about remote pauses or skips until the page wakes. Watch for laggy remote control during step 4 with the screen locked.
 - **Screen Wake Lock** needs a recent iOS. Installed Home Screen apps have had bugs with it in some versions. Check step 8 both in a Safari tab and as a Home Screen app.
 - **Autoplay:** a Home Screen app that iOS has evicted from memory starts fresh and needs another tap. The **Tap to start the audio** button covers this, but someone has to be there to press it.
 - **Interruptions:** after a call, iOS pauses the element. The speaker reports `paused`, and someone has to press play. iOS doesn't auto-resume web audio.
 
-If background handoff (the first item) or the reports/socket behavior (the next two) turn out to be unreliable on iOS, that argues for doing the native shell (Capacitor, with a native audio session) sooner rather than later.
+If background handoff (the first item) or the reports/socket behavior (the next two) turn out to be unreliable on iOS, that argues for doing the native shell (Capacitor, with a native audio session) sooner rather than later. [ADR 0007](adr/0007-pwa-and-native-audio.md) lists the exact triggers.
+
+## Installing
+
+On Android and desktop Chrome, use **Install** on the Me page. On iOS, tap Share in Safari, then **Add to Home Screen**. The installed app opens offline (see ADR 0007), but playing music always needs the server.

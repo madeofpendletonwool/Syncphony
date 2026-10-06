@@ -4,13 +4,15 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ApiError } from './api/errors'
 import './index.css'
-import { meQuery } from './lib/auth'
+import { meQuery, rememberMe } from './lib/auth'
+import { registerServiceWorker } from './lib/pwa'
 import { routeTree } from './routeTree.gen'
 
 // A request that finds the session gone (expired, or signed out elsewhere)
 // marks the user signed out; the signed-in layout then sends them to /login.
 function onError(err: unknown) {
   if (err instanceof ApiError && err.code === 'unauthenticated') {
+    rememberMe(null)
     queryClient.setQueryData(meQuery.queryKey, null)
   }
 }
@@ -32,6 +34,8 @@ declare module '@tanstack/react-router' {
     router: typeof router
   }
 }
+
+registerServiceWorker()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
