@@ -18,7 +18,8 @@ func TestRoomsAPI(t *testing.T) {
 
 	var room httpapi.Room
 	alice.want(http.StatusCreated, "POST", "/rooms", httpapi.CreateRoomRequest{Name: " Living room "}).decode(t, &room)
-	if room.Name != "Living room" || room.OwnerId != me(t, alice).Id || room.FairnessMode != "round_robin" || room.Controls != "everyone" {
+	if room.Name != "Living room" || room.OwnerId != me(t, alice).Id || room.FairnessMode != "round_robin" ||
+		room.Permissions != (httpapi.RoomPermissions{PlayPause: "everyone", Seek: "everyone", Skip: "everyone", Speaker: "everyone"}) || room.SkipVotePercent != 50 {
 		t.Fatalf("created: %+v", room)
 	}
 	var list []httpapi.Room
@@ -26,11 +27,23 @@ func TestRoomsAPI(t *testing.T) {
 	if len(list) != 1 || list[0].Id != room.Id {
 		t.Fatalf("list: %+v", list)
 	}
-	owner := httpapi.RoomControls("owner")
+	sock := bob.mustDial(room.Id, "")
+	sock.expect("hello", nil)
+	owner := httpapi.PermissionLevelOwner
+	vote := httpapi.SkipPermissionVote
 	fifo := httpapi.FairnessMode("fifo")
-	alice.want(http.StatusOK, "PATCH", "/rooms/"+room.Id, httpapi.UpdateRoomRequest{Controls: &owner, FairnessMode: &fifo}).decode(t, &room)
-	if room.Controls != "owner" || room.FairnessMode != "fifo" || room.Name != "Living room" {
+	alice.want(http.StatusOK, "PATCH", "/rooms/"+room.Id, httpapi.UpdateRoomRequest{
+		Permissions: &httpapi.RoomPermissionsChange{Speaker: &owner, Skip: &vote}, SkipVotePercent: ptr(66), FairnessMode: &fifo,
+	}).decode(t, &room)
+	if room.Permissions != (httpapi.RoomPermissions{PlayPause: "everyone", Seek: "everyone", Skip: "vote", Speaker: "owner"}) ||
+		room.SkipVotePercent != 66 || room.FairnessMode != "fifo" || room.Name != "Living room" {
 		t.Fatalf("updated: %+v", room)
+	}
+	// Everyone in the room hears about it.
+	var pushed httpapi.Room
+	sock.await("room.updated", &pushed)
+	if pushed.Permissions.Skip != "vote" || pushed.SkipVotePercent != 66 {
+		t.Fatalf("pushed: %+v", pushed)
 	}
 	bob.want(http.StatusOK, "GET", "/rooms/"+room.Id, nil).decode(t, &room)
 
@@ -44,6 +57,7 @@ func TestRoomsAPI(t *testing.T) {
 	}{
 		{"bob changes alice's room", bob, "PATCH", "/rooms/" + room.Id, httpapi.UpdateRoomRequest{Name: ptr("Mine")}, http.StatusForbidden, "forbidden"},
 		{"blank name", alice, "POST", "/rooms", httpapi.CreateRoomRequest{Name: "  "}, http.StatusBadRequest, "invalid_input"},
+		{"vote percent out of range", alice, "PATCH", "/rooms/" + room.Id, httpapi.UpdateRoomRequest{SkipVotePercent: ptr(100)}, http.StatusBadRequest, "invalid_input"},
 		{"missing room", bob, "GET", "/rooms/nope", nil, http.StatusNotFound, "not_found"},
 		{"bob claims in an owner-controlled room", bob, "PUT", "/rooms/" + room.Id + "/player", httpapi.ClaimPlayerRequest{DeviceId: "tablet", Name: "Tablet"}, http.StatusForbidden, "forbidden"},
 	} {
@@ -181,5 +195,52 @@ func TestPlaybackAPI(t *testing.T) {
 	alice.want(http.StatusOK, "DELETE", base+"/player?deviceId=phone", nil).decode(t, &released)
 	if np = released; np.Player != nil || np.State != httpapi.PlaybackStatePaused {
 		t.Fatalf("release: %+v", np)
+	}
+}
+
+func TestVoteSkipAPI(t *testing.T) {
+	e := newEnv(t)
+	alice := e.admin()
+	bob, carol := e.member(alice, "bob"), e.member(alice, "carol")
+	vote := httpapi.SkipPermissionVote
+	var room httpapi.Room
+	alice.want(http.StatusCreated, "POST", "/rooms", httpapi.CreateRoomRequest{
+		Name: "Living room", Permissions: &httpapi.RoomPermissionsChange{Skip: &vote},
+	}).decode(t, &room)
+	if room.Permissions.Skip != "vote" || room.Permissions.Seek != "everyone" {
+		t.Fatalf("created: %+v", room)
+	}
+	base := "/rooms/" + room.Id
+	aliceLink := linkFake(t, alice)
+	// Bob and carol are in the room; alice's song plays.
+	for _, c := range []*client{bob, carol} {
+		c.mustDial(room.Id, "").expect("hello", nil)
+	}
+	alice.want(http.StatusOK, "POST", base+"/queue", addReq(aliceLink, "t01", "t04"))
+	var np httpapi.NowPlaying
+	alice.want(http.StatusOK, "PUT", base+"/player", httpapi.ClaimPlayerRequest{DeviceId: "phone", Name: "Alice's phone"}).decode(t, &np)
+	if np.Item == nil || np.SkipVotes == nil || np.SkipVotes.Needed != 2 || len(np.SkipVotes.Voters) != 0 {
+		t.Fatalf("claim: %+v %+v", np, np.SkipVotes)
+	}
+	item := np.Item.Id
+
+	if r := bob.do("POST", base+"/playback", httpapi.PlaybackCommand{Action: "skip"}); r.status != http.StatusForbidden || r.code() != "forbidden" {
+		t.Errorf("bob skipping: %d %s", r.status, r.body)
+	}
+	if r := alice.do("POST", base+"/playback", httpapi.PlaybackCommand{Action: "vote_skip"}); r.status != http.StatusBadRequest {
+		t.Errorf("alice voting on her own song: %d %s", r.status, r.body)
+	}
+	bob.want(http.StatusOK, "POST", base+"/playback", httpapi.PlaybackCommand{Action: "vote_skip", ItemId: &item}).decode(t, &np)
+	if np.Item == nil || np.Item.Id != item || np.SkipVotes == nil || len(np.SkipVotes.Voters) != 1 || np.SkipVotes.Voters[0] != me(t, bob).Id {
+		t.Fatalf("bob's vote: %+v", np.SkipVotes)
+	}
+	carol.want(http.StatusOK, "POST", base+"/playback", httpapi.PlaybackCommand{Action: "vote_skip", ItemId: &item}).decode(t, &np)
+	if np.Item == nil || np.Item.Id == item || len(np.SkipVotes.Voters) != 0 {
+		t.Fatalf("after the vote passed: %+v", np)
+	}
+	var hist []httpapi.PlayedItem
+	bob.want(http.StatusOK, "GET", base+"/history", nil).decode(t, &hist)
+	if len(hist) != 1 || hist[0].Item.Id != item || hist[0].EndReason != httpapi.PlayedItemEndReasonSkipped {
+		t.Fatalf("history: %+v", hist)
 	}
 }

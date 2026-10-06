@@ -967,7 +967,7 @@ paths:
     patch:
       operationId: updateRoom
       summary: Change a room you own
-      description: A new fairness mode reorders the queue at once.
+      description: Everyone in the room gets `room.updated`. A new fairness mode reorders the queue at once.
       tags: [rooms]
       requestBody:
         required: true
@@ -1004,12 +1004,15 @@ paths:
           $ref: "#/components/responses/Error"
     post:
       operationId: controlPlayback
-      summary: Play, pause, skip or seek
+      summary: Play, pause, skip, seek, or vote to skip
       description: |
-        Allowed for the room's owner, for everyone when the room's
-        `controls` is `everyone`, and for skipping your own song.
-        `play` needs a speaker (`no_player`); pausing, skipping or seeking
-        with nothing playing is `nothing_playing`.
+        The room's `permissions` say who may do what (`forbidden`
+        otherwise). The owner may do anything, and whoever queued a song
+        may skip it. In a room whose skip permission is `vote`, everyone
+        else sends `vote_skip` (and `unvote_skip` to take it back); the
+        song is skipped once `skipVotes.needed` have voted.
+        `play` needs a speaker (`no_player`); pausing, skipping, seeking or
+        voting with nothing playing is `nothing_playing`.
       tags: [playback]
       requestBody:
         required: true
@@ -1035,8 +1038,8 @@ paths:
       summary: Become the room's speaker
       description: |
         The device takes over playback from any other speaker. If the room
-        is idle and songs are waiting, the first one starts. Needs playback
-        control (see `controlPlayback`) unless the device already is the
+        is idle and songs are waiting, the first one starts. Needs the
+        room's `speaker` permission unless the device already is the
         speaker.
       tags: [playback]
       requestBody:
@@ -1814,6 +1817,7 @@ components:
         - `member.joined`, `member.left`: User. Someone's first connection to
           the room opened, or their last one closed.
         - `link.status`: ServiceLink. One of your links changed status.
+        - `room.updated`: Room. The room's name or settings changed.
 
         Close code 1013 (try again later) means the client fell behind and
         missed events: reconnect with `since` set to the last version seen.
@@ -1822,7 +1826,7 @@ components:
       properties:
         type:
           type: string
-          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status]
+          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated]
         version:
           type: integer
           format: int64
@@ -1983,6 +1987,25 @@ components:
           $ref: "#/components/schemas/Player"
         next:
           $ref: "#/components/schemas/QueueItem"
+        skipVotes:
+          $ref: "#/components/schemas/SkipVotes"
+
+    SkipVotes:
+      type: object
+      description: |
+        The vote to skip the playing song, while the room's skip permission
+        is `vote`. Everyone in the room but whoever queued the song can
+        vote; `needed` changes as people come and go.
+      required: [voters, needed]
+      properties:
+        voters:
+          type: array
+          description: IDs of the users who voted, in order.
+          items:
+            type: string
+        needed:
+          type: integer
+          description: How many votes skip the song.
 
     PlaybackState:
       type: string
@@ -2012,7 +2035,7 @@ components:
       properties:
         action:
           type: string
-          enum: [play, pause, skip, seek]
+          enum: [play, pause, skip, seek, vote_skip, unvote_skip]
         positionMs:
           type: integer
           format: int64
@@ -2020,7 +2043,9 @@ components:
           description: Where to seek to.
         itemId:
           type: string
-          description: Skip only if this is still the current song, so two people tapping skip skip one song.
+          description: |
+            Skip (or vote) only if this is still the current song, so two
+            people tapping skip skip one song.
 
     ClaimPlayerRequest:
       type: object
@@ -2072,14 +2097,56 @@ components:
       type: string
       enum: [round_robin, fifo]
 
-    RoomControls:
+    PermissionLevel:
       type: string
       enum: [everyone, owner]
-      description: Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
+      description: Who may do something. The room's owner always may.
+
+    SkipPermission:
+      type: string
+      enum: [everyone, vote, owner]
+      description: |
+        Who may skip. `vote`: the owner may, and everyone else votes (see
+        SkipVotes). Whoever queued a song may always skip it.
+
+    RoomPermissions:
+      type: object
+      required: [playPause, seek, skip, speaker]
+      properties:
+        playPause:
+          $ref: "#/components/schemas/PermissionLevel"
+        seek:
+          $ref: "#/components/schemas/PermissionLevel"
+        skip:
+          $ref: "#/components/schemas/SkipPermission"
+        speaker:
+          $ref: "#/components/schemas/PermissionLevel"
+
+    RoomPermissionsChange:
+      type: object
+      description: Permissions to change. Missing ones stay as they are (`everyone` for a new room).
+      properties:
+        playPause:
+          $ref: "#/components/schemas/PermissionLevel"
+        seek:
+          $ref: "#/components/schemas/PermissionLevel"
+        skip:
+          $ref: "#/components/schemas/SkipPermission"
+        speaker:
+          $ref: "#/components/schemas/PermissionLevel"
+
+    SkipVotePercent:
+      type: integer
+      minimum: 0
+      maximum: 99
+      default: 50
+      description: |
+        A skip vote passes once more than this percent of the room has
+        voted (not counting whoever queued the song): 50 is a majority.
 
     Room:
       type: object
-      required: [id, name, ownerId, fairnessMode, controls, createdAt]
+      required: [id, name, ownerId, fairnessMode, permissions, skipVotePercent, createdAt]
       properties:
         id:
           type: string
@@ -2089,8 +2156,10 @@ components:
           type: string
         fairnessMode:
           $ref: "#/components/schemas/FairnessMode"
-        controls:
-          $ref: "#/components/schemas/RoomControls"
+        permissions:
+          $ref: "#/components/schemas/RoomPermissions"
+        skipVotePercent:
+          $ref: "#/components/schemas/SkipVotePercent"
         createdAt:
           type: string
           format: date-time
@@ -2105,8 +2174,10 @@ components:
           maxLength: 64
         fairnessMode:
           $ref: "#/components/schemas/FairnessMode"
-        controls:
-          $ref: "#/components/schemas/RoomControls"
+        permissions:
+          $ref: "#/components/schemas/RoomPermissionsChange"
+        skipVotePercent:
+          $ref: "#/components/schemas/SkipVotePercent"
 
     UpdateRoomRequest:
       type: object
@@ -2117,5 +2188,7 @@ components:
           maxLength: 64
         fairnessMode:
           $ref: "#/components/schemas/FairnessMode"
-        controls:
-          $ref: "#/components/schemas/RoomControls"
+        permissions:
+          $ref: "#/components/schemas/RoomPermissionsChange"
+        skipVotePercent:
+          $ref: "#/components/schemas/SkipVotePercent"

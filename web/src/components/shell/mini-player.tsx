@@ -1,5 +1,4 @@
 import { Link } from '@tanstack/react-router'
-import { SkipForward } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Artwork } from '@/components/artwork'
 import { Button } from '@/components/ui/button'
@@ -7,7 +6,7 @@ import { usePosition } from '@/hooks/use-position'
 import { laneStyle } from '@/lib/lane'
 import { spring } from '@/lib/motion'
 import { usePlayer } from '@/lib/now-playing'
-import { PlayPauseButton } from './player-controls'
+import { PlayPauseButton, SkipButton } from './player-controls'
 
 /**
  * Always on screen above the nav. Shows the room's current song and expands
@@ -78,16 +77,7 @@ export function MiniPlayer({ expanded, onExpand }: { expanded: boolean; onExpand
         </AnimatePresence>
       </div>
       <PlayPauseButton size="icon" variant="ghost" paused={np.paused} onToggle={commands.toggle} className="relative" />
-      <Button
-        size="icon"
-        variant="ghost"
-        aria-label="Next"
-        disabled={!commands.next}
-        onClick={commands.next}
-        className="relative"
-      >
-        <SkipForward className="fill-current" />
-      </Button>
+      <SkipButton size="icon" commands={commands} className="relative" />
       <div aria-hidden className="absolute inset-x-3 bottom-0 h-0.5 overflow-hidden rounded-full bg-foreground/10">
         <div
           className="h-full origin-left bg-(--lane,var(--primary)) transition-transform duration-300 ease-linear"

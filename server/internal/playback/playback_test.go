@@ -23,14 +23,16 @@ import (
 )
 
 type env struct {
-	t     *testing.T
-	db    *store.Store
-	bus   *realtime.Local
-	rooms *rooms.Service
-	q     *queue.Service
-	links *links.Service
-	p     *playback.Engine
-	room  store.Room
+	t   *testing.T
+	db  *store.Store
+	bus *realtime.Local
+	// presence is who's in the room, for skip votes.
+	presence *realtime.Presence
+	rooms    *rooms.Service
+	q        *queue.Service
+	links    *links.Service
+	p        *playback.Engine
+	room     store.Room
 	// alice owns the room; bob and carol are members. Each has a link to
 	// the stream provider, and alice one to the remote provider too.
 	alice, bob, carol member
@@ -52,7 +54,7 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	e := &env{t: t, db: db, bus: realtime.NewLocal(), now: time.Date(2026, 10, 5, 20, 0, 0, 0, time.UTC)}
+	e := &env{t: t, db: db, bus: realtime.NewLocal(), presence: realtime.NewPresence(), now: time.Date(2026, 10, 5, 20, 0, 0, 0, time.UTC)}
 	reg, err := provider.NewRegistry(
 		fake.New(fake.Options{Now: e.clock}),
 		fake.New(fake.Options{ID: "fakeremote", Name: "Fake Remote", Playback: provider.PlaybackRemote, Now: e.clock}),
@@ -82,7 +84,8 @@ func (e *env) start() {
 		e.p.Close()
 	}
 	e.p = playback.New(e.db, e.rooms, e.q, e.links, playback.Config{
-		LoadTimeout: 10 * time.Second, PlayerTimeout: time.Minute, EndGrace: 5 * time.Second, RemotePoll: time.Second, Now: e.clock,
+		LoadTimeout: 10 * time.Second, PlayerTimeout: time.Minute, EndGrace: 5 * time.Second, RemotePoll: time.Second,
+		Presence: e.presence, Now: e.clock,
 	})
 	e.t.Cleanup(e.p.Close)
 }
@@ -363,11 +366,11 @@ func TestReportsAndSpeakers(t *testing.T) {
 func TestPermissions(t *testing.T) {
 	e := newEnv(t)
 	ctx := t.Context()
-	owner := rooms.ControlsOwner
-	if _, err := e.rooms.Update(ctx, e.alice.ID, e.room.ID, rooms.Update{Controls: &owner}); err != nil {
+	owner := rooms.Update{Permissions: rooms.Permissions{PlayPause: rooms.Owner, Skip: rooms.Owner, Speaker: rooms.Owner}}
+	if _, err := e.rooms.Update(ctx, e.alice.ID, e.room.ID, owner); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.rooms.Update(ctx, e.bob.ID, e.room.ID, rooms.Update{Controls: &owner}); !errors.Is(err, rooms.ErrForbidden) {
+	if _, err := e.rooms.Update(ctx, e.bob.ID, e.room.ID, owner); !errors.Is(err, rooms.ErrForbidden) {
 		t.Errorf("bob changing alice's room: %v", err)
 	}
 	if _, err := e.p.Claim(ctx, e.room.ID, e.bob.ID, "tablet", ""); !errors.Is(err, playback.ErrForbidden) {
@@ -383,6 +386,13 @@ func TestPermissions(t *testing.T) {
 	}
 	if _, err := e.command(e.carol, playback.Command{Action: playback.ActionSkip}); !errors.Is(err, playback.ErrForbidden) {
 		t.Errorf("carol skipping bob's song: %v", err)
+	}
+	// Seeking is still open to everyone; each permission stands alone.
+	if _, err := e.command(e.carol, playback.Command{Action: playback.ActionSeek, Position: time.Second}); err != nil {
+		t.Errorf("carol seeking: %v", err)
+	}
+	if _, err := e.command(e.carol, playback.Command{Action: playback.ActionVoteSkip}); err == nil {
+		t.Error("voting in a room that doesn't vote")
 	}
 	// Anyone may skip their own song. Skipping twice with the same item
 	// ID skips once.
@@ -596,4 +606,105 @@ func TestStream(t *testing.T) {
 	if _, err := e.p.NowPlaying(ctx, "nope"); !errors.Is(err, rooms.ErrNotFound) {
 		t.Errorf("missing room: %v", err)
 	}
+}
+
+func TestVoteSkip(t *testing.T) {
+	e := newEnv(t)
+	ctx := t.Context()
+	dave, erin := e.member("dave"), e.member("erin")
+	vote := rooms.Update{Permissions: rooms.Permissions{Skip: rooms.Vote}}
+	if _, err := e.rooms.Update(ctx, e.alice.ID, e.room.ID, vote); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []member{e.alice, e.bob, e.carol, dave, erin} {
+		e.presence.Join(e.room.ID, m.ID)
+	}
+	notices := e.notices()
+	e.claim(e.alice, "phone")
+	e.add(e.bob, "t04")
+	e.add(e.carol, "t07")
+	np := e.waitFor("bob's song", playing(playback.StateLoading, "t04"))
+	// Bob queued it, so the other four vote: more than half is 3.
+	if v := np.SkipVotes; v == nil || v.Needed != 3 || len(v.Voters) != 0 {
+		t.Fatalf("tally: %+v", np.SkipVotes)
+	}
+
+	if _, err := e.command(e.carol, playback.Command{Action: playback.ActionSkip}); !errors.Is(err, playback.ErrForbidden) {
+		t.Errorf("carol skipping without a vote: %v", err)
+	}
+	if _, err := e.command(e.bob, playback.Command{Action: playback.ActionVoteSkip}); err == nil {
+		t.Error("bob voting on his own song")
+	}
+	voteFor := playback.Command{Action: playback.ActionVoteSkip, ItemID: np.Item.ID}
+	np, err := e.command(e.carol, voteFor)
+	if err != nil || !playing(playback.StateLoading, "t04")(np) || len(np.SkipVotes.Voters) != 1 {
+		t.Fatalf("carol's vote: %s %+v %v", describe(np), np.SkipVotes, err)
+	}
+	// Voting twice counts once; taking it back and voting again is fine.
+	np, _ = e.command(e.carol, voteFor)
+	if len(np.SkipVotes.Voters) != 1 {
+		t.Fatalf("carol voting twice: %+v", np.SkipVotes)
+	}
+	np, _ = e.command(e.carol, playback.Command{Action: playback.ActionUnvoteSkip})
+	if len(np.SkipVotes.Voters) != 0 {
+		t.Fatalf("carol's vote taken back: %+v", np.SkipVotes)
+	}
+	for _, m := range []member{e.carol, dave} {
+		if _, err := e.command(m, voteFor); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if np := e.np(); !playing(playback.StateLoading, "t04")(np) || len(np.SkipVotes.Voters) != 2 {
+		t.Fatalf("two of three votes: %s %+v", describe(np), np.SkipVotes)
+	}
+
+	// Erin leaving makes two votes a majority of three.
+	e.presence.Leave(e.room.ID, erin.ID)
+	e.p.MembersChanged(e.room.ID)
+	np = e.waitFor("the vote to pass", playing(playback.StateLoading, "t07"))
+	if np.SkipVotes == nil || len(np.SkipVotes.Voters) != 0 {
+		t.Fatalf("votes carried over to the next song: %+v", np.SkipVotes)
+	}
+	if got := notices(); len(got) != 1 || !strings.Contains(got[0], "voted") {
+		t.Errorf("notices: %q", got)
+	}
+	// A vote for the song that was skipped is stale.
+	if np, err := e.command(e.alice, voteFor); err != nil || len(np.SkipVotes.Voters) != 0 {
+		t.Errorf("stale vote: %+v %v", np.SkipVotes, err)
+	}
+	h, _ := e.db.ListHistory(ctx, store.ListHistoryParams{RoomID: e.room.ID, Limit: 10})
+	if len(h) != 2 || h[1].PlayHistory.EndReason.String != store.EndSkipped {
+		t.Fatalf("history: %+v", h)
+	}
+
+	// The owner, and whoever queued the song, skip without a vote.
+	e.add(e.bob, "t01")
+	if _, err := e.command(e.carol, playback.Command{Action: playback.ActionSkip}); err != nil {
+		t.Fatalf("carol skipping her own song: %v", err)
+	}
+	e.waitFor("bob's next song", playing(playback.StateLoading, "t01"))
+
+	// Raising the bar to everyone, then voting with everyone.
+	all := 99
+	if _, err := e.rooms.Update(ctx, e.alice.ID, e.room.ID, rooms.Update{SkipVotePercent: &all}); err != nil {
+		t.Fatal(err)
+	}
+	e.waitFor("the new bar", func(np rooms.NowPlaying) bool { return np.SkipVotes != nil && np.SkipVotes.Needed == 3 })
+	for _, m := range []member{e.alice, e.carol} {
+		if _, err := e.command(m, playback.Command{Action: playback.ActionVoteSkip}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if np := e.np(); !playing(playback.StateLoading, "t01")(np) || len(np.SkipVotes.Voters) != 2 {
+		t.Fatalf("two of three votes: %s %+v", describe(np), np.SkipVotes)
+	}
+	// Turning votes off drops the tally; turning them back on starts fresh.
+	if _, err := e.rooms.Update(ctx, e.alice.ID, e.room.ID, rooms.Update{Permissions: rooms.Permissions{Skip: rooms.Everyone}}); err != nil {
+		t.Fatal(err)
+	}
+	e.waitFor("votes off", func(np rooms.NowPlaying) bool { return np.SkipVotes == nil })
+	if _, err := e.rooms.Update(ctx, e.alice.ID, e.room.ID, vote); err != nil {
+		t.Fatal(err)
+	}
+	e.waitFor("votes on", func(np rooms.NowPlaying) bool { return np.SkipVotes != nil && len(np.SkipVotes.Voters) == 0 })
 }

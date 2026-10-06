@@ -721,7 +721,7 @@ export interface paths {
         head?: never;
         /**
          * Change a room you own
-         * @description A new fairness mode reorders the queue at once.
+         * @description Everyone in the room gets `room.updated`. A new fairness mode reorders the queue at once.
          */
         patch: operations["updateRoom"];
         trace?: never;
@@ -742,11 +742,14 @@ export interface paths {
         get: operations["getPlayback"];
         put?: never;
         /**
-         * Play, pause, skip or seek
-         * @description Allowed for the room's owner, for everyone when the room's
-         *     `controls` is `everyone`, and for skipping your own song.
-         *     `play` needs a speaker (`no_player`); pausing, skipping or seeking
-         *     with nothing playing is `nothing_playing`.
+         * Play, pause, skip, seek, or vote to skip
+         * @description The room's `permissions` say who may do what (`forbidden`
+         *     otherwise). The owner may do anything, and whoever queued a song
+         *     may skip it. In a room whose skip permission is `vote`, everyone
+         *     else sends `vote_skip` (and `unvote_skip` to take it back); the
+         *     song is skipped once `skipVotes.needed` have voted.
+         *     `play` needs a speaker (`no_player`); pausing, skipping, seeking or
+         *     voting with nothing playing is `nothing_playing`.
          */
         post: operations["controlPlayback"];
         delete?: never;
@@ -768,8 +771,8 @@ export interface paths {
         /**
          * Become the room's speaker
          * @description The device takes over playback from any other speaker. If the room
-         *     is idle and songs are waiting, the first one starts. Needs playback
-         *     control (see `controlPlayback`) unless the device already is the
+         *     is idle and songs are waiting, the first one starts. Needs the
+         *     room's `speaker` permission unless the device already is the
          *     speaker.
          */
         put: operations["claimPlayer"];
@@ -1158,6 +1161,7 @@ export interface components {
          *     - `member.joined`, `member.left`: User. Someone's first connection to
          *       the room opened, or their last one closed.
          *     - `link.status`: ServiceLink. One of your links changed status.
+         *     - `room.updated`: Room. The room's name or settings changed.
          *
          *     Close code 1013 (try again later) means the client fell behind and
          *     missed events: reconnect with `since` set to the last version seen.
@@ -1165,7 +1169,7 @@ export interface components {
          */
         RoomEvent: {
             /** @enum {string} */
-            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status";
+            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated";
             /**
              * Format: int64
              * @description Queue version, on `queue.updated` only.
@@ -1268,6 +1272,18 @@ export interface components {
             revision: number;
             player?: components["schemas"]["Player"];
             next?: components["schemas"]["QueueItem"];
+            skipVotes?: components["schemas"]["SkipVotes"];
+        };
+        /**
+         * @description The vote to skip the playing song, while the room's skip permission
+         *     is `vote`. Everyone in the room but whoever queued the song can
+         *     vote; `needed` changes as people come and go.
+         */
+        SkipVotes: {
+            /** @description IDs of the users who voted, in order. */
+            voters: string[];
+            /** @description How many votes skip the song. */
+            needed: number;
         };
         /**
          * @description `idle`: nothing to play, or no speaker. `loading`: waiting for the
@@ -1285,13 +1301,16 @@ export interface components {
         };
         PlaybackCommand: {
             /** @enum {string} */
-            action: "play" | "pause" | "skip" | "seek";
+            action: "play" | "pause" | "skip" | "seek" | "vote_skip" | "unvote_skip";
             /**
              * Format: int64
              * @description Where to seek to.
              */
             positionMs?: number;
-            /** @description Skip only if this is still the current song, so two people tapping skip skip one song. */
+            /**
+             * @description Skip (or vote) only if this is still the current song, so two
+             *     people tapping skip skip one song.
+             */
             itemId?: string;
         };
         ClaimPlayerRequest: {
@@ -1319,28 +1338,56 @@ export interface components {
         /** @enum {string} */
         FairnessMode: "round_robin" | "fifo";
         /**
-         * @description Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
+         * @description Who may do something. The room's owner always may.
          * @enum {string}
          */
-        RoomControls: "everyone" | "owner";
+        PermissionLevel: "everyone" | "owner";
+        /**
+         * @description Who may skip. `vote`: the owner may, and everyone else votes (see
+         *     SkipVotes). Whoever queued a song may always skip it.
+         * @enum {string}
+         */
+        SkipPermission: "everyone" | "vote" | "owner";
+        RoomPermissions: {
+            playPause: components["schemas"]["PermissionLevel"];
+            seek: components["schemas"]["PermissionLevel"];
+            skip: components["schemas"]["SkipPermission"];
+            speaker: components["schemas"]["PermissionLevel"];
+        };
+        /** @description Permissions to change. Missing ones stay as they are (`everyone` for a new room). */
+        RoomPermissionsChange: {
+            playPause?: components["schemas"]["PermissionLevel"];
+            seek?: components["schemas"]["PermissionLevel"];
+            skip?: components["schemas"]["SkipPermission"];
+            speaker?: components["schemas"]["PermissionLevel"];
+        };
+        /**
+         * @description A skip vote passes once more than this percent of the room has
+         *     voted (not counting whoever queued the song): 50 is a majority.
+         * @default 50
+         */
+        SkipVotePercent: number;
         Room: {
             id: string;
             name: string;
             ownerId: string;
             fairnessMode: components["schemas"]["FairnessMode"];
-            controls: components["schemas"]["RoomControls"];
+            permissions: components["schemas"]["RoomPermissions"];
+            skipVotePercent: components["schemas"]["SkipVotePercent"];
             /** Format: date-time */
             createdAt: string;
         };
         CreateRoomRequest: {
             name: string;
             fairnessMode?: components["schemas"]["FairnessMode"];
-            controls?: components["schemas"]["RoomControls"];
+            permissions?: components["schemas"]["RoomPermissionsChange"];
+            skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };
         UpdateRoomRequest: {
             name?: string;
             fairnessMode?: components["schemas"]["FairnessMode"];
-            controls?: components["schemas"]["RoomControls"];
+            permissions?: components["schemas"]["RoomPermissionsChange"];
+            skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };
     };
     responses: {

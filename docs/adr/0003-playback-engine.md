@@ -49,7 +49,13 @@ The song's service decides the driver, by whether its session implements `provid
 
 ### Permissions
 
-A room's `controls` setting is `everyone` (the default) or `owner`. It decides who can play, pause, skip, seek and become the speaker. The owner can always do these, and anyone can skip their own song. A skip can carry the `itemId` it targets, so two people tapping skip at the same time skip one song.
+A room's owner sets who may do each thing (MAD-701): `playPause`, `seek` and `speaker` are `everyone` or `owner`, and `skip` is `everyone`, `owner` or `vote`. The owner can always do everything, and anyone can skip their own song. Rooms created before this had a single `controls` setting; it's read as the default for each permission and never written again, so no migration is needed. A skip can carry the `itemId` it targets, so two people tapping skip at the same time skip one song.
+
+#### Vote to skip
+
+When `skip` is `vote`, the owner and the song's requester can still skip outright, and everyone else votes (`vote_skip`, and `unvote_skip` to take it back). Votes live in memory with the rest of the room's state and reset when the song changes. `nowplaying.updated` carries the tally: who voted and how many votes are `needed`.
+
+The vote passes once more than `skipVotePercent` (default 50, a majority) of the room has voted. "The room" is everyone connected to it, plus anyone who voted and has since left, minus whoever queued the song, since they'd just skip it. The engine re-counts whenever someone joins or leaves and whenever the owner changes the settings, so a vote can pass because a member walked away. A passed vote skips with a `playback.notice`.
 
 ### Restarts
 

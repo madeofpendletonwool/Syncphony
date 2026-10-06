@@ -152,12 +152,13 @@ func run() error {
 	} else {
 		slog.Warn("ffmpeg not found: songs in formats the player can't decode won't play")
 	}
-	player := playback.New(db, roomSvc, queueSvc, a.links, playback.Config{Transcoder: transcoder})
+	presence := realtime.NewPresence()
+	player := playback.New(db, roomSvc, queueSvc, a.links, playback.Config{Transcoder: transcoder, Presence: presence})
 	defer player.Close()
 	go player.Run(ctx)
 	api := &httpapi.Server{
 		Version: version, Auth: accounts, Links: a.links,
-		Rooms: roomSvc, Queue: queueSvc, Playback: player, Bus: a.bus, Presence: realtime.NewPresence(),
+		Rooms: roomSvc, Queue: queueSvc, Playback: player, Bus: a.bus, Presence: presence,
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	}
 	mux := http.NewServeMux()

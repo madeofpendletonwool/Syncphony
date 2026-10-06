@@ -29,6 +29,16 @@ export type PlayerCommands = {
   next?: () => void
   previous?: () => void
   seek?: (positionMs: number) => void
+  /** In a room that votes on skips, your vote in place of `next`. */
+  vote?: SkipVote
+}
+
+export type SkipVote = {
+  voted: boolean
+  count: number
+  needed: number
+  /** Votes, or takes your vote back. */
+  toggle: () => void
 }
 
 type State = { nowPlaying: NowPlaying | null; commands: PlayerCommands }

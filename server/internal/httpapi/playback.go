@@ -168,5 +168,8 @@ func toNowPlaying(np rooms.NowPlaying) NowPlaying {
 	if p := np.Player; p != nil {
 		out.Player = &Player{DeviceId: p.DeviceID, UserId: p.UserID, Name: p.Name, LastSeen: p.LastSeen}
 	}
+	if v := np.SkipVotes; v != nil {
+		out.SkipVotes = &SkipVotes{Voters: v.Voters, Needed: v.Needed}
+	}
 	return out
 }

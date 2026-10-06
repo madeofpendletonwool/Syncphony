@@ -111,12 +111,32 @@ func (e PairingStatusStatus) Valid() bool {
 	}
 }
 
+// Defines values for PermissionLevel.
+const (
+	PermissionLevelEveryone PermissionLevel = "everyone"
+	PermissionLevelOwner    PermissionLevel = "owner"
+)
+
+// Valid indicates whether the value is a known member of the PermissionLevel enum.
+func (e PermissionLevel) Valid() bool {
+	switch e {
+	case PermissionLevelEveryone:
+		return true
+	case PermissionLevelOwner:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PlaybackCommandAction.
 const (
-	Pause PlaybackCommandAction = "pause"
-	Play  PlaybackCommandAction = "play"
-	Seek  PlaybackCommandAction = "seek"
-	Skip  PlaybackCommandAction = "skip"
+	Pause      PlaybackCommandAction = "pause"
+	Play       PlaybackCommandAction = "play"
+	Seek       PlaybackCommandAction = "seek"
+	Skip       PlaybackCommandAction = "skip"
+	UnvoteSkip PlaybackCommandAction = "unvote_skip"
+	VoteSkip   PlaybackCommandAction = "vote_skip"
 )
 
 // Valid indicates whether the value is a known member of the PlaybackCommandAction enum.
@@ -129,6 +149,10 @@ func (e PlaybackCommandAction) Valid() bool {
 	case Seek:
 		return true
 	case Skip:
+		return true
+	case UnvoteSkip:
+		return true
+	case VoteSkip:
 		return true
 	default:
 		return false
@@ -318,24 +342,6 @@ func (e Role) Valid() bool {
 	}
 }
 
-// Defines values for RoomControls.
-const (
-	Everyone RoomControls = "everyone"
-	Owner    RoomControls = "owner"
-)
-
-// Valid indicates whether the value is a known member of the RoomControls enum.
-func (e RoomControls) Valid() bool {
-	switch e {
-	case Everyone:
-		return true
-	case Owner:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for RoomEventType.
 const (
 	RoomEventTypeHello             RoomEventType = "hello"
@@ -345,6 +351,7 @@ const (
 	RoomEventTypeNowplayingUpdated RoomEventType = "nowplaying.updated"
 	RoomEventTypePlaybackNotice    RoomEventType = "playback.notice"
 	RoomEventTypeQueueUpdated      RoomEventType = "queue.updated"
+	RoomEventTypeRoomUpdated       RoomEventType = "room.updated"
 )
 
 // Valid indicates whether the value is a known member of the RoomEventType enum.
@@ -363,6 +370,8 @@ func (e RoomEventType) Valid() bool {
 	case RoomEventTypePlaybackNotice:
 		return true
 	case RoomEventTypeQueueUpdated:
+		return true
+	case RoomEventTypeRoomUpdated:
 		return true
 	default:
 		return false
@@ -384,6 +393,27 @@ func (e ServiceLinkStatus) Valid() bool {
 	case ServiceLinkStatusNeedsRelink:
 		return true
 	case ServiceLinkStatusOk:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SkipPermission.
+const (
+	SkipPermissionEveryone SkipPermission = "everyone"
+	SkipPermissionOwner    SkipPermission = "owner"
+	SkipPermissionVote     SkipPermission = "vote"
+)
+
+// Valid indicates whether the value is a known member of the SkipPermission enum.
+func (e SkipPermission) Valid() bool {
+	switch e {
+	case SkipPermissionEveryone:
+		return true
+	case SkipPermissionOwner:
+		return true
+	case SkipPermissionVote:
 		return true
 	default:
 		return false
@@ -506,10 +536,15 @@ type CreateLinkRequest struct {
 
 // CreateRoomRequest defines model for CreateRoomRequest.
 type CreateRoomRequest struct {
-	// Controls Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
-	Controls     *RoomControls `json:"controls,omitempty"`
 	FairnessMode *FairnessMode `json:"fairnessMode,omitempty"`
 	Name         string        `json:"name"`
+
+	// Permissions Permissions to change. Missing ones stay as they are (`everyone` for a new room).
+	Permissions *RoomPermissionsChange `json:"permissions,omitempty"`
+
+	// SkipVotePercent A skip vote passes once more than this percent of the room has
+	// voted (not counting whoever queued the song): 50 is a majority.
+	SkipVotePercent *SkipVotePercent `json:"skipVotePercent,omitempty"`
 }
 
 // Error defines model for Error.
@@ -635,6 +670,11 @@ type NowPlaying struct {
 	Revision int64  `json:"revision"`
 	RoomId   string `json:"roomId"`
 
+	// SkipVotes The vote to skip the playing song, while the room's skip permission
+	// is `vote`. Everyone in the room but whoever queued the song can
+	// vote; `needed` changes as people come and go.
+	SkipVotes *SkipVotes `json:"skipVotes,omitempty"`
+
 	// State `idle`: nothing to play, or no speaker. `loading`: waiting for the
 	// speaker to start the song.
 	State PlaybackState `json:"state"`
@@ -693,11 +733,15 @@ type PasskeySignupRequest struct {
 // Password defines model for Password.
 type Password = string
 
+// PermissionLevel Who may do something. The room's owner always may.
+type PermissionLevel string
+
 // PlaybackCommand defines model for PlaybackCommand.
 type PlaybackCommand struct {
 	Action PlaybackCommandAction `json:"action"`
 
-	// ItemId Skip only if this is still the current song, so two people tapping skip skip one song.
+	// ItemId Skip (or vote) only if this is still the current song, so two
+	// people tapping skip skip one song.
 	ItemId *string `json:"itemId,omitempty"`
 
 	// PositionMs Where to seek to.
@@ -858,17 +902,17 @@ type Role string
 
 // Room defines model for Room.
 type Room struct {
-	// Controls Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
-	Controls     RoomControls `json:"controls"`
-	CreatedAt    time.Time    `json:"createdAt"`
-	FairnessMode FairnessMode `json:"fairnessMode"`
-	Id           string       `json:"id"`
-	Name         string       `json:"name"`
-	OwnerId      string       `json:"ownerId"`
-}
+	CreatedAt    time.Time       `json:"createdAt"`
+	FairnessMode FairnessMode    `json:"fairnessMode"`
+	Id           string          `json:"id"`
+	Name         string          `json:"name"`
+	OwnerId      string          `json:"ownerId"`
+	Permissions  RoomPermissions `json:"permissions"`
 
-// RoomControls Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
-type RoomControls string
+	// SkipVotePercent A skip vote passes once more than this percent of the room has
+	// voted (not counting whoever queued the song): 50 is a majority.
+	SkipVotePercent SkipVotePercent `json:"skipVotePercent"`
+}
 
 // RoomEvent A message on the room WebSocket, `GET /ws/rooms/{roomId}?since=<version>`.
 // The socket needs the session cookie and is server-push only: send
@@ -884,6 +928,7 @@ type RoomControls string
 //   - `member.joined`, `member.left`: User. Someone's first connection to
 //     the room opened, or their last one closed.
 //   - `link.status`: ServiceLink. One of your links changed status.
+//   - `room.updated`: Room. The room's name or settings changed.
 //
 // Close code 1013 (try again later) means the client fell behind and
 // missed events: reconnect with `since` set to the last version seen.
@@ -908,6 +953,38 @@ type RoomHello struct {
 
 	// You Your user ID.
 	You string `json:"you"`
+}
+
+// RoomPermissions defines model for RoomPermissions.
+type RoomPermissions struct {
+	// PlayPause Who may do something. The room's owner always may.
+	PlayPause PermissionLevel `json:"playPause"`
+
+	// Seek Who may do something. The room's owner always may.
+	Seek PermissionLevel `json:"seek"`
+
+	// Skip Who may skip. `vote`: the owner may, and everyone else votes (see
+	// SkipVotes). Whoever queued a song may always skip it.
+	Skip SkipPermission `json:"skip"`
+
+	// Speaker Who may do something. The room's owner always may.
+	Speaker PermissionLevel `json:"speaker"`
+}
+
+// RoomPermissionsChange Permissions to change. Missing ones stay as they are (`everyone` for a new room).
+type RoomPermissionsChange struct {
+	// PlayPause Who may do something. The room's owner always may.
+	PlayPause *PermissionLevel `json:"playPause,omitempty"`
+
+	// Seek Who may do something. The room's owner always may.
+	Seek *PermissionLevel `json:"seek,omitempty"`
+
+	// Skip Who may skip. `vote`: the owner may, and everyone else votes (see
+	// SkipVotes). Whoever queued a song may always skip it.
+	Skip *SkipPermission `json:"skip,omitempty"`
+
+	// Speaker Who may do something. The room's owner always may.
+	Speaker *PermissionLevel `json:"speaker,omitempty"`
 }
 
 // SearchGroup One link's search results.
@@ -970,6 +1047,25 @@ type SignupRequest struct {
 	Username Username `json:"username"`
 }
 
+// SkipPermission Who may skip. `vote`: the owner may, and everyone else votes (see
+// SkipVotes). Whoever queued a song may always skip it.
+type SkipPermission string
+
+// SkipVotePercent A skip vote passes once more than this percent of the room has
+// voted (not counting whoever queued the song): 50 is a majority.
+type SkipVotePercent = int
+
+// SkipVotes The vote to skip the playing song, while the room's skip permission
+// is `vote`. Everyone in the room but whoever queued the song can
+// vote; `needed` changes as people come and go.
+type SkipVotes struct {
+	// Needed How many votes skip the song.
+	Needed int `json:"needed"`
+
+	// Voters IDs of the users who voted, in order.
+	Voters []string `json:"voters"`
+}
+
 // TrackResult A track you can queue with `linkId` and `trackId`.
 type TrackResult struct {
 	Album   *AlbumCredit   `json:"album,omitempty"`
@@ -1001,10 +1097,15 @@ type UpdateLinkRequest struct {
 
 // UpdateRoomRequest defines model for UpdateRoomRequest.
 type UpdateRoomRequest struct {
-	// Controls Who may play, pause, skip, seek and become the speaker. The owner always may, and anyone may skip their own song.
-	Controls     *RoomControls `json:"controls,omitempty"`
 	FairnessMode *FairnessMode `json:"fairnessMode,omitempty"`
 	Name         *string       `json:"name,omitempty"`
+
+	// Permissions Permissions to change. Missing ones stay as they are (`everyone` for a new room).
+	Permissions *RoomPermissionsChange `json:"permissions,omitempty"`
+
+	// SkipVotePercent A skip vote passes once more than this percent of the room has
+	// voted (not counting whoever queued the song): 50 is a majority.
+	SkipVotePercent *SkipVotePercent `json:"skipVotePercent,omitempty"`
 }
 
 // User defines model for User.
@@ -1288,7 +1389,7 @@ type ServerInterface interface {
 	// GetPlayback What the room is playing
 	// (GET /rooms/{roomId}/playback)
 	GetPlayback(w http.ResponseWriter, r *http.Request, roomId RoomId)
-	// ControlPlayback Play, pause, skip or seek
+	// ControlPlayback Play, pause, skip, seek, or vote to skip
 	// (POST /rooms/{roomId}/playback)
 	ControlPlayback(w http.ResponseWriter, r *http.Request, roomId RoomId)
 	// ReleasePlayer Stop being the room's speaker
@@ -4978,7 +5079,7 @@ type StrictServerInterface interface {
 	// GetPlayback What the room is playing
 	// (GET /rooms/{roomId}/playback)
 	GetPlayback(ctx context.Context, request GetPlaybackRequestObject) (GetPlaybackResponseObject, error)
-	// ControlPlayback Play, pause, skip or seek
+	// ControlPlayback Play, pause, skip, seek, or vote to skip
 	// (POST /rooms/{roomId}/playback)
 	ControlPlayback(ctx context.Context, request ControlPlaybackRequestObject) (ControlPlaybackResponseObject, error)
 	// ReleasePlayer Stop being the room's speaker

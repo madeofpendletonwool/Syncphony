@@ -24,10 +24,7 @@ func (s *Server) ListRooms(ctx context.Context, _ ListRoomsRequestObject) (ListR
 
 // CreateRoom makes a room owned by the caller.
 func (s *Server) CreateRoom(ctx context.Context, req CreateRoomRequestObject) (CreateRoomResponseObject, error) {
-	var st rooms.Settings
-	if req.Body.Controls != nil {
-		st.Controls = string(*req.Body.Controls)
-	}
+	st := rooms.Settings{Permissions: fromPermissionsChange(req.Body.Permissions), SkipVotePercent: req.Body.SkipVotePercent}
 	var mode string
 	if req.Body.FairnessMode != nil {
 		mode = string(*req.Body.FairnessMode)
@@ -50,12 +47,11 @@ func (s *Server) GetRoom(ctx context.Context, req GetRoomRequestObject) (GetRoom
 
 // UpdateRoom changes a room the caller owns.
 func (s *Server) UpdateRoom(ctx context.Context, req UpdateRoomRequestObject) (UpdateRoomResponseObject, error) {
-	u := rooms.Update{Name: req.Body.Name}
+	u := rooms.Update{
+		Name: req.Body.Name, Permissions: fromPermissionsChange(req.Body.Permissions), SkipVotePercent: req.Body.SkipVotePercent,
+	}
 	if req.Body.FairnessMode != nil {
 		u.FairnessMode = ptr(string(*req.Body.FairnessMode))
-	}
-	if req.Body.Controls != nil {
-		u.Controls = ptr(string(*req.Body.Controls))
 	}
 	r, err := s.Rooms.Update(ctx, sessionFrom(ctx).User.ID, req.RoomId, u)
 	if err != nil {
@@ -65,8 +61,34 @@ func (s *Server) UpdateRoom(ctx context.Context, req UpdateRoomRequestObject) (U
 }
 
 func toRoom(r store.Room) Room {
+	st := rooms.ParseSettings(r.Settings)
+	p := st.Permissions
 	return Room{
 		Id: r.ID, Name: r.Name, OwnerId: r.OwnerID, FairnessMode: FairnessMode(r.FairnessMode),
-		Controls: RoomControls(rooms.ParseSettings(r.Settings).Controls), CreatedAt: r.CreatedAt,
+		Permissions: RoomPermissions{
+			PlayPause: PermissionLevel(p.PlayPause), Seek: PermissionLevel(p.Seek),
+			Skip: SkipPermission(p.Skip), Speaker: PermissionLevel(p.Speaker),
+		},
+		SkipVotePercent: *st.SkipVotePercent, CreatedAt: r.CreatedAt,
 	}
+}
+
+// fromPermissionsChange reads the permissions a request sets; the rest
+// are empty.
+func fromPermissionsChange(c *RoomPermissionsChange) rooms.Permissions {
+	var p rooms.Permissions
+	if c == nil {
+		return p
+	}
+	str := func(v *PermissionLevel) string {
+		if v == nil {
+			return ""
+		}
+		return string(*v)
+	}
+	p.PlayPause, p.Seek, p.Speaker = str(c.PlayPause), str(c.Seek), str(c.Speaker)
+	if c.Skip != nil {
+		p.Skip = string(*c.Skip)
+	}
+	return p
 }

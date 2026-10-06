@@ -93,10 +93,12 @@ func (rc *roomConn) serve(ctx context.Context) {
 
 	if s.Presence.Join(roomID, userID) {
 		s.Bus.Publish(realtime.RoomTopic(roomID), realtime.Event{Type: realtime.MemberJoined, Data: rc.user})
+		s.Playback.MembersChanged(roomID)
 	}
 	defer func() {
 		if s.Presence.Leave(roomID, userID) {
 			s.Bus.Publish(realtime.RoomTopic(roomID), realtime.Event{Type: realtime.MemberLeft, Data: rc.user})
+			s.Playback.MembersChanged(roomID)
 		}
 	}()
 
@@ -206,6 +208,8 @@ func (rc *roomConn) send(ctx context.Context, e realtime.Event) error {
 		data = toUser(d)
 	case store.ServiceLink:
 		data = toServiceLink(d)
+	case store.Room:
+		data = toRoom(d)
 	default:
 		slog.Error("realtime: no API form for event", "type", e.Type, "data", e.Data)
 		return nil

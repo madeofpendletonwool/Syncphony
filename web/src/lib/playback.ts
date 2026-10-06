@@ -40,9 +40,23 @@ export function queueArtworkUrl(roomId: string, item: QueueItem, size = 300) {
   return `/api/rooms/${encodeURIComponent(roomId)}/queue/${encodeURIComponent(item.id)}/artwork?size=${size}`
 }
 
-/** Whether userId may play, pause, seek and skip anything in room. */
-export function canControl(room: Pick<Room, 'controls' | 'ownerId'>, userId: string) {
-  return room.controls === 'everyone' || room.ownerId === userId
+export type Permission = keyof Room['permissions']
+
+/**
+ * Whether userId may do something in room outright. The owner always may.
+ * In a room that votes on skips, everyone else votes instead (skipMode).
+ */
+export function can(room: Pick<Room, 'permissions' | 'ownerId'>, userId: string, permission: Permission) {
+  return room.ownerId === userId || room.permissions[permission] === 'everyone'
+}
+
+/**
+ * How userId can skip item: outright, by voting, or not at all. Whoever
+ * queued a song can always skip it.
+ */
+export function skipMode(room: Pick<Room, 'permissions' | 'ownerId'>, userId: string, item: Pick<QueueItem, 'addedBy'>) {
+  if (item.addedBy === userId || can(room, userId, 'skip')) return 'skip'
+  return room.permissions.skip === 'vote' ? 'vote' : undefined
 }
 
 /**

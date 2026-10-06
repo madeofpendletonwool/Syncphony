@@ -27,6 +27,8 @@ const (
 	// the room opened, or whose last one closed.
 	MemberJoined = "member.joined"
 	MemberLeft   = "member.left"
+	// RoomUpdated carries a room whose name or settings changed.
+	RoomUpdated = "room.updated"
 	// LinkStatus carries one of the user's service links whose status
 	// changed. Sent on the user's topic, so it reaches every room they're in.
 	LinkStatus = "link.status"

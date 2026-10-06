@@ -34,6 +34,8 @@ type Service struct {
 	bus realtime.Bus
 	// Now is the clock. Default store.Now.
 	Now func() time.Time
+	// OnUpdate, if set, is called after a room's settings change.
+	OnUpdate func(store.Room)
 }
 
 // New returns a Service.
@@ -41,16 +43,41 @@ func New(db *store.Store, bus realtime.Bus) *Service {
 	return &Service{db: db, bus: bus, Now: store.Now}
 }
 
-// Who may control playback (play, pause, skip, seek, and becoming the
-// speaker). The owner always may, and anyone may skip their own song.
+// Permission levels: who may do something in a room. The owner always may.
 const (
-	ControlsEveryone = "everyone"
-	ControlsOwner    = "owner"
+	Everyone = "everyone"
+	Owner    = "owner"
+	// Vote is a skip level only: members vote, and the song is skipped
+	// once enough of them have.
+	Vote = "vote"
 )
+
+// Permissions say who may control playback in a room. Whoever queued a
+// song may always skip it.
+type Permissions struct {
+	// PlayPause is who may play and pause: Everyone or Owner.
+	PlayPause string `json:"playPause"`
+	// Seek is who may seek: Everyone or Owner.
+	Seek string `json:"seek"`
+	// Skip is who may skip: Everyone, Vote or Owner.
+	Skip string `json:"skip"`
+	// Speaker is who may become the room's speaker: Everyone or Owner.
+	Speaker string `json:"speaker"`
+}
+
+// DefaultSkipVotePercent makes a skip vote need a majority.
+const DefaultSkipVotePercent = 50
 
 // Settings are a room's options, stored as JSON in rooms.settings.
 type Settings struct {
-	Controls string `json:"controls,omitempty"`
+	// Controls is the single setting rooms had before Permissions (who may
+	// do everything, Everyone or Owner). It's only read, as the default
+	// for each permission, and never written.
+	Controls    string      `json:"controls,omitempty"`
+	Permissions Permissions `json:"permissions"`
+	// SkipVotePercent: a skip vote passes once more than this percent of
+	// the room has voted (see VotesNeeded). 0 to 99.
+	SkipVotePercent *int `json:"skipVotePercent,omitempty"`
 }
 
 // ParseSettings reads a room's settings, filling in defaults. Unknown or
@@ -58,21 +85,43 @@ type Settings struct {
 func ParseSettings(raw string) Settings {
 	var st Settings
 	_ = json.Unmarshal([]byte(raw), &st)
-	if st.Controls != ControlsOwner {
-		st.Controls = ControlsEveryone
+	fallback := Everyone
+	if st.Controls == Owner {
+		fallback = Owner
+	}
+	st.Controls = ""
+	p := &st.Permissions
+	for _, level := range []*string{&p.PlayPause, &p.Seek, &p.Speaker} {
+		if *level != Everyone && *level != Owner {
+			*level = fallback
+		}
+	}
+	if p.Skip != Everyone && p.Skip != Owner && p.Skip != Vote {
+		p.Skip = fallback
+	}
+	if st.SkipVotePercent == nil || *st.SkipVotePercent < 0 || *st.SkipVotePercent > 99 {
+		st.SkipVotePercent = ptr(DefaultSkipVotePercent)
 	}
 	return st
 }
 
-// CanControl reports whether userID may control playback in room.
-func CanControl(room store.Room, userID string) bool {
-	return room.OwnerID == userID || ParseSettings(room.Settings).Controls == ControlsEveryone
+// Allowed reports whether userID may act at level in a room owned by
+// ownerID. Only the owner may act directly at the Vote level.
+func Allowed(level, ownerID, userID string) bool {
+	return userID == ownerID || level == Everyone
+}
+
+// VotesNeeded is how many votes skip a song when voters members could
+// vote: more than percent of them, and at least one.
+func VotesNeeded(voters, percent int) int {
+	return min(max(voters*percent/100+1, 1), max(voters, 1))
 }
 
 // List returns every room, oldest first.
 func (s *Service) List(ctx context.Context) ([]store.Room, error) { return s.db.ListRooms(ctx) }
 
-// Create makes a room owned by ownerID. mode "" means round robin.
+// Create makes a room owned by ownerID. mode "" means round robin, and
+// empty settings are defaults.
 func (s *Service) Create(ctx context.Context, ownerID, name, mode string, st Settings) (store.Room, error) {
 	if mode == "" {
 		mode = store.FairnessRoundRobin
@@ -86,13 +135,16 @@ func (s *Service) Create(ctx context.Context, ownerID, name, mode string, st Set
 	})
 }
 
-// Update is a change to a room. Nil fields are left alone.
+// Update is a change to a room. Nil fields, and empty permissions, are
+// left alone.
 type Update struct {
-	Name, FairnessMode, Controls *string
+	Name, FairnessMode *string
+	Permissions        Permissions
+	SkipVotePercent    *int
 }
 
-// Update changes a room. Only its owner may. A new fairness mode reorders
-// the queue at once, so the new order is pushed to the room.
+// Update changes a room. Only its owner may. Everyone in the room hears
+// about it, and a new fairness mode reorders the queue at once.
 func (s *Service) Update(ctx context.Context, userID, id string, u Update) (store.Room, error) {
 	r, err := s.Get(ctx, id)
 	if err != nil {
@@ -108,8 +160,21 @@ func (s *Service) Update(ctx context.Context, userID, id string, u Update) (stor
 	if u.FairnessMode != nil {
 		mode = *u.FairnessMode
 	}
-	if u.Controls != nil {
-		st.Controls = *u.Controls
+	for _, f := range []struct {
+		to   *string
+		from string
+	}{
+		{&st.Permissions.PlayPause, u.Permissions.PlayPause},
+		{&st.Permissions.Seek, u.Permissions.Seek},
+		{&st.Permissions.Skip, u.Permissions.Skip},
+		{&st.Permissions.Speaker, u.Permissions.Speaker},
+	} {
+		if f.from != "" {
+			*f.to = f.from
+		}
+	}
+	if u.SkipVotePercent != nil {
+		st.SkipVotePercent = u.SkipVotePercent
 	}
 	name, raw, err := validate(name, mode, st)
 	if err != nil {
@@ -118,6 +183,10 @@ func (s *Service) Update(ctx context.Context, userID, id string, u Update) (stor
 	updated, err := s.db.UpdateRoom(ctx, store.UpdateRoomParams{Name: name, FairnessMode: mode, Settings: raw, ID: id})
 	if err != nil {
 		return updated, err
+	}
+	s.bus.Publish(realtime.RoomTopic(id), realtime.Event{Type: realtime.RoomUpdated, Data: updated})
+	if s.OnUpdate != nil {
+		s.OnUpdate(updated)
 	}
 	if mode != r.FairnessMode {
 		if _, err := s.QueueChanged(ctx, id); err != nil {
@@ -135,15 +204,32 @@ func validate(name, mode string, st Settings) (string, string, error) {
 	if mode != store.FairnessRoundRobin && mode != store.FairnessFIFO {
 		return "", "", &InvalidInputError{"fairness mode is round_robin or fifo"}
 	}
-	if st.Controls == "" {
-		st.Controls = ControlsEveryone
+	p := &st.Permissions
+	for _, level := range []*string{&p.PlayPause, &p.Seek, &p.Skip, &p.Speaker} {
+		if *level == "" {
+			*level = Everyone
+		}
 	}
-	if st.Controls != ControlsEveryone && st.Controls != ControlsOwner {
-		return "", "", &InvalidInputError{"controls is everyone or owner"}
+	for _, level := range []string{p.PlayPause, p.Seek, p.Speaker} {
+		if level != Everyone && level != Owner {
+			return "", "", &InvalidInputError{"play/pause, seek and speaker permissions are everyone or owner"}
+		}
 	}
+	if p.Skip != Everyone && p.Skip != Owner && p.Skip != Vote {
+		return "", "", &InvalidInputError{"the skip permission is everyone, vote or owner"}
+	}
+	if st.SkipVotePercent == nil {
+		st.SkipVotePercent = ptr(DefaultSkipVotePercent)
+	}
+	if *st.SkipVotePercent < 0 || *st.SkipVotePercent > 99 {
+		return "", "", &InvalidInputError{"the skip vote percent is 0 to 99"}
+	}
+	st.Controls = ""
 	raw, err := json.Marshal(st)
 	return name, string(raw), err
 }
+
+func ptr[T any](v T) *T { return &v }
 
 // QueueSnapshot is a room's queue at a version: the playing item and the
 // queued items, each user's lane in order, and the play order the room's
@@ -177,6 +263,16 @@ type NowPlaying struct {
 	Player *Player
 	// Next is the item that plays after this one, for preloading.
 	Next *store.QueueItem
+	// SkipVotes is the vote to skip Item, while the room votes on skips.
+	SkipVotes *SkipVotes
+}
+
+// SkipVotes is a vote to skip the playing song.
+type SkipVotes struct {
+	// Voters are the IDs of users who voted to skip, in the order they did.
+	Voters []string
+	// Needed is how many votes skip the song, given who's in the room now.
+	Needed int
 }
 
 // Player is the device a room plays through.
