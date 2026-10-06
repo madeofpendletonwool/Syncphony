@@ -973,6 +973,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Songs to keep the room's vibe going
+         * @description Songs like the ones the room has played through and has queued or
+         *     playing now, from links you can add from. `mine` is like your own
+         *     songs; `group` is like everyone's, members taking turns. Songs
+         *     waiting, playing or recently played aren't suggested, nor are
+         *     autopilot's.
+         *     Services that recommend (Navidrome) give similar songs; ones that
+         *     only search (Spotify) give more by the seed's artist. The list is
+         *     empty when the room has nothing to go on yet.
+         *     A list is reused for a couple of minutes while the queue doesn't
+         *     change; pass `refresh` for a new shuffle.
+         */
+        get: operations["getSuggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/queue/{itemId}": {
         parameters: {
             query?: never;
@@ -1943,6 +1974,25 @@ export interface components {
             albums: components["schemas"]["AlbumResult"][];
             artists: components["schemas"]["ArtistResult"][];
             error?: components["schemas"]["Error"];
+        };
+        Suggestions: {
+            /** @enum {string} */
+            scope: "mine" | "group";
+            items: components["schemas"]["Suggestion"][];
+        };
+        /** @description A song to queue, and the room's song it's like. */
+        Suggestion: {
+            track: components["schemas"]["TrackResult"];
+            because: components["schemas"]["SuggestionSeed"];
+        };
+        /** @description The song a suggestion is like. */
+        SuggestionSeed: {
+            /** @description The queue item, playing, waiting or played. */
+            itemId: string;
+            title: string;
+            artist?: string;
+            /** @description Who queued it. */
+            userId: string;
         };
         SearchResults: {
             query: string;
@@ -3899,6 +3949,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlayedItem"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getSuggestions: {
+        parameters: {
+            query?: {
+                scope?: "mine" | "group";
+                limit?: number;
+                /** @description Build a new list instead of reusing the last one. */
+                refresh?: boolean;
+            };
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Suggestions, best first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Suggestions"];
                 };
             };
             default: components["responses"]["Error"];
