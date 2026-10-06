@@ -5,7 +5,9 @@
 // flow), which gives the server a login for Spotify's streaming protocol
 // (see pair.go). Search, metadata and artwork come from the Web API, called
 // with the server's developer app's own token, so users never sign into the
-// app. Audio comes from the streaming protocol through an Audio backend,
+// app. Playlists come from the streaming protocol through a Library, since
+// the Web API won't list them without a user signed into the app. Audio
+// comes from the streaming protocol through an Audio backend,
 // decrypted on the server and proxied to the player like any other stream,
 // so a track plays through the account of whoever queued it. That needs a
 // Premium account.
@@ -42,6 +44,8 @@ type Options struct {
 	ClientSecret string
 	// Audio fetches audio over Spotify's streaming protocol. Required.
 	Audio Audio
+	// Library lists accounts' playlists. Without it, Spotify has none.
+	Library Library
 	// Client makes Web API and accounts requests.
 	Client *http.Client
 	// AccountsURL, APIURL and ImageURL override the service endpoints, for
@@ -55,6 +59,7 @@ type Options struct {
 type Provider struct {
 	clientID, clientSecret string
 	audio                  Audio
+	library                Library
 	client                 *http.Client
 	accountsURL, apiURL    string
 	imageURL               string
@@ -90,6 +95,7 @@ func New(opts Options) (*Provider, error) {
 		clientID:     opts.ClientID,
 		clientSecret: opts.ClientSecret,
 		audio:        opts.Audio,
+		library:      opts.Library,
 		client:       opts.Client,
 		accountsURL:  trim(opts.AccountsURL, defaultAccountsURL),
 		apiURL:       trim(opts.APIURL, defaultAPIURL),
@@ -106,11 +112,11 @@ func (p *Provider) Info() provider.Info {
 		Icon: "spotify",
 		Capabilities: provider.Capabilities{
 			Playback: provider.PlaybackStream,
-			// No playlists: development-mode apps can only read the tracks
-			// of playlists a signed-in user owns or collaborates on, and
-			// users don't sign into the app.
-			Search:  []provider.EntityKind{provider.KindTrack, provider.KindAlbum, provider.KindArtist},
-			Artwork: true,
+			Search:   []provider.EntityKind{provider.KindTrack, provider.KindAlbum, provider.KindArtist},
+			// Listed over the streaming protocol (library.go): the Web API
+			// only lists playlists to a user signed into the app.
+			Playlists: p.library != nil,
+			Artwork:   true,
 			// The Web API stopped returning external_ids (ISRCs) to
 			// development-mode apps in February 2026.
 			ISRC: false,
@@ -134,5 +140,9 @@ func (p *Provider) Open(_ context.Context, link provider.Link) (provider.Session
 	if err := json.Unmarshal(link.Credentials, &c); err != nil || c.StreamUser == "" || len(c.StreamCreds) == 0 {
 		return nil, fmt.Errorf("%w: malformed credentials", provider.ErrAuthExpired)
 	}
-	return &session{p: p, link: link, creds: c}, nil
+	s := &session{p: p, link: link, creds: c}
+	if p.library != nil {
+		return playlistSession{s}, nil
+	}
+	return s, nil
 }

@@ -5,7 +5,7 @@ import { motion } from 'motion/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { errorMessage } from '@/api/errors'
 import type { components } from '@/api/schema.gen'
-import { AlbumCard, ArtistCard } from '@/components/album-card'
+import { AlbumCard, ArtistCard, PlaylistCard } from '@/components/album-card'
 import { Notice } from '@/components/notice'
 import { PageHeader } from '@/components/page-header'
 import { ProviderIcon } from '@/components/provider-icon'
@@ -17,7 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useAddToLane } from '@/hooks/use-add-to-lane'
 import { useMe } from '@/lib/auth'
-import { interleave, searchQuery, trackKey, type SearchGroup } from '@/lib/browse'
+import { interleave, playlistsQuery, searchQuery, trackKey, type SearchGroup } from '@/lib/browse'
 import { fadeUp, stagger } from '@/lib/motion'
 import { providersQuery, sourceName, usableLinksQuery } from '@/lib/services'
 import { usersQuery } from '@/lib/users'
@@ -120,9 +120,7 @@ function Search() {
       {links.data && links.data.length === 0 ? (
         <NoLinks />
       ) : !q ? (
-        <p className="mt-16 text-center text-sm text-muted-foreground">
-          Search every service you&apos;ve linked, all at once.
-        </p>
+        links.data && <Browse links={links.data} />
       ) : results.isPending ? (
         <ResultsSkeleton />
       ) : results.isError ? (
@@ -248,6 +246,60 @@ function Results({ groups, tab }: { groups: SearchGroup[]; tab: Tab }) {
         </>
       )}
     </div>
+  )
+}
+
+/** Before searching: the playlists of every link whose service has them. */
+function Browse({ links }: { links: ServiceLink[] }) {
+  const providers = useQuery(providersQuery)
+  const withPlaylists = links.filter((l) => providers.data?.find((p) => p.id === l.provider)?.capabilities.playlists)
+  if (withPlaylists.length === 0) {
+    return (
+      <p className="mt-16 text-center text-sm text-muted-foreground">Search every service you&apos;ve linked, all at once.</p>
+    )
+  }
+  return (
+    <div className="mt-6 flex flex-col gap-8">
+      {withPlaylists.map((l) => (
+        <PlaylistShelf key={l.id} link={l} />
+      ))}
+    </div>
+  )
+}
+
+function PlaylistShelf({ link }: { link: ServiceLink }) {
+  const me = useMe()
+  const providers = useQuery(providersQuery)
+  const users = useQuery(usersQuery)
+  const playlists = useQuery(playlistsQuery(link.id))
+  const p = providers.data?.find((p) => p.id === link.provider)
+  const owner = users.data?.find((u) => u.id === link.ownerId)
+  const title = `${sourceName(p?.name ?? link.provider, owner?.displayName, link.ownerId === me.id)} playlists`
+
+  if (playlists.isError) {
+    return (
+      <Section title={title}>
+        <Notice>{errorMessage(playlists.error)}</Notice>
+      </Section>
+    )
+  }
+  if (playlists.data && playlists.data.playlists.length === 0) return null
+  return (
+    <Section title={title}>
+      {playlists.data ? (
+        <Shelf>
+          {playlists.data.playlists.map((pl) => (
+            <PlaylistCard key={pl.id} playlist={pl} linkId={link.id} className="w-36 shrink-0 snap-start" />
+          ))}
+        </Shelf>
+      ) : (
+        <div className="flex gap-4 overflow-hidden">
+          {Array.from({ length: 3 }, (_, i) => (
+            <Skeleton key={i} className="size-36 shrink-0 rounded-2xl" />
+          ))}
+        </div>
+      )}
+    </Section>
   )
 }
 

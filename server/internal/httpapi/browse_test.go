@@ -141,3 +141,56 @@ func TestSearchReportsFailingLinks(t *testing.T) {
 		t.Fatalf("revoked: %+v", g)
 	}
 }
+
+func TestPlaylists(t *testing.T) {
+	e := newEnv(t)
+	alice := e.admin()
+	bob := e.member(alice, "bob")
+	var l httpapi.ServiceLink
+	alice.want(http.StatusCreated, "POST", "/links", httpapi.CreateLinkRequest{Provider: "fake", Fields: demoFields}).decode(t, &l)
+
+	var list httpapi.PlaylistList
+	alice.want(http.StatusOK, "GET", "/links/"+l.Id+"/playlists", nil).decode(t, &list)
+	if list.LinkId != l.Id || list.Provider != "fake" || len(list.Playlists) != 2 || list.Next != nil {
+		t.Fatalf("playlists: %+v", list)
+	}
+	p := list.Playlists[1]
+	if p.Name != "Everything" || p.TrackCount == nil || p.Owner == nil || p.Artwork == nil {
+		t.Fatalf("playlist: %+v", p)
+	}
+
+	// Every page, until there's no next.
+	var tracks []httpapi.TrackResult
+	path := "/links/" + l.Id + "/playlists/" + p.Id + "/tracks"
+	for cursor := ""; ; {
+		var page httpapi.PlaylistTracks
+		q := ""
+		if cursor != "" {
+			q = "?cursor=" + url.QueryEscape(cursor)
+		}
+		alice.want(http.StatusOK, "GET", path+q, nil).decode(t, &page)
+		if page.LinkId != l.Id || page.Provider != "fake" {
+			t.Fatalf("page: %+v", page)
+		}
+		tracks = append(tracks, page.Tracks...)
+		if page.Next == nil {
+			break
+		}
+		if *page.Next == cursor || len(tracks) > 100 {
+			t.Fatalf("cursor %q doesn't advance", cursor)
+		}
+		cursor = *page.Next
+	}
+	if len(tracks) != *p.TrackCount || tracks[0].LinkId != l.Id || tracks[0].TrackId == "" {
+		t.Fatalf("%d tracks of %d: %+v", len(tracks), *p.TrackCount, tracks[0])
+	}
+
+	if r := alice.do("GET", "/links/"+l.Id+"/playlists/nope/tracks", nil); r.status != http.StatusNotFound {
+		t.Fatalf("missing playlist: %d", r.status)
+	}
+	for _, path := range []string{"/playlists", "/playlists/" + p.Id + "/tracks"} {
+		if r := bob.do("GET", "/links/"+l.Id+path, nil); r.status != http.StatusNotFound {
+			t.Fatalf("bob browsing alice's link %s: %d", path, r.status)
+		}
+	}
+}

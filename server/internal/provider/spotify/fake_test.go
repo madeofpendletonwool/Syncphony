@@ -17,6 +17,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/spotify"
@@ -73,11 +74,12 @@ func newFake(t *testing.T) *fakeSpotify {
 }
 
 // options returns provider options pointing at the fake.
-func (f *fakeSpotify) options(audio spotify.Audio) spotify.Options {
+func (f *fakeSpotify) options(audio *fakeAudio) spotify.Options {
 	return spotify.Options{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		Audio:        audio,
+		Library:      audio,
 		Client:       f.Client(),
 		AccountsURL:  f.URL,
 		APIURL:       f.URL + "/v1",
@@ -466,4 +468,64 @@ func (f *fakeFile) Close() error {
 		f.a.open.Add(-1)
 	}
 	return nil
+}
+
+// --- Library -----------------------------------------------------------------------
+
+var (
+	playlistSines = sid("playlistSines")
+	playlistLong  = sid("playlistLong")
+)
+
+// playlistItems are the fake playlists' items. Episodes are left out of
+// listings, as the real backend leaves out everything but tracks.
+func playlistItems(id string) ([]string, bool) {
+	switch id {
+	case playlistSines:
+		return []string{trackSine, "episode", trackSine2}, true
+	case playlistLong:
+		// Longer than a page, with a track on each side of the break.
+		items := slices.Repeat([]string{"episode"}, 150)
+		items[0], items[120] = trackSquare, trackSine
+		return items, true
+	}
+	return nil, false
+}
+
+func (a *fakeAudio) Playlists(_ context.Context, login spotify.Login) ([]spotify.LibraryPlaylist, error) {
+	if err := a.login(login, trackSine); err != nil {
+		return nil, err
+	}
+	return []spotify.LibraryPlaylist{
+		{ID: playlistSines, Name: "Sines", Owner: "alice", TrackCount: 3, Images: []spotify.Image{{URL: a.f.image("playlistSines300"), Width: 300}}},
+		{ID: playlistLong, Name: "Long", Owner: "spotify", TrackCount: 150},
+	}, nil
+}
+
+func (a *fakeAudio) PlaylistTracks(_ context.Context, login spotify.Login, playlistID string, from, n int) (spotify.LibraryPage, error) {
+	if err := a.login(login, trackSine); err != nil {
+		return spotify.LibraryPage{}, err
+	}
+	items, ok := playlistItems(playlistID)
+	if !ok {
+		return spotify.LibraryPage{}, fmt.Errorf("fake library: %s: %w", playlistID, provider.ErrNotFound)
+	}
+	page := spotify.LibraryPage{Total: len(items)}
+	for _, id := range items[min(from, len(items)):min(from+n, len(items))] {
+		t := a.f.fullTrack(id)
+		if t == nil {
+			continue
+		}
+		page.Tracks = append(page.Tracks, spotify.LibraryTrack{
+			ID:         id,
+			Name:       t["name"].(string),
+			Artists:    []provider.ArtistCredit{{ID: artistSines, Name: "The Sines"}},
+			AlbumID:    albumSine,
+			AlbumName:  "Sine Language",
+			AlbumCover: []spotify.Image{{URL: a.f.image("albumSine640"), Width: 640}, {URL: a.f.image("albumSine64"), Width: 64}},
+			Duration:   time.Duration(t["duration_ms"].(int)) * time.Millisecond,
+			Explicit:   t["explicit"].(bool),
+		})
+	}
+	return page, nil
 }

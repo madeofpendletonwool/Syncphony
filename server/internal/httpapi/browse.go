@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -133,6 +134,63 @@ func (s *Server) GetArtist(ctx context.Context, req GetArtistRequestObject) (Get
 		out.Albums[i] = toAlbumResult(al)
 	}
 	return GetArtist200JSONResponse(out), nil
+}
+
+// ListPlaylists returns a page of a link's playlists.
+func (s *Server) ListPlaylists(ctx context.Context, req ListPlaylistsRequestObject) (ListPlaylistsResponseObject, error) {
+	l, pl, closeSess, err := s.openPlaylists(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	defer closeSess()
+	page, err := pl.Playlists(ctx, deref(req.Params.Cursor))
+	if err != nil {
+		return nil, err
+	}
+	out := PlaylistList{LinkId: l.ID, Provider: l.Provider, Playlists: make([]PlaylistResult, len(page.Items))}
+	for i, p := range page.Items {
+		out.Playlists[i] = toPlaylistResult(p)
+	}
+	if page.Next != "" {
+		out.Next = ptr(page.Next)
+	}
+	return ListPlaylists200JSONResponse(out), nil
+}
+
+// GetPlaylistTracks returns a page of a playlist's tracks.
+func (s *Server) GetPlaylistTracks(ctx context.Context, req GetPlaylistTracksRequestObject) (GetPlaylistTracksResponseObject, error) {
+	l, pl, closeSess, err := s.openPlaylists(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	defer closeSess()
+	page, err := pl.PlaylistTracks(ctx, req.PlaylistId, deref(req.Params.Cursor))
+	if err != nil {
+		return nil, err
+	}
+	out := PlaylistTracks{LinkId: l.ID, Provider: l.Provider, Tracks: make([]TrackResult, len(page.Items))}
+	for i, t := range page.Items {
+		out.Tracks[i] = toTrackResult(t)
+	}
+	if page.Next != "" {
+		out.Next = ptr(page.Next)
+	}
+	return GetPlaylistTracks200JSONResponse(out), nil
+}
+
+// openPlaylists opens a link the caller may use, if its service has
+// playlists.
+func (s *Server) openPlaylists(ctx context.Context, linkID string) (store.ServiceLink, provider.PlaylistLister, func(), error) {
+	l, sess, err := s.openUsable(ctx, linkID)
+	if err != nil {
+		return l, nil, nil, err
+	}
+	pl, ok := sess.(provider.PlaylistLister)
+	if !ok {
+		sess.Close()
+		return l, nil, nil, fmt.Errorf("%s has no playlists: %w", l.Provider, provider.ErrNotFound)
+	}
+	return l, pl, func() { sess.Close() }, nil
 }
 
 // openUsable opens one of the caller's links, or a shared one.
@@ -267,6 +325,20 @@ func toArtistResult(a provider.Artist) ArtistResult {
 	out := ArtistResult{Id: a.ID, Name: a.Name}
 	if a.Artwork != "" {
 		out.Artwork = ptr(string(a.Artwork))
+	}
+	return out
+}
+
+func toPlaylistResult(p provider.Playlist) PlaylistResult {
+	out := PlaylistResult{Id: p.ID, Name: p.Name}
+	if p.Owner != "" {
+		out.Owner = ptr(p.Owner)
+	}
+	if p.TrackCount > 0 {
+		out.TrackCount = ptr(p.TrackCount)
+	}
+	if p.Artwork != "" {
+		out.Artwork = ptr(string(p.Artwork))
 	}
 	return out
 }

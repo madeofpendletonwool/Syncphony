@@ -1,4 +1,4 @@
-import { queryOptions } from '@tanstack/react-query'
+import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import type { components } from '@/api/schema.gen'
@@ -7,6 +7,7 @@ export type TrackResult = components['schemas']['TrackResult']
 export type AlbumResult = components['schemas']['AlbumResult']
 export type ArtistResult = components['schemas']['ArtistResult']
 export type SearchGroup = components['schemas']['SearchGroup']
+export type PlaylistResult = components['schemas']['PlaylistResult']
 
 export const searchQuery = (q: string) =>
   queryOptions({
@@ -26,6 +27,29 @@ export const artistQuery = (linkId: string, artistId: string) =>
   queryOptions({
     queryKey: ['artist', linkId, artistId],
     queryFn: () => unwrap(api.GET('/links/{id}/artists/{artistId}', { params: { path: { id: linkId, artistId } } })),
+    staleTime: 5 * 60_000,
+  })
+
+/** A link's playlists. Only the first page is fetched: the services with playlists list them all at once. */
+export const playlistsQuery = (linkId: string) =>
+  queryOptions({
+    queryKey: ['playlists', linkId],
+    queryFn: () => unwrap(api.GET('/links/{id}/playlists', { params: { path: { id: linkId } } })),
+    staleTime: 5 * 60_000,
+  })
+
+/** A playlist's tracks, page by page. */
+export const playlistTracksQuery = (linkId: string, playlistId: string) =>
+  infiniteQueryOptions({
+    queryKey: ['playlist', linkId, playlistId],
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        api.GET('/links/{id}/playlists/{playlistId}/tracks', {
+          params: { path: { id: linkId, playlistId }, query: pageParam ? { cursor: pageParam } : {} },
+        }),
+      ),
+    initialPageParam: '',
+    getNextPageParam: (page) => page.next,
     staleTime: 5 * 60_000,
   })
 
