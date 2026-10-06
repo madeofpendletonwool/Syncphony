@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+type Avatar struct {
+	UserID      string
+	Data        []byte
+	ContentType string
+	UpdatedAt   time.Time
+}
+
 type CredentialsPasskey struct {
 	ID         []byte
 	UserID     string

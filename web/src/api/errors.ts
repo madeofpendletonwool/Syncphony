@@ -46,6 +46,7 @@ const messages: Record<string, string> = {
   passkey_failed: "Your passkey couldn't be verified. Try again.",
   ceremony_expired: 'That took too long. Try again.',
   last_credential: "You can't remove your only way to sign in.",
+  wrong_password: "That isn't your current password.",
   service_rejected_credentials: "The service didn't accept those details.",
   service_unavailable: "Couldn't reach the service. Check the address and try again.",
   service_rate_limited: 'The service is busy. Try again in a minute.',

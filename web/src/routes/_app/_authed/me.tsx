@@ -1,6 +1,20 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, type LinkProps } from '@tanstack/react-router'
-import { ChevronRight, Download, LoaderCircle, LogOut, Monitor, Moon, Palette, Share, SquarePlus, Sun, Users, Waypoints } from 'lucide-react'
+import {
+  ChevronRight,
+  Download,
+  LoaderCircle,
+  LogOut,
+  Monitor,
+  Moon,
+  Palette,
+  Share,
+  ShieldCheck,
+  SquarePlus,
+  Sun,
+  Users,
+  Waypoints,
+} from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { api } from '@/api/client'
 import { PageHeader } from '@/components/page-header'
@@ -8,7 +22,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { UserAvatar } from '@/components/user-avatar'
-import { useMe, useSignOut } from '@/lib/auth'
+import { useMe, useSignOut, type Me } from '@/lib/auth'
 import { laneStyle } from '@/lib/lane'
 import { useInstall } from '@/lib/pwa'
 import { linksQuery } from '@/lib/services'
@@ -28,16 +42,20 @@ function Me() {
     <>
       <PageHeader title="Me" />
       <div className="flex flex-col gap-4">
-        <section className="glass flex items-center gap-4 rounded-3xl p-5">
-          <UserAvatar user={me} ring className="size-14 text-lg" />
-          <div className="min-w-0">
-            <p className="truncate text-headline">{me.displayName}</p>
-            {!me.guest && <p className="truncate text-sm text-muted-foreground">@{me.username}</p>}
-          </div>
-          <Badge variant="lane" style={laneStyle(me.color)} className="ml-auto">
-            {me.guest ? 'Guest' : 'Your lane'}
-          </Badge>
-        </section>
+        {me.guest ? (
+          <section className="glass flex items-center gap-4 rounded-3xl p-5">
+            <ProfileSummary me={me} />
+          </section>
+        ) : (
+          <Link
+            to="/settings/profile"
+            aria-label="Edit profile"
+            className="glass flex items-center gap-4 rounded-3xl p-5 transition-colors outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <ProfileSummary me={me} />
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+          </Link>
+        )}
 
         {me.guest ? (
           <p className="glass rounded-3xl p-5 text-sm text-muted-foreground">
@@ -49,6 +67,9 @@ function Me() {
             <InstallCard />
 
             <nav aria-label="Settings" className="glass flex flex-col rounded-3xl p-1.5">
+              <SettingsRow to="/settings/security" icon={<ShieldCheck />} trailing={<SignInSummary me={me} />}>
+                Sign-in &amp; security
+              </SettingsRow>
               <ServicesRow />
               {me.role === 'admin' && (
                 <SettingsRow to="/settings/people" icon={<Users />}>
@@ -92,6 +113,30 @@ function Me() {
       </div>
     </>
   )
+}
+
+function ProfileSummary({ me }: { me: Me }) {
+  return (
+    <>
+      <UserAvatar user={me} ring className="size-14 text-lg" />
+      <div className="min-w-0">
+        <p className="truncate text-headline">{me.displayName}</p>
+        {!me.guest && <p className="truncate text-sm text-muted-foreground">@{me.username}</p>}
+      </div>
+      <Badge variant="lane" style={laneStyle(me.color)} className="ml-auto">
+        {me.guest ? 'Guest' : 'Your lane'}
+      </Badge>
+    </>
+  )
+}
+
+/** How you sign in, in a few words: "Password, 2 passkeys". */
+function SignInSummary({ me }: { me: Me }) {
+  const parts = [
+    me.hasPassword && 'Password',
+    me.passkeyCount > 0 && (me.passkeyCount === 1 ? '1 passkey' : `${me.passkeyCount} passkeys`),
+  ].filter(Boolean)
+  return <span className="hidden text-sm text-muted-foreground min-[380px]:inline">{parts.join(', ')}</span>
 }
 
 function SettingsRow({ to, icon, children, trailing }: { to: LinkProps['to']; icon: ReactNode; children: ReactNode; trailing?: ReactNode }) {

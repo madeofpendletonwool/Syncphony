@@ -5,6 +5,8 @@ package httpapi_test
 import (
 	"bytes"
 	"encoding/json"
+	"image"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -19,6 +21,7 @@ import (
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/artwork"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
+	"github.com/madeofpendletonwool/syncphony/server/internal/avatar"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
@@ -569,4 +572,139 @@ func mustURL(t *testing.T, s string) *url.URL {
 		t.Fatal(err)
 	}
 	return u
+}
+
+func TestSetPasswordKeepsSessions(t *testing.T) {
+	e := newEnv(t)
+	a := e.admin()
+	b := e.client()
+	b.want(http.StatusOK, "POST", "/auth/login", httpapi.LoginRequest{Username: "admin", Password: "password-admin"})
+	a.want(http.StatusNoContent, "PUT", "/me/password", httpapi.SetPasswordRequest{
+		CurrentPassword: ptr("password-admin"), NewPassword: "new-password", SignOutOtherSessions: ptr(false),
+	})
+	b.want(http.StatusOK, "GET", "/me", nil)
+}
+
+func TestSignedInDevices(t *testing.T) {
+	e := newEnv(t)
+	a := e.admin()
+	login := func(ua string) *client {
+		c := e.client()
+		r := c.do("POST", "/auth/login", httpapi.LoginRequest{Username: "admin", Password: "password-admin"}, "User-Agent", ua)
+		if r.status != http.StatusOK {
+			t.Fatalf("login: %d %s", r.status, r.body)
+		}
+		return c
+	}
+	e.advance(time.Minute)
+	phone := login("Phone/1.0")
+	e.advance(time.Minute)
+	laptop := login("Laptop/1.0")
+	// Someone else's sessions aren't listed or revocable.
+	other := e.member(a, "bob")
+
+	var list []httpapi.SignedInSession
+	phone.want(http.StatusOK, "GET", "/me/sessions", nil).decode(t, &list)
+	if len(list) != 3 {
+		t.Fatalf("sessions: %+v", list)
+	}
+	var current, laptopID string
+	for _, s := range list {
+		if s.Current {
+			if current != "" {
+				t.Fatalf("two current sessions: %+v", list)
+			}
+			current = s.Id
+			if s.UserAgent != "Phone/1.0" {
+				t.Fatalf("current session is %q, want the phone", s.UserAgent)
+			}
+		}
+		if s.UserAgent == "Laptop/1.0" {
+			laptopID = s.Id
+		}
+	}
+	if current == "" || laptopID == "" {
+		t.Fatalf("sessions: %+v", list)
+	}
+
+	if r := other.do("DELETE", "/me/sessions/"+laptopID, nil); r.status != http.StatusNotFound {
+		t.Fatalf("revoking someone else's session: %d %s", r.status, r.body)
+	}
+	if r := phone.do("DELETE", "/me/sessions/not-base64!", nil); r.status != http.StatusNotFound {
+		t.Fatalf("revoking a bad id: %d %s", r.status, r.body)
+	}
+	phone.want(http.StatusNoContent, "DELETE", "/me/sessions/"+laptopID, nil)
+	if r := laptop.do("GET", "/me", nil); r.status != http.StatusUnauthorized {
+		t.Fatalf("revoked session still works: %d", r.status)
+	}
+	a.want(http.StatusOK, "GET", "/me", nil)
+
+	phone.want(http.StatusNoContent, "DELETE", "/me/sessions", nil)
+	if r := a.do("GET", "/me", nil); r.status != http.StatusUnauthorized {
+		t.Fatalf("other session survived sign out everywhere else: %d", r.status)
+	}
+	phone.want(http.StatusOK, "GET", "/me/sessions", nil).decode(t, &list)
+	if len(list) != 1 || !list[0].Current {
+		t.Fatalf("after signing out elsewhere: %+v", list)
+	}
+	other.want(http.StatusOK, "GET", "/me", nil)
+}
+
+func (c *client) upload(path, contentType string, data []byte) response {
+	c.e.t.Helper()
+	req, err := http.NewRequestWithContext(c.e.t.Context(), "PUT", c.e.srv.URL+"/api"+path, bytes.NewReader(data))
+	if err != nil {
+		c.e.t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", contentType)
+	res, err := c.http.Do(req)
+	if err != nil {
+		c.e.t.Fatal(err)
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(res.Body)
+	return response{status: res.StatusCode, header: res.Header, body: b}
+}
+
+func TestAvatarUpload(t *testing.T) {
+	e := newEnv(t)
+	a := e.admin()
+	bob := e.member(a, "bob")
+
+	if r := a.upload("/me/avatar", "image/png", []byte("not an image")); r.code() != "invalid_input" {
+		t.Fatalf("not an image: %d %s", r.status, r.body)
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 600, 400))); err != nil {
+		t.Fatal(err)
+	}
+	var me httpapi.Me
+	r := a.upload("/me/avatar", "image/png", buf.Bytes())
+	if r.status != http.StatusOK {
+		t.Fatalf("upload: %d %s", r.status, r.body)
+	}
+	r.decode(t, &me)
+	if me.Avatar == nil || !strings.HasPrefix(*me.Avatar, "/api/users/"+me.Id+"/avatar?v=") {
+		t.Fatalf("avatar after upload: %v", me.Avatar)
+	}
+
+	// Others can see it.
+	img := bob.want(http.StatusOK, "GET", strings.TrimPrefix(*me.Avatar, "/api"), nil)
+	if ct := img.header.Get("Content-Type"); !strings.HasPrefix(ct, "image/") {
+		t.Fatalf("avatar content type %q", ct)
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(img.body))
+	if err != nil || cfg.Width != avatar.Size || cfg.Height != avatar.Size {
+		t.Fatalf("served avatar: %+v %v", cfg, err)
+	}
+
+	// Removing it deletes the upload.
+	var cleared httpapi.Me
+	a.want(http.StatusOK, "PATCH", "/me", httpapi.ProfileUpdate{Avatar: ptr("")}).decode(t, &cleared)
+	if cleared.Avatar != nil {
+		t.Fatalf("avatar after removing: %v", *cleared.Avatar)
+	}
+	if r := bob.do("GET", "/users/"+me.Id+"/avatar", nil); r.status != http.StatusNotFound {
+		t.Fatalf("removed avatar: %d", r.status)
+	}
 }

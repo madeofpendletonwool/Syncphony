@@ -25,10 +25,11 @@ var ErrGuestsOff = errors.New("this room doesn't let guests join; its owner can 
 // is members'. Searching and browsing work on the server's shared services
 // only, since a guest has none of their own.
 var guestOps = map[string]bool{
-	"GetMe":     true,
-	"ListUsers": true,
-	"ListRooms": true,
-	"GetRoom":   true,
+	"GetMe":         true,
+	"ListUsers":     true,
+	"GetUserAvatar": true,
+	"ListRooms":     true,
+	"GetRoom":       true,
 	// Shared services: what a guest searches and adds from.
 	"ListProviders":     true,
 	"ListLinks":         true,

@@ -431,8 +431,8 @@ func (s *Service) Login(ctx context.Context, p LoginParams) (*Session, error) {
 }
 
 // SetPassword sets or changes u's password. current is required if u has
-// one. Other sessions than keep are signed out.
-func (s *Service) SetPassword(ctx context.Context, keep *Session, ip string, current *string, newPassword string) error {
+// one. If signOutOthers, sessions other than keep are signed out.
+func (s *Service) SetPassword(ctx context.Context, keep *Session, ip string, current *string, newPassword string, signOutOthers bool) error {
 	u := keep.User
 	if err := s.checkLimits(ip, u.Username); err != nil {
 		return err
@@ -461,6 +461,9 @@ func (s *Service) SetPassword(ctx context.Context, keep *Session, ip string, cur
 	return s.db.Tx(ctx, func(q *store.Queries) error {
 		if err := q.SetPassword(ctx, store.SetPasswordParams{UserID: u.ID, Hash: hash, UpdatedAt: s.now()}); err != nil {
 			return err
+		}
+		if !signOutOthers {
+			return nil
 		}
 		return q.DeleteOtherSessions(ctx, store.DeleteOtherSessionsParams{UserID: u.ID, TokenHash: keep.hash})
 	})
@@ -525,7 +528,20 @@ func (s *Service) UpdateProfile(ctx context.Context, u store.User, p ProfileUpda
 		}
 		params.Color = c
 	}
-	return s.db.UpdateUserProfile(ctx, params)
+	if params.Avatar == u.Avatar {
+		return s.db.UpdateUserProfile(ctx, params)
+	}
+	// A new avatar, or none: drop any uploaded one.
+	var out store.User
+	err := s.db.Tx(ctx, func(q *store.Queries) error {
+		if err := q.DeleteAvatar(ctx, u.ID); err != nil {
+			return err
+		}
+		var err error
+		out, err = q.UpdateUserProfile(ctx, params)
+		return err
+	})
+	return out, err
 }
 
 // Users lists everyone.

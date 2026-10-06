@@ -6,9 +6,12 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/artcache"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
+	"github.com/madeofpendletonwool/syncphony/server/internal/avatar"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 )
 
@@ -222,9 +225,37 @@ func (s *Server) UpdateMe(ctx context.Context, req UpdateMeRequestObject) (Updat
 	return UpdateMe200JSONResponse(me), err
 }
 
+// UploadAvatar sets an uploaded profile picture.
+func (s *Server) UploadAvatar(ctx context.Context, req UploadAvatarRequestObject) (UploadAvatarResponseObject, error) {
+	data, err := io.ReadAll(io.LimitReader(req.Body, avatar.MaxUpload+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > avatar.MaxUpload {
+		return nil, &auth.InvalidInputError{Field: "avatar", Message: "must be 10 MB or smaller"}
+	}
+	u, err := s.Auth.UploadAvatar(ctx, sessionFrom(ctx).User, data)
+	if err != nil {
+		return nil, err
+	}
+	me, err := s.toMe(ctx, u)
+	return UploadAvatar200JSONResponse(me), err
+}
+
+// GetUserAvatar serves an uploaded profile picture. Its URL changes with
+// the picture, so browsers may keep it.
+func (s *Server) GetUserAvatar(ctx context.Context, req GetUserAvatarRequestObject) (GetUserAvatarResponseObject, error) {
+	a, err := s.Auth.Avatar(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	return imageResponse(artcache.Image{Data: a.Data, ContentType: a.ContentType}), nil
+}
+
 // SetPassword sets or changes the password.
 func (s *Server) SetPassword(ctx context.Context, req SetPasswordRequestObject) (SetPasswordResponseObject, error) {
-	if err := s.Auth.SetPassword(ctx, sessionFrom(ctx), requestFrom(ctx).ip, req.Body.CurrentPassword, req.Body.NewPassword); err != nil {
+	signOut := req.Body.SignOutOtherSessions == nil || *req.Body.SignOutOtherSessions
+	if err := s.Auth.SetPassword(ctx, sessionFrom(ctx), requestFrom(ctx).ip, req.Body.CurrentPassword, req.Body.NewPassword, signOut); err != nil {
 		return nil, err
 	}
 	return SetPassword204Response{}, nil
@@ -295,6 +326,42 @@ func (s *Server) DeletePasskey(ctx context.Context, req DeletePasskeyRequestObje
 		return nil, err
 	}
 	return DeletePasskey204Response{}, nil
+}
+
+// --- Signed-in devices -------------------------------------------------------
+
+// ListMySessions lists the devices the user is signed in on.
+func (s *Server) ListMySessions(ctx context.Context, _ ListMySessionsRequestObject) (ListMySessionsResponseObject, error) {
+	sess := sessionFrom(ctx)
+	rows, err := s.Auth.Sessions(ctx, sess.User)
+	if err != nil {
+		return nil, err
+	}
+	current := sess.ID()
+	out := make(ListMySessions200JSONResponse, len(rows))
+	for i, r := range rows {
+		id := auth.SessionID(r.TokenHash)
+		out[i] = SignedInSession{
+			Id: id, UserAgent: r.UserAgent, CreatedAt: r.CreatedAt, LastSeenAt: r.LastSeenAt, Current: id == current,
+		}
+	}
+	return out, nil
+}
+
+// RevokeMySession signs out one device.
+func (s *Server) RevokeMySession(ctx context.Context, req RevokeMySessionRequestObject) (RevokeMySessionResponseObject, error) {
+	if err := s.Auth.RevokeSession(ctx, sessionFrom(ctx).User, req.Id); err != nil {
+		return nil, err
+	}
+	return RevokeMySession204Response{}, nil
+}
+
+// RevokeOtherSessions signs out every device but this one.
+func (s *Server) RevokeOtherSessions(ctx context.Context, _ RevokeOtherSessionsRequestObject) (RevokeOtherSessionsResponseObject, error) {
+	if err := s.Auth.RevokeOtherSessions(ctx, sessionFrom(ctx)); err != nil {
+		return nil, err
+	}
+	return RevokeOtherSessions204Response{}, nil
 }
 
 // --- People and invites -------------------------------------------------------
