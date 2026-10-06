@@ -3,30 +3,39 @@
 package streaming
 
 import (
+	"cmp"
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	golibrespot "github.com/devgianlu/go-librespot"
+	collectionpb "github.com/devgianlu/go-librespot/proto/spotify/collection/v2"
 	extmetadatapb "github.com/devgianlu/go-librespot/proto/spotify/extendedmetadata"
 	metadatapb "github.com/devgianlu/go-librespot/proto/spotify/metadata"
 	playlist4pb "github.com/devgianlu/go-librespot/proto/spotify/playlist4"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/spotify"
 )
 
-// Playlists come from Spotify's playlist service and track metadata from its
-// extended metadata service, both through spclient with the account's own
-// login, as the Spotify apps list a library.
+// Playlists come from Spotify's playlist service, Liked Songs from its
+// collection service, what was played lately from its recently played
+// service, and track metadata from its extended metadata service, all
+// through spclient with the account's own login, as the Spotify apps list a
+// library.
 
 var _ spotify.Library = (*Backend)(nil)
 
@@ -45,9 +54,25 @@ const (
 	maxMetadataBatch = 100
 	// imageCDN serves images by file ID.
 	imageCDN = "https://i.scdn.co/image/"
+	// likedSongsImage is the picture Spotify gives Liked Songs.
+	likedSongsImage = "https://misc.scdn.co/liked-songs/liked-songs-640.png"
+	// recentlyPlayedLimit is how many recently played things are asked
+	// for. Of the playlists among them that aren't in the library, the
+	// first maxPlayedPlaylists are asked about and listed.
+	recentlyPlayedLimit = 50
+	maxPlayedPlaylists  = 20
+	// maxLookups caps the playlists asked about one by one per listing.
+	maxLookups = 40
+	// The collection service (Liked Songs) is read collectionPage items a
+	// request, for at most maxCollectionPages requests.
+	collectionContentType = "application/vnd.collection-v2.spotify.proto"
+	collectionPage        = 2000
+	maxCollectionPages    = 10
 )
 
-// Playlists implements spotify.Library.
+// Playlists implements spotify.Library. The library is required; what was
+// played lately and Liked Songs are best effort, so a hiccup in either
+// still lists the library.
 func (b *Backend) Playlists(ctx context.Context, login spotify.Login) ([]spotify.LibraryPlaylist, error) {
 	ctx, cancel := context.WithTimeout(ctx, libraryTimeout)
 	defer cancel()
@@ -55,9 +80,44 @@ func (b *Backend) Playlists(ctx context.Context, login spotify.Login) ([]spotify
 	if err != nil {
 		return nil, err
 	}
+	lib, err := b.rootlist(ctx, c, login.Username)
+	if err != nil {
+		return nil, err
+	}
+	recent, err := b.recentlyPlayed(ctx, c, login.Username)
+	if err != nil {
+		b.log.WithError(err).Warnf("spotify streaming: recently played; listing the library in its own order")
+	}
+	// The library lists some of Spotify's mixes with no length, whether or
+	// not they have any items, so those are asked about along with the
+	// playlists only played.
+	var ask []string
+	for _, p := range lib {
+		if p.TrackCount == 0 {
+			ask = append(ask, p.ID)
+		}
+	}
+	played := unsavedPlaylists(lib, recent)
+	found := b.lookupPlaylists(ctx, c, append(ask, played...))
+	all, likedAs := mergePlaylists(lib, played, found)
+
+	liked, err := b.likedSongs(ctx, c, login.Username)
+	if err != nil {
+		b.log.WithError(err).Warnf("spotify streaming: liked songs; leaving them out")
+	} else if len(liked) > 0 {
+		all = append(all, spotify.LibraryPlaylist{
+			ID: spotify.LikedSongsID, Name: "Liked Songs", Owner: login.Username, TrackCount: len(liked),
+			Images: []spotify.Image{{URL: likedSongsImage, Width: 640}},
+		})
+	}
+	return orderPlaylists(all, recent, likedAs), nil
+}
+
+// rootlist lists the playlists saved in the account's library.
+func (b *Backend) rootlist(ctx context.Context, c *conn, username string) ([]spotify.LibraryPlaylist, error) {
 	var items []*playlist4pb.Item
 	var metas []*playlist4pb.MetaItem
-	path := "/playlist/v2/user/" + url.PathEscape(login.Username) + "/rootlist"
+	path := "/playlist/v2/user/" + url.PathEscape(username) + "/rootlist"
 	for range maxRootlistPages {
 		q := url.Values{
 			"decorate": {rootlistDecorations},
@@ -80,6 +140,150 @@ func (b *Backend) Playlists(ctx context.Context, login spotify.Login) ([]spotify
 		}
 	}
 	return libraryPlaylists(items, metas), nil
+}
+
+// played is something the account played: a playlist, album, artist or
+// Liked Songs, by URI.
+type played struct {
+	URI  string `json:"uri"`
+	Time int64  `json:"lastPlayedTime"` // Unix milliseconds
+}
+
+// recentlyPlayed returns what the account played lately, most recent
+// first, as the Spotify apps' "Recently played" shows it.
+func (b *Backend) recentlyPlayed(ctx context.Context, c *conn, username string) ([]played, error) {
+	q := url.Values{"format": {"json"}, "offset": {"0"}, "limit": {strconv.Itoa(recentlyPlayedLimit)}, "filter": {"default"}}
+	resp, err := c.sp.RequestOnce(ctx, http.MethodGet, "/recently-played/v3/user/"+url.PathEscape(username)+"/recently-played", q, nil, nil)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		return nil, fmt.Errorf("spotify streaming: recently played: %w: %w", provider.ErrUnavailable, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, statusError("recently played", resp.StatusCode, resp.Header.Get("Retry-After"))
+	}
+	var body struct {
+		PlayContexts []played `json:"playContexts"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&body); err != nil {
+		return nil, fmt.Errorf("spotify streaming: recently played: malformed response: %w", provider.ErrUnavailable)
+	}
+	return body.PlayContexts, nil
+}
+
+// lookedUp is a playlist asked about directly.
+type lookedUp struct {
+	playlist spotify.LibraryPlaylist
+	// likedSongs marks the playlist Spotify plays Liked Songs as.
+	likedSongs bool
+}
+
+// lookupPlaylists asks about playlists by ID, a few at a time. Ones that
+// can't be read (private, or deleted) are left out of the result.
+func (b *Backend) lookupPlaylists(ctx context.Context, c *conn, ids []string) map[string]lookedUp {
+	ids = ids[:min(len(ids), maxLookups)]
+	found := make([]*lookedUp, len(ids))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 4)
+	for i, id := range ids {
+		wg.Go(func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			list, err := b.list(ctx, c, "playlist "+id, "/playlist/v2/playlist/"+id, url.Values{"from": {"0"}, "length": {"0"}})
+			if err != nil {
+				return
+			}
+			attrs := list.GetAttributes()
+			found[i] = &lookedUp{
+				playlist: spotify.LibraryPlaylist{
+					ID: id, Name: attrs.GetName(), Owner: list.GetOwnerUsername(),
+					TrackCount: int(list.GetLength()), Images: playlistImages(attrs),
+				},
+				likedSongs: attrs.GetFormat() == "liked-songs",
+			}
+		})
+	}
+	wg.Wait()
+	out := map[string]lookedUp{}
+	for _, f := range found {
+		if f != nil {
+			out[f.playlist.ID] = *f
+		}
+	}
+	return out
+}
+
+// unsavedPlaylists returns the IDs of up to maxPlayedPlaylists playlists
+// in recent that aren't in lib, in recent's order.
+func unsavedPlaylists(lib []spotify.LibraryPlaylist, recent []played) []string {
+	seen := map[string]bool{}
+	for _, p := range lib {
+		seen[p.ID] = true
+	}
+	var ids []string
+	for _, p := range recent {
+		id, ok := strings.CutPrefix(p.URI, "spotify:playlist:")
+		if ok && !seen[id] && len(ids) < maxPlayedPlaylists {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// mergePlaylists lists the library's playlists and the ones only played
+// (by ID), using what lookupPlaylists found. Playlists found empty are
+// left out (Spotify's DJ is one), as are played ones it couldn't find.
+// The playlist Spotify plays Liked Songs as is left out too, and its ID
+// returned as likedAs.
+func mergePlaylists(lib []spotify.LibraryPlaylist, played []string, found map[string]lookedUp) (out []spotify.LibraryPlaylist, likedAs string) {
+	keep := func(p spotify.LibraryPlaylist) {
+		f, ok := found[p.ID]
+		switch {
+		case ok && f.likedSongs:
+			likedAs = p.ID
+		case ok && (f.playlist.TrackCount == 0 || f.playlist.Name == ""):
+		case ok:
+			p.TrackCount = f.playlist.TrackCount
+			out = append(out, p)
+		default:
+			out = append(out, p)
+		}
+	}
+	for _, p := range lib {
+		keep(p)
+	}
+	for _, id := range played {
+		if f, ok := found[id]; ok {
+			keep(f.playlist)
+		}
+	}
+	return out, likedAs
+}
+
+// orderPlaylists sorts playlists most recently played first. Liked Songs
+// is played as the playlist likedAs (or, from older apps, as the user's
+// collection); never played, it goes first, as Spotify pins it. Other
+// playlists never played keep their order, after the rest.
+func orderPlaylists(all []spotify.LibraryPlaylist, recent []played, likedAs string) []spotify.LibraryPlaylist {
+	at := map[string]int64{}
+	for _, p := range recent {
+		id, ok := strings.CutPrefix(p.URI, "spotify:playlist:")
+		if (ok && id == likedAs) || strings.HasSuffix(p.URI, ":collection") {
+			id, ok = spotify.LikedSongsID, true
+		}
+		if ok {
+			at[id] = max(at[id], p.Time)
+		}
+	}
+	if at[spotify.LikedSongsID] == 0 {
+		at[spotify.LikedSongsID] = math.MaxInt64
+	}
+	out := slices.Clone(all)
+	slices.SortStableFunc(out, func(a, b spotify.LibraryPlaylist) int { return cmp.Compare(at[b.ID], at[a.ID]) })
+	return out
 }
 
 // libraryPlaylists turns library entries into playlists. Folders are
@@ -131,6 +335,9 @@ func playlistImages(attrs *playlist4pb.ListAttributes) []spotify.Image {
 
 // PlaylistTracks implements spotify.Library.
 func (b *Backend) PlaylistTracks(ctx context.Context, login spotify.Login, playlistID string, from, n int) (spotify.LibraryPage, error) {
+	if playlistID == spotify.LikedSongsID {
+		return b.likedTracks(ctx, login, from, n)
+	}
 	id, err := golibrespot.SpotifyIdFromBase62(golibrespot.SpotifyIdTypePlaylist, playlistID)
 	if err != nil {
 		return spotify.LibraryPage{}, fmt.Errorf("spotify streaming: playlist %q: %w", playlistID, provider.ErrNotFound)
@@ -148,25 +355,165 @@ func (b *Backend) PlaylistTracks(ctx context.Context, login spotify.Login, playl
 	}
 	var uris []string
 	for _, it := range list.GetContents().GetItems() {
-		if strings.HasPrefix(it.GetUri(), "spotify:track:") {
-			uris = append(uris, it.GetUri())
+		uris = append(uris, it.GetUri())
+	}
+	tracks, err := b.tracks(ctx, c, uris)
+	if err != nil {
+		return spotify.LibraryPage{}, err
+	}
+	return spotify.LibraryPage{Tracks: tracks, Total: int(list.GetLength())}, nil
+}
+
+// likedTracks lists a page of Liked Songs, newest first.
+func (b *Backend) likedTracks(ctx context.Context, login spotify.Login, from, n int) (spotify.LibraryPage, error) {
+	ctx, cancel := context.WithTimeout(ctx, libraryTimeout)
+	defer cancel()
+	c, err := b.conn(ctx, login)
+	if err != nil {
+		return spotify.LibraryPage{}, err
+	}
+	liked, err := b.likedSongs(ctx, c, login.Username)
+	if err != nil {
+		return spotify.LibraryPage{}, err
+	}
+	tracks, err := b.tracks(ctx, c, liked[min(from, len(liked)):min(from+n, len(liked))])
+	if err != nil {
+		return spotify.LibraryPage{}, err
+	}
+	return spotify.LibraryPage{Tracks: tracks, Total: len(liked)}, nil
+}
+
+// tracks returns the tracks among uris that Spotify has metadata for, in
+// order. URIs of anything but tracks are skipped.
+func (b *Backend) tracks(ctx context.Context, c *conn, uris []string) ([]spotify.LibraryTrack, error) {
+	var want []string
+	for _, uri := range uris {
+		if strings.HasPrefix(uri, "spotify:track:") {
+			want = append(want, uri)
 		}
 	}
 	meta := map[string]*metadatapb.Track{}
-	for len(uris) > 0 {
-		batch := uris[:min(len(uris), maxMetadataBatch)]
-		uris = uris[len(batch):]
+	for len(want) > 0 {
+		batch := want[:min(len(want), maxMetadataBatch)]
+		want = want[len(batch):]
 		if err := b.trackMetadata(ctx, c, batch, meta); err != nil {
-			return spotify.LibraryPage{}, err
+			return nil, err
 		}
 	}
-	page := spotify.LibraryPage{Total: int(list.GetLength())}
-	for _, it := range list.GetContents().GetItems() {
-		if m, ok := meta[it.GetUri()]; ok {
-			page.Tracks = append(page.Tracks, libraryTrack(strings.TrimPrefix(it.GetUri(), "spotify:track:"), m))
+	var out []spotify.LibraryTrack
+	for _, uri := range uris {
+		if m, ok := meta[uri]; ok {
+			out = append(out, libraryTrack(strings.TrimPrefix(uri, "spotify:track:"), m))
 		}
 	}
-	return page, nil
+	return out, nil
+}
+
+// likedSongs returns the URIs of the account's Liked Songs, newest first.
+// The collection service lists saved albums and the rest in the same set,
+// in URI order, so the whole set is read and sorted.
+func (b *Backend) likedSongs(ctx context.Context, c *conn, username string) ([]string, error) {
+	var all []*collectionpb.CollectionItem
+	token := ""
+	for range maxCollectionPages {
+		resp, err := c.sp.RequestOnce(ctx, http.MethodPost, "/collection/v2/paging", nil, http.Header{
+			"Content-Type": {collectionContentType},
+			"Accept":       {collectionContentType},
+		}, pageRequest(username, "collection", token, collectionPage))
+		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+			return nil, fmt.Errorf("spotify streaming: liked songs: %w: %w", provider.ErrUnavailable, err)
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, statusError("liked songs", resp.StatusCode, resp.Header.Get("Retry-After"))
+		}
+		if err != nil {
+			return nil, fmt.Errorf("spotify streaming: liked songs: %w: %w", provider.ErrUnavailable, err)
+		}
+		items, next, err := parsePageResponse(body)
+		if err != nil {
+			return nil, fmt.Errorf("spotify streaming: liked songs: malformed response: %w", provider.ErrUnavailable)
+		}
+		all = append(all, items...)
+		if next == "" {
+			break
+		}
+		token = next
+	}
+	return likedURIs(all), nil
+}
+
+// likedURIs returns the tracks among a collection's items, newest first.
+func likedURIs(items []*collectionpb.CollectionItem) []string {
+	var tracks []*collectionpb.CollectionItem
+	for _, it := range items {
+		if strings.HasPrefix(it.GetUri(), "spotify:track:") && !it.GetIsRemoved() {
+			tracks = append(tracks, it)
+		}
+	}
+	slices.SortStableFunc(tracks, func(a, b *collectionpb.CollectionItem) int { return cmp.Compare(b.GetAddedAt(), a.GetAddedAt()) })
+	out := make([]string, len(tracks))
+	for i, it := range tracks {
+		out[i] = it.GetUri()
+	}
+	return out
+}
+
+// pageRequest encodes a collection service PageRequest, which go-librespot
+// has no type for: username 1, set 2, pagination_token 3, limit 4.
+func pageRequest(username, set, token string, limit uint64) []byte {
+	var b []byte
+	b = protowire.AppendTag(b, 1, protowire.BytesType)
+	b = protowire.AppendString(b, username)
+	b = protowire.AppendTag(b, 2, protowire.BytesType)
+	b = protowire.AppendString(b, set)
+	if token != "" {
+		b = protowire.AppendTag(b, 3, protowire.BytesType)
+		b = protowire.AppendString(b, token)
+	}
+	b = protowire.AppendTag(b, 4, protowire.VarintType)
+	return protowire.AppendVarint(b, limit)
+}
+
+// parsePageResponse decodes a collection service PageResponse: items 1
+// (CollectionItems) and next_page_token 2. Other fields are skipped.
+func parsePageResponse(b []byte) ([]*collectionpb.CollectionItem, string, error) {
+	var items []*collectionpb.CollectionItem
+	next := ""
+	for len(b) > 0 {
+		num, typ, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			return nil, "", protowire.ParseError(n)
+		}
+		b = b[n:]
+		if typ != protowire.BytesType || (num != 1 && num != 2) {
+			n = protowire.ConsumeFieldValue(num, typ, b)
+			if n < 0 {
+				return nil, "", protowire.ParseError(n)
+			}
+			b = b[n:]
+			continue
+		}
+		v, n := protowire.ConsumeBytes(b)
+		if n < 0 {
+			return nil, "", protowire.ParseError(n)
+		}
+		b = b[n:]
+		if num == 2 {
+			next = string(v)
+			continue
+		}
+		var it collectionpb.CollectionItem
+		if err := proto.Unmarshal(v, &it); err != nil {
+			return nil, "", err
+		}
+		items = append(items, &it)
+	}
+	return items, next, nil
 }
 
 // trackMetadata asks for the metadata of tracks by URI, adding what

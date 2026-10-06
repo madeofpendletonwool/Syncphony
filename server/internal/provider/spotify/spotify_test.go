@@ -391,6 +391,7 @@ func TestPlaylists(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []provider.Playlist{
+		{ID: spotify.LikedSongsID, Name: "Liked Songs", Owner: "alice", TrackCount: 2},
 		{ID: playlistSines, Name: "Sines", Owner: "alice", TrackCount: 3, Artwork: "300:playlistSines300"},
 		{ID: playlistLong, Name: "Long", Owner: "spotify", TrackCount: 150},
 	}
@@ -426,6 +427,12 @@ func TestPlaylists(t *testing.T) {
 	tp, err = pl.PlaylistTracks(ctx, playlistLong, tp.Next)
 	if err != nil || len(tp.Items) != 1 || tp.Items[0].Ref.ID != trackSine || tp.Next != "" {
 		t.Fatalf("Long, page 2: %+v, %v", tp, err)
+	}
+
+	// Liked Songs has an ID of its own, which isn't a Spotify ID.
+	tp, err = pl.PlaylistTracks(ctx, spotify.LikedSongsID, "")
+	if err != nil || len(tp.Items) != 2 || tp.Items[0].Ref.ID != trackSine2 || tp.Next != "" {
+		t.Fatalf("Liked Songs: %+v, %v", tp, err)
 	}
 
 	for _, id := range []string{sid("playlistNone"), "not an ID"} {

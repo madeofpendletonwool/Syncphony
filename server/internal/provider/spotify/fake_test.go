@@ -481,6 +481,8 @@ var (
 // listings, as the real backend leaves out everything but tracks.
 func playlistItems(id string) ([]string, bool) {
 	switch id {
+	case spotify.LikedSongsID:
+		return []string{trackSine2, trackSine}, true
 	case playlistSines:
 		return []string{trackSine, "episode", trackSine2}, true
 	case playlistLong:
@@ -497,6 +499,7 @@ func (a *fakeAudio) Playlists(_ context.Context, login spotify.Login) ([]spotify
 		return nil, err
 	}
 	return []spotify.LibraryPlaylist{
+		{ID: spotify.LikedSongsID, Name: "Liked Songs", Owner: "alice", TrackCount: 2},
 		{ID: playlistSines, Name: "Sines", Owner: "alice", TrackCount: 3, Images: []spotify.Image{{URL: a.f.image("playlistSines300"), Width: 300}}},
 		{ID: playlistLong, Name: "Long", Owner: "spotify", TrackCount: 150},
 	}, nil
