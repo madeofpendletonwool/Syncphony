@@ -147,6 +147,15 @@ type QueueItem struct {
 	Autopilot    sql.NullString
 }
 
+type ResetLink struct {
+	ID        string
+	CodeHash  []byte
+	UserID    string
+	CreatedBy sql.NullString
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
 type Room struct {
 	ID             string
 	Name           string

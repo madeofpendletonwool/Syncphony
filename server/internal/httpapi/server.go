@@ -122,7 +122,12 @@ var publicOps = map[string]bool{
 	"BeginPasskeyLogin":   true,
 	"FinishPasskeyLogin":  true,
 	"Logout":              true,
-	"CompleteOAuthLink":   true,
+	// Someone locked out uses a reset link instead.
+	"GetResetLink":       true,
+	"ResetPassword":      true,
+	"BeginResetPasskey":  true,
+	"FinishResetPasskey": true,
+	"CompleteOAuthLink":  true,
 	// Displays sign in with their own cookie, which these read.
 	"BeginDisplayPairing": true,
 	"PollDisplayPairing":  true,
@@ -336,6 +341,7 @@ var errorCodes = []struct {
 	{auth.ErrWrongPassword, http.StatusForbidden, "wrong_password"},
 	{auth.ErrNotFound, http.StatusNotFound, "not_found"},
 	{auth.ErrInviteInvalid, http.StatusNotFound, "invite_invalid"},
+	{auth.ErrResetLinkInvalid, http.StatusNotFound, "reset_link_invalid"},
 	{auth.ErrUsernameTaken, http.StatusConflict, "username_taken"},
 	{auth.ErrLastCredential, http.StatusConflict, "last_credential"},
 	{auth.ErrCeremonyExpired, http.StatusBadRequest, "ceremony_expired"},

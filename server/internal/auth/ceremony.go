@@ -19,6 +19,7 @@ const (
 	ceremonySignup ceremonyKind = iota + 1
 	ceremonyLogin
 	ceremonyAddPasskey
+	ceremonyReset
 )
 
 // ceremony is server-side state between a WebAuthn begin and finish call.
@@ -31,6 +32,8 @@ type ceremony struct {
 	userID string
 	// signup holds the account to create when a signup ceremony finishes.
 	signup *signupInput
+	// resetID is the reset link a reset ceremony uses up.
+	resetID string
 }
 
 // ceremonies is an in-memory store. Ceremonies are short-lived and a

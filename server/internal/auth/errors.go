@@ -19,6 +19,8 @@ var (
 	ErrForbidden = errors.New("not allowed")
 	// ErrInviteInvalid: the invite doesn't exist, was used, or expired.
 	ErrInviteInvalid = errors.New("this invite link is invalid, used, or expired")
+	// ErrResetLinkInvalid: the reset link doesn't exist, was used, or expired.
+	ErrResetLinkInvalid = errors.New("this reset link is invalid, used, or expired")
 	// ErrUsernameTaken: someone already has that username.
 	ErrUsernameTaken = errors.New("that username is taken")
 	// ErrCeremonyExpired: the WebAuthn ceremony is unknown or timed out.

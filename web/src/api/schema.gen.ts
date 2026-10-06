@@ -176,6 +176,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reset-links/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["ResetCode"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Check a reset link before using it
+         * @description Returns 404 if the link doesn't exist, was used, or expired.
+         */
+        get: operations["getResetLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reset-links/{code}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["ResetCode"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set a new password with a reset link
+         * @description Uses up the link, signs the user out everywhere, and signs them in
+         *     here.
+         */
+        post: operations["resetPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reset-links/{code}/passkey/begin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["ResetCode"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start adding a passkey with a reset link */
+        post: operations["beginResetPasskey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reset-links/{code}/passkey/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["ResetCode"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish adding a passkey with a reset link
+         * @description Saves the passkey, uses up the link, signs the user out everywhere,
+         *     and signs them in here.
+         */
+        post: operations["finishResetPasskey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me": {
         parameters: {
             query?: never;
@@ -387,6 +474,47 @@ export interface paths {
          * @description What `avatar` points at after an upload. Cacheable; the URL changes with the picture.
          */
         get: operations["getUserAvatar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/reset-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a one-time reset link for someone (admin)
+         * @description For someone who can't sign in. Replaces any reset link they had.
+         *     The link is only returned now: the server keeps just its hash.
+         */
+        post: operations["createResetLink"];
+        /** Cancel someone's reset link (admin) */
+        delete: operations["revokeResetLink"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reset-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reset links waiting to be used (admin) */
+        get: operations["listResetLinks"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1660,6 +1788,33 @@ export interface components {
             /** Format: date-time */
             usedAt?: string;
         };
+        ResetLink: {
+            id: string;
+            userId: string;
+            /** @description Only when the link is created. */
+            url?: string;
+            /** @description The admin who made it. Absent for links made on the command line. */
+            createdBy?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        ResetLinkInfo: {
+            username: string;
+            displayName: string;
+            avatar?: string;
+            color: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        CreateResetLinkRequest: {
+            /** @default 24 */
+            expiresInHours: number;
+        };
+        ResetPasswordRequest: {
+            newPassword: components["schemas"]["Password"];
+        };
         CreateInviteRequest: {
             role?: components["schemas"]["Role"];
             /** @default 168 */
@@ -2471,6 +2626,7 @@ export interface components {
     };
     parameters: {
         InviteCode: string;
+        ResetCode: string;
         RoomId: string;
     };
     requestBodies: never;
@@ -2658,6 +2814,82 @@ export interface operations {
                 };
                 content?: never;
             };
+            default: components["responses"]["Error"];
+        };
+    };
+    getResetLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["ResetCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link can be used */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResetLinkInfo"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    resetPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["ResetCode"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetPasswordRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["SignedIn"];
+            default: components["responses"]["Error"];
+        };
+    };
+    beginResetPasskey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["ResetCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["Ceremony"];
+            default: components["responses"]["Error"];
+        };
+    };
+    finishResetPasskey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["ResetCode"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishCeremony"];
+            };
+        };
+        responses: {
+            200: components["responses"]["SignedIn"];
             default: components["responses"]["Error"];
         };
     };
@@ -2983,6 +3215,75 @@ export interface operations {
                 };
                 content: {
                     "image/*": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createResetLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreateResetLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description The link */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResetLink"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeResetLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listResetLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unused, unexpired links, newest first. Without URLs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResetLink"][];
                 };
             };
             default: components["responses"]["Error"];
