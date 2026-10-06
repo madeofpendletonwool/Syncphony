@@ -15,6 +15,17 @@ The code is in `web/src/lib/speaker.ts`, with its UI in `web/src/components/room
 - **Media Session:** sets the lock-screen title, artist, album, and artwork, plus the position. Play, pause, next, previous (restart the song), and seek are wired to the room. So the speaker's and headphones' buttons control the room, subject to the room's permissions.
 - **Screen Wake Lock:** **Keep the screen on** is on by default and remembered per device. The lock is requested again whenever the page becomes visible, because browsers drop it when the page is hidden.
 
+## A TV as the speaker
+
+A paired big screen (`/tv`) can play the room too, through its own speakers or whatever sound system it's plugged into. The code is in `web/src/components/tv/tv-audio.tsx`, and it drives the same `speaker.ts` engine as a phone.
+
+- **Turning it on:** the **Big screen** dialog has **Play the audio on it too** when pairing, and each paired screen has a switch to change it later. Only people who could become the speaker themselves see the pairing option. The owner, whoever paired the screen, or an admin can flip the switch. Turning it off while the TV is playing stops it, and the room pauses, as releasing any speaker does. Unpairing it does the same.
+- **Who it plays as:** a display has no user of its own, so it claims the room as whoever paired it, under its own name ("Playing on Den TV"). It needs that person's `speaker` permission. Its device ID is always the display's ID, whatever the TV sends. If the person who paired it is deleted, it can't play until someone pairs it again.
+- **What it may call:** with audio on, the display cookie also works for claiming and releasing the speaker, reporting, and streaming, all for its own room only (`audioOps` in `server/internal/httpapi/displays.go`). With audio off, those return `forbidden`.
+- **The remote:** browsers need a press before audio can start. The TV shows **Play the audio here** with focus already on it, so pressing OK on the remote starts it. Once it has played, it starts again by itself after a reload, unless another device has taken over since. If the browser still wants a press, **Press OK to start the audio** comes back.
+- **A signed-in device at `/tv`** gets the same button if its user may be the speaker. It plays as that user's device, like a phone.
+- **TV browsers** (Tizen, webOS, Fire TV) vary in what they can decode. The stream's `accept=` probe and server-side transcoding cover this, but no TV has been tested yet.
+
 ## Test matrix
 
 | Platform | Status | Notes |
@@ -24,6 +35,8 @@ The code is in `web/src/lib/speaker.ts`, with its UI in `web/src/components/room
 | Android Chrome, installed PWA | ⏳ Not yet tested | Same as the tab, expected. |
 | iOS Safari, tab, screen locked | ⏳ Not yet tested on a device | See the iOS notes below. |
 | iOS Safari, Home Screen PWA, screen locked | ⏳ Not yet tested on a device | See the iOS notes below. This is the setup most likely to be used at a hangout. |
+| Big screen at `/tv`, headless Chromium (automated) | ✅ Verified | Pairing with audio on, OK on the focused button starts it, real progress reports, a skip from a phone, audio turned off from a phone (stops, the room pauses), and picking up again after a reload (asks for OK under a strict autoplay policy). |
+| Smart TV browsers (Tizen, webOS, Fire TV Silk) | ⏳ Not yet tested on a device | Check the codec probe, and whether OK on the remote counts as the press audio needs. |
 
 ### Checklist for a device run
 

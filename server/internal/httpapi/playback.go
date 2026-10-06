@@ -42,9 +42,18 @@ func (s *Server) ControlPlayback(ctx context.Context, req ControlPlaybackRequest
 	return ControlPlayback200JSONResponse(toNowPlaying(np)), nil
 }
 
-// ClaimPlayer makes the caller's device the room's speaker.
+// ClaimPlayer makes the caller's device the room's speaker. A display
+// claims as itself, under its own name.
 func (s *Server) ClaimPlayer(ctx context.Context, req ClaimPlayerRequestObject) (ClaimPlayerResponseObject, error) {
-	np, err := s.Playback.Claim(ctx, req.RoomId, sessionFrom(ctx).User.ID, req.Body.DeviceId, req.Body.Name)
+	userID, device, err := speakerOf(ctx, req.Body.DeviceId)
+	if err != nil {
+		return nil, err
+	}
+	name := req.Body.Name
+	if d := displayFrom(ctx); d != nil {
+		name = d.Name
+	}
+	np, err := s.Playback.Claim(ctx, req.RoomId, userID, device, name)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +62,11 @@ func (s *Server) ClaimPlayer(ctx context.Context, req ClaimPlayerRequestObject) 
 
 // ReleasePlayer stops a device being the room's speaker.
 func (s *Server) ReleasePlayer(ctx context.Context, req ReleasePlayerRequestObject) (ReleasePlayerResponseObject, error) {
-	np, err := s.Playback.Release(ctx, req.RoomId, sessionFrom(ctx).User.ID, req.Params.DeviceId)
+	userID, device, err := speakerOf(ctx, req.Params.DeviceId)
+	if err != nil {
+		return nil, err
+	}
+	np, err := s.Playback.Release(ctx, req.RoomId, userID, device)
 	if err != nil {
 		return nil, err
 	}
@@ -62,14 +75,18 @@ func (s *Server) ReleasePlayer(ctx context.Context, req ReleasePlayerRequestObje
 
 // ReportPlayback takes the speaker's report on the song it's streaming.
 func (s *Server) ReportPlayback(ctx context.Context, req ReportPlaybackRequestObject) (ReportPlaybackResponseObject, error) {
+	userID, device, err := speakerOf(ctx, req.Body.DeviceId)
+	if err != nil {
+		return nil, err
+	}
 	rep := playback.Report{
-		DeviceID: req.Body.DeviceId, ItemID: req.Body.ItemId, Event: string(req.Body.Event),
+		DeviceID: device, ItemID: req.Body.ItemId, Event: string(req.Body.Event),
 		Position: time.Duration(req.Body.PositionMs) * time.Millisecond,
 	}
 	if req.Body.Error != nil {
 		rep.Error = *req.Body.Error
 	}
-	np, err := s.Playback.Report(ctx, req.RoomId, sessionFrom(ctx).User.ID, rep)
+	np, err := s.Playback.Report(ctx, req.RoomId, userID, rep)
 	if err != nil {
 		return nil, err
 	}

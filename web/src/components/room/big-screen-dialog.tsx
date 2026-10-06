@@ -1,22 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { MonitorPlay, Trash2, X } from 'lucide-react'
+import { MonitorPlay, Speaker, Trash2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Dialog } from 'radix-ui'
 import { useState, type FormEvent } from 'react'
 import { errorMessage } from '@/api/errors'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { useMe } from '@/lib/auth'
-import { displaysQuery, pairDisplay, unpairDisplay } from '@/lib/displays'
+import { displaysQuery, pairDisplay, setDisplayAudio, unpairDisplay } from '@/lib/displays'
 import { easeOutExpo } from '@/lib/motion'
+import { can } from '@/lib/playback'
 import type { Room } from '@/lib/room'
 import { relativeTime } from '@/lib/time'
 import { toast } from '@/lib/toast'
 
 /**
  * Pairs a TV, projector or spare tablet with the room: open /tv on it,
- * type in the code it shows. Lists the room's screens, and unpairs them.
+ * type in the code it shows, and choose whether it plays the room's audio
+ * too. Lists the room's screens, turns their audio on and off, and
+ * unpairs them.
  */
 export function BigScreenDialog({ room, open, onOpenChange }: { room: Room; open: boolean; onOpenChange: (open: boolean) => void }) {
   const me = useMe()
@@ -24,14 +28,23 @@ export function BigScreenDialog({ room, open, onOpenChange }: { room: Room; open
   const displays = useQuery({ ...displaysQuery(room.id), enabled: open })
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
+  const [audio, setAudio] = useState(false)
+  // A screen plays as whoever paired it, so it needs their say-so to be the speaker.
+  const maySpeak = !me.guest && can(room, me.id, 'speaker')
   const pair = useMutation({
-    mutationFn: () => pairDisplay(room.id, code, name.trim() || undefined),
+    mutationFn: () => pairDisplay(room.id, code, name.trim() || undefined, maySpeak && audio),
     onSuccess: (d) => {
       setCode('')
       setName('')
-      toast({ message: `${d.name} is showing ${room.name}` })
+      setAudio(false)
+      toast({ message: d.audio ? `${d.name} is showing ${room.name}. Press OK on it to play the audio there.` : `${d.name} is showing ${room.name}` })
       void queryClient.invalidateQueries({ queryKey: displaysQuery(room.id).queryKey })
     },
+    onError: (e) => toast({ message: errorMessage(e), tone: 'error' }),
+  })
+  const toggleAudio = useMutation({
+    mutationFn: ({ id, on }: { id: string; on: boolean }) => setDisplayAudio(room.id, id, on),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: displaysQuery(room.id).queryKey }),
     onError: (e) => toast({ message: errorMessage(e), tone: 'error' }),
   })
   const unpair = useMutation({
@@ -65,7 +78,7 @@ export function BigScreenDialog({ room, open, onOpenChange }: { room: Room; open
                   <div>
                     <Dialog.Title className="text-headline">Big screen</Dialog.Title>
                     <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-                      Put the room on a TV or projector: lyrics, who queued what, and everyone&apos;s reactions.
+                      Put the room on a TV or projector: lyrics, who queued what, and everyone&apos;s reactions. It can play the music too.
                     </Dialog.Description>
                   </div>
                   <Dialog.Close asChild>
@@ -95,6 +108,20 @@ export function BigScreenDialog({ room, open, onOpenChange }: { room: Room; open
                     className="h-14 text-center font-mono text-2xl tracking-[0.3em] md:text-2xl"
                   />
                   <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (Living room TV)" aria-label="Screen name" maxLength={40} />
+                  {maySpeak && (
+                    <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl bg-muted/60 px-3.5 py-3">
+                      <span className="flex min-w-0 items-start gap-2.5">
+                        <Speaker className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium">Play the audio on it too</span>
+                          <span className="block text-caption text-muted-foreground">
+                            The screen becomes the speaker, through its own speakers or sound system.
+                          </span>
+                        </span>
+                      </span>
+                      <Switch checked={audio} onChange={setAudio} label="Play the audio on this screen" />
+                    </label>
+                  )}
                   <Button type="submit" size="lg" disabled={!code.trim() || pair.isPending}>
                     <MonitorPlay data-icon="inline-start" />
                     {pair.isPending ? 'Pairing…' : 'Pair screen'}
@@ -110,15 +137,28 @@ export function BigScreenDialog({ room, open, onOpenChange }: { room: Room; open
                     <h3 className="text-caption font-medium tracking-wide text-muted-foreground uppercase">Paired screens</h3>
                     <ul className="flex flex-col gap-1">
                       {displays.data?.map((d) => {
-                        const mayUnpair = me.role === 'admin' || room.ownerId === me.id || d.pairedBy === me.id
+                        const mayManage = me.role === 'admin' || room.ownerId === me.id || d.pairedBy === me.id
                         return (
                           <li key={d.id} className="flex items-center gap-3 rounded-2xl bg-muted/60 px-3.5 py-2.5">
-                            <MonitorPlay className="size-4 shrink-0 text-muted-foreground" />
+                            {d.audio ? (
+                              <Speaker className="size-4 shrink-0 text-primary" />
+                            ) : (
+                              <MonitorPlay className="size-4 shrink-0 text-muted-foreground" />
+                            )}
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-medium">{d.name}</p>
-                              <p className="text-caption text-muted-foreground">Paired {relativeTime(d.createdAt)}</p>
+                              <p className="text-caption text-muted-foreground">
+                                {d.audio ? 'Screen and audio' : 'Screen only'} · Paired {relativeTime(d.createdAt)}
+                              </p>
                             </div>
-                            {mayUnpair && (
+                            {mayManage && (
+                              <Switch
+                                checked={d.audio}
+                                onChange={(on) => !toggleAudio.isPending && toggleAudio.mutate({ id: d.id, on })}
+                                label={`Play the audio on ${d.name}`}
+                              />
+                            )}
+                            {mayManage && (
                               <Button
                                 size="icon-sm"
                                 variant="ghost"

@@ -27,25 +27,30 @@ import { cn } from '@/lib/utils'
 import { FloatingReactions } from './floating-reactions'
 import { LinerCards } from './liner-cards'
 import { QrCode } from './qr-code'
+import { TvAudio } from './tv-audio'
 
 const UP_NEXT_SHOWN = 5
 
 /**
  * The room on a TV: huge artwork and the song's colors, lyrics front and
  * center, who queued it, whose turn is next, and reactions floating up
- * from everyone's phones. Nothing to click; it just runs.
+ * from everyone's phones. Nothing to click; it just runs. With audio, it
+ * can play the room too: one press of OK on the remote makes it the speaker.
  */
 export function TvStage({
   roomId,
   roomName,
   paired,
   onUnpaired,
+  audio,
 }: {
   roomId: string
   roomName: string
   /** A paired display, rather than a signed-in user's screen. */
   paired: boolean
   onUnpaired: () => void
+  /** Set when this screen may be the room's speaker. */
+  audio?: { device: string; name: string; onStopped?: () => void }
 }) {
   const queryClient = useQueryClient()
   useRoomSocket(roomId, { display: true, onSessionEnded: paired ? onUnpaired : undefined })
@@ -92,6 +97,7 @@ export function TvStage({
             <span className="font-semibold">{roomName}</span>
             <span className="text-muted-foreground">· Syncphony</span>
           </div>
+          {audio && <TvAudio roomId={roomId} {...audio} />}
         </header>
 
         <main className="grid min-h-0 flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)] gap-[4vw]">

@@ -12,9 +12,9 @@ import (
 )
 
 const createDisplay = `-- name: CreateDisplay :one
-INSERT INTO displays (id, token_hash, room_id, name, paired_by, created_at, last_seen_at, expires_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, token_hash, room_id, name, paired_by, created_at, last_seen_at, expires_at
+INSERT INTO displays (id, token_hash, room_id, name, paired_by, audio, created_at, last_seen_at, expires_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, token_hash, room_id, name, paired_by, created_at, last_seen_at, expires_at, audio
 `
 
 type CreateDisplayParams struct {
@@ -23,6 +23,7 @@ type CreateDisplayParams struct {
 	RoomID     string
 	Name       string
 	PairedBy   sql.NullString
+	Audio      bool
 	CreatedAt  time.Time
 	LastSeenAt time.Time
 	ExpiresAt  time.Time
@@ -35,6 +36,7 @@ func (q *Queries) CreateDisplay(ctx context.Context, arg CreateDisplayParams) (D
 		arg.RoomID,
 		arg.Name,
 		arg.PairedBy,
+		arg.Audio,
 		arg.CreatedAt,
 		arg.LastSeenAt,
 		arg.ExpiresAt,
@@ -49,6 +51,7 @@ func (q *Queries) CreateDisplay(ctx context.Context, arg CreateDisplayParams) (D
 		&i.CreatedAt,
 		&i.LastSeenAt,
 		&i.ExpiresAt,
+		&i.Audio,
 	)
 	return i, err
 }
@@ -81,7 +84,7 @@ func (q *Queries) DeleteExpiredDisplays(ctx context.Context, expiresAt time.Time
 }
 
 const getDisplay = `-- name: GetDisplay :one
-SELECT id, token_hash, room_id, name, paired_by, created_at, last_seen_at, expires_at FROM displays WHERE id = ?
+SELECT id, token_hash, room_id, name, paired_by, created_at, last_seen_at, expires_at, audio FROM displays WHERE id = ?
 `
 
 func (q *Queries) GetDisplay(ctx context.Context, id string) (Display, error) {
@@ -96,12 +99,13 @@ func (q *Queries) GetDisplay(ctx context.Context, id string) (Display, error) {
 		&i.CreatedAt,
 		&i.LastSeenAt,
 		&i.ExpiresAt,
+		&i.Audio,
 	)
 	return i, err
 }
 
 const getDisplayByToken = `-- name: GetDisplayByToken :one
-SELECT id, token_hash, room_id, name, paired_by, created_at, last_seen_at, expires_at FROM displays WHERE token_hash = ? AND expires_at > ?2
+SELECT id, token_hash, room_id, name, paired_by, created_at, last_seen_at, expires_at, audio FROM displays WHERE token_hash = ? AND expires_at > ?2
 `
 
 type GetDisplayByTokenParams struct {
@@ -121,12 +125,13 @@ func (q *Queries) GetDisplayByToken(ctx context.Context, arg GetDisplayByTokenPa
 		&i.CreatedAt,
 		&i.LastSeenAt,
 		&i.ExpiresAt,
+		&i.Audio,
 	)
 	return i, err
 }
 
 const listDisplays = `-- name: ListDisplays :many
-SELECT id, token_hash, room_id, name, paired_by, created_at, last_seen_at, expires_at FROM displays WHERE room_id = ? AND expires_at > ?2 ORDER BY created_at
+SELECT id, token_hash, room_id, name, paired_by, created_at, last_seen_at, expires_at, audio FROM displays WHERE room_id = ? AND expires_at > ?2 ORDER BY created_at
 `
 
 type ListDisplaysParams struct {
@@ -152,6 +157,7 @@ func (q *Queries) ListDisplays(ctx context.Context, arg ListDisplaysParams) ([]D
 			&i.CreatedAt,
 			&i.LastSeenAt,
 			&i.ExpiresAt,
+			&i.Audio,
 		); err != nil {
 			return nil, err
 		}
@@ -164,6 +170,32 @@ func (q *Queries) ListDisplays(ctx context.Context, arg ListDisplaysParams) ([]D
 		return nil, err
 	}
 	return items, nil
+}
+
+const setDisplayAudio = `-- name: SetDisplayAudio :one
+UPDATE displays SET audio = ? WHERE id = ? RETURNING id, token_hash, room_id, name, paired_by, created_at, last_seen_at, expires_at, audio
+`
+
+type SetDisplayAudioParams struct {
+	Audio bool
+	ID    string
+}
+
+func (q *Queries) SetDisplayAudio(ctx context.Context, arg SetDisplayAudioParams) (Display, error) {
+	row := q.db.QueryRowContext(ctx, setDisplayAudio, arg.Audio, arg.ID)
+	var i Display
+	err := row.Scan(
+		&i.ID,
+		&i.TokenHash,
+		&i.RoomID,
+		&i.Name,
+		&i.PairedBy,
+		&i.CreatedAt,
+		&i.LastSeenAt,
+		&i.ExpiresAt,
+		&i.Audio,
+	)
+	return i, err
 }
 
 const touchDisplay = `-- name: TouchDisplay :exec

@@ -18,7 +18,8 @@ import (
 // Displays are TVs, projectors and spare tablets showing one room's big
 // screen. One shows a short code; a signed-in member types it in to pair
 // the display with their room. The display then has its own token, good
-// for reading that room and nothing else, until it's unpaired.
+// for reading that room and nothing else, until it's unpaired. A display
+// with audio on may also play the room as its speaker.
 
 const (
 	// pairingTTL is how long a display's code can be typed in.
@@ -156,9 +157,10 @@ func (s *Service) PollDisplayPairing(secret string) (DisplayPairing, error) {
 }
 
 // PairDisplay pairs the display showing code with a room, on u's say-so.
-// The caller checks the room exists and u may use it. Wrong codes count
-// against u, so codes can't be guessed.
-func (s *Service) PairDisplay(ctx context.Context, u store.User, roomID, code, name string) (store.Display, error) {
+// With audio, it may also be the room's speaker. The caller checks the
+// room exists and u may use it. Wrong codes count against u, so codes
+// can't be guessed.
+func (s *Service) PairDisplay(ctx context.Context, u store.User, roomID, code, name string, audio bool) (store.Display, error) {
 	if d, ok := s.pairFails.blocked(u.ID); ok {
 		return store.Display{}, &RateLimitError{RetryAfter: d}
 	}
@@ -181,7 +183,7 @@ func (s *Service) PairDisplay(ctx context.Context, u store.User, roomID, code, n
 	}
 	token, hash := newToken()
 	d, err := s.db.CreateDisplay(ctx, store.CreateDisplayParams{
-		ID: store.NewID(), TokenHash: hash, RoomID: roomID, Name: name, PairedBy: sql.NullString{String: u.ID, Valid: true},
+		ID: store.NewID(), TokenHash: hash, RoomID: roomID, Name: name, PairedBy: sql.NullString{String: u.ID, Valid: true}, Audio: audio,
 		CreatedAt: now, LastSeenAt: now, ExpiresAt: now.Add(displayTTL),
 	})
 	if err != nil {
@@ -253,6 +255,15 @@ func (s *Service) Displays(ctx context.Context, roomID string) ([]store.Display,
 // Display returns one display. ErrNotFound if there's none.
 func (s *Service) Display(ctx context.Context, id string) (store.Display, error) {
 	d, err := s.db.GetDisplay(ctx, id)
+	if store.IsNotFound(err) {
+		return store.Display{}, ErrNotFound
+	}
+	return d, err
+}
+
+// SetDisplayAudio turns a display's speaker on or off. The caller checks u may.
+func (s *Service) SetDisplayAudio(ctx context.Context, id string, audio bool) (store.Display, error) {
+	d, err := s.db.SetDisplayAudio(ctx, store.SetDisplayAudioParams{Audio: audio, ID: id})
 	if store.IsNotFound(err) {
 		return store.Display{}, ErrNotFound
 	}

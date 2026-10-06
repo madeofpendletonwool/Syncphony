@@ -40,6 +40,7 @@ type Display struct {
 	CreatedAt  time.Time
 	LastSeenAt time.Time
 	ExpiresAt  time.Time
+	Audio      bool
 }
 
 type Guest struct {

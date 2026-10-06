@@ -16,20 +16,30 @@ import (
 // pairTV pairs a fresh client as a display of roomID, by way of someone in the room.
 func pairTV(t *testing.T, e *env, by *client, roomID string) *client {
 	t.Helper()
+	tv, _ := pairTVAudio(t, e, by, roomID, false)
+	return tv
+}
+
+// pairTVAudio pairs a display, with its audio on or off.
+func pairTVAudio(t *testing.T, e *env, by *client, roomID string, audio bool) (*client, httpapi.Display) {
+	t.Helper()
 	tv := e.client()
 	var p httpapi.DisplayPairing
 	tv.want(http.StatusCreated, "POST", "/display/pairing", nil).decode(t, &p)
 	var d httpapi.Display
 	// Typed in as people would: lowercase, with a space.
 	by.want(http.StatusCreated, "POST", "/rooms/"+roomID+"/displays", httpapi.PairDisplayRequest{
-		Code: strings.ToLower(p.Code[:3] + " " + p.Code[3:]), Name: ptr("Living room TV"),
+		Code: strings.ToLower(p.Code[:3] + " " + p.Code[3:]), Name: ptr("Living room TV"), Audio: ptr(audio),
 	}).decode(t, &d)
+	if d.Audio != audio {
+		t.Fatalf("paired display's audio: %+v", d)
+	}
 	var st httpapi.DisplayPairingStatus
 	tv.want(http.StatusOK, "GET", "/display/pairing", nil).decode(t, &st)
 	if st.Status != httpapi.Paired || st.RoomId == nil || *st.RoomId != roomID {
 		t.Fatalf("pairing status: %+v", st)
 	}
-	return tv
+	return tv, d
 }
 
 func TestDisplayPairing(t *testing.T) {
@@ -184,5 +194,93 @@ func TestDisplaySocketAndReactions(t *testing.T) {
 	alice.want(http.StatusNoContent, "DELETE", "/rooms/"+room.ID+"/displays/"+ds[0].Id, nil)
 	if code := d.closeStatus(); code != websocket.StatusCode(4001) {
 		t.Fatalf("display socket closed with %d", code)
+	}
+}
+
+func TestDisplaySpeaker(t *testing.T) {
+	e := newEnv(t)
+	alice := e.admin()
+	bob := e.member(alice, "bob")
+	carol := e.member(alice, "carol")
+	var room, other httpapi.Room
+	alice.want(http.StatusCreated, "POST", "/rooms", httpapi.CreateRoomRequest{Name: "Living room"}).decode(t, &room)
+	alice.want(http.StatusCreated, "POST", "/rooms", httpapi.CreateRoomRequest{Name: "Kitchen"}).decode(t, &other)
+	base := "/rooms/" + room.Id
+	bob.want(http.StatusOK, "POST", base+"/queue", addReq(linkFake(t, bob), "t01"))
+
+	// Without audio, a display only watches.
+	tv, d := pairTVAudio(t, e, bob, room.Id, false)
+	claim := httpapi.ClaimPlayerRequest{DeviceId: "bobs-phone", Name: "Not the TV"}
+	if r := tv.do("PUT", base+"/player", claim); r.status != http.StatusForbidden {
+		t.Fatalf("claiming without audio: %d %s", r.status, r.body)
+	}
+
+	// Only the owner, whoever paired it, or an admin may turn audio on.
+	if r := carol.do("PATCH", base+"/displays/"+d.Id, httpapi.UpdateDisplayRequest{Audio: true}); r.status != http.StatusForbidden {
+		t.Fatalf("carol turning audio on: %d %s", r.status, r.body)
+	}
+	bob.want(http.StatusOK, "PATCH", base+"/displays/"+d.Id, httpapi.UpdateDisplayRequest{Audio: true}).decode(t, &d)
+	if !d.Audio {
+		t.Fatalf("after turning audio on: %+v", d)
+	}
+	var dm httpapi.DisplayMe
+	tv.want(http.StatusOK, "GET", "/display", nil).decode(t, &dm)
+	if !dm.Display.Audio {
+		t.Fatalf("display sees its audio off: %+v", dm.Display)
+	}
+
+	// It becomes the speaker as itself, for whoever paired it, whatever device it claims to be.
+	var np httpapi.NowPlaying
+	tv.want(http.StatusOK, "PUT", base+"/player", claim).decode(t, &np)
+	if np.Player == nil || np.Player.DeviceId != d.Id || np.Player.Name != "Living room TV" || np.Player.UserId != me(t, bob).Id ||
+		np.State != httpapi.PlaybackStateLoading || np.Item == nil {
+		t.Fatalf("display claim: %+v", np)
+	}
+	item := np.Item.Id
+	if r := tv.do("GET", base+"/stream/"+item+"?accept=audio/wav", nil); r.status != http.StatusOK || !strings.HasPrefix(string(r.body), "RIFF") {
+		t.Fatalf("display streaming: %d %v", r.status, r.header)
+	}
+	if r := tv.do("GET", "/rooms/"+other.Id+"/stream/"+item, nil); r.status != http.StatusForbidden {
+		t.Fatalf("display streaming from another room: %d", r.status)
+	}
+	tv.want(http.StatusOK, "POST", base+"/player/report", httpapi.PlayerReport{
+		DeviceId: "anything", ItemId: item, Event: httpapi.PlayerReportEventPlaying,
+	}).decode(t, &np)
+	if np.State != httpapi.PlaybackStatePlaying {
+		t.Fatalf("after the display's report: %+v", np)
+	}
+	// Bob's own phone isn't the TV.
+	if r := bob.do("POST", base+"/player/report", httpapi.PlayerReport{DeviceId: "bobs-phone", ItemId: item, Event: "ended"}); r.status != http.StatusConflict {
+		t.Fatalf("bob reporting as his phone: %d %s", r.status, r.body)
+	}
+
+	// Turning audio off stops it, and the room pauses.
+	alice.want(http.StatusOK, "PATCH", base+"/displays/"+d.Id, httpapi.UpdateDisplayRequest{Audio: false})
+	var off httpapi.NowPlaying
+	alice.want(http.StatusOK, "GET", base+"/playback", nil).decode(t, &off)
+	if off.Player != nil || off.State != httpapi.PlaybackStatePaused {
+		t.Fatalf("after audio off: %+v", off)
+	}
+	if r := tv.do("POST", base+"/player/report", httpapi.PlayerReport{DeviceId: d.Id, ItemId: item, Event: "progress"}); r.status != http.StatusForbidden {
+		t.Fatalf("reporting with audio off: %d %s", r.status, r.body)
+	}
+	if r := tv.do("GET", base+"/stream/"+item, nil); r.status != http.StatusForbidden {
+		t.Fatalf("streaming with audio off: %d", r.status)
+	}
+
+	// A display can let go itself; unpairing one that's the speaker stops it too.
+	bob.want(http.StatusOK, "PATCH", base+"/displays/"+d.Id, httpapi.UpdateDisplayRequest{Audio: true})
+	tv.want(http.StatusOK, "PUT", base+"/player", claim)
+	var released httpapi.NowPlaying
+	tv.want(http.StatusOK, "DELETE", base+"/player?deviceId=x", nil).decode(t, &released)
+	if released.Player != nil {
+		t.Fatalf("display releasing: %+v", released)
+	}
+	tv.want(http.StatusOK, "PUT", base+"/player", claim)
+	bob.want(http.StatusNoContent, "DELETE", base+"/displays/"+d.Id, nil)
+	var unpaired httpapi.NowPlaying
+	alice.want(http.StatusOK, "GET", base+"/playback", nil).decode(t, &unpaired)
+	if unpaired.Player != nil {
+		t.Fatalf("after unpairing the speaker: %+v", unpaired)
 	}
 }

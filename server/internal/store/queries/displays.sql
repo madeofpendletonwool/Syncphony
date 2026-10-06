@@ -1,6 +1,6 @@
 -- name: CreateDisplay :one
-INSERT INTO displays (id, token_hash, room_id, name, paired_by, created_at, last_seen_at, expires_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO displays (id, token_hash, room_id, name, paired_by, audio, created_at, last_seen_at, expires_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetDisplayByToken :one
@@ -14,6 +14,9 @@ SELECT * FROM displays WHERE room_id = ? AND expires_at > sqlc.arg(now) ORDER BY
 
 -- name: TouchDisplay :exec
 UPDATE displays SET last_seen_at = ?, expires_at = ? WHERE id = ?;
+
+-- name: SetDisplayAudio :one
+UPDATE displays SET audio = ? WHERE id = ? RETURNING *;
 
 -- name: DeleteDisplay :exec
 DELETE FROM displays WHERE id = ?;

@@ -1472,8 +1472,9 @@ paths:
       summary: Pair a display with the room
       description: |
         Type in the code a display (a TV at `/tv`) is showing. It then shows
-        this room's big screen until it's unpaired. `pairing_invalid` if no
-        display is showing the code; wrong codes are rate limited.
+        this room's big screen until it's unpaired. With `audio`, it may
+        also play the room's audio (see `updateDisplay`). `pairing_invalid`
+        if no display is showing the code; wrong codes are rate limited.
       tags: [displays]
       requestBody:
         required: true
@@ -1507,6 +1508,30 @@ paths:
       responses:
         "204":
           description: Unpaired; the display goes back to showing a code
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      operationId: updateDisplay
+      summary: Turn a display's audio on or off
+      description: |
+        With `audio` on, the display may become the room's speaker, acting
+        for whoever paired it (so it needs their `speaker` permission).
+        Turning it off while it's the speaker stops it, and the room
+        pauses. The room's owner, whoever paired it, or an admin.
+      tags: [displays]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDisplayRequest"
+      responses:
+        "200":
+          description: The display
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Display"
         default:
           $ref: "#/components/responses/Error"
 
@@ -1969,8 +1994,12 @@ paths:
         The device takes over playback from any other speaker. If the room
         is idle and songs are waiting, the first one starts. Needs the
         room's `speaker` permission unless the device already is the
-        speaker.
+        speaker. A display with `audio` on may claim its own room, as
+        whoever paired it; its `deviceId` is always the display's ID.
       tags: [playback]
+      security:
+        - session: []
+        - display: []
       requestBody:
         required: true
         content:
@@ -1989,8 +2018,11 @@ paths:
     delete:
       operationId: releasePlayer
       summary: Stop being the room's speaker
-      description: The song pauses. The speaker's user or the room's owner may do this.
+      description: The song pauses. The speaker's user or the room's owner may do this, and a display may release itself.
       tags: [playback]
+      security:
+        - session: []
+        - display: []
       parameters:
         - name: deviceId
           in: query
@@ -2020,6 +2052,9 @@ paths:
         that's no longer current are ignored; the reply is the current
         state either way.
       tags: [playback]
+      security:
+        - session: []
+        - display: []
       requestBody:
         required: true
         content:
@@ -2052,7 +2087,11 @@ paths:
         song's service through the link of whoever queued it. Supports
         byte ranges when the service does. If the format isn't in `accept`
         it's transcoded (if the server can), and the result isn't seekable.
+        A display with `audio` on may stream its own room's songs.
       tags: [playback]
+      security:
+        - session: []
+        - display: []
       parameters:
         - name: Range
           in: header
@@ -2104,7 +2143,8 @@ components:
       description: |
         A paired display's token (see `/display/pairing`). It can read its
         own room and nothing else: the operations that list it here, and
-        the room socket.
+        the room socket. The playback ones (being the speaker, streaming)
+        also need the display's `audio` on.
 
   parameters:
     InviteCode:
@@ -2992,7 +3032,7 @@ components:
 
     Display:
       type: object
-      required: [id, roomId, name, createdAt, lastSeenAt]
+      required: [id, roomId, name, audio, createdAt, lastSeenAt]
       properties:
         id:
           type: string
@@ -3003,6 +3043,9 @@ components:
         pairedBy:
           type: string
           description: The user who paired it, if they're still around.
+        audio:
+          type: boolean
+          description: It may play the room's audio, as the speaker.
         createdAt:
           type: string
           format: date-time
@@ -3023,6 +3066,16 @@ components:
           type: string
           description: What to call it. Default "TV".
           maxLength: 40
+        audio:
+          type: boolean
+          description: Let it play the room's audio too. Default false.
+
+    UpdateDisplayRequest:
+      type: object
+      required: [audio]
+      properties:
+        audio:
+          type: boolean
 
     DisplayPairing:
       type: object

@@ -39,7 +39,27 @@ var displayOps = map[string]bool{
 	"GetQueueItemLinerNotes": true,
 	"GetHearts":              true,
 	"GetGuestPass":           true,
+	// Playing the room's audio, for displays with audio on (audioOps).
+	"ClaimPlayer":     true,
+	"ReleasePlayer":   true,
+	"ReportPlayback":  true,
+	"StreamQueueItem": true,
 }
+
+// audioOps are the displayOps that make a display the room's speaker. They
+// need the display's audio turned on.
+var audioOps = map[string]bool{
+	"ClaimPlayer":     true,
+	"ReleasePlayer":   true,
+	"ReportPlayback":  true,
+	"StreamQueueItem": true,
+}
+
+// Display errors.
+var (
+	ErrDisplayNoAudio = errors.New("this screen isn't set to play the room's audio")
+	ErrDisplayOrphan  = errors.New("whoever paired this screen is gone; pair it again to play audio on it")
+)
 
 // displayRoom is the room a display-readable request is about. ok is
 // false for requests not about one room (the user list).
@@ -63,13 +83,22 @@ func displayRoom(req any) (roomID string, ok bool) {
 		return r.RoomId, true
 	case GetGuestPassRequestObject:
 		return r.RoomId, true
+	case ClaimPlayerRequestObject:
+		return r.RoomId, true
+	case ReleasePlayerRequestObject:
+		return r.RoomId, true
+	case ReportPlaybackRequestObject:
+		return r.RoomId, true
+	case StreamQueueItemRequestObject:
+		return r.RoomId, true
 	}
 	return "", false
 }
 
 // authenticateDisplay lets a paired display through to an operation in
-// displayOps, if it's about the display's own room.
-func (s *Server) authenticateDisplay(ctx context.Context, w http.ResponseWriter, r *http.Request, req any) (context.Context, error) {
+// displayOps, if it's about the display's own room, and to audioOps if its
+// audio is on.
+func (s *Server) authenticateDisplay(ctx context.Context, w http.ResponseWriter, r *http.Request, operationID string, req any) (context.Context, error) {
 	c, err := r.Cookie(DisplayCookie)
 	if err != nil {
 		return nil, auth.ErrUnauthenticated
@@ -87,7 +116,29 @@ func (s *Server) authenticateDisplay(ctx context.Context, w http.ResponseWriter,
 	if room, ok := displayRoom(req); ok && room != d.Display.RoomID {
 		return nil, auth.ErrForbidden
 	}
-	return ctx, nil
+	if audioOps[operationID] && !d.Display.Audio {
+		return nil, ErrDisplayNoAudio
+	}
+	return context.WithValue(ctx, ctxDisplay, &d.Display), nil
+}
+
+// displayFrom returns the paired display making the request, or nil for a
+// signed-in user.
+func displayFrom(ctx context.Context) *store.Display {
+	d, _ := ctx.Value(ctxDisplay).(*store.Display)
+	return d
+}
+
+// speakerOf is who a speaker request acts as, and for which device. A
+// display acts as whoever paired it, and is always its own device.
+func speakerOf(ctx context.Context, deviceID string) (userID, device string, err error) {
+	if d := displayFrom(ctx); d != nil {
+		if !d.PairedBy.Valid {
+			return "", "", ErrDisplayOrphan
+		}
+		return d.PairedBy.String, d.ID, nil
+	}
+	return sessionFrom(ctx).User.ID, deviceID, nil
 }
 
 func (s *Server) displayCookie(token string, expires time.Time) *http.Cookie {
@@ -116,7 +167,7 @@ func (s *Server) pairingCookie(secret string, ttl time.Duration) *http.Cookie {
 }
 
 func toDisplay(d store.Display) Display {
-	out := Display{Id: d.ID, RoomId: d.RoomID, Name: d.Name, CreatedAt: d.CreatedAt, LastSeenAt: d.LastSeenAt}
+	out := Display{Id: d.ID, RoomId: d.RoomID, Name: d.Name, Audio: d.Audio, CreatedAt: d.CreatedAt, LastSeenAt: d.LastSeenAt}
 	if d.PairedBy.Valid {
 		out.PairedBy = &d.PairedBy.String
 	}
@@ -206,32 +257,64 @@ func (s *Server) PairDisplay(ctx context.Context, req PairDisplayRequestObject) 
 	if req.Body.Name != nil {
 		name = *req.Body.Name
 	}
-	d, err := s.Auth.PairDisplay(ctx, sessionFrom(ctx).User, req.RoomId, req.Body.Code, name)
+	audio := req.Body.Audio != nil && *req.Body.Audio
+	d, err := s.Auth.PairDisplay(ctx, sessionFrom(ctx).User, req.RoomId, req.Body.Code, name, audio)
 	if err != nil {
 		return nil, err
 	}
 	return PairDisplay201JSONResponse(toDisplay(d)), nil
 }
 
-// UnpairDisplay removes a display: the room's owner, whoever paired it,
-// or an admin may.
-func (s *Server) UnpairDisplay(ctx context.Context, req UnpairDisplayRequestObject) (UnpairDisplayResponseObject, error) {
+// manageableDisplay returns one of a room's displays, if the caller may
+// change it: the room's owner, whoever paired it, or an admin.
+func (s *Server) manageableDisplay(ctx context.Context, roomID, displayID string) (store.Display, error) {
 	u := sessionFrom(ctx).User
-	room, err := s.Rooms.Get(ctx, req.RoomId)
+	room, err := s.Rooms.Get(ctx, roomID)
 	if err != nil {
-		return nil, err
+		return store.Display{}, err
 	}
-	d, err := s.Auth.Display(ctx, req.DisplayId)
+	d, err := s.Auth.Display(ctx, displayID)
 	if err != nil {
-		return nil, err
+		return store.Display{}, err
 	}
 	if d.RoomID != room.ID {
-		return nil, auth.ErrNotFound
+		return store.Display{}, auth.ErrNotFound
 	}
 	if u.Role != store.RoleAdmin && room.OwnerID != u.ID && d.PairedBy.String != u.ID {
-		return nil, auth.ErrForbidden
+		return store.Display{}, auth.ErrForbidden
+	}
+	return d, nil
+}
+
+// UpdateDisplay turns a display's audio on or off. Off, it stops being the
+// speaker if it was.
+func (s *Server) UpdateDisplay(ctx context.Context, req UpdateDisplayRequestObject) (UpdateDisplayResponseObject, error) {
+	d, err := s.manageableDisplay(ctx, req.RoomId, req.DisplayId)
+	if err != nil {
+		return nil, err
+	}
+	if d, err = s.Auth.SetDisplayAudio(ctx, d.ID, req.Body.Audio); err != nil {
+		return nil, err
+	}
+	if !d.Audio {
+		if err := s.Playback.Drop(ctx, d.RoomID, d.ID); err != nil {
+			return nil, err
+		}
+	}
+	return UpdateDisplay200JSONResponse(toDisplay(d)), nil
+}
+
+// UnpairDisplay removes a display: the room's owner, whoever paired it,
+// or an admin may. If it was the speaker, it stops.
+func (s *Server) UnpairDisplay(ctx context.Context, req UnpairDisplayRequestObject) (UnpairDisplayResponseObject, error) {
+	d, err := s.manageableDisplay(ctx, req.RoomId, req.DisplayId)
+	if err != nil {
+		return nil, err
 	}
 	if err := s.Auth.UnpairDisplay(ctx, d.ID); err != nil {
+		return nil, err
+	}
+	if err := s.Playback.Drop(ctx, d.RoomID, d.ID); err != nil {
 		return nil, err
 	}
 	return UnpairDisplay204Response{}, nil

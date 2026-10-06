@@ -77,6 +77,9 @@ class Speaker {
   private curItem?: QueueItem
   private preItem?: string
   private roomId?: string
+  // Which device the server knows this speaker as: this browser, or for a
+  // paired TV, its display ID.
+  private device = ''
   private rev = -1
   private last?: Playback
   private lastProgress = 0
@@ -100,22 +103,24 @@ class Speaker {
   /**
    * Makes this device the room's speaker. Call it from a tap: browsers only
    * let audio start after a user gesture, so the elements are unlocked
-   * before anything async happens.
+   * before anything async happens. A paired TV passes its display ID as
+   * the device, since that's who the server makes the speaker.
    */
-  async start(roomId: string, name: string) {
+  async start(roomId: string, name: string, device = deviceId()) {
     const [a, b] = this.elements()
     for (const el of [a, b]) {
       el.src = SILENCE
       el.play().catch(() => {})
     }
     this.roomId = roomId
+    this.device = device
     this.rev = -1
     this.set({ status: 'waiting', roomId })
     this.mediaHandlers()
     void this.keepAwake(speakerState.get().keepAwake)
     try {
       const np = await unwrap(
-        api.PUT('/rooms/{roomId}/player', { params: { path: { roomId } }, body: { deviceId: deviceId(), name } }),
+        api.PUT('/rooms/{roomId}/player', { params: { path: { roomId } }, body: { deviceId: device, name } }),
       )
       this.onState?.(np)
       this.apply(np)
@@ -132,7 +137,7 @@ class Speaker {
     if (!roomId) return
     try {
       const np = await unwrap(
-        api.DELETE('/rooms/{roomId}/player', { params: { path: { roomId }, query: { deviceId: deviceId() } } }),
+        api.DELETE('/rooms/{roomId}/player', { params: { path: { roomId }, query: { deviceId: this.device } } }),
       )
       this.onState?.(np)
     } catch (err) {
@@ -150,7 +155,7 @@ class Speaker {
   apply(np: Playback | undefined) {
     if (!np || !this.active || np.roomId !== this.roomId) return
     this.last = np
-    if (np.player?.deviceId !== deviceId()) {
+    if (np.player?.deviceId !== this.device) {
       if (np.player) {
         this.halt()
         toast({ message: `${np.player.name} took over as the speaker.` })
@@ -396,7 +401,7 @@ class Speaker {
       const np = await unwrap(
         api.PUT('/rooms/{roomId}/player', {
           params: { path: { roomId: this.roomId } },
-          body: { deviceId: deviceId(), name: this.last?.player?.name ?? 'Speaker' },
+          body: { deviceId: this.device, name: this.last?.player?.name ?? 'Speaker' },
         }),
       )
       this.rev = -1
@@ -417,7 +422,7 @@ class Speaker {
     api
       .POST('/rooms/{roomId}/player/report', {
         params: { path: { roomId } },
-        body: { deviceId: deviceId(), itemId: item.id, event, positionMs, error },
+        body: { deviceId: this.device, itemId: item.id, event, positionMs, error },
       })
       .then(({ data }) => data && this.onState?.(data))
       .catch(() => {
