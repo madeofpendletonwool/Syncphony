@@ -17,27 +17,22 @@ package autopilot
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"math/rand/v2"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/madeofpendletonwool/syncphony/server/internal/match"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
+	"github.com/madeofpendletonwool/syncphony/server/internal/suggest"
 )
 
 // Links opens sessions for links and looks providers up. It's links.Service.
-type Links interface {
-	Open(ctx context.Context, linkID string) (provider.Session, error)
-	Provider(id string) (provider.Provider, error)
-}
+type Links = suggest.Links
 
 // Presence says who's in a room. realtime.Presence is one.
 type Presence interface {
@@ -67,10 +62,6 @@ const (
 	seedUsers    = 3
 	seedsPerUser = 2
 	linksPerSeed = 2
-	// candidates is how many songs autopilot asks a service for.
-	candidates = 40
-	// similarTop is how close to the top of the list a similar pick stays.
-	similarTop = 5
 	// discoveryAvoid is how many of the room's last songs' artists
 	// discovery stays away from.
 	discoveryAvoid = 5
@@ -217,7 +208,7 @@ func (s *Service) Fill(ctx context.Context, roomID string) error {
 	}
 	f := &fill{
 		s: s, roomID: roomID, room: room, adventure: settings.Adventure,
-		history: history, mine: mine, sessions: map[string]provider.Session{},
+		history: history, mine: mine, finder: suggest.NewFinder(s.links, s.Rand),
 	}
 	defer f.close()
 	f.remember(snap.Items)
@@ -279,46 +270,42 @@ type fill struct {
 	mine      []store.QueueItem
 
 	// seen holds the songs not to play: recent, waiting, or removed.
-	seen map[string]bool
+	seen suggest.Seen
 	// skipped holds the artists of autopilot songs the room skipped.
 	skipped map[string]bool
 	// recentArtists are the artists of the room's last few songs.
 	recentArtists map[string]bool
 
 	links    []store.ServiceLink
-	sessions map[string]provider.Session
+	finder *suggest.Finder
 }
 
-func (f *fill) close() {
-	for _, sess := range f.sessions {
-		sess.Close()
-	}
-}
+func (f *fill) close() { f.finder.Close() }
 
 // remember notes the songs autopilot mustn't pick, and the artists it
 // should avoid.
 func (f *fill) remember(upcoming []store.QueueItem) {
-	f.seen, f.skipped, f.recentArtists = map[string]bool{}, map[string]bool{}, map[string]bool{}
+	f.seen, f.skipped, f.recentArtists = suggest.Seen{}, map[string]bool{}, map[string]bool{}
 	for _, it := range upcoming {
-		f.see(it)
+		f.seen.Item(it)
 	}
 	for i, h := range f.history {
-		f.see(h.QueueItem)
+		f.seen.Item(h.QueueItem)
 		if i < discoveryAvoid {
-			if a := artistKey(trackOf(h.QueueItem)); a != "" {
+			if a := suggest.ArtistKey(suggest.TrackOf(h.QueueItem)); a != "" {
 				f.recentArtists[a] = true
 			}
 		}
 		// A skip of autopilot's song says the room didn't want that artist.
 		// A failed song says nothing.
 		if h.QueueItem.IsAutopilot() && h.PlayHistory.EndReason.String == store.EndSkipped && f.recentlyMine(h.QueueItem.ID) {
-			if a := artistKey(trackOf(h.QueueItem)); a != "" {
+			if a := suggest.ArtistKey(suggest.TrackOf(h.QueueItem)); a != "" {
 				f.skipped[a] = true
 			}
 		}
 	}
 	for _, it := range f.mine {
-		f.see(it) // removed ones too: someone didn't want that song
+		f.seen.Item(it) // removed ones too: someone didn't want that song
 	}
 }
 
@@ -333,58 +320,10 @@ func (f *fill) recentlyMine(itemID string) bool {
 	return false
 }
 
-func (f *fill) see(it store.QueueItem) {
-	t := trackOf(it)
-	t.Ref = provider.TrackRef{Provider: it.Provider, ID: it.TrackID}
-	for _, k := range keys(t) {
-		f.seen[k] = true
-	}
-	if it.ViaLinkID.Valid {
-		f.seen[it.ViaProvider.String+"\x00"+it.ViaTrackID.String] = true
-	}
-}
-
 // fresh reports whether t may play: not heard lately, and not by an artist
 // the room skipped.
 func (f *fill) fresh(t provider.Track) bool {
-	for _, k := range keys(t) {
-		if f.seen[k] {
-			return false
-		}
-	}
-	return !f.skipped[artistKey(t)]
-}
-
-// keys are the ways a song is recognized: on its service, by ISRC on any
-// service, and by title and artist.
-func keys(t provider.Track) []string {
-	out := []string{t.Ref.Provider + "\x00" + t.Ref.ID}
-	if t.ISRC != "" {
-		out = append(out, "isrc\x00"+t.ISRC)
-	}
-	if a := artistKey(t); a != "" && t.Title != "" {
-		out = append(out, "name\x00"+a+"\x00"+strings.ToLower(strings.TrimSpace(t.Title)))
-	}
-	return out
-}
-
-func artistKey(t provider.Track) string {
-	if len(t.Artists) == 0 {
-		return ""
-	}
-	return strings.ToLower(strings.TrimSpace(t.Artists[0].Name))
-}
-
-func trackOf(it store.QueueItem) provider.Track {
-	var t provider.Track
-	_ = json.Unmarshal([]byte(it.Metadata), &t)
-	return t
-}
-
-// seed is a song autopilot looks for more like.
-type seed struct {
-	item  store.QueueItem
-	track provider.Track
+	return !f.seen.Has(t) && !f.skipped[suggest.ArtistKey(t)]
 }
 
 // choose returns songs to try adding, best first: ones like a member's
@@ -415,7 +354,7 @@ func (f *fill) choose(ctx context.Context) ([]pick, error) {
 		if !h.QueueItem.IsAutopilot() || h.PlayHistory.EndReason.String != store.EndFinished {
 			continue
 		}
-		if p, ok := f.like(ctx, seed{item: h.QueueItem, track: trackOf(h.QueueItem)}, h.QueueItem.AddedBy); ok {
+		if p, ok := f.like(ctx, suggest.SeedOf(h.QueueItem), h.QueueItem.AddedBy); ok {
 			out = append(out, p)
 		}
 		if n++; n >= seedsPerUser || len(out) > 0 {
@@ -436,8 +375,8 @@ func (f *fill) choose(ctx context.Context) ([]pick, error) {
 // takes their turns, and each one's seeds, newest first. People in the
 // room come first; then whoever autopilot chose for longest ago (or
 // never), then whoever played most recently.
-func (f *fill) seeds() ([]string, map[string][]seed) {
-	seeds := map[string][]seed{}
+func (f *fill) seeds() ([]string, map[string][]suggest.Seed) {
+	seeds := map[string][]suggest.Seed{}
 	var users []string
 	latest := map[string]int{}
 	n := 0
@@ -451,7 +390,7 @@ func (f *fill) seeds() ([]string, map[string][]seed) {
 			users = append(users, it.AddedBy)
 			latest[it.AddedBy] = i
 		}
-		seeds[it.AddedBy] = append(seeds[it.AddedBy], seed{item: it, track: trackOf(it)})
+		seeds[it.AddedBy] = append(seeds[it.AddedBy], suggest.SeedOf(it))
 		if n++; n >= seedReach {
 			break
 		}
@@ -510,13 +449,13 @@ func (f *fill) loadLinks(ctx context.Context, users []string) error {
 
 // linksFor orders the links to try for a seed: the one it played from,
 // then its member's own, then the rest.
-func (f *fill) linksFor(sd seed) []store.ServiceLink {
-	from, _ := source(sd.item)
+func (f *fill) linksFor(sd suggest.Seed) []store.ServiceLink {
+	from, _ := suggest.Source(sd.Item)
 	rank := func(l store.ServiceLink) int {
 		switch {
 		case l.ID == from:
 			return 0
-		case l.UserID == sd.item.AddedBy:
+		case l.UserID == sd.Item.AddedBy:
 			return 1
 		}
 		return 2
@@ -526,43 +465,21 @@ func (f *fill) linksFor(sd seed) []store.ServiceLink {
 	return out[:min(len(out), linksPerSeed)]
 }
 
-// source is where an item played from: its stand-in, or its own link.
-func source(it store.QueueItem) (linkID, trackID string) {
-	if it.ViaLinkID.Valid {
-		return it.ViaLinkID.String, it.ViaTrackID.String
-	}
-	return it.LinkID.String, it.TrackID
-}
-
-func (f *fill) session(ctx context.Context, linkID string) (provider.Recommender, provider.Session, bool) {
-	sess, ok := f.sessions[linkID]
-	if !ok {
-		var err error
-		if sess, err = f.s.links.Open(ctx, linkID); err != nil {
-			slog.Debug("autopilot: opening a link", "link", linkID, "err", err)
-			return nil, nil, false
-		}
-		f.sessions[linkID] = sess
-	}
-	r, ok := sess.(provider.Recommender)
-	return r, sess, ok
-}
-
 // like finds a song like sd's on the room's services.
-func (f *fill) like(ctx context.Context, sd seed, forUser string) (pick, bool) {
-	if sd.track.Title == "" {
+func (f *fill) like(ctx context.Context, sd suggest.Seed, forUser string) (pick, bool) {
+	if sd.Track.Title == "" {
 		return pick{}, false
 	}
 	for _, l := range f.linksFor(sd) {
-		rec, sess, ok := f.session(ctx, l.ID)
+		rec, sess, ok := f.finder.Recommender(ctx, l.ID)
 		if !ok {
 			continue
 		}
-		cands := f.candidates(ctx, rec, sess, l, sd)
+		cands := f.finder.Similar(ctx, rec, sess, l, sd, f.adventure)
 		if t, ok := f.choosePick(cands, sd); ok {
-			info := queue.AutopilotInfo{SeedItemID: sd.item.ID, SeedTitle: sd.track.Title}
-			if len(sd.track.Artists) > 0 {
-				info.SeedArtist = sd.track.Artists[0].Name
+			info := queue.AutopilotInfo{SeedItemID: sd.Item.ID, SeedTitle: sd.Track.Title}
+			if len(sd.Track.Artists) > 0 {
+				info.SeedArtist = sd.Track.Artists[0].Name
 			}
 			return pick{track: t, forUser: forUser, info: info}, true
 		}
@@ -570,98 +487,10 @@ func (f *fill) like(ctx context.Context, sd seed, forUser string) (pick, bool) {
 	return pick{}, false
 }
 
-// candidates asks one service for songs like sd's, most alike first.
-func (f *fill) candidates(ctx context.Context, rec provider.Recommender, sess provider.Session, l store.ServiceLink, sd seed) []provider.Track {
-	trackID, artistID := f.resolve(ctx, sess, l, sd)
-	var artist string
-	if len(sd.track.Artists) > 0 {
-		artist = sd.track.Artists[0].Name
-	}
-	var out []provider.Track
-	add := func(what string, ts []provider.Track, err error) {
-		if err != nil {
-			slog.Debug("autopilot: asking for songs", "link", l.ID, "call", what, "err", err)
-		}
-		out = append(out, ts...)
-	}
-	switch f.adventure {
-	case rooms.AdventureDiscovery:
-		if artistID != "" {
-			ts, err := rec.SimilarToArtist(ctx, artistID, candidates)
-			add("SimilarToArtist", ts, err)
-		} else if trackID != "" {
-			ts, err := rec.SimilarToTrack(ctx, trackID, candidates)
-			add("SimilarToTrack", ts, err)
-		}
-	default:
-		if trackID != "" {
-			ts, err := rec.SimilarToTrack(ctx, trackID, candidates)
-			add("SimilarToTrack", ts, err)
-		} else if artistID != "" {
-			ts, err := rec.SimilarToArtist(ctx, artistID, candidates)
-			add("SimilarToArtist", ts, err)
-		}
-		if artist != "" {
-			ts, err := rec.TopTracks(ctx, artist, similarTop*2)
-			add("TopTracks", ts, err)
-		}
-		if len(out) == 0 && artistID != "" {
-			// The service knows nothing similar (Navidrome without
-			// Last.fm, say). More by the same artist is still like it.
-			ts, err := f.catalog(ctx, sess, artistID)
-			add("Artist", ts, err)
-		}
-	}
-	return out
-}
-
-// resolve finds sd's track and artist on a link: directly if it played
-// from there, else by searching.
-func (f *fill) resolve(ctx context.Context, sess provider.Session, l store.ServiceLink, sd seed) (trackID, artistID string) {
-	if from, id := source(sd.item); from == l.ID {
-		trackID = id
-		if !sd.item.ViaLinkID.Valid && len(sd.track.Artists) > 0 {
-			artistID = sd.track.Artists[0].ID
-		}
-	} else if t, score, err := match.On(ctx, sess, sd.track); err == nil && score > 0 {
-		trackID = t.Ref.ID
-		if len(t.Artists) > 0 {
-			artistID = t.Artists[0].ID
-		}
-	}
-	if artistID != "" || len(sd.track.Artists) == 0 {
-		return trackID, artistID
-	}
-	name := sd.track.Artists[0].Name
-	if p, err := f.s.links.Provider(l.Provider); err != nil || !p.Info().Capabilities.CanSearch(provider.KindArtist) {
-		return trackID, ""
-	}
-	page, err := sess.Search(ctx, provider.SearchQuery{Text: name, Kinds: []provider.EntityKind{provider.KindArtist}, Limit: 5})
-	if err != nil {
-		return trackID, ""
-	}
-	for _, a := range page.Artists {
-		if strings.EqualFold(strings.TrimSpace(a.Name), strings.TrimSpace(name)) {
-			return trackID, a.ID
-		}
-	}
-	return trackID, ""
-}
-
-// catalog returns the songs of one of an artist's albums, picked at random.
-func (f *fill) catalog(ctx context.Context, sess provider.Session, artistID string) ([]provider.Track, error) {
-	_, albums, err := sess.Artist(ctx, artistID)
-	if err != nil || len(albums) == 0 {
-		return nil, err
-	}
-	_, ts, err := sess.Album(ctx, albums[f.s.Rand(len(albums))].ID)
-	return ts, err
-}
-
 // choosePick picks one of the fresh candidates. Similar stays near the top
 // of the list; discovery reaches anywhere in it, and leaves out the seed's
 // artist and the artists the room just heard.
-func (f *fill) choosePick(cands []provider.Track, sd seed) (provider.Track, bool) {
+func (f *fill) choosePick(cands []provider.Track, sd suggest.Seed) (provider.Track, bool) {
 	var ok []provider.Track
 	dup := map[string]bool{}
 	for _, t := range cands {
@@ -671,8 +500,8 @@ func (f *fill) choosePick(cands []provider.Track, sd seed) (provider.Track, bool
 		}
 		dup[k] = true
 		if f.adventure == rooms.AdventureDiscovery {
-			a := artistKey(t)
-			if a == artistKey(sd.track) || f.recentArtists[a] {
+			a := suggest.ArtistKey(t)
+			if a == suggest.ArtistKey(sd.Track) || f.recentArtists[a] {
 				continue
 			}
 		}
@@ -682,7 +511,7 @@ func (f *fill) choosePick(cands []provider.Track, sd seed) (provider.Track, bool
 		return provider.Track{}, false
 	}
 	if f.adventure != rooms.AdventureDiscovery {
-		ok = ok[:min(len(ok), similarTop)]
+		ok = ok[:min(len(ok), suggest.SimilarTop)]
 	}
 	return ok[f.s.Rand(len(ok))], true
 }
@@ -691,11 +520,11 @@ func (f *fill) choosePick(cands []provider.Track, sd seed) (provider.Track, bool
 // the last resort that keeps the room from going silent.
 func (f *fill) random(ctx context.Context, forUser string) []pick {
 	for _, l := range f.links {
-		rec, _, ok := f.session(ctx, l.ID)
+		rec, _, ok := f.finder.Recommender(ctx, l.ID)
 		if !ok {
 			continue
 		}
-		ts, err := rec.RandomTracks(ctx, candidates)
+		ts, err := rec.RandomTracks(ctx, suggest.Candidates)
 		if err != nil {
 			slog.Debug("autopilot: asking for random songs", "link", l.ID, "err", err)
 			continue
