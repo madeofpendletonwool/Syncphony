@@ -1552,8 +1552,9 @@ export interface paths {
          * @description For the playing song, or a queued one to preload. Streamed from the
          *     song's service through the link of whoever queued it. Supports
          *     byte ranges when the service does. If the format isn't in `accept`
-         *     it's transcoded (if the server can), and the result isn't seekable.
-         *     A display with `audio` on may stream its own room's songs.
+         *     it's transcoded (if the server can), and the result can't be seeked
+         *     by bytes: ask for it again with `start` instead. A display with
+         *     `audio` on may stream its own room's songs.
          */
         get: operations["streamQueueItem"];
         put?: never;
@@ -4773,6 +4774,13 @@ export interface operations {
                 accept?: string;
                 /** @description Bitrate cap in kbit/s, for services or transcodes that can lower it. */
                 maxBitrate?: number;
+                /**
+                 * @description Where to begin, in ms, for a player that can't seek this stream
+                 *     by bytes (it answered `Accept-Ranges: none`, so it's
+                 *     transcoded). The audio then begins this far into the song. A
+                 *     stream that can be seeked by bytes ignores it.
+                 */
+                start?: number;
             };
             header?: {
                 /** @example bytes=0- */

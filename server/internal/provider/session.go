@@ -48,6 +48,10 @@ type StreamOpts struct {
 	Accept []string
 	// MaxBitrate caps the bitrate in kbit/s, if the provider can. 0 means no cap.
 	MaxBitrate int
+	// Start asks for audio from this far into the song, for players that
+	// can't seek the stream by bytes (a transcoded one). Providers ignore
+	// it; the transcoder honors it. 0 means the beginning.
+	Start time.Duration
 }
 
 // ByteRange is an HTTP-style byte range of the original file.

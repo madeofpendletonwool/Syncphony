@@ -1962,8 +1962,14 @@ type StreamQueueItemParams struct {
 	Accept *string `form:"accept,omitempty" json:"accept,omitempty"`
 
 	// MaxBitrate Bitrate cap in kbit/s, for services or transcodes that can lower it.
-	MaxBitrate *int    `form:"maxBitrate,omitempty" json:"maxBitrate,omitempty"`
-	Range      *string `json:"Range,omitempty"`
+	MaxBitrate *int `form:"maxBitrate,omitempty" json:"maxBitrate,omitempty"`
+
+	// Start Where to begin, in ms, for a player that can't seek this stream
+	// by bytes (it answered `Accept-Ranges: none`, so it's
+	// transcoded). The audio then begins this far into the song. A
+	// stream that can be seeked by bytes ignores it.
+	Start *int64  `form:"start,omitempty" json:"start,omitempty"`
+	Range *string `json:"Range,omitempty"`
 }
 
 // SearchParams defines parameters for Search.
@@ -4675,6 +4681,19 @@ func (siw *ServerInterfaceWrapper) StreamQueueItem(w http.ResponseWriter, r *htt
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxBitrate"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxBitrate", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "start" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "start", r.URL.Query(), &params.Start, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "start"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "start", Err: err})
 		}
 		return
 	}

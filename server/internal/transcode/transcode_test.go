@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
@@ -34,10 +35,11 @@ type recorder struct {
 	src    *provider.AudioStream
 	format transcode.Format
 	kbps   int
+	start  time.Duration
 }
 
-func (r *recorder) Transcode(_ context.Context, src *provider.AudioStream, f transcode.Format, kbps int) (*provider.AudioStream, error) {
-	r.src, r.format, r.kbps = src, f, kbps
+func (r *recorder) Transcode(_ context.Context, src *provider.AudioStream, f transcode.Format, kbps int, start time.Duration) (*provider.AudioStream, error) {
+	r.src, r.format, r.kbps, r.start = src, f, kbps, start
 	return &provider.AudioStream{Body: src.Body, ContentType: f.ContentType, Length: -1, Size: -1}, nil
 }
 
@@ -96,6 +98,52 @@ func TestStreamTranscodesFromTheStart(t *testing.T) {
 	}
 }
 
+func TestStreamStartsPartWay(t *testing.T) {
+	// Transcoded: it begins at Start.
+	var r recorder
+	opts := provider.StreamOpts{Accept: []string{"audio/mpeg"}, Start: 7 * time.Second}
+	a, err := transcode.Stream(t.Context(), streamer(t), "t01", opts, &r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Body.Close()
+	if r.src == nil || r.start != 7*time.Second {
+		t.Fatalf("transcoded from %v, want 7s", r.start)
+	}
+	// Seekable and accepted: the player seeks it by bytes, so Start is ignored.
+	r = recorder{}
+	opts.Accept = []string{"audio/wav", "audio/mpeg"}
+	if a, err = transcode.Stream(t.Context(), streamer(t), "t01", opts, &r); err != nil {
+		t.Fatal(err)
+	}
+	a.Body.Close()
+	if r.src != nil || !a.Seekable {
+		t.Fatalf("transcoded a seekable stream for Start: %+v", a)
+	}
+	// Accepted but not seekable: transcoded so it can begin part way.
+	r = recorder{}
+	a, err = transcode.Stream(t.Context(), unseekable{streamer(t)}, "t01", opts, &r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Body.Close()
+	if r.src == nil || r.format != transcode.MP3 || r.start != 7*time.Second {
+		t.Fatalf("unseekable stream: transcoded %v to %v from %v", r.src != nil, r.format, r.start)
+	}
+}
+
+// unseekable is a Streamer whose streams can't be seeked by bytes.
+type unseekable struct{ provider.Streamer }
+
+func (u unseekable) Stream(ctx context.Context, trackID string, opts provider.StreamOpts) (*provider.AudioStream, error) {
+	opts.Range = nil
+	a, err := u.Streamer.Stream(ctx, trackID, opts)
+	if a != nil {
+		a.Seekable = false
+	}
+	return a, err
+}
+
 func TestStreamWithoutTranscoder(t *testing.T) {
 	_, err := transcode.Stream(t.Context(), streamer(t), "t01", provider.StreamOpts{Accept: []string{"audio/mpeg"}}, nil)
 	if !errors.Is(err, transcode.ErrNoTranscoder) {
@@ -130,6 +178,31 @@ func TestFFmpeg(t *testing.T) {
 	}
 }
 
+func TestFFmpegStart(t *testing.T) {
+	ff := transcode.FFmpeg{}
+	if !ff.Available() {
+		t.Skip("ffmpeg not installed")
+	}
+	size := func(start time.Duration) int {
+		t.Helper()
+		a, err := transcode.Stream(t.Context(), streamer(t), "t01", provider.StreamOpts{Accept: []string{"audio/mpeg"}, Start: start}, ff)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer a.Body.Close()
+		b, err := io.ReadAll(a.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(b)
+	}
+	// Constant bitrate: starting half way through is about half as much audio.
+	whole, half := size(0), size(10*time.Second)
+	if half == 0 || half > whole*6/10 {
+		t.Fatalf("from 10s: %d bytes, whole song %d", half, whole)
+	}
+}
+
 func TestFFmpegCloseEarly(t *testing.T) {
 	ff := transcode.FFmpeg{}
 	if !ff.Available() {
@@ -153,7 +226,7 @@ func TestFFmpegReportsFailure(t *testing.T) {
 		t.Skip("ffmpeg not installed")
 	}
 	src := &provider.AudioStream{Body: io.NopCloser(bytes.NewReader([]byte("not audio"))), ContentType: "audio/ogg"}
-	a, err := ff.Transcode(t.Context(), src, transcode.MP3, 128)
+	a, err := ff.Transcode(t.Context(), src, transcode.MP3, 128, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

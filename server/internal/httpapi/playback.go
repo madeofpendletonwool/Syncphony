@@ -109,6 +109,9 @@ func (s *Server) StreamQueueItem(ctx context.Context, req StreamQueueItemRequest
 	if req.Params.MaxBitrate != nil && *req.Params.MaxBitrate > 0 {
 		opts.MaxBitrate = *req.Params.MaxBitrate
 	}
+	if req.Params.Start != nil && *req.Params.Start > 0 {
+		opts.Start = time.Duration(*req.Params.Start) * time.Millisecond
+	}
 	a, err := s.Playback.Stream(ctx, req.RoomId, req.ItemId, opts)
 	if err != nil {
 		return nil, err
