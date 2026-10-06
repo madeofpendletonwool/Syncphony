@@ -87,6 +87,8 @@ func (p *Provider) Info() provider.Info {
 			Playback: provider.PlaybackStream,
 			Search:   []provider.EntityKind{provider.KindTrack, provider.KindAlbum, provider.KindArtist},
 			Artwork:  true,
+			// From embedded tags and .lrc sidecar files.
+			Lyrics: true,
 			// OpenSubsonic servers (Navidrome 0.53+) report ISRCs from tags.
 			ISRC: true,
 			// It's the owner's own server; they decide who listens.

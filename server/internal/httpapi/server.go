@@ -19,6 +19,7 @@ import (
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
+	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
 	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
@@ -36,6 +37,7 @@ type Server struct {
 	Version string
 	Auth    *auth.Service
 	Links   *links.Service
+	Lyrics  *lyrics.Service
 	// Realtime: room state, the event bus, and who's connected.
 	Rooms    *rooms.Service
 	Queue    *queue.Service

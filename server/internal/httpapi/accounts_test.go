@@ -20,6 +20,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
+	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
 	"github.com/madeofpendletonwool/syncphony/server/internal/match"
 	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
@@ -90,8 +91,9 @@ func newEnv(t *testing.T) *env {
 	presence := realtime.NewPresence()
 	e.playback = playback.New(db, e.rooms, qs, e.links, playback.Config{Now: e.clock, Presence: presence, Matcher: match.New(db, e.links, presence)})
 	t.Cleanup(e.playback.Close)
+	ly := lyrics.New(db, lyrics.Options{LRCLIB: &lyrics.LRCLIB{BaseURL: newLRCLIB(t).URL}, Now: e.clock})
 	api := &httpapi.Server{
-		Version: "test", Auth: e.svc, Links: e.links, Rooms: e.rooms, Queue: qs, Playback: e.playback, Bus: e.bus, Presence: presence,
+		Version: "test", Auth: e.svc, Links: e.links, Lyrics: ly, Rooms: e.rooms, Queue: qs, Playback: e.playback, Bus: e.bus, Presence: presence,
 		BaseURL: e.base, PingEvery: 50 * time.Millisecond,
 	}
 	mux := http.NewServeMux()

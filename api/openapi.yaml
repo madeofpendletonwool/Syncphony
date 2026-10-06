@@ -698,6 +698,36 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /links/{id}/tracks/{trackId}/lyrics:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: trackId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getTrackLyrics
+      summary: A track's lyrics, through one of your links or a shared one
+      description: |
+        From the track's own service when it has them (Navidrome reads
+        embedded tags and `.lrc` files), and otherwise from LRCLIB. Results,
+        and misses, are cached. 404 if none are found.
+      tags: [browse]
+      responses:
+        "200":
+          description: The lyrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lyrics"
+        default:
+          $ref: "#/components/responses/Error"
+
   /links/{id}/artists/{artistId}:
     parameters:
       - name: id
@@ -1056,6 +1086,32 @@ paths:
               schema:
                 type: string
                 format: binary
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/queue/{itemId}/lyrics:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getQueueItemLyrics
+      summary: A queued song's lyrics
+      description: |
+        Like `/links/{id}/tracks/{trackId}/lyrics`, but through the link of
+        whoever queued the song, so everyone in the room can read along.
+        If that link is gone, LRCLIB is still asked. 404 if none are found.
+      tags: [queue]
+      responses:
+        "200":
+          description: The lyrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lyrics"
         default:
           $ref: "#/components/responses/Error"
 
@@ -1814,6 +1870,40 @@ components:
           description: Empty if you have no links.
           items:
             $ref: "#/components/schemas/SearchGroup"
+
+    Lyrics:
+      type: object
+      required: [source, synced, instrumental, plain, lines]
+      properties:
+        source:
+          type: string
+          description: Where they came from, a provider ID (`navidrome`) or `lrclib`.
+        synced:
+          type: boolean
+          description: Whether `lines` has timings. If not, show `plain`.
+        instrumental:
+          type: boolean
+          description: The song is known to have no words; `plain` and `lines` are empty.
+        plain:
+          type: string
+          description: The words, one line per line.
+        lines:
+          type: array
+          description: Time-synced lines, in order. Empty unless `synced`.
+          items:
+            $ref: "#/components/schemas/LyricLine"
+
+    LyricLine:
+      type: object
+      required: [atMs, text]
+      properties:
+        atMs:
+          type: integer
+          format: int64
+          description: When the line starts, from the start of the song.
+        text:
+          type: string
+          description: The line. Empty for a pause.
 
     AlbumDetail:
       type: object

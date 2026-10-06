@@ -34,6 +34,17 @@ type Invite struct {
 	UsedAt    sql.NullTime
 }
 
+type LyricsCache struct {
+	Provider     string
+	TrackID      string
+	Source       string
+	Instrumental bool
+	Plain        string
+	Synced       string
+	FetchedAt    time.Time
+	ExpiresAt    time.Time
+}
+
 type PlayHistory struct {
 	ID          string
 	RoomID      string

@@ -540,6 +540,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/links/{id}/tracks/{trackId}/lyrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                trackId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A track's lyrics, through one of your links or a shared one
+         * @description From the track's own service when it has them (Navidrome reads
+         *     embedded tags and `.lrc` files), and otherwise from LRCLIB. Results,
+         *     and misses, are cached. 404 if none are found.
+         */
+        get: operations["getTrackLyrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/links/{id}/artists/{artistId}": {
         parameters: {
             query?: never;
@@ -777,6 +802,31 @@ export interface paths {
          *     the room can see it. 404 if the song has none or its link is gone.
          */
         get: operations["getQueueItemArtwork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/queue/{itemId}/lyrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A queued song's lyrics
+         * @description Like `/links/{id}/tracks/{trackId}/lyrics`, but through the link of
+         *     whoever queued the song, so everyone in the room can read along.
+         *     If that link is gone, LRCLIB is still asked. 404 if none are found.
+         */
+        get: operations["getQueueItemLyrics"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1180,6 +1230,27 @@ export interface components {
             query: string;
             /** @description Empty if you have no links. */
             groups: components["schemas"]["SearchGroup"][];
+        };
+        Lyrics: {
+            /** @description Where they came from, a provider ID (`navidrome`) or `lrclib`. */
+            source: string;
+            /** @description Whether `lines` has timings. If not, show `plain`. */
+            synced: boolean;
+            /** @description The song is known to have no words; `plain` and `lines` are empty. */
+            instrumental: boolean;
+            /** @description The words, one line per line. */
+            plain: string;
+            /** @description Time-synced lines, in order. Empty unless `synced`. */
+            lines: components["schemas"]["LyricLine"][];
+        };
+        LyricLine: {
+            /**
+             * Format: int64
+             * @description When the line starts, from the start of the song.
+             */
+            atMs: number;
+            /** @description The line. Empty for a pause. */
+            text: string;
         };
         AlbumDetail: {
             linkId: string;
@@ -2402,6 +2473,30 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    getTrackLyrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                trackId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lyrics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Lyrics"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     getArtist: {
         parameters: {
             query?: never;
@@ -2710,6 +2805,30 @@ export interface operations {
                 };
                 content: {
                     "image/*": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getQueueItemLyrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lyrics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Lyrics"];
                 };
             };
             default: components["responses"]["Error"];

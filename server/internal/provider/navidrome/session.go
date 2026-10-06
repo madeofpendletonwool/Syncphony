@@ -5,6 +5,7 @@ package navidrome
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,6 +27,7 @@ type session struct {
 var (
 	_ provider.Session  = (*session)(nil)
 	_ provider.Streamer = (*session)(nil)
+	_ provider.Lyricist = (*session)(nil)
 )
 
 const (
@@ -353,6 +355,72 @@ func parseContentRange(h string) (start, end, size int64, ok bool) {
 		return 0, 0, 0, false
 	}
 	return start, end, size, true
+}
+
+// Lyrics reads a song's lyrics with OpenSubsonic's getLyricsBySongId,
+// which Navidrome answers from embedded tags and .lrc sidecar files.
+// Servers without it get plain Subsonic's getLyrics, which has no timings.
+func (s *session) Lyrics(ctx context.Context, trackID string) (provider.Lyrics, error) {
+	r, err := s.api.call(ctx, "getLyricsBySongId", url.Values{"id": {trackID}})
+	switch {
+	case err == nil:
+		return toLyrics(r.LyricsList, trackID)
+	case ctx.Err() != nil, errors.Is(err, provider.ErrNotFound), errors.Is(err, provider.ErrAuthExpired),
+		errors.Is(err, provider.ErrRateLimited):
+		return provider.Lyrics{}, err
+	}
+	// Most likely not an OpenSubsonic server. getLyrics goes by artist and
+	// title, not ID.
+	so, err := s.song(ctx, trackID)
+	if err != nil {
+		return provider.Lyrics{}, err
+	}
+	r, err = s.api.call(ctx, "getLyrics", url.Values{"artist": {so.Artist}, "title": {so.Title}})
+	if err != nil {
+		return provider.Lyrics{}, err
+	}
+	if r.Lyrics == nil || strings.TrimSpace(r.Lyrics.Value) == "" {
+		return provider.Lyrics{}, fmt.Errorf("navidrome: no lyrics for %q: %w", trackID, provider.ErrNotFound)
+	}
+	return provider.Lyrics{Plain: normalizeNewlines(r.Lyrics.Value)}, nil
+}
+
+// toLyrics picks the first synced entry, else the first plain one. Plain
+// is filled either way.
+func toLyrics(list *lyricsList, trackID string) (provider.Lyrics, error) {
+	var pick *structuredLyrics
+	if list != nil {
+		for i, sl := range list.StructuredLyrics {
+			if len(sl.Line) == 0 {
+				continue
+			}
+			if sl.Synced {
+				pick = &list.StructuredLyrics[i]
+				break
+			}
+			if pick == nil {
+				pick = &list.StructuredLyrics[i]
+			}
+		}
+	}
+	if pick == nil {
+		return provider.Lyrics{}, fmt.Errorf("navidrome: no lyrics for %q: %w", trackID, provider.ErrNotFound)
+	}
+	var l provider.Lyrics
+	plain := make([]string, len(pick.Line))
+	for i, ln := range pick.Line {
+		plain[i] = ln.Value
+		if pick.Synced {
+			at := max(time.Duration(ln.Start-pick.Offset)*time.Millisecond, 0)
+			l.Synced = append(l.Synced, provider.LyricLine{At: at, Text: ln.Value})
+		}
+	}
+	l.Plain = strings.Join(plain, "\n")
+	return l, nil
+}
+
+func normalizeNewlines(s string) string {
+	return strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n"))
 }
 
 func (s *session) Close() error { return nil }

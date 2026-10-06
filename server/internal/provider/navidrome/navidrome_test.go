@@ -65,6 +65,12 @@ func (s *server) serve(w http.ResponseWriter, r *http.Request) {
 		fail(w, r)
 		return
 	}
+	s.route(w, r)
+}
+
+// route answers the methods the server knows.
+func (s *server) route(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
 	switch strings.TrimPrefix(r.URL.Path, "/rest/") {
 	case "ping":
 		ok(w, "")
