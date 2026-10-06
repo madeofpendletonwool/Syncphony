@@ -78,6 +78,7 @@ export function toNowPlaying(roomId: string, p: Playback, users: NowPlaying['req
     track: p.item.track,
     via: p.item.via?.provider,
     artworkUrl: queueArtworkUrl(roomId, p.item, 600),
+    palette: p.item.palette,
     requester: users?.find((u) => u?.id === p.item?.addedBy),
     paused: p.state !== 'playing',
     positionMs: p.positionMs,

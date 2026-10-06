@@ -1092,6 +1092,32 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /rooms/{roomId}/queue/{itemId}/palette:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getQueueItemPalette
+      summary: A queued song's artwork colors
+      description: |
+        The palette `palette` on the queue item will carry, worked out now
+        if it isn't yet. 404 if the song has no artwork the server can read
+        (an SVG, say); the client can fall back to the image itself.
+      tags: [queue]
+      responses:
+        "200":
+          description: The palette
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Palette"
+        default:
+          $ref: "#/components/responses/Error"
+
   /rooms/{roomId}/queue/{itemId}/lyrics:
     parameters:
       - $ref: "#/components/parameters/RoomId"
@@ -2195,6 +2221,65 @@ components:
           $ref: "#/components/schemas/QueuedTrack"
         via:
           $ref: "#/components/schemas/PlaysVia"
+        palette:
+          $ref: "#/components/schemas/Palette"
+
+    Palette:
+      type: object
+      description: |
+        The colors of a song's artwork, worked out once on the server so
+        every phone in the room matches. On a queue item once it's ready
+        (usually soon after it's queued); `/rooms/{roomId}/queue/{itemId}/palette`
+        works it out on the spot. Every role is set: when the art has
+        nothing that fits one, it's derived from the others.
+      required: [accent, dominant, vibrant, muted, dark, light]
+      properties:
+        accent:
+          description: The dominant vivid hue, which tints the app; null for grayscale art.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Accent"
+        dominant:
+          $ref: "#/components/schemas/OklchColor"
+        vibrant:
+          $ref: "#/components/schemas/OklchColor"
+        muted:
+          $ref: "#/components/schemas/OklchColor"
+        dark:
+          $ref: "#/components/schemas/OklchColor"
+        light:
+          $ref: "#/components/schemas/OklchColor"
+
+    Accent:
+      type: object
+      required: [h, c]
+      properties:
+        h:
+          type: number
+          format: double
+          description: Hue, in degrees.
+        c:
+          type: number
+          format: double
+          description: Chroma, clamped to read well in both themes.
+
+    OklchColor:
+      type: object
+      description: An OKLCH color, as CSS `oklch(l c h)`.
+      required: [l, c, h]
+      properties:
+        l:
+          type: number
+          format: double
+          description: Lightness, 0-1.
+        c:
+          type: number
+          format: double
+          description: Chroma, about 0-0.37.
+        h:
+          type: number
+          format: double
+          description: Hue, in degrees.
 
     PlaysVia:
       type: object

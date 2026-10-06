@@ -8,18 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"image"
-	_ "image/gif" // artwork formats whose size we can read
-	_ "image/jpeg"
-	_ "image/png"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
-
-	_ "golang.org/x/image/webp" // and WebP, which image doesn't read itself
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/artcache"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
@@ -217,7 +211,7 @@ func (s *Server) GetLinkArtwork(ctx context.Context, req GetLinkArtworkRequestOb
 	if err != nil {
 		return nil, err
 	}
-	a, err := artwork(ctx, sess, provider.ArtworkRef(req.Params.Ref), req.Params.Size)
+	a, err := linkArtwork(ctx, sess, provider.ArtworkRef(req.Params.Ref), req.Params.Size)
 	if err != nil {
 		return nil, err
 	}
@@ -232,100 +226,54 @@ func (s *Server) GetQueueItemArtwork(ctx context.Context, req GetQueueItemArtwor
 	if err != nil {
 		return nil, err
 	}
-	// metadata is the provider.Track snapshot taken when the item was queued.
-	var t provider.Track
-	if err := json.Unmarshal([]byte(it.Metadata), &t); err != nil {
+	t, err := queuedTrack(it)
+	if err != nil {
 		return nil, provider.ErrNotFound
 	}
-	t.Ref = provider.TrackRef{Provider: it.Provider, LinkID: it.LinkID.String, ID: it.TrackID}
 	px := 0
 	if req.Params.Size != nil {
 		px = *req.Params.Size
 	}
-	own, ownErr := s.ownArtwork(ctx, t, px)
-	if s.MusicBrainz == nil || (ownErr == nil && !smallerThan(own, px)) {
-		if ownErr != nil {
-			return nil, ownErr
-		}
-		return imageResponse(own), nil
+	img, err := s.Artwork.ForTrack(ctx, t, px)
+	if err != nil {
+		return nil, err
 	}
-	caa, err := s.MusicBrainz.CoverArt(ctx, t, px)
-	switch {
-	case err != nil && ownErr != nil:
-		// The song's own error says more.
-		return nil, ownErr
-	case err != nil:
-		if !errors.Is(err, provider.ErrNotFound) {
-			slog.Debug("cover art archive", "err", err)
-		}
-		return imageResponse(own), nil
-	case ownErr == nil && width(caa) <= width(own):
-		return imageResponse(own), nil
-	}
-	return imageResponse(caa), nil
+	return imageResponse(img), nil
 }
 
-// ownArtwork loads a queued song's artwork from its own service.
-func (s *Server) ownArtwork(ctx context.Context, t provider.Track, px int) (artcache.Image, error) {
-	if t.Artwork == "" || t.Ref.LinkID == "" {
-		return artcache.Image{}, provider.ErrNotFound
-	}
-	sess, err := s.Links.Open(ctx, t.Ref.LinkID)
+// GetQueueItemPalette returns a queued song's artwork colors, working
+// them out if they haven't been.
+func (s *Server) GetQueueItemPalette(ctx context.Context, req GetQueueItemPaletteRequestObject) (GetQueueItemPaletteResponseObject, error) {
+	it, err := s.Queue.Item(ctx, req.RoomId, req.ItemId)
 	if err != nil {
-		return artcache.Image{}, err
+		return nil, err
 	}
-	defer sess.Close()
-	body, ct, err := sess.Artwork(ctx, t.Artwork, px)
+	t, err := queuedTrack(it)
 	if err != nil {
-		return artcache.Image{}, err
+		return nil, provider.ErrNotFound
 	}
-	defer body.Close()
-	if !strings.HasPrefix(ct, "image/") {
-		slog.Warn("artwork isn't an image", "content_type", ct)
-		return artcache.Image{}, provider.ErrNotFound
-	}
-	data, err := io.ReadAll(io.LimitReader(body, maxArtwork+1))
+	p, err := s.Palettes.ForItem(ctx, it, t)
 	if err != nil {
-		return artcache.Image{}, fmt.Errorf("reading artwork: %w: %w", provider.ErrUnavailable, err)
+		return nil, err
 	}
-	if len(data) > maxArtwork {
-		return artcache.Image{}, fmt.Errorf("artwork over %d bytes: %w", maxArtwork, provider.ErrUnavailable)
-	}
-	return artcache.Image{Data: data, ContentType: ct}, nil
+	return GetQueueItemPalette200JSONResponse(toPalette(p)), nil
 }
 
-// maxArtwork is the largest queue artwork we'll read.
-const maxArtwork = 8 << 20
-
-// defaultArtworkWidth is the width wanted when the client doesn't say.
-const defaultArtworkWidth = 600
-
-// smallerThan reports whether img is narrower than px (or the default
-// width). Images of unknown format aren't.
-func smallerThan(img artcache.Image, px int) bool {
-	if px <= 0 {
-		px = defaultArtworkWidth
-	}
-	w := width(img)
-	return w > 0 && w < px
-}
-
-// width is an image's width in pixels, or 0 if it can't be read.
-func width(img artcache.Image) int {
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(img.Data))
-	if err != nil {
-		return 0
-	}
-	return cfg.Width
+// queuedTrack is the provider.Track snapshot taken when it was queued.
+func queuedTrack(it store.QueueItem) (provider.Track, error) {
+	var t provider.Track
+	err := json.Unmarshal([]byte(it.Metadata), &t)
+	t.Ref = provider.TrackRef{Provider: it.Provider, LinkID: it.LinkID.String, ID: it.TrackID}
+	return t, err
 }
 
 func imageResponse(img artcache.Image) artworkResponse {
 	return artworkResponse{body: io.NopCloser(bytes.NewReader(img.Data)), ct: img.ContentType}
 }
 
-// artwork loads an image, refusing anything that isn't one. It takes over
+// linkArtwork loads an image, refusing anything that isn't one. It takes over
 // sess: the response closes it once the image is sent.
-func artwork(ctx context.Context, sess provider.Session, ref provider.ArtworkRef, size *int) (artworkResponse, error) {
+func linkArtwork(ctx context.Context, sess provider.Session, ref provider.ArtworkRef, size *int) (artworkResponse, error) {
 	px := 0
 	if size != nil {
 		px = *size

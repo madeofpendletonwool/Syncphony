@@ -15,6 +15,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
@@ -280,6 +281,22 @@ func toQueueItem(it store.QueueItem) QueueItem {
 	}
 	if it.ViaLinkID.Valid {
 		out.Via = &PlaysVia{Provider: it.ViaProvider.String, LinkId: it.ViaLinkID.String, TrackId: it.ViaTrackID.String}
+	}
+	if it.Palette.Valid {
+		var p palette.Palette
+		if err := json.Unmarshal([]byte(it.Palette.String), &p); err == nil {
+			out.Palette = ptr(toPalette(p))
+		}
+	}
+	return out
+}
+
+// toPalette converts a palette saved on a queue item.
+func toPalette(p palette.Palette) Palette {
+	c := func(c palette.Color) OklchColor { return OklchColor{L: c.L, C: c.C, H: c.H} }
+	out := Palette{Dominant: c(p.Dominant), Vibrant: c(p.Vibrant), Muted: c(p.Muted), Dark: c(p.Dark), Light: c(p.Light)}
+	if p.Accent != nil {
+		out.Accent = &Accent{H: p.Accent.H, C: p.Accent.C}
 	}
 	return out
 }

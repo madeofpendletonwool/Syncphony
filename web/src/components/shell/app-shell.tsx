@@ -2,7 +2,7 @@ import { Outlet, useRouterState } from '@tanstack/react-router'
 import { WifiOff } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
-import { useAlbumAccent } from '@/hooks/use-album-accent'
+import { useAlbumPalette } from '@/hooks/use-album-palette'
 import { easeOutExpo } from '@/lib/motion'
 import { usePlayer } from '@/lib/now-playing'
 import { useOnline } from '@/lib/pwa'
@@ -14,13 +14,13 @@ import { NowPlayingSheet } from './now-playing-sheet'
 
 /**
  * Mobile-first app frame: page content, then a floating dock with the
- * mini-player over the bottom nav. The whole UI takes its accent from the
+ * mini-player over the bottom nav. The whole UI takes its colors from the
  * current song's artwork.
  */
 export function AppShell() {
   const { nowPlaying } = usePlayer()
   const [expanded, setExpanded] = useState(false)
-  useAlbumAccent(nowPlaying?.artworkUrl)
+  useAlbumPalette(nowPlaying)
 
   return (
     <LayoutGroup>

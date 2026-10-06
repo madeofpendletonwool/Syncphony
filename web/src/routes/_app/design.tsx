@@ -15,13 +15,13 @@ export const Route = createFileRoute('/_app/design')({
 })
 
 // A living style guide: tokens, primitives and a demo player that drives the
-// shell (and the album-art accent) without a server.
+// shell (and the album-art palette) without a server.
 function Design() {
   const { nowPlaying } = usePlayer()
 
   return (
     <>
-      <PageHeader title="Design" subtitle="Tokens and primitives. Start the demo to see the accent follow the art." />
+      <PageHeader title="Design" subtitle="Tokens and primitives. Start the demo to see the palette follow the art." />
       <div className="flex flex-col gap-8">
         <Section title="Demo player">
           <div className="flex flex-wrap gap-2">
@@ -33,6 +33,19 @@ function Design() {
               Stop
             </Button>
           </div>
+        </Section>
+
+        <Section title="Palette">
+          <div className="grid grid-cols-5 gap-2 text-center text-caption">
+            {PALETTE.map(([name, bg, fg]) => (
+              <div key={name} className="flex flex-col items-center gap-1.5">
+                <span className={`grid h-12 w-full place-items-center rounded-xl text-headline ${bg} ${fg}`}>Aa</span>
+                {name}
+              </div>
+            ))}
+          </div>
+          <div className="rounded-2xl bg-(--pal-surface) p-4 text-(--pal-on-surface)">A surface tinted by the art.</div>
+          <p className="font-semibold text-(--pal-text)">Accent text, readable on the page.</p>
         </Section>
 
         <Section title="Type">
@@ -120,6 +133,15 @@ const SWATCHES = [
   ['secondary', 'bg-secondary'],
   ['muted', 'bg-muted'],
   ['accent', 'bg-accent'],
+] as const
+
+// Each palette role with the text color that passes AA on it.
+const PALETTE = [
+  ['dominant', 'bg-(--pal-dominant)', 'text-(--pal-on-dominant)'],
+  ['vibrant', 'bg-(--pal-vibrant)', 'text-(--pal-on-vibrant)'],
+  ['muted', 'bg-(--pal-muted)', 'text-(--pal-on-muted)'],
+  ['dark', 'bg-(--pal-dark)', 'text-(--pal-on-dark)'],
+  ['light', 'bg-(--pal-light)', 'text-(--pal-on-light)'],
 ] as const
 
 function Section({ title, children }: { title: string; children: ReactNode }) {

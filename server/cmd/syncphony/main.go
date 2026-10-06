@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/artwork"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/config"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
@@ -22,6 +23,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
 	"github.com/madeofpendletonwool/syncphony/server/internal/match"
 	"github.com/madeofpendletonwool/syncphony/server/internal/musicbrainz"
+	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
 	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
@@ -171,8 +173,14 @@ func run() error {
 
 	roomSvc := rooms.New(db, a.bus)
 	queueSvc := queue.New(db, roomSvc, a.links)
-	if mb != nil {
-		queueSvc.OnAdd = func(ts []provider.Track) { mb.Enqueue(ts...) }
+	art := artwork.New(a.links, mb)
+	palettes := palette.New(db, art)
+	go palettes.Run(ctx)
+	queueSvc.OnAdd = func(ts []provider.Track) {
+		if mb != nil {
+			mb.Enqueue(ts...)
+		}
+		palettes.Enqueue(ts...)
 	}
 	var transcoder transcode.Transcoder
 	if ff := (transcode.FFmpeg{}); ff.Available() {
@@ -187,7 +195,7 @@ func run() error {
 	defer player.Close()
 	go player.Run(ctx)
 	api := &httpapi.Server{
-		Version: version, Auth: accounts, Links: a.links, Lyrics: lyricsSvc, MusicBrainz: mb,
+		Version: version, Auth: accounts, Links: a.links, Lyrics: lyricsSvc, Artwork: art, Palettes: palettes,
 		Rooms: roomSvc, Queue: queueSvc, Playback: player, Bus: a.bus, Presence: presence,
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	}

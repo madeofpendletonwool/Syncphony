@@ -813,6 +813,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/queue/{itemId}/palette": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A queued song's artwork colors
+         * @description The palette `palette` on the queue item will carry, worked out now
+         *     if it isn't yet. 404 if the song has no artwork the server can read
+         *     (an SVG, say); the client can fall back to the image itself.
+         */
+        get: operations["getQueueItemPalette"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/queue/{itemId}/lyrics": {
         parameters: {
             query?: never;
@@ -1418,6 +1443,53 @@ export interface components {
             addedAt: string;
             track: components["schemas"]["QueuedTrack"];
             via?: components["schemas"]["PlaysVia"];
+            palette?: components["schemas"]["Palette"];
+        };
+        /**
+         * @description The colors of a song's artwork, worked out once on the server so
+         *     every phone in the room matches. On a queue item once it's ready
+         *     (usually soon after it's queued); `/rooms/{roomId}/queue/{itemId}/palette`
+         *     works it out on the spot. Every role is set: when the art has
+         *     nothing that fits one, it's derived from the others.
+         */
+        Palette: {
+            /** @description The dominant vivid hue, which tints the app; null for grayscale art. */
+            accent: components["schemas"]["Accent"] | null;
+            dominant: components["schemas"]["OklchColor"];
+            vibrant: components["schemas"]["OklchColor"];
+            muted: components["schemas"]["OklchColor"];
+            dark: components["schemas"]["OklchColor"];
+            light: components["schemas"]["OklchColor"];
+        };
+        Accent: {
+            /**
+             * Format: double
+             * @description Hue, in degrees.
+             */
+            h: number;
+            /**
+             * Format: double
+             * @description Chroma, clamped to read well in both themes.
+             */
+            c: number;
+        };
+        /** @description An OKLCH color, as CSS `oklch(l c h)`. */
+        OklchColor: {
+            /**
+             * Format: double
+             * @description Lightness, 0-1.
+             */
+            l: number;
+            /**
+             * Format: double
+             * @description Chroma, about 0-0.37.
+             */
+            c: number;
+            /**
+             * Format: double
+             * @description Hue, in degrees.
+             */
+            h: number;
         };
         /**
          * @description Where the song plays from instead of its own service, which
@@ -2808,6 +2880,30 @@ export interface operations {
                 };
                 content: {
                     "image/*": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getQueueItemPalette: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The palette */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Palette"];
                 };
             };
             default: components["responses"]["Error"];

@@ -17,10 +17,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/artwork"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
-	"github.com/madeofpendletonwool/syncphony/server/internal/musicbrainz"
+	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
 	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
@@ -39,8 +40,10 @@ type Server struct {
 	Auth    *auth.Service
 	Links   *links.Service
 	Lyrics  *lyrics.Service
-	// MusicBrainz, if set, supplies cover art when a song's own is small or missing.
-	MusicBrainz *musicbrainz.Service
+	// Artwork picks queued songs' covers.
+	Artwork *artwork.Service
+	// Palettes works out queued songs' artwork colors.
+	Palettes *palette.Service
 	// Realtime: room state, the event bus, and who's connected.
 	Rooms    *rooms.Service
 	Queue    *queue.Service

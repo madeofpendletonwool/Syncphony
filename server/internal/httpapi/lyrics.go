@@ -4,7 +4,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
@@ -32,12 +31,10 @@ func (s *Server) GetQueueItemLyrics(ctx context.Context, req GetQueueItemLyricsR
 	if err != nil {
 		return nil, err
 	}
-	// metadata is the provider.Track snapshot taken when the item was queued.
-	var t provider.Track
-	if err := json.Unmarshal([]byte(it.Metadata), &t); err != nil {
+	t, err := queuedTrack(it)
+	if err != nil {
 		slog.Warn("queue item metadata", "item", it.ID, "err", err)
 	}
-	t.Ref = provider.TrackRef{Provider: it.Provider, LinkID: it.LinkID.String, ID: it.TrackID}
 	// Without the link, LRCLIB can still go by the metadata.
 	var sess provider.Session
 	if it.LinkID.Valid {

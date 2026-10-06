@@ -70,10 +70,14 @@ func TestQueueArtworkFromCoverArtArchive(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	// The fake's own artwork is an SVG, which is never too small.
+	// The fake's own artwork is an SVG, which is never too small, and has
+	// no palette: the browser works it out from the image.
 	art := bob.want(http.StatusOK, "GET", "/rooms/"+room.ID+"/queue/"+item+"/artwork?size=400", nil)
 	if ct := art.header.Get("Content-Type"); ct != "image/svg+xml" {
 		t.Fatalf("own artwork: %s", ct)
+	}
+	if r := bob.do("GET", "/rooms/"+room.ID+"/queue/"+item+"/palette", nil); r.status != http.StatusNotFound {
+		t.Fatalf("SVG palette: %d %s", r.status, r.body)
 	}
 
 	// With alice's link gone, the room still sees the cover.
@@ -84,6 +88,19 @@ func TestQueueArtworkFromCoverArtArchive(t *testing.T) {
 		art.header.Get("Content-Security-Policy") == "" {
 		t.Fatalf("cover art archive: %v %v %+v", art.header, err, cfg)
 	}
+	// The cover's colors: black, so no accent and a dark dominant color.
+	var pal httpapi.Palette
+	bob.want(http.StatusOK, "GET", "/rooms/"+room.ID+"/queue/"+item+"/palette", nil).decode(t, &pal)
+	if pal.Accent != nil || pal.Dominant.L > 0.05 || pal.Light.L != 0.92 {
+		t.Fatalf("palette: %+v", pal)
+	}
+	// It's saved with the song, so the queue carries it.
+	var q httpapi.QueueSnapshot
+	bob.want(http.StatusOK, "GET", "/rooms/"+room.ID+"/queue", nil).decode(t, &q)
+	if p := q.Items[0].Palette; p == nil || *p != pal {
+		t.Fatalf("queued palette: %+v", p)
+	}
+
 	// Without a cover in that size, still nothing.
 	if r := bob.do("GET", "/rooms/"+room.ID+"/queue/"+item+"/artwork?size=100", nil); r.status != http.StatusNotFound {
 		t.Fatalf("no small cover: %d", r.status)

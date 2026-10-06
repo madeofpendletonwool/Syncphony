@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-package httpapi
+package artwork_test
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/artcache"
+	"github.com/madeofpendletonwool/syncphony/server/internal/artwork"
 )
 
 func TestSmallerThan(t *testing.T) {
@@ -31,8 +32,8 @@ func TestSmallerThan(t *testing.T) {
 		{img(800), 0, false},
 		{artcache.Image{Data: []byte("<svg/>"), ContentType: "image/svg+xml"}, 2048, false},
 	} {
-		if got := smallerThan(tc.img, tc.px); got != tc.want {
-			t.Errorf("%d px wide, want %d: got %v", width(tc.img), tc.px, got)
+		if got := artwork.SmallerThan(tc.img, tc.px); got != tc.want {
+			t.Errorf("%d px wide, want %d: got %v", artwork.Width(tc.img), tc.px, got)
 		}
 	}
 }

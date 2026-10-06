@@ -14,7 +14,7 @@ import (
 const addQueueItem = `-- name: AddQueueItem :one
 INSERT INTO queue_items (id, room_id, added_by, provider, link_id, track_id, metadata, lane_position, added_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?9, ?9)
-RETURNING id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id
+RETURNING id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id, palette
 `
 
 type AddQueueItemParams struct {
@@ -57,6 +57,7 @@ func (q *Queries) AddQueueItem(ctx context.Context, arg AddQueueItemParams) (Que
 		&i.ViaProvider,
 		&i.ViaLinkID,
 		&i.ViaTrackID,
+		&i.Palette,
 	)
 	return i, err
 }
@@ -94,7 +95,7 @@ func (q *Queries) EndPlay(ctx context.Context, arg EndPlayParams) error {
 }
 
 const getPlaying = `-- name: GetPlaying :one
-SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id FROM queue_items WHERE room_id = ? AND state = 'playing'
+SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id, palette FROM queue_items WHERE room_id = ? AND state = 'playing'
 `
 
 func (q *Queries) GetPlaying(ctx context.Context, roomID string) (QueueItem, error) {
@@ -115,12 +116,13 @@ func (q *Queries) GetPlaying(ctx context.Context, roomID string) (QueueItem, err
 		&i.ViaProvider,
 		&i.ViaLinkID,
 		&i.ViaTrackID,
+		&i.Palette,
 	)
 	return i, err
 }
 
 const getQueueItem = `-- name: GetQueueItem :one
-SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id FROM queue_items WHERE id = ?
+SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id, palette FROM queue_items WHERE id = ?
 `
 
 func (q *Queries) GetQueueItem(ctx context.Context, id string) (QueueItem, error) {
@@ -141,6 +143,7 @@ func (q *Queries) GetQueueItem(ctx context.Context, id string) (QueueItem, error
 		&i.ViaProvider,
 		&i.ViaLinkID,
 		&i.ViaTrackID,
+		&i.Palette,
 	)
 	return i, err
 }
@@ -191,7 +194,7 @@ func (q *Queries) LastPlayedByUser(ctx context.Context, roomID string) ([]LastPl
 }
 
 const listHistory = `-- name: ListHistory :many
-SELECT play_history.id, play_history.room_id, play_history.queue_item_id, play_history.started_at, play_history.ended_at, play_history.end_reason, queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at, queue_items.via_provider, queue_items.via_link_id, queue_items.via_track_id
+SELECT play_history.id, play_history.room_id, play_history.queue_item_id, play_history.started_at, play_history.ended_at, play_history.end_reason, queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at, queue_items.via_provider, queue_items.via_link_id, queue_items.via_track_id, queue_items.palette
 FROM play_history
 JOIN queue_items ON queue_items.id = play_history.queue_item_id
 WHERE play_history.room_id = ?
@@ -239,6 +242,7 @@ func (q *Queries) ListHistory(ctx context.Context, arg ListHistoryParams) ([]Lis
 			&i.QueueItem.ViaProvider,
 			&i.QueueItem.ViaLinkID,
 			&i.QueueItem.ViaTrackID,
+			&i.QueueItem.Palette,
 		); err != nil {
 			return nil, err
 		}
@@ -254,7 +258,7 @@ func (q *Queries) ListHistory(ctx context.Context, arg ListHistoryParams) ([]Lis
 }
 
 const listLane = `-- name: ListLane :many
-SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id FROM queue_items
+SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id, palette FROM queue_items
 WHERE room_id = ? AND added_by = ? AND state = 'queued'
 ORDER BY lane_position, added_at
 `
@@ -289,6 +293,7 @@ func (q *Queries) ListLane(ctx context.Context, arg ListLaneParams) ([]QueueItem
 			&i.ViaProvider,
 			&i.ViaLinkID,
 			&i.ViaTrackID,
+			&i.Palette,
 		); err != nil {
 			return nil, err
 		}
@@ -349,7 +354,7 @@ func (q *Queries) ListPlayTimes(ctx context.Context, arg ListPlayTimesParams) ([
 }
 
 const listPlayed = `-- name: ListPlayed :many
-SELECT play_history.id, play_history.room_id, play_history.queue_item_id, play_history.started_at, play_history.ended_at, play_history.end_reason, queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at, queue_items.via_provider, queue_items.via_link_id, queue_items.via_track_id
+SELECT play_history.id, play_history.room_id, play_history.queue_item_id, play_history.started_at, play_history.ended_at, play_history.end_reason, queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at, queue_items.via_provider, queue_items.via_link_id, queue_items.via_track_id, queue_items.palette
 FROM play_history
 JOIN queue_items ON queue_items.id = play_history.queue_item_id
 WHERE play_history.room_id = ?1
@@ -410,6 +415,7 @@ func (q *Queries) ListPlayed(ctx context.Context, arg ListPlayedParams) ([]ListP
 			&i.QueueItem.ViaProvider,
 			&i.QueueItem.ViaLinkID,
 			&i.QueueItem.ViaTrackID,
+			&i.QueueItem.Palette,
 		); err != nil {
 			return nil, err
 		}
@@ -425,7 +431,7 @@ func (q *Queries) ListPlayed(ctx context.Context, arg ListPlayedParams) ([]ListP
 }
 
 const listPlaysBetween = `-- name: ListPlaysBetween :many
-SELECT play_history.id, play_history.room_id, play_history.queue_item_id, play_history.started_at, play_history.ended_at, play_history.end_reason, queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at, queue_items.via_provider, queue_items.via_link_id, queue_items.via_track_id
+SELECT play_history.id, play_history.room_id, play_history.queue_item_id, play_history.started_at, play_history.ended_at, play_history.end_reason, queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at, queue_items.via_provider, queue_items.via_link_id, queue_items.via_track_id, queue_items.palette
 FROM play_history
 JOIN queue_items ON queue_items.id = play_history.queue_item_id
 WHERE play_history.room_id = ?1
@@ -484,6 +490,7 @@ func (q *Queries) ListPlaysBetween(ctx context.Context, arg ListPlaysBetweenPara
 			&i.QueueItem.ViaProvider,
 			&i.QueueItem.ViaLinkID,
 			&i.QueueItem.ViaTrackID,
+			&i.QueueItem.Palette,
 		); err != nil {
 			return nil, err
 		}
@@ -499,7 +506,7 @@ func (q *Queries) ListPlaysBetween(ctx context.Context, arg ListPlaysBetweenPara
 }
 
 const listUpcoming = `-- name: ListUpcoming :many
-SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id FROM queue_items
+SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at, via_provider, via_link_id, via_track_id, palette FROM queue_items
 WHERE room_id = ? AND state IN ('queued', 'playing')
 ORDER BY added_by, lane_position, added_at
 `
@@ -530,6 +537,7 @@ func (q *Queries) ListUpcoming(ctx context.Context, roomID string) ([]QueueItem,
 			&i.ViaProvider,
 			&i.ViaLinkID,
 			&i.ViaTrackID,
+			&i.Palette,
 		); err != nil {
 			return nil, err
 		}
@@ -693,6 +701,31 @@ func (q *Queries) SetQueueItemVia(ctx context.Context, arg SetQueueItemViaParams
 		arg.ViaTrackID,
 		arg.UpdatedAt,
 		arg.ID,
+	)
+	return err
+}
+
+const setTrackPalette = `-- name: SetTrackPalette :exec
+UPDATE queue_items SET palette = ?1
+WHERE provider = ?2 AND track_id = ?3
+  AND (state IN ('queued', 'playing') OR id = ?4)
+`
+
+type SetTrackPaletteParams struct {
+	Palette  sql.NullString
+	Provider string
+	TrackID  string
+	ItemID   string
+}
+
+// SetTrackPalette saves a song's palette on every waiting or playing item
+// that's that song, and on the given item.
+func (q *Queries) SetTrackPalette(ctx context.Context, arg SetTrackPaletteParams) error {
+	_, err := q.db.ExecContext(ctx, setTrackPalette,
+		arg.Palette,
+		arg.Provider,
+		arg.TrackID,
+		arg.ItemID,
 	)
 	return err
 }
