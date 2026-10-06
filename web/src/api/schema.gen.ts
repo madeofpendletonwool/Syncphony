@@ -560,6 +560,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/links/{id}/playlists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * The playlists of one of your links or a shared one
+         * @description In the service's order. `not_found` if the service has no playlists (its `capabilities.playlists` is false).
+         */
+        get: operations["listPlaylists"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links/{id}/playlists/{playlistId}/tracks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                playlistId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A page of a playlist's tracks, through one of your links or a shared one
+         * @description In playlist order. A page can be short, or even empty, when the playlist holds things that can't be queued (podcast episodes, local files); keep going while there's a `next`.
+         */
+        get: operations["getPlaylistTracks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/links/{id}/artwork": {
         parameters: {
             query?: never;
@@ -1088,6 +1133,28 @@ export interface components {
             provider: string;
             artist: components["schemas"]["ArtistResult"];
             albums: components["schemas"]["AlbumResult"][];
+        };
+        PlaylistResult: {
+            id: string;
+            name: string;
+            /** @description The owner's username on the service. */
+            owner?: string;
+            trackCount?: number;
+            artwork?: string;
+        };
+        PlaylistList: {
+            linkId: string;
+            provider: string;
+            playlists: components["schemas"]["PlaylistResult"][];
+            /** @description Cursor for the next page; absent on the last. */
+            next?: string;
+        };
+        PlaylistTracks: {
+            linkId: string;
+            provider: string;
+            tracks: components["schemas"]["TrackResult"][];
+            /** @description Cursor for the next page; absent on the last. */
+            next?: string;
         };
         AddToQueueRequest: {
             items: components["schemas"]["TrackToQueue"][];
@@ -2145,6 +2212,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArtistDetail"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listPlaylists: {
+        parameters: {
+            query?: {
+                /** @description The previous page's `next`. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of playlists */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getPlaylistTracks: {
+        parameters: {
+            query?: {
+                /** @description The previous page's `next`. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+                playlistId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of tracks */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistTracks"];
                 };
             };
             default: components["responses"]["Error"];

@@ -22,6 +22,7 @@ import { Route as AppAuthedSettingsPeopleRouteImport } from './routes/_app/_auth
 import { Route as AppAuthedSettingsServicesRouteImport } from './routes/_app/_authed/settings.services'
 import { Route as AppAuthedAlbumLinkIdAlbumIdRouteImport } from './routes/_app/_authed/album.$linkId.$albumId'
 import { Route as AppAuthedArtistLinkIdArtistIdRouteImport } from './routes/_app/_authed/artist.$linkId.$artistId'
+import { Route as AppAuthedPlaylistLinkIdPlaylistIdRouteImport } from './routes/_app/_authed/playlist.$linkId.$playlistId'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -89,6 +90,12 @@ const AppAuthedArtistLinkIdArtistIdRoute =
     path: '/artist/$linkId/$artistId',
     getParentRoute: () => AppAuthedRoute,
   } as any)
+const AppAuthedPlaylistLinkIdPlaylistIdRoute =
+  AppAuthedPlaylistLinkIdPlaylistIdRouteImport.update({
+    id: '/playlist/$linkId/$playlistId',
+    path: '/playlist/$linkId/$playlistId',
+    getParentRoute: () => AppAuthedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppAuthedIndexRoute
@@ -102,6 +109,7 @@ export interface FileRoutesByFullPath {
   '/settings/services': typeof AppAuthedSettingsServicesRoute
   '/album/$linkId/$albumId': typeof AppAuthedAlbumLinkIdAlbumIdRoute
   '/artist/$linkId/$artistId': typeof AppAuthedArtistLinkIdArtistIdRoute
+  '/playlist/$linkId/$playlistId': typeof AppAuthedPlaylistLinkIdPlaylistIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppAuthedIndexRoute
@@ -115,6 +123,7 @@ export interface FileRoutesByTo {
   '/settings/services': typeof AppAuthedSettingsServicesRoute
   '/album/$linkId/$albumId': typeof AppAuthedAlbumLinkIdAlbumIdRoute
   '/artist/$linkId/$artistId': typeof AppAuthedArtistLinkIdArtistIdRoute
+  '/playlist/$linkId/$playlistId': typeof AppAuthedPlaylistLinkIdPlaylistIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -131,6 +140,7 @@ export interface FileRoutesById {
   '/_app/_authed/settings/services': typeof AppAuthedSettingsServicesRoute
   '/_app/_authed/album/$linkId/$albumId': typeof AppAuthedAlbumLinkIdAlbumIdRoute
   '/_app/_authed/artist/$linkId/$artistId': typeof AppAuthedArtistLinkIdArtistIdRoute
+  '/_app/_authed/playlist/$linkId/$playlistId': typeof AppAuthedPlaylistLinkIdPlaylistIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -146,6 +156,7 @@ export interface FileRouteTypes {
     | '/settings/services'
     | '/album/$linkId/$albumId'
     | '/artist/$linkId/$artistId'
+    | '/playlist/$linkId/$playlistId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -159,6 +170,7 @@ export interface FileRouteTypes {
     | '/settings/services'
     | '/album/$linkId/$albumId'
     | '/artist/$linkId/$artistId'
+    | '/playlist/$linkId/$playlistId'
   id:
     | '__root__'
     | '/_app'
@@ -174,6 +186,7 @@ export interface FileRouteTypes {
     | '/_app/_authed/settings/services'
     | '/_app/_authed/album/$linkId/$albumId'
     | '/_app/_authed/artist/$linkId/$artistId'
+    | '/_app/_authed/playlist/$linkId/$playlistId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -275,6 +288,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAuthedArtistLinkIdArtistIdRouteImport
       parentRoute: typeof AppAuthedRoute
     }
+    '/_app/_authed/playlist/$linkId/$playlistId': {
+      id: '/_app/_authed/playlist/$linkId/$playlistId'
+      path: '/playlist/$linkId/$playlistId'
+      fullPath: '/playlist/$linkId/$playlistId'
+      preLoaderRoute: typeof AppAuthedPlaylistLinkIdPlaylistIdRouteImport
+      parentRoute: typeof AppAuthedRoute
+    }
   }
 }
 
@@ -287,6 +307,7 @@ interface AppAuthedRouteChildren {
   AppAuthedSettingsServicesRoute: typeof AppAuthedSettingsServicesRoute
   AppAuthedAlbumLinkIdAlbumIdRoute: typeof AppAuthedAlbumLinkIdAlbumIdRoute
   AppAuthedArtistLinkIdArtistIdRoute: typeof AppAuthedArtistLinkIdArtistIdRoute
+  AppAuthedPlaylistLinkIdPlaylistIdRoute: typeof AppAuthedPlaylistLinkIdPlaylistIdRoute
 }
 
 const AppAuthedRouteChildren: AppAuthedRouteChildren = {
@@ -298,6 +319,8 @@ const AppAuthedRouteChildren: AppAuthedRouteChildren = {
   AppAuthedSettingsServicesRoute: AppAuthedSettingsServicesRoute,
   AppAuthedAlbumLinkIdAlbumIdRoute: AppAuthedAlbumLinkIdAlbumIdRoute,
   AppAuthedArtistLinkIdArtistIdRoute: AppAuthedArtistLinkIdArtistIdRoute,
+  AppAuthedPlaylistLinkIdPlaylistIdRoute:
+    AppAuthedPlaylistLinkIdPlaylistIdRoute,
 }
 
 const AppAuthedRouteWithChildren = AppAuthedRoute._addFileChildren(
