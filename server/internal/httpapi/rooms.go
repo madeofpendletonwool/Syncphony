@@ -31,6 +31,9 @@ func (s *Server) CreateRoom(ctx context.Context, req CreateRoomRequestObject) (C
 	if m := req.Body.Matching; m != nil {
 		st.Matching = fromMatching(*m)
 	}
+	if a := req.Body.Autopilot; a != nil {
+		st.Autopilot = fromAutopilot(*a)
+	}
 	var mode string
 	if req.Body.FairnessMode != nil {
 		mode = string(*req.Body.FairnessMode)
@@ -65,6 +68,9 @@ func (s *Server) UpdateRoom(ctx context.Context, req UpdateRoomRequestObject) (U
 	if m := req.Body.Matching; m != nil {
 		u.Matching = ptr(fromMatching(*m))
 	}
+	if a := req.Body.Autopilot; a != nil {
+		u.Autopilot = ptr(fromAutopilot(*a))
+	}
 	r, err := s.Rooms.Update(ctx, sessionFrom(ctx).User.ID, req.RoomId, u)
 	if err != nil {
 		return nil, err
@@ -88,6 +94,7 @@ func toRoom(r store.Room) Room {
 		},
 	}
 	out.Matching = RoomMatching{Fallback: st.Matching.FallbackOn(), Borrow: st.Matching.Borrow}
+	out.Autopilot = RoomAutopilot{On: st.Autopilot.On, Adventure: RoomAutopilotAdventure(st.Autopilot.Adventure)}
 	if out.Fairness.Weights == nil {
 		out.Fairness.Weights = map[string]int{}
 	}
@@ -96,6 +103,10 @@ func toRoom(r store.Room) Room {
 
 func fromMatching(m RoomMatching) rooms.Matching {
 	return rooms.Matching{Fallback: &m.Fallback, Borrow: m.Borrow}
+}
+
+func fromAutopilot(a RoomAutopilot) rooms.Autopilot {
+	return rooms.Autopilot{On: a.On, Adventure: string(a.Adventure)}
 }
 
 func fromFairness(f RoomFairness) rooms.Fairness {

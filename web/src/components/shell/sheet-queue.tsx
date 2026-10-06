@@ -1,9 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, type Ref } from 'react'
 import { Link } from '@tanstack/react-router'
+import { NotThisOne } from '@/components/room/autopilot-badge'
 import { QueueRow } from '@/components/room/queue-row'
 import { RequeueButton } from '@/components/room/requeue-button'
 import { useMe } from '@/lib/auth'
+import { isMine } from '@/lib/autopilot'
 import { historyQuery, type QueueItem } from '@/lib/playback'
 import { queueQuery } from '@/lib/room'
 import { usersQuery } from '@/lib/users'
@@ -54,9 +56,10 @@ export function SheetQueue({
                   roomId={roomId}
                   item={item}
                   user={userById(item.addedBy)}
-                  mine={item.addedBy === me.id}
+                  mine={isMine(item, me.id)}
                   byline
                   leading={<span className="w-5 shrink-0 text-center text-sm text-muted-foreground tabular-nums">{i + 1}</span>}
+                  trailing={item.autopilot && <NotThisOne roomId={roomId} item={item} />}
                 />
               </li>
             ))}

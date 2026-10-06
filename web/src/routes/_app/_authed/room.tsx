@@ -6,6 +6,7 @@ import { DropdownMenu } from 'radix-ui'
 import { useEffect, useState } from 'react'
 import { Artwork } from '@/components/artwork'
 import { PageHeader } from '@/components/page-header'
+import { AutopilotBadge, NotThisOne } from '@/components/room/autopilot-badge'
 import { BigScreenDialog } from '@/components/room/big-screen-dialog'
 import { MyLane } from '@/components/room/my-lane'
 import { QueueRow } from '@/components/room/queue-row'
@@ -24,6 +25,7 @@ import { Slider } from '@/components/ui/slider'
 import { UserAvatar } from '@/components/user-avatar'
 import { usePosition } from '@/hooks/use-position'
 import { useMe } from '@/lib/auth'
+import { isMine } from '@/lib/autopilot'
 import { laneStyle } from '@/lib/lane'
 import { fadeUp, spring, stagger } from '@/lib/motion'
 import { formatDuration, usePlayer, type User } from '@/lib/now-playing'
@@ -82,7 +84,7 @@ function Room() {
   const items = queue.data?.items ?? []
   const byId = new Map(items.map((i) => [i.id, i]))
   const upNext = (queue.data?.upNext ?? []).map((id) => byId.get(id)).filter((i): i is QueueItem => !!i)
-  const mine = items.filter((i) => i.addedBy === me.id && i.state === 'queued').sort((a, b) => a.lanePosition - b.lanePosition)
+  const mine = items.filter((i) => isMine(i, me.id) && i.state === 'queued').sort((a, b) => a.lanePosition - b.lanePosition)
   const before = songsBeforeYours(queue.data?.upNext ?? [], items, me.id)
 
   return (
@@ -127,10 +129,12 @@ function Room() {
                       roomId={room.id}
                       item={item}
                       user={userById(item.addedBy)}
-                      mine={item.addedBy === me.id}
+                      mine={isMine(item, me.id)}
+                      byline={!!item.autopilot}
                       leading={
                         <span className="w-5 shrink-0 text-center text-sm text-muted-foreground tabular-nums">{i + 1}</span>
                       }
+                      trailing={item.autopilot && <NotThisOne roomId={room.id} item={item} />}
                     />
                   </motion.li>
                 ))}
@@ -331,6 +335,7 @@ function NowPlayingCard({ room, waiting }: { room: RoomInfo; waiting: number }) 
                 {np.requester.displayName}
               </Badge>
             )}
+            {np.autopilot && <AutopilotBadge pick={np.autopilot} />}
             <SourceTag provider={np.track.provider} via={np.via} className="py-1" />
           </div>
         </div>
@@ -368,7 +373,9 @@ function NowPlayingCard({ room, waiting }: { room: RoomInfo; waiting: number }) 
 /** Everyone else with songs waiting, and how many. */
 function Lanes({ items, me, userById }: { items: QueueItem[]; me: string; userById: (id: string) => User | undefined }) {
   const counts = new Map<string, number>()
-  for (const i of items) if (i.state === 'queued' && i.addedBy !== me) counts.set(i.addedBy, (counts.get(i.addedBy) ?? 0) + 1)
+  for (const i of items) {
+    if (i.state === 'queued' && !i.autopilot && i.addedBy !== me) counts.set(i.addedBy, (counts.get(i.addedBy) ?? 0) + 1)
+  }
   if (counts.size === 0) return null
   return (
     <motion.section variants={fadeUp}>

@@ -364,6 +364,14 @@ func writeJSONError(w http.ResponseWriter, status int, code, message string) {
 // ptr returns a pointer to v.
 func ptr[T any](v T) *T { return &v }
 
+// nonEmpty returns nil for "".
+func nonEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
 // timePtr returns nil for the zero time.
 func timePtr(t time.Time, valid bool) *time.Time {
 	if !valid {

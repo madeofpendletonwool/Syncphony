@@ -17,6 +17,7 @@ import (
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/artwork"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
+	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
 	"github.com/madeofpendletonwool/syncphony/server/internal/config"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
@@ -200,6 +201,20 @@ func run() error {
 	})
 	defer player.Close()
 	go player.Run(ctx)
+	// Autopilot tops up rooms whose queue runs dry. It follows the same
+	// queue and room changes as the player, after it.
+	pilot := autopilot.New(db, roomSvc, queueSvc, a.links, presence)
+	pilot.Player = player
+	defer pilot.Close()
+	onChange, onUpdate := queueSvc.OnChange, roomSvc.OnUpdate
+	queueSvc.OnChange = func(roomID string) {
+		onChange(roomID)
+		pilot.Kick(roomID)
+	}
+	roomSvc.OnUpdate = func(r store.Room) {
+		onUpdate(r)
+		pilot.RoomUpdated(r)
+	}
 	api := &httpapi.Server{
 		Version: version, Auth: accounts, Links: a.links, Lyrics: lyricsSvc, LinerNotes: notes, Artwork: art, Palettes: palettes,
 		Rooms: roomSvc, Queue: queueSvc, Playback: player, Bus: a.bus, Presence: presence,

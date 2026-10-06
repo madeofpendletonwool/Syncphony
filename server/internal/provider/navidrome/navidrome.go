@@ -111,6 +111,9 @@ func (p *Provider) Info() provider.Info {
 			ISRC: true,
 			// It's the owner's own server; they decide who listens.
 			Shareable: true,
+			// From Navidrome's metadata agents (Last.fm),
+			// when the server has them set up. Random songs need nothing.
+			Recommendations: true,
 		},
 	}
 }

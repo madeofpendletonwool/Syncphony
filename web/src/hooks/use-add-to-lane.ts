@@ -3,6 +3,7 @@ import { useCallback, useMemo } from 'react'
 import { api } from '@/api/client'
 import { errorMessage, unwrap } from '@/api/errors'
 import { useMe } from '@/lib/auth'
+import { isMine } from '@/lib/autopilot'
 import { trackKey, type TrackResult } from '@/lib/browse'
 import { tap } from '@/lib/haptics'
 import { queueQuery, useCurrentRoom, type QueueSnapshot } from '@/lib/room'
@@ -42,7 +43,7 @@ export function useAddToLane() {
     () =>
       new Set(
         queue.data?.items
-          .filter((i) => i.addedBy === me.id && (i.state === 'queued' || i.state === 'playing'))
+          .filter((i) => isMine(i, me.id) && (i.state === 'queued' || i.state === 'playing'))
           .map((i) => trackKey(i.track)),
       ),
     [queue.data, me.id],
@@ -105,7 +106,7 @@ export function useAddToLane() {
 export function lastAdded(snap: QueueSnapshot, userId: string, n: number) {
   if (n <= 0) return []
   return snap.items
-    .filter((i) => i.addedBy === userId && i.state === 'queued')
+    .filter((i) => isMine(i, userId) && i.state === 'queued')
     .sort((a, b) => a.lanePosition - b.lanePosition)
     .slice(-n)
     .map((i) => i.id)

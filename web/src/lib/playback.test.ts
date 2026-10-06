@@ -20,6 +20,10 @@ describe('songsBeforeYours', () => {
   it('is undefined when you have nothing waiting', () => {
     expect(songsBeforeYours(['a', 'b'], items, 'zed')).toBeUndefined()
   })
+  it("doesn't count autopilot's songs as yours", () => {
+    const auto = { ...item('e', 'zed'), autopilot: { seedTitle: 'Heroes' } }
+    expect(songsBeforeYours(['e'], [...items, auto], 'zed')).toBeUndefined()
+  })
 })
 
 describe('permissions', () => {
@@ -44,6 +48,11 @@ describe('permissions', () => {
     expect(skipMode(room('owner'), 'bob', bobs)).toBe('skip')
     expect(skipMode(room('vote'), 'bob', bobs)).toBe('skip')
     expect(skipMode(room('vote'), 'o', bobs)).toBe('skip')
+  })
+  it("leaves autopilot's songs to the room, even for whose taste seeded them", () => {
+    const auto = { addedBy: 'bob', autopilot: {} }
+    expect(skipMode(room('vote'), 'bob', auto)).toBe('vote')
+    expect(skipMode(room('everyone'), 'bob', auto)).toBe('skip')
   })
 })
 
@@ -75,6 +84,12 @@ describe('toNowPlaying', () => {
     const np = toNowPlaying('r', playback({ item: item('a', 'ann'), state: 'paused' }), [ann])
     expect(np).toMatchObject({ paused: true, positionMs: 10_000, at: Date.parse('2026-10-05T12:00:00Z'), requester: ann })
     expect(np?.artworkUrl).toContain('/api/rooms/r/queue/a/artwork')
+  })
+  it("credits autopilot's songs to autopilot, not the seed's member", () => {
+    const ann = { id: 'ann', displayName: 'Ann', color: '#7c3aed' }
+    const np = toNowPlaying('r', playback({ item: { ...item('a', 'ann'), autopilot: { seedTitle: 'Heroes' } }, state: 'playing' }), [ann])
+    expect(np?.requester).toBeUndefined()
+    expect(np?.autopilot).toEqual({ seedTitle: 'Heroes' })
   })
 })
 

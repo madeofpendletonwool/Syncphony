@@ -125,6 +125,10 @@ func NewID() string { return uuid.NewV7().String() }
 // microsecond.
 func Now() time.Time { return time.Now().UTC().Truncate(time.Microsecond) }
 
+// IsAutopilot reports whether autopilot queued the item, rather than a
+// member. AddedBy is then whose taste seeded it, not who chose it.
+func (it QueueItem) IsAutopilot() bool { return it.Autopilot.Valid }
+
 // IsNotFound reports whether err means a query matched no rows.
 func IsNotFound(err error) bool { return errors.Is(err, sql.ErrNoRows) }
 

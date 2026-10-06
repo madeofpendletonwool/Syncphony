@@ -29,6 +29,7 @@ var (
 	_ provider.Session        = (*session)(nil)
 	_ provider.PlaylistLister = (*session)(nil)
 	_ provider.Lyricist       = (*session)(nil)
+	_ provider.Recommender    = (*session)(nil)
 	_ provider.Streamer       = (*streamSession)(nil)
 	_ provider.Remote         = (*remoteSession)(nil)
 )

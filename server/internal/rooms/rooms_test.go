@@ -135,8 +135,20 @@ func TestUpdateSettings(t *testing.T) {
 	if types[0] != realtime.RoomUpdated || types[1] != realtime.QueueUpdated {
 		t.Errorf("published %v", types)
 	}
+	// Autopilot defaults to similar, and comes through a round trip.
+	if a := rooms.ParseSettings(r.Settings).Autopilot; a.On || a.Adventure != rooms.AdventureSimilar {
+		t.Errorf("default autopilot: %+v", a)
+	}
+	r, err = s.Update(ctx, owner.ID, r.ID, rooms.Update{Autopilot: &rooms.Autopilot{On: true, Adventure: rooms.AdventureDiscovery}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := rooms.ParseSettings(r.Settings).Autopilot; !a.On || a.Adventure != rooms.AdventureDiscovery {
+		t.Errorf("autopilot: %+v", a)
+	}
 	var invalid *rooms.InvalidInputError
 	for _, u := range []rooms.Update{
+		{Autopilot: &rooms.Autopilot{On: true, Adventure: "wild"}},
 		{Permissions: rooms.Permissions{Seek: rooms.Vote}},
 		{Permissions: rooms.Permissions{Skip: "anyone"}},
 		{SkipVotePercent: new(100)},

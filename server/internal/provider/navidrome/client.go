@@ -200,6 +200,15 @@ type response struct {
 	Artist        *artist        `json:"artist"`
 	LyricsList    *lyricsList    `json:"lyricsList"`
 	Lyrics        *legacyLyrics  `json:"lyrics"`
+	SimilarSongs  *songList      `json:"similarSongs"`
+	SimilarSongs2 *songList      `json:"similarSongs2"`
+	TopSongs      *songList      `json:"topSongs"`
+	RandomSongs   *songList      `json:"randomSongs"`
+}
+
+// songList is the shape of the methods that return a list of songs.
+type songList struct {
+	Song []song `json:"song"`
 }
 
 type apiError struct {

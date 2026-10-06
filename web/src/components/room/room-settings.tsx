@@ -58,6 +58,7 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
                 fairnessMode: body.fairnessMode ?? r.fairnessMode,
                 fairness: body.fairness ?? r.fairness,
                 matching: body.matching ?? r.matching,
+                autopilot: body.autopilot ?? r.autopilot,
               }
             : r,
         ),
@@ -200,6 +201,46 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
                 {room.fairnessMode === 'round_robin' && (
                   <Weights weights={room.fairness.weights} onChange={(weights) => tune({ weights })} />
                 )}
+
+                <SectionTitle hint="When the queue runs dry, keep the music going with songs like the ones the room has played">
+                  Autopilot
+                </SectionTitle>
+                <Toggle
+                  label="Autopilot DJ"
+                  hint="Takes turns drawing on everyone's songs. Anything someone adds plays first"
+                  checked={room.autopilot.on}
+                  onChange={(on) => update.mutate({ autopilot: { ...room.autopilot, on } })}
+                />
+                <AnimatePresence initial={false}>
+                  {room.autopilot.on && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.25, ease: easeOutExpo }}
+                      className="-mt-2 overflow-hidden"
+                    >
+                      <Setting
+                        label="How adventurous"
+                        hint={
+                          room.autopilot.adventure === 'discovery'
+                            ? 'Other artists, further afield'
+                            : 'Close to what the room has played, the same artists included'
+                        }
+                      >
+                        <ToggleGroup
+                          type="single"
+                          value={room.autopilot.adventure}
+                          onValueChange={(v) => v && update.mutate({ autopilot: { ...room.autopilot, adventure: v as Room['autopilot']['adventure'] } })}
+                          aria-label="How adventurous autopilot is"
+                        >
+                          <ToggleGroupItem value="similar">Similar</ToggleGroupItem>
+                          <ToggleGroupItem value="discovery">Discovery</ToggleGroupItem>
+                        </ToggleGroup>
+                      </Setting>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 <SectionTitle hint="Uses the services of the people in the room, and shared ones">Other services</SectionTitle>
                 <Toggle

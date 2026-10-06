@@ -2,6 +2,7 @@ import { queryOptions } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { unwrap } from '@/api/errors'
 import type { components } from '@/api/schema.gen'
+import { isMine } from './autopilot'
 import { toLocalTime } from './clock'
 import type { NowPlaying } from './now-playing'
 import type { Room } from './room'
@@ -53,10 +54,10 @@ export function can(room: Pick<Room, 'permissions' | 'ownerId'>, userId: string,
 
 /**
  * How userId can skip item: outright, by voting, or not at all. Whoever
- * queued a song can always skip it.
+ * queued a song can always skip it; autopilot's songs are nobody's.
  */
-export function skipMode(room: Pick<Room, 'permissions' | 'ownerId'>, userId: string, item: Pick<QueueItem, 'addedBy'>) {
-  if (item.addedBy === userId || can(room, userId, 'skip')) return 'skip'
+export function skipMode(room: Pick<Room, 'permissions' | 'ownerId'>, userId: string, item: Pick<QueueItem, 'addedBy' | 'autopilot'>) {
+  if (isMine(item, userId) || can(room, userId, 'skip')) return 'skip'
   return room.permissions.skip === 'vote' ? 'vote' : undefined
 }
 
@@ -65,7 +66,7 @@ export function skipMode(room: Pick<Room, 'permissions' | 'ownerId'>, userId: st
  * Undefined if you have nothing waiting.
  */
 export function songsBeforeYours(upNext: string[], items: QueueItem[], userId: string) {
-  const mine = new Set(items.filter((i) => i.addedBy === userId).map((i) => i.id))
+  const mine = new Set(items.filter((i) => isMine(i, userId)).map((i) => i.id))
   const i = upNext.findIndex((id) => mine.has(id))
   return i < 0 ? undefined : i
 }
@@ -80,7 +81,8 @@ export function toNowPlaying(roomId: string, p: Playback, users: NowPlaying['req
     via: p.item.via?.provider,
     artworkUrl: queueArtworkUrl(roomId, p.item, 600),
     palette: p.item.palette,
-    requester: users?.find((u) => u?.id === p.item?.addedBy),
+    requester: p.item.autopilot ? undefined : users?.find((u) => u?.id === p.item?.addedBy),
+    autopilot: p.item.autopilot,
     paused: p.state !== 'playing',
     positionMs: p.positionMs,
     at: toLocalTime(Date.parse(p.at)),

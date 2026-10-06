@@ -23,6 +23,8 @@ export type NowPlaying = {
   palette?: Palette
   /** Who queued it. Their lane color tints the player. */
   requester?: Pick<User, 'id' | 'displayName' | 'color' | 'avatar'>
+  /** Set when autopilot chose it; there's no requester then. */
+  autopilot?: components['schemas']['AutopilotPick']
   paused: boolean
   /** Position at `at` (ms since epoch); the UI extrapolates while playing. */
   positionMs: number

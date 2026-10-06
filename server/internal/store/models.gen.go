@@ -102,6 +102,7 @@ type QueueItem struct {
 	ViaLinkID    sql.NullString
 	ViaTrackID   sql.NullString
 	Palette      sql.NullString
+	Autopilot    sql.NullString
 }
 
 type Room struct {

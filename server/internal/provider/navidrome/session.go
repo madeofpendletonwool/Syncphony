@@ -26,9 +26,10 @@ type session struct {
 }
 
 var (
-	_ provider.Session  = (*session)(nil)
-	_ provider.Streamer = (*session)(nil)
-	_ provider.Lyricist = (*session)(nil)
+	_ provider.Session     = (*session)(nil)
+	_ provider.Streamer    = (*session)(nil)
+	_ provider.Lyricist    = (*session)(nil)
+	_ provider.Recommender = (*session)(nil)
 )
 
 const (

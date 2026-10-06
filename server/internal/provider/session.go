@@ -13,7 +13,7 @@ import (
 // be safe for concurrent use.
 //
 // Optional features are separate interfaces (Streamer, Remote,
-// PlaylistLister, Lyricist), discovered with a type assertion and declared in
+// PlaylistLister, Lyricist, Recommender), discovered with a type assertion and declared in
 // Capabilities. PlayChecker is optional too, but needs no capability: the
 // core only uses it when it's there.
 type Session interface {
@@ -120,6 +120,28 @@ type PlaylistLister interface {
 // Lyricist is implemented by sessions of providers with the Lyrics capability.
 type Lyricist interface {
 	Lyrics(ctx context.Context, trackID string) (Lyrics, error)
+}
+
+// Recommender is implemented by sessions of providers with the
+// Recommendations capability. Autopilot uses it to keep a room's music
+// going. Every song it returns is in this account's library, so it plays.
+//
+// Services often recommend from data they fetch elsewhere (Navidrome asks
+// Last.fm), so an empty result is common and isn't an error. A track or
+// artist ID that doesn't exist is ErrNotFound.
+type Recommender interface {
+	// SimilarToTrack returns songs like a track, most similar first. They
+	// may include the track's own artist, but not the track.
+	SimilarToTrack(ctx context.Context, trackID string, limit int) ([]Track, error)
+	// SimilarToArtist returns songs by artists like an artist, most
+	// similar first.
+	SimilarToArtist(ctx context.Context, artistID string, limit int) ([]Track, error)
+	// TopTracks returns an artist's most popular songs, most popular first.
+	// It goes by name, since that's what popularity data is keyed by.
+	TopTracks(ctx context.Context, artist string, limit int) ([]Track, error)
+	// RandomTracks returns songs picked at random, for when nothing else
+	// turns anything up.
+	RandomTracks(ctx context.Context, limit int) ([]Track, error)
 }
 
 // PlayChecker is implemented by sessions that can tell ahead of time that a

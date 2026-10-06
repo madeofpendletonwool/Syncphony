@@ -2613,7 +2613,9 @@ components:
           type: string
         addedBy:
           type: string
-          description: User ID.
+          description: |
+            User ID. For an autopilot song, whose taste seeded it: the song
+            isn't theirs, and isn't in their lane.
         state:
           type: string
           enum: [queued, playing, played, skipped, removed]
@@ -2629,6 +2631,23 @@ components:
           $ref: "#/components/schemas/PlaysVia"
         palette:
           $ref: "#/components/schemas/Palette"
+        autopilot:
+          $ref: "#/components/schemas/AutopilotPick"
+
+    AutopilotPick:
+      type: object
+      description: |
+        Set when autopilot queued the song, because the queue ran dry.
+        Label it "Autopilot", not as anyone's. It plays after every
+        member's song, takes nobody's turn, and anyone may remove it.
+      properties:
+        seedItemId:
+          type: string
+          description: The item whose song it's like. Absent for a song picked at random.
+        seedTitle:
+          type: string
+        seedArtist:
+          type: string
 
     Palette:
       type: object
@@ -3095,9 +3114,28 @@ components:
             Anyone may queue a song the room played again, even if it's only
             on someone else's service.
 
+    RoomAutopilot:
+      type: object
+      description: |
+        When the queue runs dry, autopilot adds songs like the ones the
+        room has been playing, taking seeds from each member's songs in
+        turn. It only plays while the room has a speaker.
+      required: [on, adventure]
+      properties:
+        on:
+          type: boolean
+          default: false
+        adventure:
+          type: string
+          enum: [similar, discovery]
+          default: similar
+          description: |
+            `similar` stays close to the room's songs, their artists
+            included. `discovery` plays other artists, further afield.
+
     Room:
       type: object
-      required: [id, name, ownerId, fairnessMode, fairness, matching, permissions, skipVotePercent, createdAt]
+      required: [id, name, ownerId, fairnessMode, fairness, matching, autopilot, permissions, skipVotePercent, createdAt]
       properties:
         id:
           type: string
@@ -3111,6 +3149,8 @@ components:
           $ref: "#/components/schemas/RoomFairness"
         matching:
           $ref: "#/components/schemas/RoomMatching"
+        autopilot:
+          $ref: "#/components/schemas/RoomAutopilot"
         permissions:
           $ref: "#/components/schemas/RoomPermissions"
         skipVotePercent:
@@ -3133,6 +3173,8 @@ components:
           $ref: "#/components/schemas/RoomFairness"
         matching:
           $ref: "#/components/schemas/RoomMatching"
+        autopilot:
+          $ref: "#/components/schemas/RoomAutopilot"
         permissions:
           $ref: "#/components/schemas/RoomPermissionsChange"
         skipVotePercent:
@@ -3151,6 +3193,8 @@ components:
           $ref: "#/components/schemas/RoomFairness"
         matching:
           $ref: "#/components/schemas/RoomMatching"
+        autopilot:
+          $ref: "#/components/schemas/RoomAutopilot"
         permissions:
           $ref: "#/components/schemas/RoomPermissionsChange"
         skipVotePercent:

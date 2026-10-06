@@ -1,13 +1,14 @@
 -- name: AddQueueItem :one
-INSERT INTO queue_items (id, room_id, added_by, provider, link_id, track_id, metadata, lane_position, added_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, sqlc.arg(now), sqlc.arg(now))
+INSERT INTO queue_items (id, room_id, added_by, provider, link_id, track_id, metadata, lane_position, autopilot, added_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, sqlc.arg(now), sqlc.arg(now))
 RETURNING *;
 
 -- NextLanePosition is where a new item goes at the end of a user's lane.
+-- Autopilot items aren't in anyone's lane.
 -- name: NextLanePosition :one
 SELECT CAST(coalesce(max(lane_position), 0) + 1024 AS INTEGER)
 FROM queue_items
-WHERE room_id = ? AND added_by = ? AND state = 'queued';
+WHERE room_id = ? AND added_by = ? AND state = 'queued' AND autopilot IS NULL;
 
 -- name: GetQueueItem :one
 SELECT * FROM queue_items WHERE id = ?;
@@ -47,22 +48,24 @@ LIMIT ?;
 -- ListLane returns one user's queued items in a room, in lane order.
 -- name: ListLane :many
 SELECT * FROM queue_items
-WHERE room_id = ? AND added_by = ? AND state = 'queued'
+WHERE room_id = ? AND added_by = ? AND state = 'queued' AND autopilot IS NULL
 ORDER BY lane_position, added_at;
 
 -- LastPlayedByUser is when each user's most recent song started in a room,
 -- for the fairness engine. It selects the column itself, not max(), so the
--- driver still knows it's a timestamp.
+-- driver still knows it's a timestamp. Autopilot songs aren't anyone's turn.
 -- name: LastPlayedByUser :many
 SELECT queue_items.added_by AS user_id, play_history.started_at
 FROM play_history
 JOIN queue_items ON queue_items.id = play_history.queue_item_id
 WHERE play_history.room_id = sqlc.arg(room_id)
+  AND queue_items.autopilot IS NULL
   AND NOT EXISTS (
     SELECT 1 FROM play_history AS later
     JOIN queue_items AS later_item ON later_item.id = later.queue_item_id
     WHERE later.room_id = play_history.room_id
       AND later_item.added_by = queue_items.added_by
+      AND later_item.autopilot IS NULL
       AND later.started_at > play_history.started_at
   );
 
@@ -72,9 +75,10 @@ WHERE play_history.room_id = sqlc.arg(room_id)
 UPDATE play_history SET ended_at = ?, end_reason = ? WHERE room_id = ? AND ended_at IS NULL;
 
 -- RecentPlayers is who queued the songs that most recently started in a
--- room, newest first, for fairness rules that look back a few songs.
+-- room, newest first, for fairness rules that look back a few songs. An
+-- autopilot song is nobody's: ''.
 -- name: RecentPlayers :many
-SELECT queue_items.added_by
+SELECT CAST(CASE WHEN queue_items.autopilot IS NULL THEN queue_items.added_by ELSE '' END AS TEXT) AS added_by
 FROM play_history
 JOIN queue_items ON queue_items.id = play_history.queue_item_id
 WHERE play_history.room_id = ?
@@ -102,7 +106,8 @@ WHERE queue_items.room_id = sqlc.arg(room_id)
 
 -- ListPlayed returns a room's finished plays (not the one in progress)
 -- that started before a time, newest first, optionally only one user's
--- songs. Pages go back by passing the last row's started_at.
+-- songs (autopilot songs are nobody's). Pages go back by passing the last
+-- row's started_at.
 -- name: ListPlayed :many
 SELECT sqlc.embed(play_history), sqlc.embed(queue_items)
 FROM play_history
@@ -110,7 +115,7 @@ JOIN queue_items ON queue_items.id = play_history.queue_item_id
 WHERE play_history.room_id = sqlc.arg(room_id)
   AND play_history.ended_at IS NOT NULL
   AND play_history.started_at < sqlc.arg(before)
-  AND (CAST(sqlc.arg(user_id) AS TEXT) = '' OR queue_items.added_by = sqlc.arg(user_id))
+  AND (CAST(sqlc.arg(user_id) AS TEXT) = '' OR (queue_items.added_by = sqlc.arg(user_id) AND queue_items.autopilot IS NULL))
 ORDER BY play_history.started_at DESC, play_history.id DESC
 LIMIT sqlc.arg(limit);
 
@@ -127,9 +132,11 @@ ORDER BY play_history.started_at, play_history.id
 LIMIT sqlc.arg(limit);
 
 -- ListPlayTimes returns when each of a room's finished plays started and
--- ended, and whose song it was, oldest first, to find sessions.
+-- ended, and whose song it was ('' for autopilot), oldest first, to find
+-- sessions.
 -- name: ListPlayTimes :many
-SELECT play_history.started_at, play_history.ended_at, queue_items.added_by
+SELECT play_history.started_at, play_history.ended_at,
+  CAST(CASE WHEN queue_items.autopilot IS NULL THEN queue_items.added_by ELSE '' END AS TEXT) AS added_by
 FROM play_history
 JOIN queue_items ON queue_items.id = play_history.queue_item_id
 WHERE play_history.room_id = ? AND play_history.ended_at IS NOT NULL
@@ -146,3 +153,12 @@ UPDATE queue_items SET via_provider = ?, via_link_id = ?, via_track_id = ?, upda
 UPDATE queue_items SET palette = sqlc.arg(palette)
 WHERE provider = sqlc.arg(provider) AND track_id = sqlc.arg(track_id)
   AND (state IN ('queued', 'playing') OR id = sqlc.arg(item_id));
+
+-- ListAutopilot returns a room's most recent autopilot items in any state,
+-- newest first: who autopilot last chose songs for, and which songs the
+-- room skipped or removed.
+-- name: ListAutopilot :many
+SELECT * FROM queue_items
+WHERE room_id = ? AND autopilot IS NOT NULL
+ORDER BY added_at DESC, id DESC
+LIMIT ?;
