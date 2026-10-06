@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { VibeSuggestions } from '@/components/vibe-suggestions'
 import { useAddToLane } from '@/hooks/use-add-to-lane'
 import { useMe } from '@/lib/auth'
 import { interleave, playlistsQuery, searchQuery, trackKey, type SearchGroup } from '@/lib/browse'
@@ -121,7 +122,10 @@ function Search() {
       {links.data && links.data.length === 0 ? (
         <NoLinks />
       ) : !q ? (
-        links.data && <Browse links={links.data} />
+        <>
+          <VibeSuggestions className="mt-6" />
+          {links.data && <Browse links={links.data} />}
+        </>
       ) : results.isPending ? (
         <ResultsSkeleton />
       ) : results.isError ? (

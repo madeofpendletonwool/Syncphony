@@ -38,6 +38,9 @@ type Options struct {
 	Link     provider.LinkMethod
 	// Private makes links unshareable, like a personal subscription.
 	Private bool
+	// NoRecommendations leaves out the Recommendations capability, as
+	// Spotify's: the service only searches.
+	NoRecommendations bool
 	// Pair makes an OAuth2 linker pair a device first, as Spotify's does.
 	// LinkDevice linkers always pair.
 	Pair bool
@@ -99,7 +102,7 @@ func (p *Provider) Info() provider.Info {
 			Playlists:       true,
 			Artwork:         true,
 			Lyrics:          true,
-			Recommendations: true,
+			Recommendations: !p.opts.NoRecommendations,
 			ISRC:            true,
 			Shareable:       !p.opts.Private,
 		},

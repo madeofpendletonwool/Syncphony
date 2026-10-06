@@ -40,6 +40,8 @@ var guestOps = map[string]bool{
 	"GetPlaylistTracks": true,
 	"GetLinkArtwork":    true,
 	"GetTrackLyrics":    true,
+	// Suggestions come from the links the guest can add from.
+	"GetSuggestions": true,
 	// The room.
 	"GetQueue":               true,
 	"AddToQueue":             true,

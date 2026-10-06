@@ -1249,6 +1249,54 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /rooms/{roomId}/suggestions:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: getSuggestions
+      summary: Songs to keep the room's vibe going
+      description: |
+        Songs like the ones the room has played through and has queued or
+        playing now, from links you can add from. `mine` is like your own
+        songs; `group` is like everyone's, members taking turns. Songs
+        waiting, playing or recently played aren't suggested, nor are
+        autopilot's.
+        Services that recommend (Navidrome) give similar songs; ones that
+        only search (Spotify) give more by the seed's artist. The list is
+        empty when the room has nothing to go on yet.
+        A list is reused for a couple of minutes while the queue doesn't
+        change; pass `refresh` for a new shuffle.
+      tags: [browse]
+      parameters:
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [mine, group]
+            default: mine
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: refresh
+          in: query
+          description: Build a new list instead of reusing the last one.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Suggestions, best first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Suggestions"
+        default:
+          $ref: "#/components/responses/Error"
+
   /rooms/{roomId}/queue/{itemId}:
     parameters:
       - $ref: "#/components/parameters/RoomId"
@@ -2883,6 +2931,44 @@ components:
             $ref: "#/components/schemas/ArtistResult"
         error:
           $ref: "#/components/schemas/Error"
+
+    Suggestions:
+      type: object
+      required: [scope, items]
+      properties:
+        scope:
+          type: string
+          enum: [mine, group]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Suggestion"
+
+    Suggestion:
+      type: object
+      description: A song to queue, and the room's song it's like.
+      required: [track, because]
+      properties:
+        track:
+          $ref: "#/components/schemas/TrackResult"
+        because:
+          $ref: "#/components/schemas/SuggestionSeed"
+
+    SuggestionSeed:
+      type: object
+      description: The song a suggestion is like.
+      required: [itemId, title, userId]
+      properties:
+        itemId:
+          type: string
+          description: The queue item, playing, waiting or played.
+        title:
+          type: string
+        artist:
+          type: string
+        userId:
+          type: string
+          description: Who queued it.
 
     SearchResults:
       type: object

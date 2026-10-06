@@ -18,10 +18,12 @@ type Props = {
   number?: number
   /** Hide the album name (on the album's own page). */
   hideAlbum?: boolean
+  /** Shown after the artist instead of the album, like why it's suggested. */
+  note?: string
 }
 
 /** A song in a list, with its one-tap add. */
-export function TrackRow({ track, status, onAdd, providerIcon, number, hideAlbum }: Props) {
+export function TrackRow({ track, status, onAdd, providerIcon, number, hideAlbum, note }: Props) {
   const albumId = track.album?.id
   return (
     <motion.li variants={fadeUp} className="flex items-center gap-3 rounded-2xl py-1.5 pr-1">
@@ -43,7 +45,8 @@ export function TrackRow({ track, status, onAdd, providerIcon, number, hideAlbum
           {providerIcon && <ProviderIcon icon={providerIcon} className="size-4 rounded-[0.3rem] [&_svg]:size-2.5" />}
           <span className="truncate">
             {artistNames(track.artists)}
-            {!hideAlbum && track.album && (
+            {note && ` · ${note}`}
+            {!note && !hideAlbum && track.album && (
               <>
                 {' · '}
                 {albumId ? (

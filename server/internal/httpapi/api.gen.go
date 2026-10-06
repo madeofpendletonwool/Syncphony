@@ -552,6 +552,24 @@ func (e SkipPermission) Valid() bool {
 	}
 }
 
+// Defines values for SuggestionsScope.
+const (
+	SuggestionsScopeGroup SuggestionsScope = "group"
+	SuggestionsScopeMine  SuggestionsScope = "mine"
+)
+
+// Valid indicates whether the value is a known member of the SuggestionsScope enum.
+func (e SuggestionsScope) Valid() bool {
+	switch e {
+	case SuggestionsScopeGroup:
+		return true
+	case SuggestionsScopeMine:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListLinksParamsInclude.
 const (
 	Shared ListLinksParamsInclude = "shared"
@@ -561,6 +579,24 @@ const (
 func (e ListLinksParamsInclude) Valid() bool {
 	switch e {
 	case Shared:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetSuggestionsParamsScope.
+const (
+	GetSuggestionsParamsScopeGroup GetSuggestionsParamsScope = "group"
+	GetSuggestionsParamsScopeMine  GetSuggestionsParamsScope = "mine"
+)
+
+// Valid indicates whether the value is a known member of the GetSuggestionsParamsScope enum.
+func (e GetSuggestionsParamsScope) Valid() bool {
+	switch e {
+	case GetSuggestionsParamsScopeGroup:
+		return true
+	case GetSuggestionsParamsScopeMine:
 		return true
 	default:
 		return false
@@ -1755,6 +1791,36 @@ type SongOfTheNight struct {
 	Item   QueueItem `json:"item"`
 }
 
+// Suggestion A song to queue, and the room's song it's like.
+type Suggestion struct {
+	// Because The song a suggestion is like.
+	Because SuggestionSeed `json:"because"`
+
+	// Track A track you can queue with `linkId` and `trackId`.
+	Track TrackResult `json:"track"`
+}
+
+// SuggestionSeed The song a suggestion is like.
+type SuggestionSeed struct {
+	Artist *string `json:"artist,omitempty"`
+
+	// ItemId The queue item, playing, waiting or played.
+	ItemId string `json:"itemId"`
+	Title  string `json:"title"`
+
+	// UserId Who queued it.
+	UserId string `json:"userId"`
+}
+
+// Suggestions defines model for Suggestions.
+type Suggestions struct {
+	Items []Suggestion     `json:"items"`
+	Scope SuggestionsScope `json:"scope"`
+}
+
+// SuggestionsScope defines model for Suggestions.Scope.
+type SuggestionsScope string
+
 // TrackCount A song and how many times it played to the end. `item` is its latest play.
 type TrackCount struct {
 	Item  QueueItem `json:"item"`
@@ -1971,6 +2037,18 @@ type StreamQueueItemParams struct {
 	Start *int64  `form:"start,omitempty" json:"start,omitempty"`
 	Range *string `json:"Range,omitempty"`
 }
+
+// GetSuggestionsParams defines parameters for GetSuggestions.
+type GetSuggestionsParams struct {
+	Scope *GetSuggestionsParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
+	Limit *int                       `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Refresh Build a new list instead of reusing the last one.
+	Refresh *bool `form:"refresh,omitempty" json:"refresh,omitempty"`
+}
+
+// GetSuggestionsParamsScope defines parameters for GetSuggestions.
+type GetSuggestionsParamsScope string
 
 // SearchParams defines parameters for Search.
 type SearchParams struct {
@@ -2336,6 +2414,9 @@ type ServerInterface interface {
 	// StreamQueueItem A song's audio
 	// (GET /rooms/{roomId}/stream/{itemId})
 	StreamQueueItem(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params StreamQueueItemParams)
+	// GetSuggestions Songs to keep the room's vibe going
+	// (GET /rooms/{roomId}/suggestions)
+	GetSuggestions(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetSuggestionsParams)
 	// Search Search every service you've linked, and shared ones
 	// (GET /search)
 	Search(w http.ResponseWriter, r *http.Request, params SearchParams)
@@ -4730,6 +4811,74 @@ func (siw *ServerInterfaceWrapper) StreamQueueItem(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetSuggestions operation middleware
+func (siw *ServerInterfaceWrapper) GetSuggestions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSuggestionsParams
+
+	// ------------- Optional query parameter "scope" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "scope", r.URL.Query(), &params.Scope, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "scope"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scope", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "refresh" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "refresh", r.URL.Query(), &params.Refresh, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "refresh"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "refresh", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSuggestions(w, r, roomId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Search operation middleware
 func (siw *ServerInterfaceWrapper) Search(w http.ResponseWriter, r *http.Request) {
 
@@ -5044,6 +5193,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/stats", wrapper.GetRoomStats)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/sessions", wrapper.ListSessions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/history", wrapper.GetHistory)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/suggestions", wrapper.GetSuggestions)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.RemoveQueueItem)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.MoveQueueItem)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/artwork", wrapper.GetQueueItemArtwork)
@@ -8520,6 +8670,46 @@ func (response StreamQueueItemdefaultJSONResponse) VisitStreamQueueItemResponse(
 	return err
 }
 
+type GetSuggestionsRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Params GetSuggestionsParams
+}
+
+type GetSuggestionsResponseObject interface {
+	VisitGetSuggestionsResponse(w http.ResponseWriter) error
+}
+
+type GetSuggestions200JSONResponse Suggestions
+
+func (response GetSuggestions200JSONResponse) VisitGetSuggestionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSuggestionsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetSuggestionsdefaultJSONResponse) VisitGetSuggestionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SearchRequestObject struct {
 	Params SearchParams
 }
@@ -8982,6 +9172,9 @@ type StrictServerInterface interface {
 	// StreamQueueItem A song's audio
 	// (GET /rooms/{roomId}/stream/{itemId})
 	StreamQueueItem(ctx context.Context, request StreamQueueItemRequestObject) (StreamQueueItemResponseObject, error)
+	// GetSuggestions Songs to keep the room's vibe going
+	// (GET /rooms/{roomId}/suggestions)
+	GetSuggestions(ctx context.Context, request GetSuggestionsRequestObject) (GetSuggestionsResponseObject, error)
 	// Search Search every service you've linked, and shared ones
 	// (GET /search)
 	Search(ctx context.Context, request SearchRequestObject) (SearchResponseObject, error)
@@ -11491,6 +11684,33 @@ func (sh *strictHandler) StreamQueueItem(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(StreamQueueItemResponseObject); ok {
 		if err := validResponse.VisitStreamQueueItemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSuggestions operation middleware
+func (sh *strictHandler) GetSuggestions(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetSuggestionsParams) {
+	var request GetSuggestionsRequestObject
+
+	request.RoomId = roomId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSuggestions(ctx, request.(GetSuggestionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSuggestions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSuggestionsResponseObject); ok {
+		if err := validResponse.VisitGetSuggestionsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

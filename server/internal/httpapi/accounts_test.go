@@ -37,6 +37,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
+	"github.com/madeofpendletonwool/syncphony/server/internal/suggest"
 	"github.com/madeofpendletonwool/syncphony/server/internal/vault"
 )
 
@@ -119,6 +120,7 @@ func newEnv(t *testing.T) *env {
 	e.nights.Now = e.clock
 	api := &httpapi.Server{
 		Version: "test", Auth: e.svc, Links: e.links, Lyrics: ly, LinerNotes: notes, Artwork: art, Palettes: e.palettes, Rooms: e.rooms, Queue: qs, Playback: e.playback, Nights: e.nights, Bus: e.bus, Presence: presence,
+		Suggest: suggest.New(db, e.rooms, e.links),
 		BaseURL: e.base, PingEvery: 50 * time.Millisecond,
 	}
 	e.api = api

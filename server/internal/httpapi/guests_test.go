@@ -109,6 +109,7 @@ func TestGuests(t *testing.T) {
 	for _, c := range []struct{ method, path string }{
 		{"GET", "/rooms/" + other.Id},
 		{"GET", "/rooms/" + other.Id + "/queue"},
+		{"GET", "/rooms/" + other.Id + "/suggestions"},
 		{"POST", "/rooms"},
 		{"PATCH", base},
 		{"PATCH", "/me"},
@@ -140,6 +141,12 @@ func TestGuests(t *testing.T) {
 	var snap httpapi.QueueSnapshot
 	alice.want(http.StatusOK, "POST", base+"/queue", addReq(shared, "t01", "t02"))
 	sam.want(http.StatusOK, "POST", base+"/queue", addReq(shared, "t03")).decode(t, &snap)
+	// Suggestions come from the shared services too.
+	var sg httpapi.Suggestions
+	sam.want(http.StatusOK, "GET", base+"/suggestions?scope=group", nil).decode(t, &sg)
+	if len(sg.Items) == 0 || sg.Items[0].Track.LinkId != shared {
+		t.Errorf("guest's suggestions: %+v", sg)
+	}
 	// Round robin: the guest's song takes its turn before alice's second.
 	byID := map[string]string{}
 	for _, it := range snap.Items {
