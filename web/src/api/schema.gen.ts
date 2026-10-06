@@ -618,6 +618,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Who played what, and the top tracks and artists
+         * @description Sums up the songs that started in `[from, to)`, by default all of
+         *     them. A session's recap is its stats: pass its `startedAt` and
+         *     `endedAt` (plus a moment). Songs that failed or were removed don't
+         *     count. Top tracks and artists count songs that played to the end.
+         */
+        get: operations["getRoomStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The room's listening sessions, newest first
+         * @description A session is a stretch of listening: a new one starts when the
+         *     room has been quiet for two hours.
+         */
+        get: operations["listSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/history": {
         parameters: {
             query?: never;
@@ -628,10 +676,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Songs the room played recently, newest first
+         * Songs the room played, newest first
          * @description Songs that finished, were skipped or failed. The song playing now
          *     isn't included until it ends. Refetch on `nowplaying.updated` when
-         *     the song changes.
+         *     the song changes. For the next page, pass the last item's
+         *     `startedAt` as `before`.
          */
         get: operations["getHistory"];
         put?: never;
@@ -1228,6 +1277,47 @@ export interface components {
             endedAt: string;
             /** @enum {string} */
             endReason: "finished" | "skipped" | "removed" | "error";
+        };
+        RoomStats: {
+            /** @description Songs that played, to the end or until skipped. */
+            plays: number;
+            skipped: number;
+            /** Format: int64 */
+            listeningMs: number;
+            topTracks: components["schemas"]["TrackCount"][];
+            topArtists: components["schemas"]["ArtistCount"][];
+            /** @description Everyone whose songs played, most plays first. */
+            people: components["schemas"]["PersonStats"][];
+            first?: components["schemas"]["PlayedItem"];
+            last?: components["schemas"]["PlayedItem"];
+        };
+        /** @description One person's songs, whoever skipped them. */
+        PersonStats: {
+            userId: string;
+            plays: number;
+            skipped: number;
+            /** Format: int64 */
+            listeningMs: number;
+            topTracks: components["schemas"]["TrackCount"][];
+            topArtists: components["schemas"]["ArtistCount"][];
+        };
+        /** @description A song and how many times it played to the end. `item` is its latest play. */
+        TrackCount: {
+            item: components["schemas"]["QueueItem"];
+            plays: number;
+        };
+        ArtistCount: {
+            name: string;
+            plays: number;
+        };
+        ListeningSession: {
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            endedAt: string;
+            plays: number;
+            /** @description User IDs whose songs played, most first. */
+            people: string[];
         };
         /** @description The track as it was when queued; still shown if its service is offline. */
         QueuedTrack: {
@@ -2307,10 +2397,65 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    getRoomStats: {
+        parameters: {
+            query?: {
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stats */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomStats"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listSessions: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sessions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListeningSession"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     getHistory: {
         parameters: {
             query?: {
                 limit?: number;
+                /** @description Only plays that started before this time. */
+                before?: string;
+                /** @description Only this person's songs. */
+                userId?: string;
             };
             header?: never;
             path: {

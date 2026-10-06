@@ -809,17 +809,49 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
-  /rooms/{roomId}/history:
+  /rooms/{roomId}/stats:
     parameters:
       - $ref: "#/components/parameters/RoomId"
     get:
-      operationId: getHistory
-      summary: Songs the room played recently, newest first
+      operationId: getRoomStats
+      summary: Who played what, and the top tracks and artists
       description: |
-        Songs that finished, were skipped or failed. The song playing now
-        isn't included until it ends. Refetch on `nowplaying.updated` when
-        the song changes.
-      tags: [queue]
+        Sums up the songs that started in `[from, to)`, by default all of
+        them. A session's recap is its stats: pass its `startedAt` and
+        `endedAt` (plus a moment). Songs that failed or were removed don't
+        count. Top tracks and artists count songs that played to the end.
+      tags: [history]
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: The stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomStats"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/sessions:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: listSessions
+      summary: The room's listening sessions, newest first
+      description: |
+        A session is a stretch of listening: a new one starts when the
+        room has been quiet for two hours.
+      tags: [history]
       parameters:
         - name: limit
           in: query
@@ -828,6 +860,49 @@ paths:
             minimum: 1
             maximum: 100
             default: 20
+      responses:
+        "200":
+          description: Sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ListeningSession"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/history:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: getHistory
+      summary: Songs the room played, newest first
+      description: |
+        Songs that finished, were skipped or failed. The song playing now
+        isn't included until it ends. Refetch on `nowplaying.updated` when
+        the song changes. For the next page, pass the last item's
+        `startedAt` as `before`.
+      tags: [history]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: before
+          in: query
+          description: Only plays that started before this time.
+          schema:
+            type: string
+            format: date-time
+        - name: userId
+          in: query
+          description: Only this person's songs.
+          schema:
+            type: string
       responses:
         "200":
           description: Recent plays
@@ -1920,6 +1995,96 @@ components:
         endReason:
           type: string
           enum: [finished, skipped, removed, error]
+
+    RoomStats:
+      type: object
+      required: [plays, skipped, listeningMs, topTracks, topArtists, people]
+      properties:
+        plays:
+          type: integer
+          description: Songs that played, to the end or until skipped.
+        skipped:
+          type: integer
+        listeningMs:
+          type: integer
+          format: int64
+        topTracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrackCount"
+        topArtists:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArtistCount"
+        people:
+          type: array
+          description: Everyone whose songs played, most plays first.
+          items:
+            $ref: "#/components/schemas/PersonStats"
+        first:
+          $ref: "#/components/schemas/PlayedItem"
+        last:
+          $ref: "#/components/schemas/PlayedItem"
+
+    PersonStats:
+      type: object
+      description: One person's songs, whoever skipped them.
+      required: [userId, plays, skipped, listeningMs, topTracks, topArtists]
+      properties:
+        userId:
+          type: string
+        plays:
+          type: integer
+        skipped:
+          type: integer
+        listeningMs:
+          type: integer
+          format: int64
+        topTracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrackCount"
+        topArtists:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArtistCount"
+
+    TrackCount:
+      type: object
+      description: A song and how many times it played to the end. `item` is its latest play.
+      required: [item, plays]
+      properties:
+        item:
+          $ref: "#/components/schemas/QueueItem"
+        plays:
+          type: integer
+
+    ArtistCount:
+      type: object
+      required: [name, plays]
+      properties:
+        name:
+          type: string
+        plays:
+          type: integer
+
+    ListeningSession:
+      type: object
+      required: [startedAt, endedAt, plays, people]
+      properties:
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        plays:
+          type: integer
+        people:
+          type: array
+          description: User IDs whose songs played, most first.
+          items:
+            type: string
 
     QueuedTrack:
       type: object

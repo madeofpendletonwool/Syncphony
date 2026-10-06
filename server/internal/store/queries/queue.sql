@@ -99,3 +99,39 @@ WHERE queue_items.room_id = sqlc.arg(room_id)
       WHERE play_history.queue_item_id = queue_items.id AND play_history.started_at >= sqlc.arg(since)
     )
   );
+
+-- ListPlayed returns a room's finished plays (not the one in progress)
+-- that started before a time, newest first, optionally only one user's
+-- songs. Pages go back by passing the last row's started_at.
+-- name: ListPlayed :many
+SELECT sqlc.embed(play_history), sqlc.embed(queue_items)
+FROM play_history
+JOIN queue_items ON queue_items.id = play_history.queue_item_id
+WHERE play_history.room_id = sqlc.arg(room_id)
+  AND play_history.ended_at IS NOT NULL
+  AND play_history.started_at < sqlc.arg(before)
+  AND (CAST(sqlc.arg(user_id) AS TEXT) = '' OR queue_items.added_by = sqlc.arg(user_id))
+ORDER BY play_history.started_at DESC, play_history.id DESC
+LIMIT sqlc.arg(limit);
+
+-- ListPlaysBetween returns a room's finished plays that started in
+-- [from, to), oldest first, for stats.
+-- name: ListPlaysBetween :many
+SELECT sqlc.embed(play_history), sqlc.embed(queue_items)
+FROM play_history
+JOIN queue_items ON queue_items.id = play_history.queue_item_id
+WHERE play_history.room_id = sqlc.arg(room_id)
+  AND play_history.ended_at IS NOT NULL
+  AND play_history.started_at >= sqlc.arg(from_time) AND play_history.started_at < sqlc.arg(to_time)
+ORDER BY play_history.started_at, play_history.id
+LIMIT sqlc.arg(limit);
+
+-- ListPlayTimes returns when each of a room's finished plays started and
+-- ended, and whose song it was, oldest first, to find sessions.
+-- name: ListPlayTimes :many
+SELECT play_history.started_at, play_history.ended_at, queue_items.added_by
+FROM play_history
+JOIN queue_items ON queue_items.id = play_history.queue_item_id
+WHERE play_history.room_id = ? AND play_history.ended_at IS NOT NULL
+ORDER BY play_history.started_at, play_history.id
+LIMIT ?;

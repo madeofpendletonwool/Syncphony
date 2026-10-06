@@ -5,7 +5,7 @@ import { spring } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 const tabs = [
-  { to: '/room', label: 'Room', icon: Disc3, also: [] },
+  { to: '/room', label: 'Room', icon: Disc3, also: ['/history'] },
   { to: '/search', label: 'Search', icon: Search, also: ['/album', '/artist'] },
   { to: '/me', label: 'Me', icon: CircleUserRound, also: ['/settings'] },
 ] as const

@@ -15,6 +15,7 @@ import { Route as AppAuthedRouteImport } from './routes/_app/_authed'
 import { Route as AppDesignRouteImport } from './routes/_app/design'
 import { Route as InviteCodeRouteImport } from './routes/invite.$code'
 import { Route as AppAuthedIndexRouteImport } from './routes/_app/_authed/index'
+import { Route as AppAuthedHistoryRouteImport } from './routes/_app/_authed/history'
 import { Route as AppAuthedMeRouteImport } from './routes/_app/_authed/me'
 import { Route as AppAuthedRoomRouteImport } from './routes/_app/_authed/room'
 import { Route as AppAuthedSearchRouteImport } from './routes/_app/_authed/search'
@@ -49,6 +50,11 @@ const InviteCodeRoute = InviteCodeRouteImport.update({
 const AppAuthedIndexRoute = AppAuthedIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppAuthedRoute,
+} as any)
+const AppAuthedHistoryRoute = AppAuthedHistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
   getParentRoute: () => AppAuthedRoute,
 } as any)
 const AppAuthedMeRoute = AppAuthedMeRouteImport.update({
@@ -95,6 +101,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/design': typeof AppDesignRoute
   '/invite/$code': typeof InviteCodeRoute
+  '/history': typeof AppAuthedHistoryRoute
   '/me': typeof AppAuthedMeRoute
   '/room': typeof AppAuthedRoomRoute
   '/search': typeof AppAuthedSearchRoute
@@ -108,6 +115,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/design': typeof AppDesignRoute
   '/invite/$code': typeof InviteCodeRoute
+  '/history': typeof AppAuthedHistoryRoute
   '/me': typeof AppAuthedMeRoute
   '/room': typeof AppAuthedRoomRoute
   '/search': typeof AppAuthedSearchRoute
@@ -123,6 +131,7 @@ export interface FileRoutesById {
   '/_app/_authed': typeof AppAuthedRouteWithChildren
   '/_app/design': typeof AppDesignRoute
   '/invite/$code': typeof InviteCodeRoute
+  '/_app/_authed/history': typeof AppAuthedHistoryRoute
   '/_app/_authed/me': typeof AppAuthedMeRoute
   '/_app/_authed/room': typeof AppAuthedRoomRoute
   '/_app/_authed/search': typeof AppAuthedSearchRoute
@@ -139,6 +148,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/design'
     | '/invite/$code'
+    | '/history'
     | '/me'
     | '/room'
     | '/search'
@@ -152,6 +162,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/design'
     | '/invite/$code'
+    | '/history'
     | '/me'
     | '/room'
     | '/search'
@@ -166,6 +177,7 @@ export interface FileRouteTypes {
     | '/_app/_authed'
     | '/_app/design'
     | '/invite/$code'
+    | '/_app/_authed/history'
     | '/_app/_authed/me'
     | '/_app/_authed/room'
     | '/_app/_authed/search'
@@ -226,6 +238,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAuthedIndexRouteImport
       parentRoute: typeof AppAuthedRoute
     }
+    '/_app/_authed/history': {
+      id: '/_app/_authed/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof AppAuthedHistoryRouteImport
+      parentRoute: typeof AppAuthedRoute
+    }
     '/_app/_authed/me': {
       id: '/_app/_authed/me'
       path: '/me'
@@ -279,6 +298,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppAuthedRouteChildren {
+  AppAuthedHistoryRoute: typeof AppAuthedHistoryRoute
   AppAuthedMeRoute: typeof AppAuthedMeRoute
   AppAuthedRoomRoute: typeof AppAuthedRoomRoute
   AppAuthedSearchRoute: typeof AppAuthedSearchRoute
@@ -290,6 +310,7 @@ interface AppAuthedRouteChildren {
 }
 
 const AppAuthedRouteChildren: AppAuthedRouteChildren = {
+  AppAuthedHistoryRoute: AppAuthedHistoryRoute,
   AppAuthedMeRoute: AppAuthedMeRoute,
   AppAuthedRoomRoute: AppAuthedRoomRoute,
   AppAuthedSearchRoute: AppAuthedSearchRoute,

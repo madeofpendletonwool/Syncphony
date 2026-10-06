@@ -389,28 +389,72 @@ type Played struct {
 	EndReason string
 }
 
-// History returns up to limit songs the room finished playing, newest
-// first. The song playing now isn't one until it ends.
-func (s *Service) History(ctx context.Context, id string, limit int) ([]Played, error) {
+// HistoryQuery picks a page of a room's history.
+type HistoryQuery struct {
+	Limit int
+	// Before, if set, returns plays that started before it: the last
+	// play's StartedAt from the previous page.
+	Before time.Time
+	// UserID, if set, returns only that user's songs.
+	UserID string
+}
+
+// History returns songs the room finished playing, newest first. The song
+// playing now isn't one until it ends.
+func (s *Service) History(ctx context.Context, id string, hq HistoryQuery) ([]Played, error) {
 	if _, err := s.Get(ctx, id); err != nil {
 		return nil, err
 	}
-	// One extra, for the play still in progress.
-	rows, err := s.db.ListHistory(ctx, store.ListHistoryParams{RoomID: id, Limit: int64(limit) + 1})
+	before := hq.Before
+	if before.IsZero() {
+		before = Forever
+	}
+	rows, err := s.db.ListPlayed(ctx, store.ListPlayedParams{RoomID: id, Before: before, UserID: hq.UserID, Limit: int64(hq.Limit)})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Played, 0, len(rows))
-	for _, r := range rows {
-		if !r.PlayHistory.EndedAt.Valid || len(out) == limit {
-			continue
-		}
-		out = append(out, Played{
-			Item: r.QueueItem, StartedAt: r.PlayHistory.StartedAt,
-			EndedAt: r.PlayHistory.EndedAt.Time, EndReason: r.PlayHistory.EndReason.String,
-		})
+	out := make([]Played, len(rows))
+	for i, r := range rows {
+		out[i] = played(r.PlayHistory, r.QueueItem)
 	}
 	return out, nil
+}
+
+// Forever is later than any play, for open-ended time ranges.
+var Forever = time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
+
+// MaxPlays is the most plays Plays reads at once, so a long-lived room's
+// stats stay cheap.
+const MaxPlays = 10_000
+
+// Plays returns the songs the room finished playing that started in
+// [from, to), oldest first: at most MaxPlays, the earliest.
+func (s *Service) Plays(ctx context.Context, id string, from, to time.Time) ([]Played, error) {
+	if _, err := s.Get(ctx, id); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.ListPlaysBetween(ctx, store.ListPlaysBetweenParams{RoomID: id, FromTime: from, ToTime: to, Limit: MaxPlays})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Played, len(rows))
+	for i, r := range rows {
+		out[i] = played(r.PlayHistory, r.QueueItem)
+	}
+	return out, nil
+}
+
+// PlayTimes returns when each of the room's finished plays started and
+// ended, and whose song it was, oldest first: at most MaxPlays * 5.
+func (s *Service) PlayTimes(ctx context.Context, id string) ([]store.ListPlayTimesRow, error) {
+	if _, err := s.Get(ctx, id); err != nil {
+		return nil, err
+	}
+	return s.db.ListPlayTimes(ctx, store.ListPlayTimesParams{RoomID: id, Limit: MaxPlays * 5})
+}
+
+func played(h store.PlayHistory, it store.QueueItem) Played {
+	return Played{Item: it, StartedAt: h.StartedAt, EndedAt: h.EndedAt.Time, EndReason: h.EndReason.String}
 }
 
 // QueueSnapshot reads a room's queue and its version together.

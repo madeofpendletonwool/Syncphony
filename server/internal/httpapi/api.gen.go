@@ -466,6 +466,12 @@ type AlbumResult struct {
 	Year       *int           `json:"year,omitempty"`
 }
 
+// ArtistCount defines model for ArtistCount.
+type ArtistCount struct {
+	Name  string `json:"name"`
+	Plays int    `json:"plays"`
+}
+
 // ArtistCredit defines model for ArtistCredit.
 type ArtistCredit struct {
 	// Id The artist's ID on the same link, if known.
@@ -624,6 +630,16 @@ type LinkField struct {
 // LinkFieldKind `secret` fields must be masked.
 type LinkFieldKind string
 
+// ListeningSession defines model for ListeningSession.
+type ListeningSession struct {
+	EndedAt time.Time `json:"endedAt"`
+
+	// People User IDs whose songs played, most first.
+	People    []string  `json:"people"`
+	Plays     int       `json:"plays"`
+	StartedAt time.Time `json:"startedAt"`
+}
+
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
 	Password string `json:"password"`
@@ -741,6 +757,16 @@ type Password = string
 
 // PermissionLevel Who may do something. The room's owner always may.
 type PermissionLevel string
+
+// PersonStats One person's songs, whoever skipped them.
+type PersonStats struct {
+	ListeningMs int64         `json:"listeningMs"`
+	Plays       int           `json:"plays"`
+	Skipped     int           `json:"skipped"`
+	TopArtists  []ArtistCount `json:"topArtists"`
+	TopTracks   []TrackCount  `json:"topTracks"`
+	UserId      string        `json:"userId"`
+}
 
 // PlaybackCommand defines model for PlaybackCommand.
 type PlaybackCommand struct {
@@ -1020,6 +1046,22 @@ type RoomPermissionsChange struct {
 	Speaker *PermissionLevel `json:"speaker,omitempty"`
 }
 
+// RoomStats defines model for RoomStats.
+type RoomStats struct {
+	First       *PlayedItem `json:"first,omitempty"`
+	Last        *PlayedItem `json:"last,omitempty"`
+	ListeningMs int64       `json:"listeningMs"`
+
+	// People Everyone whose songs played, most plays first.
+	People []PersonStats `json:"people"`
+
+	// Plays Songs that played, to the end or until skipped.
+	Plays      int           `json:"plays"`
+	Skipped    int           `json:"skipped"`
+	TopArtists []ArtistCount `json:"topArtists"`
+	TopTracks  []TrackCount  `json:"topTracks"`
+}
+
 // SearchGroup One link's search results.
 type SearchGroup struct {
 	AccountLabel string         `json:"accountLabel"`
@@ -1097,6 +1139,12 @@ type SkipVotes struct {
 
 	// Voters IDs of the users who voted, in order.
 	Voters []string `json:"voters"`
+}
+
+// TrackCount A song and how many times it played to the end. `item` is its latest play.
+type TrackCount struct {
+	Item  QueueItem `json:"item"`
+	Plays int       `json:"plays"`
 }
 
 // TrackResult A track you can queue with `linkId` and `trackId`.
@@ -1209,6 +1257,12 @@ type RenamePasskeyJSONBody struct {
 // GetHistoryParams defines parameters for GetHistory.
 type GetHistoryParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Before Only plays that started before this time.
+	Before *time.Time `form:"before,omitempty" json:"before,omitempty"`
+
+	// UserId Only this person's songs.
+	UserId *string `form:"userId,omitempty" json:"userId,omitempty"`
 }
 
 // ReleasePlayerParams defines parameters for ReleasePlayer.
@@ -1220,6 +1274,17 @@ type ReleasePlayerParams struct {
 type GetQueueItemArtworkParams struct {
 	// Size Wanted width in pixels; a hint.
 	Size *int `form:"size,omitempty" json:"size,omitempty"`
+}
+
+// ListSessionsParams defines parameters for ListSessions.
+type ListSessionsParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetRoomStatsParams defines parameters for GetRoomStats.
+type GetRoomStatsParams struct {
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+	To   *time.Time `form:"to,omitempty" json:"to,omitempty"`
 }
 
 // StreamQueueItemParams defines parameters for StreamQueueItem.
@@ -1422,7 +1487,7 @@ type ServerInterface interface {
 	// UpdateRoom Change a room you own
 	// (PATCH /rooms/{roomId})
 	UpdateRoom(w http.ResponseWriter, r *http.Request, roomId RoomId)
-	// GetHistory Songs the room played recently, newest first
+	// GetHistory Songs the room played, newest first
 	// (GET /rooms/{roomId}/history)
 	GetHistory(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetHistoryParams)
 	// GetPlayback What the room is playing
@@ -1455,6 +1520,12 @@ type ServerInterface interface {
 	// GetQueueItemArtwork A queued song's artwork
 	// (GET /rooms/{roomId}/queue/{itemId}/artwork)
 	GetQueueItemArtwork(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params GetQueueItemArtworkParams)
+	// ListSessions The room's listening sessions, newest first
+	// (GET /rooms/{roomId}/sessions)
+	ListSessions(w http.ResponseWriter, r *http.Request, roomId RoomId, params ListSessionsParams)
+	// GetRoomStats Who played what, and the top tracks and artists
+	// (GET /rooms/{roomId}/stats)
+	GetRoomStats(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetRoomStatsParams)
 	// StreamQueueItem A song's audio
 	// (GET /rooms/{roomId}/stream/{itemId})
 	StreamQueueItem(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params StreamQueueItemParams)
@@ -2305,6 +2376,32 @@ func (siw *ServerInterfaceWrapper) GetHistory(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// ------------- Optional query parameter "before" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "before", r.URL.Query(), &params.Before, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "before"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "before", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "userId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "userId", r.URL.Query(), &params.UserId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "userId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHistory(w, r, roomId, params)
 	}))
@@ -2635,6 +2732,103 @@ func (siw *ServerInterfaceWrapper) GetQueueItemArtwork(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// ListSessions operation middleware
+func (siw *ServerInterfaceWrapper) ListSessions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSessionsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSessions(w, r, roomId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRoomStats operation middleware
+func (siw *ServerInterfaceWrapper) GetRoomStats(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetRoomStatsParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRoomStats(w, r, roomId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // StreamQueueItem operation middleware
 func (siw *ServerInterfaceWrapper) StreamQueueItem(w http.ResponseWriter, r *http.Request) {
 
@@ -2938,6 +3132,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artwork", wrapper.GetLinkArtwork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.GetQueue)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.AddToQueue)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/stats", wrapper.GetRoomStats)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/sessions", wrapper.ListSessions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/history", wrapper.GetHistory)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.RemoveQueueItem)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.MoveQueueItem)
@@ -4850,6 +5046,86 @@ func (response GetQueueItemArtworkdefaultJSONResponse) VisitGetQueueItemArtworkR
 	return err
 }
 
+type ListSessionsRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Params ListSessionsParams
+}
+
+type ListSessionsResponseObject interface {
+	VisitListSessionsResponse(w http.ResponseWriter) error
+}
+
+type ListSessions200JSONResponse []ListeningSession
+
+func (response ListSessions200JSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSessionsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListSessionsdefaultJSONResponse) VisitListSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoomStatsRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Params GetRoomStatsParams
+}
+
+type GetRoomStatsResponseObject interface {
+	VisitGetRoomStatsResponse(w http.ResponseWriter) error
+}
+
+type GetRoomStats200JSONResponse RoomStats
+
+func (response GetRoomStats200JSONResponse) VisitGetRoomStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoomStatsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetRoomStatsdefaultJSONResponse) VisitGetRoomStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type StreamQueueItemRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 	ItemId string `json:"itemId"`
@@ -5112,7 +5388,7 @@ type StrictServerInterface interface {
 	// UpdateRoom Change a room you own
 	// (PATCH /rooms/{roomId})
 	UpdateRoom(ctx context.Context, request UpdateRoomRequestObject) (UpdateRoomResponseObject, error)
-	// GetHistory Songs the room played recently, newest first
+	// GetHistory Songs the room played, newest first
 	// (GET /rooms/{roomId}/history)
 	GetHistory(ctx context.Context, request GetHistoryRequestObject) (GetHistoryResponseObject, error)
 	// GetPlayback What the room is playing
@@ -5145,6 +5421,12 @@ type StrictServerInterface interface {
 	// GetQueueItemArtwork A queued song's artwork
 	// (GET /rooms/{roomId}/queue/{itemId}/artwork)
 	GetQueueItemArtwork(ctx context.Context, request GetQueueItemArtworkRequestObject) (GetQueueItemArtworkResponseObject, error)
+	// ListSessions The room's listening sessions, newest first
+	// (GET /rooms/{roomId}/sessions)
+	ListSessions(ctx context.Context, request ListSessionsRequestObject) (ListSessionsResponseObject, error)
+	// GetRoomStats Who played what, and the top tracks and artists
+	// (GET /rooms/{roomId}/stats)
+	GetRoomStats(ctx context.Context, request GetRoomStatsRequestObject) (GetRoomStatsResponseObject, error)
 	// StreamQueueItem A song's audio
 	// (GET /rooms/{roomId}/stream/{itemId})
 	StreamQueueItem(ctx context.Context, request StreamQueueItemRequestObject) (StreamQueueItemResponseObject, error)
@@ -6579,6 +6861,60 @@ func (sh *strictHandler) GetQueueItemArtwork(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetQueueItemArtworkResponseObject); ok {
 		if err := validResponse.VisitGetQueueItemArtworkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSessions operation middleware
+func (sh *strictHandler) ListSessions(w http.ResponseWriter, r *http.Request, roomId RoomId, params ListSessionsParams) {
+	var request ListSessionsRequestObject
+
+	request.RoomId = roomId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSessions(ctx, request.(ListSessionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSessions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSessionsResponseObject); ok {
+		if err := validResponse.VisitListSessionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRoomStats operation middleware
+func (sh *strictHandler) GetRoomStats(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetRoomStatsParams) {
+	var request GetRoomStatsRequestObject
+
+	request.RoomId = roomId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRoomStats(ctx, request.(GetRoomStatsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRoomStats")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRoomStatsResponseObject); ok {
+		if err := validResponse.VisitGetRoomStatsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

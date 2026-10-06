@@ -288,6 +288,195 @@ func (q *Queries) ListLane(ctx context.Context, arg ListLaneParams) ([]QueueItem
 	return items, nil
 }
 
+const listPlayTimes = `-- name: ListPlayTimes :many
+SELECT play_history.started_at, play_history.ended_at, queue_items.added_by
+FROM play_history
+JOIN queue_items ON queue_items.id = play_history.queue_item_id
+WHERE play_history.room_id = ? AND play_history.ended_at IS NOT NULL
+ORDER BY play_history.started_at, play_history.id
+LIMIT ?
+`
+
+type ListPlayTimesParams struct {
+	RoomID string
+	Limit  int64
+}
+
+type ListPlayTimesRow struct {
+	StartedAt time.Time
+	EndedAt   sql.NullTime
+	AddedBy   string
+}
+
+// ListPlayTimes returns when each of a room's finished plays started and
+// ended, and whose song it was, oldest first, to find sessions.
+func (q *Queries) ListPlayTimes(ctx context.Context, arg ListPlayTimesParams) ([]ListPlayTimesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listPlayTimes, arg.RoomID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPlayTimesRow{}
+	for rows.Next() {
+		var i ListPlayTimesRow
+		if err := rows.Scan(&i.StartedAt, &i.EndedAt, &i.AddedBy); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPlayed = `-- name: ListPlayed :many
+SELECT play_history.id, play_history.room_id, play_history.queue_item_id, play_history.started_at, play_history.ended_at, play_history.end_reason, queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at
+FROM play_history
+JOIN queue_items ON queue_items.id = play_history.queue_item_id
+WHERE play_history.room_id = ?1
+  AND play_history.ended_at IS NOT NULL
+  AND play_history.started_at < ?2
+  AND (CAST(?3 AS TEXT) = '' OR queue_items.added_by = ?3)
+ORDER BY play_history.started_at DESC, play_history.id DESC
+LIMIT ?4
+`
+
+type ListPlayedParams struct {
+	RoomID string
+	Before time.Time
+	UserID string
+	Limit  int64
+}
+
+type ListPlayedRow struct {
+	PlayHistory PlayHistory
+	QueueItem   QueueItem
+}
+
+// ListPlayed returns a room's finished plays (not the one in progress)
+// that started before a time, newest first, optionally only one user's
+// songs. Pages go back by passing the last row's started_at.
+func (q *Queries) ListPlayed(ctx context.Context, arg ListPlayedParams) ([]ListPlayedRow, error) {
+	rows, err := q.db.QueryContext(ctx, listPlayed,
+		arg.RoomID,
+		arg.Before,
+		arg.UserID,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPlayedRow{}
+	for rows.Next() {
+		var i ListPlayedRow
+		if err := rows.Scan(
+			&i.PlayHistory.ID,
+			&i.PlayHistory.RoomID,
+			&i.PlayHistory.QueueItemID,
+			&i.PlayHistory.StartedAt,
+			&i.PlayHistory.EndedAt,
+			&i.PlayHistory.EndReason,
+			&i.QueueItem.ID,
+			&i.QueueItem.RoomID,
+			&i.QueueItem.AddedBy,
+			&i.QueueItem.Provider,
+			&i.QueueItem.LinkID,
+			&i.QueueItem.TrackID,
+			&i.QueueItem.Metadata,
+			&i.QueueItem.State,
+			&i.QueueItem.LanePosition,
+			&i.QueueItem.AddedAt,
+			&i.QueueItem.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPlaysBetween = `-- name: ListPlaysBetween :many
+SELECT play_history.id, play_history.room_id, play_history.queue_item_id, play_history.started_at, play_history.ended_at, play_history.end_reason, queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at
+FROM play_history
+JOIN queue_items ON queue_items.id = play_history.queue_item_id
+WHERE play_history.room_id = ?1
+  AND play_history.ended_at IS NOT NULL
+  AND play_history.started_at >= ?2 AND play_history.started_at < ?3
+ORDER BY play_history.started_at, play_history.id
+LIMIT ?4
+`
+
+type ListPlaysBetweenParams struct {
+	RoomID   string
+	FromTime time.Time
+	ToTime   time.Time
+	Limit    int64
+}
+
+type ListPlaysBetweenRow struct {
+	PlayHistory PlayHistory
+	QueueItem   QueueItem
+}
+
+// ListPlaysBetween returns a room's finished plays that started in
+// [from, to), oldest first, for stats.
+func (q *Queries) ListPlaysBetween(ctx context.Context, arg ListPlaysBetweenParams) ([]ListPlaysBetweenRow, error) {
+	rows, err := q.db.QueryContext(ctx, listPlaysBetween,
+		arg.RoomID,
+		arg.FromTime,
+		arg.ToTime,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPlaysBetweenRow{}
+	for rows.Next() {
+		var i ListPlaysBetweenRow
+		if err := rows.Scan(
+			&i.PlayHistory.ID,
+			&i.PlayHistory.RoomID,
+			&i.PlayHistory.QueueItemID,
+			&i.PlayHistory.StartedAt,
+			&i.PlayHistory.EndedAt,
+			&i.PlayHistory.EndReason,
+			&i.QueueItem.ID,
+			&i.QueueItem.RoomID,
+			&i.QueueItem.AddedBy,
+			&i.QueueItem.Provider,
+			&i.QueueItem.LinkID,
+			&i.QueueItem.TrackID,
+			&i.QueueItem.Metadata,
+			&i.QueueItem.State,
+			&i.QueueItem.LanePosition,
+			&i.QueueItem.AddedAt,
+			&i.QueueItem.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUpcoming = `-- name: ListUpcoming :many
 SELECT id, room_id, added_by, provider, link_id, track_id, metadata, state, lane_position, added_at, updated_at FROM queue_items
 WHERE room_id = ? AND state IN ('queued', 'playing')

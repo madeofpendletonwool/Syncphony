@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Check, ChevronDown, LogOut, Plus, Settings2, Sparkles, Speaker } from 'lucide-react'
+import { Check, ChevronDown, History, LogOut, Plus, Settings2, Sparkles, Speaker } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { DropdownMenu } from 'radix-ui'
 import { useState } from 'react'
@@ -169,6 +169,12 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
             </DropdownMenu.Item>
           ))}
           <DropdownMenu.Separator className="mx-2 my-1.5 h-px bg-border" />
+          <DropdownMenu.Item asChild className={menuItem}>
+            <Link to="/history">
+              <History className="size-4 text-muted-foreground" />
+              <span className="flex-1">History and recaps</span>
+            </Link>
+          </DropdownMenu.Item>
           {room.ownerId === me.id && (
             <DropdownMenu.Item onSelect={() => setSettings(true)} className={menuItem}>
               <Settings2 className="size-4 text-muted-foreground" />
