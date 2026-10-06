@@ -276,7 +276,7 @@ type fill struct {
 	// recentArtists are the artists of the room's last few songs.
 	recentArtists map[string]bool
 
-	links    []store.ServiceLink
+	links  []store.ServiceLink
 	finder *suggest.Finder
 }
 

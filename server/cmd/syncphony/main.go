@@ -38,6 +38,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
+	"github.com/madeofpendletonwool/syncphony/server/internal/suggest"
 	"github.com/madeofpendletonwool/syncphony/server/internal/transcode"
 	"github.com/madeofpendletonwool/syncphony/server/internal/vault"
 	"github.com/madeofpendletonwool/syncphony/server/internal/webui"
@@ -226,7 +227,8 @@ func run() error {
 	nightSvc := nights.New(db, a.bus)
 	api := &httpapi.Server{
 		Version: version, Auth: accounts, Links: a.links, Lyrics: lyricsSvc, LinerNotes: notes, Artwork: art, Palettes: palettes,
-		Rooms: roomSvc, Queue: queueSvc, Playback: player, Nights: nightSvc, Bus: a.bus, Presence: presence,
+		Rooms: roomSvc, Queue: queueSvc, Playback: player, Nights: nightSvc, Suggest: suggest.New(db, roomSvc, a.links),
+		Bus: a.bus, Presence: presence,
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	}
 	go tick(ctx, api, nightSvc)

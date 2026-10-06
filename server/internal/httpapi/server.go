@@ -29,6 +29,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
+	"github.com/madeofpendletonwool/syncphony/server/internal/suggest"
 	"github.com/madeofpendletonwool/syncphony/server/internal/transcode"
 )
 
@@ -53,7 +54,9 @@ type Server struct {
 	Queue    *queue.Service
 	Playback *playback.Engine
 	// Nights hearts songs and crowns each night's song of the night.
-	Nights   *nights.Service
+	Nights *nights.Service
+	// Suggest finds songs to keep a room's vibe going.
+	Suggest  *suggest.Service
 	Bus      realtime.Bus
 	Presence *realtime.Presence
 	// PingEvery is how often room sockets are pinged and their session
@@ -381,6 +384,7 @@ var errorCodes = []struct {
 	{queue.ErrNotFound, http.StatusNotFound, "not_found"},
 	{queue.ErrForbidden, http.StatusForbidden, "forbidden"},
 	{queue.ErrNotQueued, http.StatusConflict, "not_queued"},
+	{suggest.ErrScope, http.StatusBadRequest, "invalid_input"},
 	// Errors from a service, while linking or using a link.
 	{provider.ErrInvalidCredentials, http.StatusBadRequest, "service_rejected_credentials"},
 	{provider.ErrAuthExpired, http.StatusConflict, "needs_relink"},
