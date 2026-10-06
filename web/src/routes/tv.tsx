@@ -4,35 +4,50 @@ import { useEffect } from 'react'
 import { TvPairing } from '@/components/tv/tv-pairing'
 import { TvStage } from '@/components/tv/tv-stage'
 import { meQuery } from '@/lib/auth'
-import { displayMeQuery } from '@/lib/displays'
+import { displayMeQuery, type DisplayMe } from '@/lib/displays'
+import { can } from '@/lib/playback'
 import { useCurrentRoom } from '@/lib/room'
+import { deviceId } from '@/lib/speaker'
 
 // Big-screen mode (MAD-716): a TV, projector or spare tablet showing one
 // room. A paired display shows its room; a signed-in device shows the
-// room it's in; anything else shows a code to pair it.
+// room it's in; anything else shows a code to pair it. Either kind can
+// also play the room's audio: a display if it was paired with audio on,
+// a signed-in device if its user may be the speaker.
 export const Route = createFileRoute('/tv')({
   component: Tv,
 })
 
 function Tv() {
-  const display = useQuery(displayMeQuery)
+  // Polled, so turning the screen's audio on or off from a phone shows up here.
+  const display = useQuery({ ...displayMeQuery, refetchInterval: (q) => (q.state.data ? 30_000 : false) })
   const me = useQuery({ ...meQuery, enabled: display.isSuccess && !display.data })
   useDarkTheme()
 
   if (display.isPending || (display.isSuccess && !display.data && me.isPending)) return <Blank />
-  if (display.data) return <PairedStage roomId={display.data.room.id} roomName={display.data.room.name} />
+  if (display.data) return <PairedStage me={display.data} />
   if (me.data) return <SignedInStage />
   return <TvPairing />
 }
 
-function PairedStage({ roomId, roomName }: { roomId: string; roomName: string }) {
+function PairedStage({ me }: { me: DisplayMe }) {
   const queryClient = useQueryClient()
+  const { display, room } = me
   return (
     <TvStage
-      roomId={roomId}
-      roomName={roomName}
+      roomId={room.id}
+      roomName={room.name}
       paired
       onUnpaired={() => queryClient.setQueryData(displayMeQuery.queryKey, null)}
+      audio={
+        display.audio
+          ? {
+              device: display.id,
+              name: display.name,
+              onStopped: () => void queryClient.invalidateQueries({ queryKey: displayMeQuery.queryKey }),
+            }
+          : undefined
+      }
     />
   )
 }
@@ -40,9 +55,19 @@ function PairedStage({ roomId, roomName }: { roomId: string; roomName: string })
 /** A signed-in device shows the room it's in, without joining it. */
 function SignedInStage() {
   const { room, rooms } = useCurrentRoom()
+  const me = useQuery(meQuery).data
   if (rooms.isPending) return <Blank />
   if (!room) return <TvPairing />
-  return <TvStage roomId={room.id} roomName={room.name} paired={false} onUnpaired={() => {}} />
+  const maySpeak = !!me && !me.guest && can(room, me.id, 'speaker')
+  return (
+    <TvStage
+      roomId={room.id}
+      roomName={room.name}
+      paired={false}
+      onUnpaired={() => {}}
+      audio={maySpeak ? { device: deviceId(), name: `${me.displayName.split(' ')[0]}'s big screen` } : undefined}
+    />
+  )
 }
 
 function Blank() {

@@ -143,6 +143,7 @@ type ctxKey int
 const (
 	ctxRequest ctxKey = iota
 	ctxSession
+	ctxDisplay
 )
 
 // request is what handlers need from the HTTP request.
@@ -185,7 +186,7 @@ func (s *Server) authenticate(f StrictHandlerFunc, operationID string) StrictHan
 		}
 		// A display; a signed-in user's session wins if the device is both.
 		if displayOps[operationID] && info.display != "" && (info.token == "" || s.Auth.Check(ctx, info.token) != nil) {
-			ctx, err := s.authenticateDisplay(ctx, w, r, req)
+			ctx, err := s.authenticateDisplay(ctx, w, r, operationID, req)
 			if err != nil {
 				return nil, err
 			}
@@ -352,6 +353,8 @@ var errorCodes = []struct {
 	{auth.ErrGuestPassInvalid, http.StatusNotFound, "guest_pass_invalid"},
 	{auth.ErrPassFull, http.StatusConflict, "pass_full"},
 	{ErrGuestsOff, http.StatusForbidden, "guests_off"},
+	{ErrDisplayNoAudio, http.StatusForbidden, "forbidden"},
+	{ErrDisplayOrphan, http.StatusForbidden, "forbidden"},
 	{nights.ErrNotFound, http.StatusNotFound, "not_found"},
 	{nights.ErrForbidden, http.StatusForbidden, "forbidden"},
 	{nights.ErrNotHost, http.StatusForbidden, "forbidden"},

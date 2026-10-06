@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 )
@@ -40,8 +41,8 @@ var (
 // Transcoder converts audio to another format.
 type Transcoder interface {
 	// Transcode converts src to f. It takes ownership of src.Body. kbps
-	// is the target bitrate.
-	Transcode(ctx context.Context, src *provider.AudioStream, f Format, kbps int) (*provider.AudioStream, error)
+	// is the target bitrate, and the output begins start into the song.
+	Transcode(ctx context.Context, src *provider.AudioStream, f Format, kbps int, start time.Duration) (*provider.AudioStream, error)
 }
 
 // DefaultBitrate is used when StreamOpts.MaxBitrate is 0.
@@ -49,15 +50,20 @@ const DefaultBitrate = 192
 
 // Stream gets a track from s. If its content type isn't in opts.Accept, it
 // is transcoded with t to the first of Targets that is. Transcoded streams
-// are never seekable: they always start at the beginning, and their length
-// is unknown. t may be nil, in which case unacceptable formats fail with
-// ErrNoTranscoder.
+// are never seekable by bytes, and their length is unknown, so they begin
+// at opts.Start instead. A stream that's acceptable but can't be seeked is
+// transcoded too when opts.Start asks for somewhere past the beginning;
+// one that can be seeked ignores opts.Start, since the player seeks it. t
+// may be nil, in which case unacceptable formats fail with ErrNoTranscoder.
 func Stream(ctx context.Context, s provider.Streamer, trackID string, opts provider.StreamOpts, t Transcoder) (*provider.AudioStream, error) {
 	a, err := s.Stream(ctx, trackID, opts)
-	if err != nil || Accepts(opts.Accept, a.ContentType) {
-		return a, err
+	if err != nil {
+		return nil, err
 	}
 	target, ok := pick(opts.Accept)
+	if Accepts(opts.Accept, a.ContentType) && (opts.Start <= 0 || a.Seekable || t == nil || !ok) {
+		return a, nil
+	}
 	if t == nil || !ok {
 		a.Body.Close()
 		return nil, fmt.Errorf("%w: %s", ErrNoTranscoder, a.ContentType)
@@ -74,7 +80,7 @@ func Stream(ctx context.Context, s provider.Streamer, trackID string, opts provi
 	if opts.MaxBitrate > 0 {
 		kbps = min(kbps, opts.MaxBitrate)
 	}
-	return t.Transcode(ctx, a, target, kbps)
+	return t.Transcode(ctx, a, target, kbps, max(opts.Start, 0))
 }
 
 // Accepts reports whether contentType matches one of accept, which may
@@ -130,15 +136,20 @@ func (f FFmpeg) path() string {
 
 // Transcode implements Transcoder. The ffmpeg process is killed when the
 // returned stream is closed or ctx is done.
-func (f FFmpeg) Transcode(ctx context.Context, src *provider.AudioStream, to Format, kbps int) (*provider.AudioStream, error) {
+func (f FFmpeg) Transcode(ctx context.Context, src *provider.AudioStream, to Format, kbps int, start time.Duration) (*provider.AudioStream, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	// The binary comes from server config and the arguments from Targets.
-	cmd := exec.CommandContext(ctx, f.path(), //nolint:gosec // see above
-		"-hide_banner", "-loglevel", "error", "-nostdin",
-		"-i", "pipe:0",
+	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-i", "pipe:0"}
+	if start > 0 {
+		// After -i: piped input can't be seeked, so ffmpeg decodes up to
+		// start and drops it. That's exact, and quick next to playing it.
+		args = append(args, "-ss", fmt.Sprintf("%.3f", start.Seconds()))
+	}
+	args = append(args,
 		"-vn", "-map_metadata", "-1",
 		"-c:a", to.codec, "-b:a", fmt.Sprintf("%dk", kbps),
 		"-f", to.container, "pipe:1")
+	// The binary comes from server config and the arguments from Targets.
+	cmd := exec.CommandContext(ctx, f.path(), args...) //nolint:gosec // see above
 	cmd.Stdin = src.Body
 	stderr := &limitedBuffer{max: 4 << 10}
 	cmd.Stderr = stderr

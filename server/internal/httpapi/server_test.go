@@ -80,6 +80,10 @@ var displayRequests = map[string]any{
 	"GetQueueItemLinerNotes": GetQueueItemLinerNotesRequestObject{},
 	"GetHearts":              GetHeartsRequestObject{},
 	"GetGuestPass":           GetGuestPassRequestObject{},
+	"ClaimPlayer":            ClaimPlayerRequestObject{},
+	"ReleasePlayer":          ReleasePlayerRequestObject{},
+	"ReportPlayback":         ReportPlaybackRequestObject{},
+	"StreamQueueItem":        StreamQueueItemRequestObject{},
 }
 
 func TestClientIP(t *testing.T) {

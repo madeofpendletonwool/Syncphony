@@ -1141,8 +1141,9 @@ export interface paths {
         /**
          * Pair a display with the room
          * @description Type in the code a display (a TV at `/tv`) is showing. It then shows
-         *     this room's big screen until it's unpaired. `pairing_invalid` if no
-         *     display is showing the code; wrong codes are rate limited.
+         *     this room's big screen until it's unpaired. With `audio`, it may
+         *     also play the room's audio (see `updateDisplay`). `pairing_invalid`
+         *     if no display is showing the code; wrong codes are rate limited.
          */
         post: operations["pairDisplay"];
         delete?: never;
@@ -1171,7 +1172,14 @@ export interface paths {
         delete: operations["unpairDisplay"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Turn a display's audio on or off
+         * @description With `audio` on, the display may become the room's speaker, acting
+         *     for whoever paired it (so it needs their `speaker` permission).
+         *     Turning it off while it's the speaker stops it, and the room
+         *     pauses. The room's owner, whoever paired it, or an admin.
+         */
+        patch: operations["updateDisplay"];
         trace?: never;
     };
     "/display/pairing": {
@@ -1488,13 +1496,14 @@ export interface paths {
          * @description The device takes over playback from any other speaker. If the room
          *     is idle and songs are waiting, the first one starts. Needs the
          *     room's `speaker` permission unless the device already is the
-         *     speaker.
+         *     speaker. A display with `audio` on may claim its own room, as
+         *     whoever paired it; its `deviceId` is always the display's ID.
          */
         put: operations["claimPlayer"];
         post?: never;
         /**
          * Stop being the room's speaker
-         * @description The song pauses. The speaker's user or the room's owner may do this.
+         * @description The song pauses. The speaker's user or the room's owner may do this, and a display may release itself.
          */
         delete: operations["releasePlayer"];
         options?: never;
@@ -1543,7 +1552,9 @@ export interface paths {
          * @description For the playing song, or a queued one to preload. Streamed from the
          *     song's service through the link of whoever queued it. Supports
          *     byte ranges when the service does. If the format isn't in `accept`
-         *     it's transcoded (if the server can), and the result isn't seekable.
+         *     it's transcoded (if the server can), and the result can't be seeked
+         *     by bytes: ask for it again with `start` instead. A display with
+         *     `audio` on may stream its own room's songs.
          */
         get: operations["streamQueueItem"];
         put?: never;
@@ -2022,6 +2033,8 @@ export interface components {
             name: string;
             /** @description The user who paired it, if they're still around. */
             pairedBy?: string;
+            /** @description It may play the room's audio, as the speaker. */
+            audio: boolean;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -2032,6 +2045,11 @@ export interface components {
             code: string;
             /** @description What to call it. Default "TV". */
             name?: string;
+            /** @description Let it play the room's audio too. Default false. */
+            audio?: boolean;
+        };
+        UpdateDisplayRequest: {
+            audio: boolean;
         };
         DisplayPairing: {
             code: string;
@@ -4136,6 +4154,34 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    updateDisplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                displayId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDisplayRequest"];
+            };
+        };
+        responses: {
+            /** @description The display */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Display"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     pollDisplayPairing: {
         parameters: {
             query?: never;
@@ -4728,6 +4774,13 @@ export interface operations {
                 accept?: string;
                 /** @description Bitrate cap in kbit/s, for services or transcodes that can lower it. */
                 maxBitrate?: number;
+                /**
+                 * @description Where to begin, in ms, for a player that can't seek this stream
+                 *     by bytes (it answered `Accept-Ranges: none`, so it's
+                 *     transcoded). The audio then begins this far into the song. A
+                 *     stream that can be seeked by bytes ignores it.
+                 */
+                start?: number;
             };
             header?: {
                 /** @example bytes=0- */

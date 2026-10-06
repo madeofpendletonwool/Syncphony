@@ -737,6 +737,8 @@ type CreateRoomRequest struct {
 
 // Display defines model for Display.
 type Display struct {
+	// Audio It may play the room's audio, as the speaker.
+	Audio      bool      `json:"audio"`
 	CreatedAt  time.Time `json:"createdAt"`
 	Id         string    `json:"id"`
 	LastSeenAt time.Time `json:"lastSeenAt"`
@@ -1089,6 +1091,9 @@ type OklchColor struct {
 
 // PairDisplayRequest defines model for PairDisplayRequest.
 type PairDisplayRequest struct {
+	// Audio Let it play the room's audio too. Default false.
+	Audio *bool `json:"audio,omitempty"`
+
 	// Code The code the display shows. Case, spaces and dashes don't matter.
 	Code string `json:"code"`
 
@@ -1786,6 +1791,11 @@ type TrackToQueue struct {
 	TrackId *string `json:"trackId,omitempty"`
 }
 
+// UpdateDisplayRequest defines model for UpdateDisplayRequest.
+type UpdateDisplayRequest struct {
+	Audio bool `json:"audio"`
+}
+
 // UpdateLinkRequest defines model for UpdateLinkRequest.
 type UpdateLinkRequest struct {
 	Shared bool `json:"shared"`
@@ -1952,8 +1962,14 @@ type StreamQueueItemParams struct {
 	Accept *string `form:"accept,omitempty" json:"accept,omitempty"`
 
 	// MaxBitrate Bitrate cap in kbit/s, for services or transcodes that can lower it.
-	MaxBitrate *int    `form:"maxBitrate,omitempty" json:"maxBitrate,omitempty"`
-	Range      *string `json:"Range,omitempty"`
+	MaxBitrate *int `form:"maxBitrate,omitempty" json:"maxBitrate,omitempty"`
+
+	// Start Where to begin, in ms, for a player that can't seek this stream
+	// by bytes (it answered `Accept-Ranges: none`, so it's
+	// transcoded). The audio then begins this far into the song. A
+	// stream that can be seeked by bytes ignores it.
+	Start *int64  `form:"start,omitempty" json:"start,omitempty"`
+	Range *string `json:"Range,omitempty"`
 }
 
 // SearchParams defines parameters for Search.
@@ -2026,6 +2042,9 @@ type UpdateRoomJSONRequestBody = UpdateRoomRequest
 
 // PairDisplayJSONRequestBody defines body for PairDisplay for application/json ContentType.
 type PairDisplayJSONRequestBody = PairDisplayRequest
+
+// UpdateDisplayJSONRequestBody defines body for UpdateDisplay for application/json ContentType.
+type UpdateDisplayJSONRequestBody = UpdateDisplayRequest
 
 // CreateGuestPassJSONRequestBody defines body for CreateGuestPass for application/json ContentType.
 type CreateGuestPassJSONRequestBody = CreateGuestPassRequest
@@ -2230,6 +2249,9 @@ type ServerInterface interface {
 	// UnpairDisplay Unpair a display
 	// (DELETE /rooms/{roomId}/displays/{displayId})
 	UnpairDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId, displayId string)
+	// UpdateDisplay Turn a display's audio on or off
+	// (PATCH /rooms/{roomId}/displays/{displayId})
+	UpdateDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId, displayId string)
 	// RevokeGuestPass Revoke the room's guest pass
 	// (DELETE /rooms/{roomId}/guest-pass)
 	RevokeGuestPass(w http.ResponseWriter, r *http.Request, roomId RoomId)
@@ -3648,6 +3670,41 @@ func (siw *ServerInterfaceWrapper) UnpairDisplay(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateDisplay operation middleware
+func (siw *ServerInterfaceWrapper) UpdateDisplay(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "displayId" -------------
+	var displayId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "displayId", r.PathValue("displayId"), &displayId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "displayId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateDisplay(w, r, roomId, displayId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RevokeGuestPass operation middleware
 func (siw *ServerInterfaceWrapper) RevokeGuestPass(w http.ResponseWriter, r *http.Request) {
 
@@ -4628,6 +4685,19 @@ func (siw *ServerInterfaceWrapper) StreamQueueItem(w http.ResponseWriter, r *htt
 		return
 	}
 
+	// ------------- Optional query parameter "start" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "start", r.URL.Query(), &params.Start, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "start"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "start", Err: err})
+		}
+		return
+	}
+
 	headers := r.Header
 
 	// ------------- Optional header parameter "Range" -------------
@@ -4984,6 +5054,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/displays", wrapper.ListDisplays)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/displays", wrapper.PairDisplay)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/displays/{displayId}", wrapper.UnpairDisplay)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/rooms/{roomId}/displays/{displayId}", wrapper.UpdateDisplay)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/display/pairing", wrapper.PollDisplayPairing)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/display/pairing", wrapper.BeginDisplayPairing)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/display", wrapper.LeaveDisplay)
@@ -7268,6 +7339,47 @@ func (response UnpairDisplaydefaultJSONResponse) VisitUnpairDisplayResponse(w ht
 	return err
 }
 
+type UpdateDisplayRequestObject struct {
+	RoomId    RoomId `json:"roomId"`
+	DisplayId string `json:"displayId"`
+	Body      *UpdateDisplayJSONRequestBody
+}
+
+type UpdateDisplayResponseObject interface {
+	VisitUpdateDisplayResponse(w http.ResponseWriter) error
+}
+
+type UpdateDisplay200JSONResponse Display
+
+func (response UpdateDisplay200JSONResponse) VisitUpdateDisplayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDisplaydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateDisplaydefaultJSONResponse) VisitUpdateDisplayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RevokeGuestPassRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 }
@@ -8783,6 +8895,9 @@ type StrictServerInterface interface {
 	// UnpairDisplay Unpair a display
 	// (DELETE /rooms/{roomId}/displays/{displayId})
 	UnpairDisplay(ctx context.Context, request UnpairDisplayRequestObject) (UnpairDisplayResponseObject, error)
+	// UpdateDisplay Turn a display's audio on or off
+	// (PATCH /rooms/{roomId}/displays/{displayId})
+	UpdateDisplay(ctx context.Context, request UpdateDisplayRequestObject) (UpdateDisplayResponseObject, error)
 	// RevokeGuestPass Revoke the room's guest pass
 	// (DELETE /rooms/{roomId}/guest-pass)
 	RevokeGuestPass(ctx context.Context, request RevokeGuestPassRequestObject) (RevokeGuestPassResponseObject, error)
@@ -10547,6 +10662,40 @@ func (sh *strictHandler) UnpairDisplay(w http.ResponseWriter, r *http.Request, r
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UnpairDisplayResponseObject); ok {
 		if err := validResponse.VisitUnpairDisplayResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateDisplay operation middleware
+func (sh *strictHandler) UpdateDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId, displayId string) {
+	var request UpdateDisplayRequestObject
+
+	request.RoomId = roomId
+	request.DisplayId = displayId
+
+	var body UpdateDisplayJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateDisplay(ctx, request.(UpdateDisplayRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateDisplay")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateDisplayResponseObject); ok {
+		if err := validResponse.VisitUpdateDisplayResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

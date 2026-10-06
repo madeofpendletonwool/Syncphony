@@ -4,7 +4,7 @@ import { ApiError, unwrap } from '@/api/errors'
 import type { components } from '@/api/schema.gen'
 
 // Big-screen displays (MAD-716): a TV at /tv shows a code; someone in the
-// room types it in to pair it.
+// room types it in to pair it. With audio on, it can be the speaker too.
 
 export type Display = components['schemas']['Display']
 export type DisplayMe = components['schemas']['DisplayMe']
@@ -29,8 +29,15 @@ export const displayMeQuery = queryOptions({
   staleTime: 60_000,
 })
 
-export function pairDisplay(roomId: string, code: string, name?: string) {
-  return unwrap(api.POST('/rooms/{roomId}/displays', { params: { path: { roomId } }, body: { code, name } }))
+export function pairDisplay(roomId: string, code: string, name?: string, audio = false) {
+  return unwrap(api.POST('/rooms/{roomId}/displays', { params: { path: { roomId } }, body: { code, name, audio } }))
+}
+
+/** Lets a display play the room's audio, or stops it. */
+export function setDisplayAudio(roomId: string, displayId: string, audio: boolean) {
+  return unwrap(
+    api.PATCH('/rooms/{roomId}/displays/{displayId}', { params: { path: { roomId, displayId } }, body: { audio } }),
+  )
 }
 
 export function unpairDisplay(roomId: string, displayId: string) {

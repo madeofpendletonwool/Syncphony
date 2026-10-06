@@ -15,6 +15,29 @@ The code is in `web/src/lib/speaker.ts`, with its UI in `web/src/components/room
 - **Media Session:** sets the lock-screen title, artist, album, and artwork, plus the position. Play, pause, next, previous (restart the song), and seek are wired to the room. So the speaker's and headphones' buttons control the room, subject to the room's permissions.
 - **Screen Wake Lock:** **Keep the screen on** is on by default and remembered per device. The lock is requested again whenever the page becomes visible, because browsers drop it when the page is hidden.
 
+## Listening along
+
+Friends who aren't in the room can play it on their own device, in time with the speaker. Tap **Listen along here** under the transport controls. The code is the `listener` mode of `web/src/lib/speaker.ts`, which uses the same two `<audio>` elements, preloading and recovery as the speaker.
+
+- **The speaker keeps the clock.** A listener follows the same `nowplaying.updated` state, extrapolating from `positionMs` and `at`, and reports nothing. Any number of devices can listen. The server doesn't track listeners: each one simply streams the song from `/stream`.
+- **Staying in time:** a listener seeks back into line when it's more than 2s off. The speaker's progress reports aren't pushed, so it also checks `GET /playback` every 15s, and whenever the page becomes visible again. When a song ends, a listener starts the preloaded next one straight away, as the speaker does, so they move on together. In headless Chromium, listeners stayed within 0.1–0.5s of the speaker.
+- **Joining part way on an iPhone:** iOS can't decode some formats (Spotify's Ogg), so those streams are transcoded, and a transcoded stream can't be seeked by bytes. When a stream can't be seeked to where the room is, the listener loads it again with `start=<ms>`. The server then has ffmpeg begin there (`-ss`), so a late joiner doesn't start the song over. The reload costs up to about a second of lag. The speaker uses the same path, so a phone taking over mid-song is fixed too.
+- **Your play and pause are your own.** A listener's lock-screen or headset play and pause only affect that device, so a friend across town can't pause the party. Skip and seek still go to the room, subject to its permissions.
+- **When the speaker leaves:** if the speaker stops and a listener is allowed to be the speaker, that listener takes over and the music keeps going. If several listeners try at once, the last one wins and the rest carry on listening. If someone else later takes over from a promoted listener, it goes back to listening instead of stopping. So three friends in three places just need one of them to press **Play on this device**, and the rest to listen along.
+- **Members only:** guests can't stream, so they don't get the button.
+- **Server load:** each listener opens its own stream from the service. That's fine for a few friends. For Spotify it means more CDN fetches on the queuing friend's account, but the track key is cached, so it isn't another key request.
+
+## A TV as the speaker
+
+A paired big screen (`/tv`) can play the room too, through its own speakers or whatever sound system it's plugged into. The code is in `web/src/components/tv/tv-audio.tsx`, and it drives the same `speaker.ts` engine as a phone.
+
+- **Turning it on:** the **Big screen** dialog has **Play the audio on it too** when pairing, and each paired screen has a switch to change it later. Only people who could become the speaker themselves see the pairing option. The owner, whoever paired the screen, or an admin can flip the switch. Turning it off while the TV is playing stops it, and the room pauses, as releasing any speaker does. Unpairing it does the same.
+- **Who it plays as:** a display has no user of its own, so it claims the room as whoever paired it, under its own name ("Playing on Den TV"). It needs that person's `speaker` permission. Its device ID is always the display's ID, whatever the TV sends. If the person who paired it is deleted, it can't play until someone pairs it again.
+- **What it may call:** with audio on, the display cookie also works for claiming and releasing the speaker, reporting, and streaming, all for its own room only (`audioOps` in `server/internal/httpapi/displays.go`). With audio off, those return `forbidden`.
+- **The remote:** browsers need a press before audio can start. The TV shows **Play the audio here** with focus already on it, so pressing OK on the remote starts it. Once it has played, it starts again by itself after a reload, unless another device has taken over since. If the browser still wants a press, **Press OK to start the audio** comes back.
+- **A signed-in device at `/tv`** gets the same button if its user may be the speaker. It plays as that user's device, like a phone.
+- **TV browsers** (Tizen, webOS, Fire TV) vary in what they can decode. The stream's `accept=` probe and server-side transcoding cover this, but no TV has been tested yet.
+
 ## Test matrix
 
 | Platform | Status | Notes |
@@ -24,6 +47,10 @@ The code is in `web/src/lib/speaker.ts`, with its UI in `web/src/components/room
 | Android Chrome, installed PWA | ⏳ Not yet tested | Same as the tab, expected. |
 | iOS Safari, tab, screen locked | ⏳ Not yet tested on a device | See the iOS notes below. |
 | iOS Safari, Home Screen PWA, screen locked | ⏳ Not yet tested on a device | See the iOS notes below. This is the setup most likely to be used at a hangout. |
+| Big screen at `/tv`, headless Chromium (automated) | ✅ Verified | Pairing with audio on, OK on the focused button starts it, real progress reports, a skip from a phone, audio turned off from a phone (stops, the room pauses), and picking up again after a reload (asks for OK under a strict autoplay policy). |
+| Listening along, headless Chromium (automated) | ✅ Verified | A second user listening with an MP3-only, unseekable player (as iOS): joins mid-song through `start=`, follows song changes and seeks, takes over when the speaker stops, the old speaker listens along, and a local pause leaves the room playing. |
+| Listening along, iOS Safari | ⏳ Not yet tested on a device | Check a mid-song join (the `start=` reload), and background behavior while locked. |
+| Smart TV browsers (Tizen, webOS, Fire TV Silk) | ⏳ Not yet tested on a device | Check the codec probe, and whether OK on the remote counts as the press audio needs. |
 
 ### Checklist for a device run
 

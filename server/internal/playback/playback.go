@@ -431,14 +431,37 @@ func (e *Engine) Release(ctx context.Context, roomID, userID, deviceID string) (
 	if p.UserID != userID && row.OwnerID != userID {
 		return rooms.NowPlaying{}, ErrForbidden
 	}
-	if err := e.db.SetRoomPlayer(ctx, store.SetRoomPlayerParams{ID: roomID}); err != nil {
+	if err := e.release(ctx, r); err != nil {
 		return rooms.NowPlaying{}, err
+	}
+	return e.view(r), nil
+}
+
+// Drop stops a device being the room's speaker, if it is, without asking
+// whose it is: for a display that was unpaired or had its audio turned
+// off.
+func (e *Engine) Drop(ctx context.Context, roomID, deviceID string) error {
+	r, err := e.lock(ctx, roomID)
+	if err != nil {
+		return err
+	}
+	defer r.mu.Unlock()
+	if p := r.np.Player; p == nil || p.DeviceID != deviceID {
+		return nil
+	}
+	return e.release(ctx, r)
+}
+
+// release forgets the room's speaker and pauses it, then publishes.
+func (e *Engine) release(ctx context.Context, r *room) error {
+	if err := e.db.SetRoomPlayer(ctx, store.SetRoomPlayerParams{ID: r.id}); err != nil {
+		return err
 	}
 	r.np.Player = nil
 	if r.np.State == StatePlaying || r.np.State == StateLoading {
 		if err := e.pause(ctx, r); err != nil {
 			// The speaker is leaving either way; stop the room's clock.
-			slog.Warn("playback: pausing the remote player on release", "room", roomID, "err", err)
+			slog.Warn("playback: pausing the remote player on release", "room", r.id, "err", err)
 			now := e.cfg.Now()
 			r.closeRemote()
 			r.np.Position, r.np.At, r.np.State = r.position(now), now, StatePaused
@@ -446,7 +469,7 @@ func (e *Engine) Release(ctx context.Context, roomID, userID, deviceID string) (
 		}
 	}
 	e.publish(r)
-	return e.view(r), nil
+	return nil
 }
 
 // Command actions.
