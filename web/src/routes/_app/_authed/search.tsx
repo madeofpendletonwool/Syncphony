@@ -9,6 +9,7 @@ import { AlbumCard, ArtistCard, PlaylistCard } from '@/components/album-card'
 import { Notice } from '@/components/notice'
 import { PageHeader } from '@/components/page-header'
 import { ProviderIcon } from '@/components/provider-icon'
+import { Shelf } from '@/components/shelf'
 import { JoinRoomPrompt } from '@/components/start-room'
 import { TrackRow } from '@/components/track-row'
 import { Button } from '@/components/ui/button'
@@ -317,20 +318,6 @@ function Section({ title, more, children }: { title: string; more?: () => void; 
       </div>
       {children}
     </section>
-  )
-}
-
-/** A sideways-scrolling row that bleeds to the screen edges. */
-function Shelf({ children }: { children: ReactNode }) {
-  return (
-    <motion.div
-      variants={stagger}
-      initial="hidden"
-      animate="show"
-      className="-mx-gutter flex snap-x snap-mandatory scroll-px-gutter gap-4 overflow-x-auto px-gutter pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-    >
-      {children}
-    </motion.div>
   )
 }
 
