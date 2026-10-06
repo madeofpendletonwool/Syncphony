@@ -105,6 +105,11 @@ func (p *Provider) Info() provider.Info {
 			Playback: provider.PlaybackStream,
 			Search:   []provider.EntityKind{provider.KindTrack, provider.KindAlbum, provider.KindArtist},
 			Artwork:  true,
+			// Plus starred songs, listed as a playlist.
+			Playlists: true,
+			// Starred albums and artists, and newest, most and recently
+			// played albums.
+			Collection: true,
 			// From embedded tags and .lrc sidecar files.
 			Lyrics: true,
 			// OpenSubsonic servers (Navidrome 0.53+) report ISRCs from tags.

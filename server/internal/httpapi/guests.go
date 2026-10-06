@@ -38,6 +38,8 @@ var guestOps = map[string]bool{
 	"GetArtist":         true,
 	"ListPlaylists":     true,
 	"GetPlaylistTracks": true,
+	"GetCollection":     true,
+	"GetRandomTracks":   true,
 	"GetLinkArtwork":    true,
 	"GetTrackLyrics":    true,
 	// Suggestions come from the links the guest can add from.
@@ -51,6 +53,7 @@ var guestOps = map[string]bool{
 	"GetQueueItemPalette":    true,
 	"GetQueueItemLyrics":     true,
 	"GetQueueItemLinerNotes": true,
+	"GetQueueItemSimilar":    true,
 	"GetPlayback":            true,
 	// Only skipping their own song, and voting if the room lets them
 	// (the playback engine checks).

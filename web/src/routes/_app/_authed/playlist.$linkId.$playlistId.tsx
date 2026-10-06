@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { ListPlus, LoaderCircle } from 'lucide-react'
+import { ListPlus, LoaderCircle, Shuffle } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect } from 'react'
 import { errorMessage } from '@/api/errors'
@@ -12,7 +12,7 @@ import { TrackRow } from '@/components/track-row'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAddToLane } from '@/hooks/use-add-to-lane'
-import { artworkUrl, playlistsQuery, playlistTracksQuery, totalDuration, trackKey } from '@/lib/browse'
+import { artworkUrl, pickRandom, playlistsQuery, playlistTracksQuery, totalDuration, trackKey } from '@/lib/browse'
 import { easeOutExpo, fadeUp, stagger } from '@/lib/motion'
 import { providersQuery } from '@/lib/services'
 
@@ -26,6 +26,8 @@ export const Route = createFileRoute('/_app/_authed/playlist/$linkId/$playlistId
 
 // The server queues at most 100 songs per request.
 const MAX_ADD = 100
+// How many songs shuffling a big playlist adds to your lane.
+const SHUFFLE_COUNT = 20
 
 function Playlist() {
   const { linkId, playlistId } = Route.useParams()
@@ -103,7 +105,7 @@ function Playlist() {
           {meta.join(' · ')}
           {loading && <LoaderCircle className="size-3 animate-spin" />}
         </motion.p>
-        <motion.div variants={fadeUp} className="mt-5">
+        <motion.div variants={fadeUp} className="mt-5 flex flex-wrap justify-center gap-2">
           <Button size="lg" disabled={waiting.length === 0} onClick={() => add(waiting.slice(0, MAX_ADD))}>
             <ListPlus data-icon="inline-start" />
             {waiting.length === 0
@@ -116,6 +118,13 @@ function Playlist() {
                   ? 'Add playlist to my lane'
                   : `Add ${waiting.length} more to my lane`}
           </Button>
+          {/* Your lane takes turns with everyone else's, so a big add stays fair. */}
+          {waiting.length > SHUFFLE_COUNT && !loading && (
+            <Button size="lg" variant="outline" onClick={() => add(pickRandom(waiting, SHUFFLE_COUNT))}>
+              <Shuffle data-icon="inline-start" />
+              Shuffle in {SHUFFLE_COUNT}
+            </Button>
+          )}
         </motion.div>
       </motion.header>
 

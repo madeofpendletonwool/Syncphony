@@ -100,6 +100,7 @@ func (p *Provider) Info() provider.Info {
 			Playback:        p.opts.Playback,
 			Search:          []provider.EntityKind{provider.KindTrack, provider.KindAlbum, provider.KindArtist, provider.KindPlaylist},
 			Playlists:       true,
+			Collection:      true,
 			Artwork:         true,
 			Lyrics:          true,
 			Recommendations: !p.opts.NoRecommendations,

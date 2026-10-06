@@ -13,7 +13,7 @@ import (
 // be safe for concurrent use.
 //
 // Optional features are separate interfaces (Streamer, Remote,
-// PlaylistLister, Lyricist, Recommender), discovered with a type assertion and declared in
+// PlaylistLister, Collection, Lyricist, Recommender), discovered with a type assertion and declared in
 // Capabilities. PlayChecker is optional too, but needs no capability: the
 // core only uses it when it's there.
 type Session interface {
@@ -120,6 +120,38 @@ type PlaylistLister interface {
 	// PlaylistTracks lists a playlist's tracks in order.
 	PlaylistTracks(ctx context.Context, id, cursor string) (Page[Track], error)
 }
+
+// Collection is implemented by sessions of providers with the Collection
+// capability. It's shortcuts into an account's library, for something to
+// pick before searching. Saved songs aren't here: providers list them as a
+// playlist (Spotify's Liked Songs, Navidrome's starred songs).
+type Collection interface {
+	// Saved returns the albums and artists the account has saved (starred,
+	// liked, followed).
+	Saved(ctx context.Context) (Saved, error)
+	// AlbumList returns up to limit albums of a kind. A kind the provider
+	// can't list is ErrUnsupported.
+	AlbumList(ctx context.Context, kind AlbumListKind, limit int) ([]Album, error)
+}
+
+// Saved is what an account has saved.
+type Saved struct {
+	Albums  []Album
+	Artists []Artist
+}
+
+// AlbumListKind names a list of albums in an account's library.
+type AlbumListKind string
+
+// Album lists.
+const (
+	// AlbumsNewest are the albums added to the library most recently.
+	AlbumsNewest AlbumListKind = "newest"
+	// AlbumsFrequent are the albums the account plays most.
+	AlbumsFrequent AlbumListKind = "frequent"
+	// AlbumsRecent are the albums the account played most recently.
+	AlbumsRecent AlbumListKind = "recent"
+)
 
 // Lyricist is implemented by sessions of providers with the Lyrics capability.
 type Lyricist interface {

@@ -842,6 +842,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/random-tracks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Songs picked at random from services you can use
+         * @description For "surprise me": songs from your links and shared ones whose
+         *     service can pick at random, mixed together.
+         */
+        get: operations["getRandomTracks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links/{id}/collection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Shortcuts into the library of one of your links or a shared one
+         * @description Saved albums and artists, and albums recently added, played most, and played lately, for something to pick before searching. Saved songs are a playlist instead. A list the service can't make is empty. `not_found` if the service has none of this (its `capabilities.collection` is false).
+         */
+        get: operations["getCollection"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/links/{id}/artwork": {
         parameters: {
             query?: never;
@@ -1027,6 +1070,33 @@ export interface paths {
         head?: never;
         /** Move one of your queued songs within your lane */
         patch: operations["moveQueueItem"];
+        trace?: never;
+    };
+    "/rooms/{roomId}/queue/{itemId}/similar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Songs like one the room queued, from services you can use
+         * @description For "more like what's playing". Asks each of your links and the
+         *     shared ones whose service recommends (Navidrome through Last.fm,
+         *     say), finding the song there first if it came from elsewhere.
+         *     Most alike first, taking turns between services. Empty when no
+         *     service knows anything similar.
+         */
+        get: operations["getQueueItemSimilar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/rooms/{roomId}/queue/{itemId}/artwork": {
@@ -1882,6 +1952,10 @@ export interface components {
             capabilities: {
                 search: ("track" | "album" | "artist" | "playlist")[];
                 playlists: boolean;
+                /** @description The service has saved albums and artists, and lists of albums (`GET /links/{id}/collection`). */
+                collection: boolean;
+                /** @description The service suggests similar and random songs (autopilot, `/random-tracks`, a queued song's `similar`). */
+                recommendations: boolean;
                 artwork: boolean;
                 lyrics: boolean;
                 isrc: boolean;
@@ -2146,6 +2220,21 @@ export interface components {
             playlists: components["schemas"]["PlaylistResult"][];
             /** @description Cursor for the next page; absent on the last. */
             next?: string;
+        };
+        TrackList: {
+            tracks: components["schemas"]["TrackResult"][];
+        };
+        LinkCollection: {
+            linkId: string;
+            provider: string;
+            savedAlbums: components["schemas"]["AlbumResult"][];
+            savedArtists: components["schemas"]["ArtistResult"][];
+            /** @description Albums added to the library lately, newest first. */
+            recentlyAdded: components["schemas"]["AlbumResult"][];
+            /** @description The albums the account plays most, by the service's count. */
+            mostPlayed: components["schemas"]["AlbumResult"][];
+            /** @description Albums the account played lately, most recent first. */
+            recentlyPlayed: components["schemas"]["AlbumResult"][];
         };
         PlaylistTracks: {
             linkId: string;
@@ -3797,6 +3886,52 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    getRandomTracks: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Random songs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getCollection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link's collection */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkCollection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     getLinkArtwork: {
         parameters: {
             query: {
@@ -4029,6 +4164,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QueueSnapshot"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getQueueItemSimilar: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Similar songs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackList"];
                 };
             };
             default: components["responses"]["Error"];
