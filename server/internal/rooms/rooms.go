@@ -85,7 +85,37 @@ type Settings struct {
 	Fairness        Fairness  `json:"fairness"`
 	Matching        Matching  `json:"matching"`
 	Autopilot       Autopilot `json:"autopilot"`
+	Guests          Guests    `json:"guests"`
 }
+
+// Guests says whether people without an account may join the room with a
+// guest pass, and what they may do once in.
+type Guests struct {
+	Allowed bool `json:"allowed,omitempty"`
+	// MaxSongs is how many songs each guest may add over their visit:
+	// 0 (no limit) to MaxGuestSongs. Nil means DefaultGuestSongs.
+	MaxSongs *int `json:"maxSongs,omitempty"`
+	// NoVote stops guests voting to skip and hearting songs. Stored
+	// negated so that guests vote by default.
+	NoVote bool `json:"noVote,omitempty"`
+}
+
+// Guest limits.
+const (
+	DefaultGuestSongs = 10
+	MaxGuestSongs     = 100
+)
+
+// SongLimit is how many songs each guest may add; 0 means no limit.
+func (g Guests) SongLimit() int {
+	if g.MaxSongs == nil {
+		return DefaultGuestSongs
+	}
+	return *g.MaxSongs
+}
+
+// CanVote reports whether guests may vote to skip and heart songs.
+func (g Guests) CanVote() bool { return !g.NoVote }
 
 // Autopilot keeps the music going when a room's queue runs dry, with
 // songs like the ones the room has been playing (see package autopilot).
@@ -210,6 +240,9 @@ func ParseSettings(raw string) Settings {
 	if st.Autopilot.Adventure != AdventureDiscovery {
 		st.Autopilot.Adventure = AdventureSimilar
 	}
+	if m := st.Guests.MaxSongs; m != nil && (*m < 0 || *m > MaxGuestSongs) {
+		st.Guests.MaxSongs = nil
+	}
 	return st
 }
 
@@ -255,6 +288,8 @@ type Update struct {
 	Matching *Matching
 	// Autopilot, if set, replaces the room's autopilot options.
 	Autopilot *Autopilot
+	// Guests, if set, replaces the room's guest options.
+	Guests *Guests
 }
 
 // Update changes a room. Only its owner may. Everyone in the room hears
@@ -299,6 +334,9 @@ func (s *Service) Update(ctx context.Context, userID, id string, u Update) (stor
 	}
 	if u.Autopilot != nil {
 		st.Autopilot = *u.Autopilot
+	}
+	if u.Guests != nil {
+		st.Guests = *u.Guests
 	}
 	name, raw, err := validate(name, mode, st)
 	if err != nil {
@@ -357,6 +395,9 @@ func validate(name, mode string, st Settings) (string, string, error) {
 	case AdventureSimilar, AdventureDiscovery:
 	default:
 		return "", "", &InvalidInputError{"autopilot's adventure is similar or discovery"}
+	}
+	if m := st.Guests.MaxSongs; m != nil && (*m < 0 || *m > MaxGuestSongs) {
+		return "", "", &InvalidInputError{fmt.Sprintf("a guest may add 0 (no limit) to %d songs", MaxGuestSongs)}
 	}
 	st.Fairness.clean()
 	st.Controls = ""

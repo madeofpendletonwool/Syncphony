@@ -1343,10 +1343,267 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /rooms/{roomId}/queue/{itemId}/hearts:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getHearts
+      summary: Who hearted a song
+      tags: [nights]
+      security:
+        - session: []
+        - display: []
+      responses:
+        "200":
+          description: The song's hearts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Hearts"
+        default:
+          $ref: "#/components/responses/Error"
+    put:
+      operationId: heartSong
+      summary: Heart a song
+      description: |
+        A heart toward the song of the night. It isn't a vote to skip.
+        Only the playing song, or one that played earlier tonight
+        (`not_tonight`, 409, otherwise). You can't heart your own song
+        (`invalid_input`), and in rooms where guests can't vote, guests
+        can't heart (`forbidden`). Everyone in the room gets
+        `hearts.updated`.
+      tags: [nights]
+      responses:
+        "200":
+          description: The song's hearts, yours included
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Hearts"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: unheartSong
+      summary: Take back a heart
+      tags: [nights]
+      responses:
+        "200":
+          description: The song's hearts, without yours
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Hearts"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/nights:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: listNights
+      summary: The room's past nights, and their songs of the night
+      tags: [nights]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Nights, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Night"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: endNight
+      summary: End the night, and crown its song
+      description: |
+        The room's owner or an admin wraps up the night. The most-hearted
+        song since the night began is crowned song of the night, and
+        everyone in the room (the big screen too) gets `night.ended`.
+        Nights also end on their own once the room has been quiet for two
+        hours, the same gap that separates listening sessions.
+        `nothing_played` (409) if nothing has played since the last night
+        ended.
+      tags: [nights]
+      responses:
+        "201":
+          description: The night that ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Night"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/guest-pass:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: getGuestPass
+      summary: The room's guest pass, to show as a QR code
+      description: |
+        The pass guests scan to join without an account. `not_found` (404)
+        when the room has none that's still good. Guests can't see it.
+      tags: [guests]
+      security:
+        - session: []
+        - display: []
+      responses:
+        "200":
+          description: The room's current guest pass
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestPass"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: createGuestPass
+      summary: Start a new guest pass
+      description: |
+        Any member, in a room that allows guests (`guests_off`, 403,
+        otherwise). It replaces the room's current pass, whose code stops
+        working; guests who joined with it stay. Everyone in the room gets
+        `guests.updated`.
+      tags: [guests]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGuestPassRequest"
+      responses:
+        "201":
+          description: The new pass
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestPass"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: revokeGuestPass
+      summary: Revoke the room's guest pass
+      description: |
+        No one else can join with it. Guests already in stay until they
+        expire or are removed. The room's owner, an admin, or whoever
+        started the pass.
+      tags: [guests]
+      responses:
+        "204":
+          description: Revoked
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/guests:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: listGuests
+      summary: The room's guests
+      tags: [guests]
+      responses:
+        "200":
+          description: Guests still in the room, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Guest"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/guests/{userId}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: kickGuest
+      summary: Remove a guest
+      description: |
+        Signs the guest out and takes their waiting songs out of the
+        queue. Songs they already played stay in the room's history and
+        recaps. The room's owner or an admin.
+      tags: [guests]
+      responses:
+        "204":
+          description: Removed
+        default:
+          $ref: "#/components/responses/Error"
+
+  /guest/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getGuestInvite
+      summary: Check a guest pass before joining
+      description: |
+        `guest_pass_invalid` (404) if it's wrong, expired or revoked, or
+        the room no longer allows guests. Wrong passes are rate limited by IP.
+      tags: [guests]
+      security: []
+      responses:
+        "200":
+          description: The room the pass joins
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestInvite"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: joinAsGuest
+      summary: Join a room as a guest
+      description: |
+        Makes a guest account and signs it in until the pass expires. A
+        guest has no password, passkey, services or settings. They can
+        search the server's shared services, add songs to their own lane
+        (up to the room's limit; `guest_limit`, 409, past it), react, and
+        vote and heart if the room allows it, in this room only. When they
+        expire or are removed, their waiting songs leave the queue; what
+        they played stays in the room's history under their name.
+      tags: [guests]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinAsGuestRequest"
+      responses:
+        "201":
+          $ref: "#/components/responses/SignedIn"
+        default:
+          $ref: "#/components/responses/Error"
+
   /rooms:
     get:
       operationId: listRooms
       summary: Every room
+      description: A guest sees only their own room.
       tags: [rooms]
       responses:
         "200":
@@ -1706,6 +1963,8 @@ components:
           example: "#7c3aed"
         role:
           $ref: "#/components/schemas/Role"
+        guest:
+          $ref: "#/components/schemas/UserGuest"
         createdAt:
           type: string
           format: date-time
@@ -1720,6 +1979,160 @@ components:
               type: boolean
             passkeyCount:
               type: integer
+
+    UserGuest:
+      type: object
+      description: Set on guests, who joined one room with a QR code instead of an invite.
+      required: [roomId, expiresAt, ended]
+      properties:
+        roomId:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        ended:
+          type: boolean
+          description: |
+            The guest expired or was removed. They're kept only so the room's
+            history and recaps can show their name.
+
+    RoomGuests:
+      type: object
+      description: |
+        Whether people without an account may join the room by scanning a
+        guest pass, and what they may do.
+      required: [allowed, maxSongs, canVote]
+      properties:
+        allowed:
+          type: boolean
+          default: false
+        maxSongs:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 10
+          description: Songs each guest may add over their visit. 0 means no limit.
+        canVote:
+          type: boolean
+          default: true
+          description: Guests may vote to skip and heart songs.
+
+    GuestPass:
+      type: object
+      required: [id, roomId, url, createdAt, expiresAt]
+      properties:
+        id:
+          type: string
+        roomId:
+          type: string
+        url:
+          type: string
+          description: The link to show as a QR code. It carries the signed pass.
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    CreateGuestPassRequest:
+      type: object
+      required: [expiresAt]
+      properties:
+        expiresAt:
+          type: string
+          format: date-time
+          description: |
+            When the pass, and everyone who joins with it, expires: e.g. the
+            end of the night. 15 minutes to 24 hours from now.
+
+    GuestInvite:
+      type: object
+      required: [roomId, roomName, expiresAt]
+      properties:
+        roomId:
+          type: string
+        roomName:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    JoinAsGuestRequest:
+      type: object
+      required: [displayName]
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 32
+
+    Guest:
+      type: object
+      required: [user, joinedAt, expiresAt, songs]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        joinedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        songs:
+          type: integer
+          description: Songs they've added, toward the room's limit.
+
+    Hearts:
+      type: object
+      required: [roomId, itemId, userIds]
+      properties:
+        roomId:
+          type: string
+        itemId:
+          type: string
+        userIds:
+          type: array
+          description: Who hearted it, in the order they did.
+          items:
+            type: string
+
+    Night:
+      type: object
+      description: |
+        A night in the room: from its first song until the host ended it or
+        the room went quiet. Fed into recaps.
+      required: [id, roomId, startedAt, endedAt, endedBy, plays]
+      properties:
+        id:
+          type: string
+        roomId:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        endedBy:
+          type: string
+          enum: [host, idle]
+        plays:
+          type: integer
+        songOfTheNight:
+          $ref: "#/components/schemas/SongOfTheNight"
+
+    SongOfTheNight:
+      type: object
+      description: The night's most-hearted song. Absent if nothing got a heart.
+      required: [item, hearts]
+      properties:
+        item:
+          $ref: "#/components/schemas/QueueItem"
+        hearts:
+          type: integer
 
     ProfileUpdate:
       type: object
@@ -2537,6 +2950,10 @@ components:
         - `link.status`: ServiceLink. One of your links changed status.
         - `room.updated`: Room. The room's name or settings changed.
         - `reaction.sent`: Reaction. Someone sent an emoji to the big screen.
+        - `hearts.updated`: Hearts. Someone hearted a song, or took it back.
+        - `night.ended`: Night. The night is over; crown its song of the night.
+        - `guests.updated`: `{"roomId": ...}`. A guest joined or was removed,
+          or the guest pass changed: fetch them again.
 
         A paired display connects with its display cookie instead, to its
         own room only. So does a signed-in user with `display=1`: either way
@@ -2549,7 +2966,7 @@ components:
       properties:
         type:
           type: string
-          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated, reaction.sent]
+          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated, reaction.sent, hearts.updated, night.ended, guests.updated]
         version:
           type: integer
           format: int64
@@ -2826,6 +3243,8 @@ components:
           description: User IDs whose songs played, most first.
           items:
             type: string
+        night:
+          $ref: "#/components/schemas/Night"
 
     QueuedTrack:
       type: object
@@ -3135,7 +3554,7 @@ components:
 
     Room:
       type: object
-      required: [id, name, ownerId, fairnessMode, fairness, matching, autopilot, permissions, skipVotePercent, createdAt]
+      required: [id, name, ownerId, fairnessMode, fairness, matching, autopilot, guests, permissions, skipVotePercent, createdAt]
       properties:
         id:
           type: string
@@ -3151,6 +3570,8 @@ components:
           $ref: "#/components/schemas/RoomMatching"
         autopilot:
           $ref: "#/components/schemas/RoomAutopilot"
+        guests:
+          $ref: "#/components/schemas/RoomGuests"
         permissions:
           $ref: "#/components/schemas/RoomPermissions"
         skipVotePercent:
@@ -3175,6 +3596,8 @@ components:
           $ref: "#/components/schemas/RoomMatching"
         autopilot:
           $ref: "#/components/schemas/RoomAutopilot"
+        guests:
+          $ref: "#/components/schemas/RoomGuests"
         permissions:
           $ref: "#/components/schemas/RoomPermissionsChange"
         skipVotePercent:
@@ -3195,6 +3618,8 @@ components:
           $ref: "#/components/schemas/RoomMatching"
         autopilot:
           $ref: "#/components/schemas/RoomAutopilot"
+        guests:
+          $ref: "#/components/schemas/RoomGuests"
         permissions:
           $ref: "#/components/schemas/RoomPermissionsChange"
         skipVotePercent:

@@ -25,6 +25,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
 	"github.com/madeofpendletonwool/syncphony/server/internal/match"
 	"github.com/madeofpendletonwool/syncphony/server/internal/musicbrainz"
+	"github.com/madeofpendletonwool/syncphony/server/internal/nights"
 	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
 	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
@@ -49,6 +50,8 @@ type env struct {
 	playback *playback.Engine
 	mb       *musicbrainz.Service
 	palettes *palette.Service
+	nights   *nights.Service
+	api      *httpapi.Server
 	fake     *fake.Provider // links with a form
 	oauth    *fake.Provider // links with OAuth2
 	setupURL string
@@ -109,10 +112,13 @@ func newEnv(t *testing.T) *env {
 	t.Cleanup(e.playback.Close)
 	ly := lyrics.New(db, lyrics.Options{LRCLIB: &lyrics.LRCLIB{BaseURL: newLRCLIB(t).URL}, Now: e.clock})
 	notes := linernotes.New(db, e.mb, linernotes.Options{WikipediaURL: mbURL, WikidataURL: mbURL, Now: e.clock})
+	e.nights = nights.New(db, e.bus)
+	e.nights.Now = e.clock
 	api := &httpapi.Server{
-		Version: "test", Auth: e.svc, Links: e.links, Lyrics: ly, LinerNotes: notes, Artwork: art, Palettes: e.palettes, Rooms: e.rooms, Queue: qs, Playback: e.playback, Bus: e.bus, Presence: presence,
+		Version: "test", Auth: e.svc, Links: e.links, Lyrics: ly, LinerNotes: notes, Artwork: art, Palettes: e.palettes, Rooms: e.rooms, Queue: qs, Playback: e.playback, Nights: e.nights, Bus: e.bus, Presence: presence,
 		BaseURL: e.base, PingEvery: 50 * time.Millisecond,
 	}
+	e.api = api
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api.Handler())
 	mux.Handle("GET /ws/rooms/{id}", api.RoomSocket())

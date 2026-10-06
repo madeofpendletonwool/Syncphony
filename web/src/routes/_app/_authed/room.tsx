@@ -1,13 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Check, ChevronDown, History, LogOut, MonitorPlay, Plus, Settings2, Sparkles, Speaker } from 'lucide-react'
+import { Check, ChevronDown, Crown, History, LogOut, MonitorPlay, Plus, QrCode, Settings2, Sparkles, Speaker } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { DropdownMenu } from 'radix-ui'
 import { useEffect, useState } from 'react'
+import { errorMessage } from '@/api/errors'
 import { Artwork } from '@/components/artwork'
 import { PageHeader } from '@/components/page-header'
 import { AutopilotBadge, NotThisOne } from '@/components/room/autopilot-badge'
 import { BigScreenDialog } from '@/components/room/big-screen-dialog'
+import { GuestsDialog } from '@/components/room/guests-dialog'
+import { HeartButton } from '@/components/room/heart-button'
 import { MyLane } from '@/components/room/my-lane'
 import { QueueRow } from '@/components/room/queue-row'
 import { ReactionBar } from '@/components/room/reaction-bar'
@@ -28,11 +31,14 @@ import { useMe } from '@/lib/auth'
 import { isMine } from '@/lib/autopilot'
 import { laneStyle } from '@/lib/lane'
 import { fadeUp, spring, stagger } from '@/lib/motion'
+import { endNight } from '@/lib/nights'
 import { formatDuration, usePlayer, type User } from '@/lib/now-playing'
 import { playbackQuery, songsBeforeYours, type QueueItem } from '@/lib/playback'
 import { chooseRoom, leaveRoom, queueQuery, useCurrentRoom, type Room as RoomInfo } from '@/lib/room'
 import { live } from '@/lib/room-socket'
 import { useStore } from '@/lib/store'
+import { relativeTime } from '@/lib/time'
+import { toast } from '@/lib/toast'
 import { usersQuery } from '@/lib/users'
 import { cn } from '@/lib/utils'
 
@@ -57,6 +63,11 @@ function Room() {
     if (rooms.data.some((r) => r.id === join)) chooseRoom(join)
     void navigate({ search: {}, replace: true })
   }, [join, rooms.data, navigate])
+  // A guest belongs to one room; they're always in it.
+  const guestRoom = me.guest?.roomId
+  useEffect(() => {
+    if (guestRoom && !room && rooms.data?.some((r) => r.id === guestRoom)) chooseRoom(guestRoom)
+  }, [guestRoom, room, rooms.data])
   const queue = useQuery({ ...queueQuery(room?.id ?? ''), enabled: !!room })
   const users = useQuery(usersQuery)
   const userById = (id: string) => users.data?.find((u) => u.id === id)
@@ -108,6 +119,8 @@ function Room() {
               : `Your next song plays in ~${before} ${before === 1 ? 'turn' : 'turns'}`}
           </motion.p>
         )}
+
+        {me.guest && <GuestNote room={room} added={items.filter((i) => i.addedBy === me.id && !i.autopilot).length} />}
 
         <motion.section variants={fadeUp}>
           <SectionTitle title="Up next" count={upNext.length} />
@@ -164,7 +177,10 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
   const { members, status } = useStore(live)
   const [settings, setSettings] = useState(false)
   const [bigScreen, setBigScreen] = useState(false)
-  const others = rooms.filter((r) => r.id !== room.id)
+  const [guests, setGuests] = useState(false)
+  const guest = !!me.guest
+  const host = me.role === 'admin' || room.ownerId === me.id
+  const others = guest ? [] : rooms.filter((r) => r.id !== room.id)
   const title = (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger className="-ml-1 flex max-w-full items-center gap-1.5 rounded-xl px-1 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
@@ -196,20 +212,39 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
               <span className="flex-1">History and recaps</span>
             </Link>
           </DropdownMenu.Item>
-          <DropdownMenu.Item onSelect={() => setBigScreen(true)} className={menuItem}>
-            <MonitorPlay className="size-4 text-muted-foreground" />
-            <span className="flex-1">Big screen</span>
-          </DropdownMenu.Item>
+          {!guest && (
+            <DropdownMenu.Item onSelect={() => setBigScreen(true)} className={menuItem}>
+              <MonitorPlay className="size-4 text-muted-foreground" />
+              <span className="flex-1">Big screen</span>
+            </DropdownMenu.Item>
+          )}
+          {!guest && (room.guests.allowed || room.ownerId === me.id) && (
+            <DropdownMenu.Item onSelect={() => setGuests(true)} className={menuItem}>
+              <QrCode className="size-4 text-muted-foreground" />
+              <span className="flex-1">Invite guests</span>
+            </DropdownMenu.Item>
+          )}
+          {host && (
+            <DropdownMenu.Item
+              onSelect={() => endNight(room.id).catch((e: unknown) => toast({ message: errorMessage(e), tone: 'error' }))}
+              className={menuItem}
+            >
+              <Crown className="size-4 text-muted-foreground" />
+              <span className="flex-1">End the night</span>
+            </DropdownMenu.Item>
+          )}
           {room.ownerId === me.id && (
             <DropdownMenu.Item onSelect={() => setSettings(true)} className={menuItem}>
               <Settings2 className="size-4 text-muted-foreground" />
               <span className="flex-1">Room settings</span>
             </DropdownMenu.Item>
           )}
-          <DropdownMenu.Item onSelect={leaveRoom} className={menuItem}>
-            <LogOut className="size-4 text-muted-foreground" />
-            <span className="flex-1">Leave room</span>
-          </DropdownMenu.Item>
+          {!guest && (
+            <DropdownMenu.Item onSelect={leaveRoom} className={menuItem}>
+              <LogOut className="size-4 text-muted-foreground" />
+              <span className="flex-1">Leave room</span>
+            </DropdownMenu.Item>
+          )}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
@@ -219,6 +254,7 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
     <header className="flex items-end justify-between gap-4 pt-10 pb-6">
       <RoomSettings room={room} open={settings} onOpenChange={setSettings} />
       <BigScreenDialog room={room} open={bigScreen} onOpenChange={setBigScreen} />
+      <GuestsDialog room={room} open={guests} onOpenChange={setGuests} />
       <div className="min-w-0">
         <h1 className="text-display">{title}</h1>
         <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
@@ -337,6 +373,7 @@ function NowPlayingCard({ room, waiting }: { room: RoomInfo; waiting: number }) 
             )}
             {np.autopilot && <AutopilotBadge pick={np.autopilot} />}
             <SourceTag provider={np.track.provider} via={np.via} className="py-1" />
+            <HeartButton room={room} np={np} className="ml-auto" />
           </div>
         </div>
       </div>
@@ -391,6 +428,7 @@ function Lanes({ items, me, userById }: { items: QueueItem[]; me: string; userBy
             >
               {u && <UserAvatar user={u} className="size-7 text-[0.65rem]" />}
               <span className="font-medium">{u?.displayName ?? 'Someone'}</span>
+              {u?.guest && <span className="text-caption text-muted-foreground">guest</span>}
               <span className="text-muted-foreground tabular-nums">
                 {n} song{n === 1 ? '' : 's'}
               </span>
@@ -399,6 +437,20 @@ function Lanes({ items, me, userById }: { items: QueueItem[]; me: string; userBy
         })}
       </ul>
     </motion.section>
+  )
+}
+
+/** For guests: how many songs they have left, and when their pass ends. */
+function GuestNote({ room, added }: { room: RoomInfo; added: number }) {
+  const me = useMe()
+  const limit = room.guests.maxSongs
+  const left = Math.max(limit - added, 0)
+  return (
+    <motion.p variants={fadeUp} className="glass rounded-2xl px-4 py-3 text-sm text-muted-foreground">
+      <span className="font-medium text-foreground">You&apos;re a guest.</span>{' '}
+      {limit > 0 ? `${left} of ${limit} songs left` : 'Add as many songs as you like'}
+      {me.guest && ` · your pass ends ${relativeTime(me.guest.expiresAt)}`}.
+    </motion.p>
   )
 }
 

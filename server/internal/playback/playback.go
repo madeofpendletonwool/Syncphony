@@ -500,6 +500,16 @@ func (e *Engine) Command(ctx context.Context, roomID, userID string, c Command) 
 	if level != "" && !ownSkip && !rooms.Allowed(level, row.OwnerID, userID) {
 		return rooms.NowPlaying{}, ErrForbidden
 	}
+	// Guests may skip their own songs, and vote if the room lets them;
+	// the rest of the controls are the members'.
+	if _, err := e.db.GetGuest(ctx, userID); err == nil {
+		vote := c.Action == ActionVoteSkip || c.Action == ActionUnvoteSkip
+		if !ownSkip && (!vote || !r.settings.Guests.CanVote()) {
+			return rooms.NowPlaying{}, ErrForbidden
+		}
+	} else if !store.IsNotFound(err) {
+		return rooms.NowPlaying{}, err
+	}
 	now := e.cfg.Now()
 	switch c.Action {
 	case ActionPlay:
@@ -981,8 +991,21 @@ func (e *Engine) tally(r *room) *rooms.SkipVotes {
 	if !r.np.Item.IsAutopilot() {
 		delete(voters, r.np.Item.AddedBy)
 	}
+	votes := append([]string{}, r.votes...)
+	// In rooms where guests don't vote, they don't count toward the votes
+	// needed either.
+	if !r.settings.Guests.CanVote() {
+		if guests, err := e.db.ListRoomGuests(e.ctx, store.ListRoomGuestsParams{RoomID: r.id, Now: e.cfg.Now()}); err != nil {
+			slog.Warn("playback: listing a room's guests", "room", r.id, "err", err)
+		} else {
+			for _, g := range guests {
+				delete(voters, g.Guest.UserID)
+				votes = slices.DeleteFunc(votes, func(id string) bool { return id == g.Guest.UserID })
+			}
+		}
+	}
 	return &rooms.SkipVotes{
-		Voters: append([]string{}, r.votes...),
+		Voters: votes,
 		Needed: rooms.VotesNeeded(len(voters), *r.settings.SkipVotePercent),
 	}
 }

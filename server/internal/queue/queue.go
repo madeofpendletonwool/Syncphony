@@ -66,6 +66,19 @@ func window(minutes int) string {
 	}
 }
 
+// GuestLimitError is a guest adding more songs than the room lets them.
+type GuestLimitError struct {
+	// Limit is the room's limit, and Left how many more they may add.
+	Limit, Left int
+}
+
+func (e *GuestLimitError) Error() string {
+	if e.Left == 0 {
+		return fmt.Sprintf("Guests can add %d songs here, and you've added yours. Thanks for the picks!", e.Limit)
+	}
+	return fmt.Sprintf("Guests can add %d songs here; you have %d left.", e.Limit, e.Left)
+}
+
 // InvalidInputError is a bad request, such as adding no songs.
 type InvalidInputError struct{ Message string }
 
@@ -199,6 +212,9 @@ func (s *Service) Add(ctx context.Context, roomID, userID string, refs []TrackRe
 		if err != nil {
 			return err
 		}
+		if err := guestLimit(ctx, q, room, userID, len(tracks)); err != nil {
+			return err
+		}
 		added = tracks
 		pos, err := q.NextLanePosition(ctx, store.NextLanePositionParams{RoomID: roomID, AddedBy: userID})
 		if err != nil {
@@ -224,6 +240,28 @@ func (s *Service) Add(ctx context.Context, roomID, userID string, refs []TrackRe
 		s.OnAdd(added)
 	}
 	return snap, err
+}
+
+// guestLimit refuses n more songs from a guest who'd go over the room's
+// limit. Members have no limit.
+func guestLimit(ctx context.Context, q *store.Queries, room store.Room, userID string, n int) error {
+	if _, err := q.GetGuest(ctx, userID); store.IsNotFound(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	limit := rooms.ParseSettings(room.Settings).Guests.SongLimit()
+	if limit == 0 {
+		return nil
+	}
+	added, err := q.CountGuestSongs(ctx, store.CountGuestSongsParams{RoomID: room.ID, AddedBy: userID})
+	if err != nil {
+		return err
+	}
+	if left := max(limit-int(added), 0); n > left {
+		return &GuestLimitError{Limit: limit, Left: left}
+	}
+	return nil
 }
 
 // AutopilotInfo says why autopilot chose a song. It's stored with the item.
@@ -461,6 +499,31 @@ func (s *Service) Remove(ctx context.Context, roomID, userID, itemID string) (ro
 		}
 		return q.SetQueueItemState(ctx, store.SetQueueItemStateParams{State: store.ItemRemoved, UpdatedAt: s.Now(), ID: itemID})
 	})
+}
+
+// GuestSongs is how many songs a guest has added to a room, toward its limit.
+func (s *Service) GuestSongs(ctx context.Context, roomID, userID string) (int, error) {
+	n, err := s.db.CountGuestSongs(ctx, store.CountGuestSongsParams{RoomID: roomID, AddedBy: userID})
+	return int(n), err
+}
+
+// RemoveLane takes all of userID's waiting songs out of a room's queue,
+// as when a guest leaves. Their playing song plays on.
+func (s *Service) RemoveLane(ctx context.Context, roomID, userID string) error {
+	_, err := s.Change(ctx, roomID, func(q *store.Queries, _ store.Room) error {
+		lane, err := q.ListLane(ctx, store.ListLaneParams{RoomID: roomID, AddedBy: userID})
+		if err != nil {
+			return err
+		}
+		now := s.Now()
+		for _, it := range lane {
+			if err := q.SetQueueItemState(ctx, store.SetQueueItemStateParams{State: store.ItemRemoved, UpdatedAt: now, ID: it.ID}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return err
 }
 
 // queuedItem returns an item of the room that's still waiting to play.

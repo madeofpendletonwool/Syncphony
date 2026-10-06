@@ -78,6 +78,8 @@ var displayRequests = map[string]any{
 	"GetQueueItemPalette":    GetQueueItemPaletteRequestObject{},
 	"GetQueueItemLyrics":     GetQueueItemLyricsRequestObject{},
 	"GetQueueItemLinerNotes": GetQueueItemLinerNotesRequestObject{},
+	"GetHearts":              GetHeartsRequestObject{},
+	"GetGuestPass":           GetGuestPassRequestObject{},
 }
 
 func TestClientIP(t *testing.T) {

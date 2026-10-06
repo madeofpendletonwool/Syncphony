@@ -120,6 +120,24 @@ func (e LinkFieldKind) Valid() bool {
 	}
 }
 
+// Defines values for NightEndedBy.
+const (
+	NightEndedByHost NightEndedBy = "host"
+	NightEndedByIdle NightEndedBy = "idle"
+)
+
+// Valid indicates whether the value is a known member of the NightEndedBy enum.
+func (e NightEndedBy) Valid() bool {
+	switch e {
+	case NightEndedByHost:
+		return true
+	case NightEndedByIdle:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NowPlayingDriver.
 const (
 	NowPlayingDriverRemote NowPlayingDriver = "remote"
@@ -446,10 +464,13 @@ func (e RoomAutopilotAdventure) Valid() bool {
 
 // Defines values for RoomEventType.
 const (
+	RoomEventTypeGuestsUpdated     RoomEventType = "guests.updated"
+	RoomEventTypeHeartsUpdated     RoomEventType = "hearts.updated"
 	RoomEventTypeHello             RoomEventType = "hello"
 	RoomEventTypeLinkStatus        RoomEventType = "link.status"
 	RoomEventTypeMemberJoined      RoomEventType = "member.joined"
 	RoomEventTypeMemberLeft        RoomEventType = "member.left"
+	RoomEventTypeNightEnded        RoomEventType = "night.ended"
 	RoomEventTypeNowplayingUpdated RoomEventType = "nowplaying.updated"
 	RoomEventTypePlaybackNotice    RoomEventType = "playback.notice"
 	RoomEventTypeQueueUpdated      RoomEventType = "queue.updated"
@@ -460,6 +481,10 @@ const (
 // Valid indicates whether the value is a known member of the RoomEventType enum.
 func (e RoomEventType) Valid() bool {
 	switch e {
+	case RoomEventTypeGuestsUpdated:
+		return true
+	case RoomEventTypeHeartsUpdated:
+		return true
 	case RoomEventTypeHello:
 		return true
 	case RoomEventTypeLinkStatus:
@@ -467,6 +492,8 @@ func (e RoomEventType) Valid() bool {
 	case RoomEventTypeMemberJoined:
 		return true
 	case RoomEventTypeMemberLeft:
+		return true
+	case RoomEventTypeNightEnded:
 		return true
 	case RoomEventTypeNowplayingUpdated:
 		return true
@@ -653,6 +680,13 @@ type ClaimPlayerRequest struct {
 	Name string `json:"name"`
 }
 
+// CreateGuestPassRequest defines model for CreateGuestPassRequest.
+type CreateGuestPassRequest struct {
+	// ExpiresAt When the pass, and everyone who joins with it, expires: e.g. the
+	// end of the night. 15 minutes to 24 hours from now.
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
 // CreateInviteRequest defines model for CreateInviteRequest.
 type CreateInviteRequest struct {
 	ExpiresInHours *int  `json:"expiresInHours,omitempty"`
@@ -679,6 +713,10 @@ type CreateRoomRequest struct {
 	// robin, `weights` give some people more songs per turn.
 	Fairness     *RoomFairness `json:"fairness,omitempty"`
 	FairnessMode *FairnessMode `json:"fairnessMode,omitempty"`
+
+	// Guests Whether people without an account may join the room by scanning a
+	// guest pass, and what they may do.
+	Guests *RoomGuests `json:"guests,omitempty"`
 
 	// Matching How the room uses the same song on other services.
 	Matching *RoomMatching `json:"matching,omitempty"`
@@ -754,6 +792,35 @@ type FinishCeremony struct {
 	Name *string `json:"name,omitempty"`
 }
 
+// Guest defines model for Guest.
+type Guest struct {
+	ExpiresAt time.Time `json:"expiresAt"`
+	JoinedAt  time.Time `json:"joinedAt"`
+
+	// Songs Songs they've added, toward the room's limit.
+	Songs int  `json:"songs"`
+	User  User `json:"user"`
+}
+
+// GuestInvite defines model for GuestInvite.
+type GuestInvite struct {
+	ExpiresAt time.Time `json:"expiresAt"`
+	RoomId    string    `json:"roomId"`
+	RoomName  string    `json:"roomName"`
+}
+
+// GuestPass defines model for GuestPass.
+type GuestPass struct {
+	CreatedAt time.Time `json:"createdAt"`
+	CreatedBy *string   `json:"createdBy,omitempty"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Id        string    `json:"id"`
+	RoomId    string    `json:"roomId"`
+
+	// Url The link to show as a QR code. It carries the signed pass.
+	Url string `json:"url"`
+}
+
 // Health defines model for Health.
 type Health struct {
 	Status HealthStatus `json:"status"`
@@ -764,6 +831,15 @@ type Health struct {
 
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
+
+// Hearts defines model for Hearts.
+type Hearts struct {
+	ItemId string `json:"itemId"`
+	RoomId string `json:"roomId"`
+
+	// UserIds Who hearted it, in the order they did.
+	UserIds []string `json:"userIds"`
+}
 
 // Invite defines model for Invite.
 type Invite struct {
@@ -783,6 +859,11 @@ type Invite struct {
 type InviteInfo struct {
 	ExpiresAt time.Time `json:"expiresAt"`
 	Role      Role      `json:"role"`
+}
+
+// JoinAsGuestRequest defines model for JoinAsGuestRequest.
+type JoinAsGuestRequest struct {
+	DisplayName string `json:"displayName"`
 }
 
 // LinerNotes defines model for LinerNotes.
@@ -865,6 +946,10 @@ type LinkFieldKind string
 type ListeningSession struct {
 	EndedAt time.Time `json:"endedAt"`
 
+	// Night A night in the room: from its first song until the host ended it or
+	// the room went quiet. Fed into recaps.
+	Night *Night `json:"night,omitempty"`
+
 	// People User IDs whose songs played, most first.
 	People    []string  `json:"people"`
 	Plays     int       `json:"plays"`
@@ -912,14 +997,17 @@ type Me struct {
 	// Color Lane color, `#rrggbb`.
 	//
 	// Example: #7c3aed
-	Color        string    `json:"color"`
-	CreatedAt    time.Time `json:"createdAt"`
-	DisplayName  string    `json:"displayName"`
-	HasPassword  bool      `json:"hasPassword"`
-	Id           string    `json:"id"`
-	PasskeyCount int       `json:"passkeyCount"`
-	Role         Role      `json:"role"`
-	Username     string    `json:"username"`
+	Color       string    `json:"color"`
+	CreatedAt   time.Time `json:"createdAt"`
+	DisplayName string    `json:"displayName"`
+
+	// Guest Set on guests, who joined one room with a QR code instead of an invite.
+	Guest        *UserGuest `json:"guest,omitempty"`
+	HasPassword  bool       `json:"hasPassword"`
+	Id           string     `json:"id"`
+	PasskeyCount int        `json:"passkeyCount"`
+	Role         Role       `json:"role"`
+	Username     string     `json:"username"`
 }
 
 // MoveQueueItemRequest defines model for MoveQueueItemRequest.
@@ -927,6 +1015,23 @@ type MoveQueueItemRequest struct {
 	// Position Where in your lane to put the song; 0 is the front. Past the end means the end.
 	Position int `json:"position"`
 }
+
+// Night A night in the room: from its first song until the host ended it or
+// the room went quiet. Fed into recaps.
+type Night struct {
+	EndedAt time.Time    `json:"endedAt"`
+	EndedBy NightEndedBy `json:"endedBy"`
+	Id      string       `json:"id"`
+	Plays   int          `json:"plays"`
+	RoomId  string       `json:"roomId"`
+
+	// SongOfTheNight The night's most-hearted song. Absent if nothing got a heart.
+	SongOfTheNight *SongOfTheNight `json:"songOfTheNight,omitempty"`
+	StartedAt      time.Time       `json:"startedAt"`
+}
+
+// NightEndedBy defines model for Night.EndedBy.
+type NightEndedBy string
 
 // NowPlaying A room's playback, as the server sees it. While `playing`, the
 // position is `positionMs` at `at` and advances with the clock.
@@ -1329,7 +1434,11 @@ type Room struct {
 	// robin, `weights` give some people more songs per turn.
 	Fairness     RoomFairness `json:"fairness"`
 	FairnessMode FairnessMode `json:"fairnessMode"`
-	Id           string       `json:"id"`
+
+	// Guests Whether people without an account may join the room by scanning a
+	// guest pass, and what they may do.
+	Guests RoomGuests `json:"guests"`
+	Id     string     `json:"id"`
 
 	// Matching How the room uses the same song on other services.
 	Matching    RoomMatching    `json:"matching"`
@@ -1372,6 +1481,10 @@ type RoomAutopilotAdventure string
 //   - `link.status`: ServiceLink. One of your links changed status.
 //   - `room.updated`: Room. The room's name or settings changed.
 //   - `reaction.sent`: Reaction. Someone sent an emoji to the big screen.
+//   - `hearts.updated`: Hearts. Someone hearted a song, or took it back.
+//   - `night.ended`: Night. The night is over; crown its song of the night.
+//   - `guests.updated`: `{"roomId": ...}`. A guest joined or was removed,
+//     or the guest pass changed: fetch them again.
 //
 // A paired display connects with its display cookie instead, to its
 // own room only. So does a signed-in user with `display=1`: either way
@@ -1409,6 +1522,18 @@ type RoomFairness struct {
 
 	// Weights Songs per turn (2 to 4) by user ID, in round robin. Everyone else gets 1.
 	Weights map[string]int `json:"weights"`
+}
+
+// RoomGuests Whether people without an account may join the room by scanning a
+// guest pass, and what they may do.
+type RoomGuests struct {
+	Allowed bool `json:"allowed"`
+
+	// CanVote Guests may vote to skip and heart songs.
+	CanVote bool `json:"canVote"`
+
+	// MaxSongs Songs each guest may add over their visit. 0 means no limit.
+	MaxSongs int `json:"maxSongs"`
 }
 
 // RoomHello defines model for RoomHello.
@@ -1567,6 +1692,12 @@ type SkipVotes struct {
 	Voters []string `json:"voters"`
 }
 
+// SongOfTheNight The night's most-hearted song. Absent if nothing got a heart.
+type SongOfTheNight struct {
+	Hearts int       `json:"hearts"`
+	Item   QueueItem `json:"item"`
+}
+
 // TrackCount A song and how many times it played to the end. `item` is its latest play.
 type TrackCount struct {
 	Item  QueueItem `json:"item"`
@@ -1623,6 +1754,10 @@ type UpdateRoomRequest struct {
 	Fairness     *RoomFairness `json:"fairness,omitempty"`
 	FairnessMode *FairnessMode `json:"fairnessMode,omitempty"`
 
+	// Guests Whether people without an account may join the room by scanning a
+	// guest pass, and what they may do.
+	Guests *RoomGuests `json:"guests,omitempty"`
+
 	// Matching How the room uses the same song on other services.
 	Matching *RoomMatching `json:"matching,omitempty"`
 	Name     *string       `json:"name,omitempty"`
@@ -1646,9 +1781,21 @@ type User struct {
 	Color       string    `json:"color"`
 	CreatedAt   time.Time `json:"createdAt"`
 	DisplayName string    `json:"displayName"`
-	Id          string    `json:"id"`
-	Role        Role      `json:"role"`
-	Username    string    `json:"username"`
+
+	// Guest Set on guests, who joined one room with a QR code instead of an invite.
+	Guest    *UserGuest `json:"guest,omitempty"`
+	Id       string     `json:"id"`
+	Role     Role       `json:"role"`
+	Username string     `json:"username"`
+}
+
+// UserGuest Set on guests, who joined one room with a QR code instead of an invite.
+type UserGuest struct {
+	// Ended The guest expired or was removed. They're kept only so the room's
+	// history and recaps can show their name.
+	Ended     bool      `json:"ended"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	RoomId    string    `json:"roomId"`
 }
 
 // Username 2 to 32 characters: lowercase letters, digits, `.`, `_` and `-`.
@@ -1717,6 +1864,11 @@ type GetHistoryParams struct {
 	UserId *string `form:"userId,omitempty" json:"userId,omitempty"`
 }
 
+// ListNightsParams defines parameters for ListNights.
+type ListNightsParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ReleasePlayerParams defines parameters for ReleasePlayer.
 type ReleasePlayerParams struct {
 	DeviceId string `form:"deviceId" json:"deviceId"`
@@ -1772,6 +1924,9 @@ type BeginPasskeySignupJSONRequestBody = PasskeySignupRequest
 // FinishPasskeySignupJSONRequestBody defines body for FinishPasskeySignup for application/json ContentType.
 type FinishPasskeySignupJSONRequestBody = FinishCeremony
 
+// JoinAsGuestJSONRequestBody defines body for JoinAsGuest for application/json ContentType.
+type JoinAsGuestJSONRequestBody = JoinAsGuestRequest
+
 // CreateInviteJSONRequestBody defines body for CreateInvite for application/json ContentType.
 type CreateInviteJSONRequestBody = CreateInviteRequest
 
@@ -1810,6 +1965,9 @@ type UpdateRoomJSONRequestBody = UpdateRoomRequest
 
 // PairDisplayJSONRequestBody defines body for PairDisplay for application/json ContentType.
 type PairDisplayJSONRequestBody = PairDisplayRequest
+
+// CreateGuestPassJSONRequestBody defines body for CreateGuestPass for application/json ContentType.
+type CreateGuestPassJSONRequestBody = CreateGuestPassRequest
 
 // ControlPlaybackJSONRequestBody defines body for ControlPlayback for application/json ContentType.
 type ControlPlaybackJSONRequestBody = PlaybackCommand
@@ -1864,6 +2022,12 @@ type ServerInterface interface {
 	// BeginDisplayPairing Start pairing this device as a display
 	// (POST /display/pairing)
 	BeginDisplayPairing(w http.ResponseWriter, r *http.Request)
+	// GetGuestInvite Check a guest pass before joining
+	// (GET /guest/{token})
+	GetGuestInvite(w http.ResponseWriter, r *http.Request, token string)
+	// JoinAsGuest Join a room as a guest
+	// (POST /guest/{token})
+	JoinAsGuest(w http.ResponseWriter, r *http.Request, token string)
 	// GetHealth Liveness and build info
 	// (GET /healthz)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -1975,9 +2139,30 @@ type ServerInterface interface {
 	// UnpairDisplay Unpair a display
 	// (DELETE /rooms/{roomId}/displays/{displayId})
 	UnpairDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId, displayId string)
+	// RevokeGuestPass Revoke the room's guest pass
+	// (DELETE /rooms/{roomId}/guest-pass)
+	RevokeGuestPass(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// GetGuestPass The room's guest pass, to show as a QR code
+	// (GET /rooms/{roomId}/guest-pass)
+	GetGuestPass(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// CreateGuestPass Start a new guest pass
+	// (POST /rooms/{roomId}/guest-pass)
+	CreateGuestPass(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// ListGuests The room's guests
+	// (GET /rooms/{roomId}/guests)
+	ListGuests(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// KickGuest Remove a guest
+	// (DELETE /rooms/{roomId}/guests/{userId})
+	KickGuest(w http.ResponseWriter, r *http.Request, roomId RoomId, userId string)
 	// GetHistory Songs the room played, newest first
 	// (GET /rooms/{roomId}/history)
 	GetHistory(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetHistoryParams)
+	// ListNights The room's past nights, and their songs of the night
+	// (GET /rooms/{roomId}/nights)
+	ListNights(w http.ResponseWriter, r *http.Request, roomId RoomId, params ListNightsParams)
+	// EndNight End the night, and crown its song
+	// (POST /rooms/{roomId}/nights)
+	EndNight(w http.ResponseWriter, r *http.Request, roomId RoomId)
 	// GetPlayback What the room is playing
 	// (GET /rooms/{roomId}/playback)
 	GetPlayback(w http.ResponseWriter, r *http.Request, roomId RoomId)
@@ -2008,6 +2193,15 @@ type ServerInterface interface {
 	// GetQueueItemArtwork A queued song's artwork
 	// (GET /rooms/{roomId}/queue/{itemId}/artwork)
 	GetQueueItemArtwork(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params GetQueueItemArtworkParams)
+	// UnheartSong Take back a heart
+	// (DELETE /rooms/{roomId}/queue/{itemId}/hearts)
+	UnheartSong(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
+	// GetHearts Who hearted a song
+	// (GET /rooms/{roomId}/queue/{itemId}/hearts)
+	GetHearts(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
+	// HeartSong Heart a song
+	// (PUT /rooms/{roomId}/queue/{itemId}/hearts)
+	HeartSong(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
 	// GetQueueItemLinerNotes A queued song's liner notes
 	// (GET /rooms/{roomId}/queue/{itemId}/liner-notes)
 	GetQueueItemLinerNotes(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
@@ -2191,6 +2385,58 @@ func (siw *ServerInterfaceWrapper) BeginDisplayPairing(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.BeginDisplayPairing(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetGuestInvite operation middleware
+func (siw *ServerInterfaceWrapper) GetGuestInvite(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "token" -------------
+	var token string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "token", r.PathValue("token"), &token, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGuestInvite(w, r, token)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// JoinAsGuest operation middleware
+func (siw *ServerInterfaceWrapper) JoinAsGuest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "token" -------------
+	var token string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "token", r.PathValue("token"), &token, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.JoinAsGuest(w, r, token)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3116,6 +3362,145 @@ func (siw *ServerInterfaceWrapper) UnpairDisplay(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// RevokeGuestPass operation middleware
+func (siw *ServerInterfaceWrapper) RevokeGuestPass(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeGuestPass(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetGuestPass operation middleware
+func (siw *ServerInterfaceWrapper) GetGuestPass(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGuestPass(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateGuestPass operation middleware
+func (siw *ServerInterfaceWrapper) CreateGuestPass(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateGuestPass(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListGuests operation middleware
+func (siw *ServerInterfaceWrapper) ListGuests(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListGuests(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// KickGuest operation middleware
+func (siw *ServerInterfaceWrapper) KickGuest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.KickGuest(w, r, roomId, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHistory operation middleware
 func (siw *ServerInterfaceWrapper) GetHistory(w http.ResponseWriter, r *http.Request) {
 
@@ -3175,6 +3560,74 @@ func (siw *ServerInterfaceWrapper) GetHistory(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHistory(w, r, roomId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListNights operation middleware
+func (siw *ServerInterfaceWrapper) ListNights(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListNightsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListNights(w, r, roomId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EndNight operation middleware
+func (siw *ServerInterfaceWrapper) EndNight(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EndNight(w, r, roomId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3494,6 +3947,111 @@ func (siw *ServerInterfaceWrapper) GetQueueItemArtwork(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetQueueItemArtwork(w, r, roomId, itemId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnheartSong operation middleware
+func (siw *ServerInterfaceWrapper) UnheartSong(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnheartSong(w, r, roomId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetHearts operation middleware
+func (siw *ServerInterfaceWrapper) GetHearts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHearts(w, r, roomId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// HeartSong operation middleware
+func (siw *ServerInterfaceWrapper) HeartSong(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.HeartSong(w, r, roomId, itemId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4054,6 +4612,18 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/display/pairing", wrapper.BeginDisplayPairing)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/display", wrapper.LeaveDisplay)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/display", wrapper.GetDisplay)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/hearts", wrapper.UnheartSong)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/hearts", wrapper.GetHearts)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/hearts", wrapper.HeartSong)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/nights", wrapper.ListNights)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/nights", wrapper.EndNight)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/guest-pass", wrapper.RevokeGuestPass)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/guest-pass", wrapper.GetGuestPass)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/guest-pass", wrapper.CreateGuestPass)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/guests", wrapper.ListGuests)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/guests/{userId}", wrapper.KickGuest)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/guest/{token}", wrapper.GetGuestInvite)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/guest/{token}", wrapper.JoinAsGuest)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms", wrapper.ListRooms)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms", wrapper.CreateRoom)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}", wrapper.GetRoom)
@@ -4501,6 +5071,88 @@ type BeginDisplayPairingdefaultJSONResponse struct {
 }
 
 func (response BeginDisplayPairingdefaultJSONResponse) VisitBeginDisplayPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGuestInviteRequestObject struct {
+	Token string `json:"token"`
+}
+
+type GetGuestInviteResponseObject interface {
+	VisitGetGuestInviteResponse(w http.ResponseWriter) error
+}
+
+type GetGuestInvite200JSONResponse GuestInvite
+
+func (response GetGuestInvite200JSONResponse) VisitGetGuestInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGuestInvitedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetGuestInvitedefaultJSONResponse) VisitGetGuestInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type JoinAsGuestRequestObject struct {
+	Token string `json:"token"`
+	Body  *JoinAsGuestJSONRequestBody
+}
+
+type JoinAsGuestResponseObject interface {
+	VisitJoinAsGuestResponse(w http.ResponseWriter) error
+}
+
+type JoinAsGuest201JSONResponse struct{ SignedInJSONResponse }
+
+func (response JoinAsGuest201JSONResponse) VisitJoinAsGuestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type JoinAsGuestdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response JoinAsGuestdefaultJSONResponse) VisitJoinAsGuestResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -5895,6 +6547,191 @@ func (response UnpairDisplaydefaultJSONResponse) VisitUnpairDisplayResponse(w ht
 	return err
 }
 
+type RevokeGuestPassRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type RevokeGuestPassResponseObject interface {
+	VisitRevokeGuestPassResponse(w http.ResponseWriter) error
+}
+
+type RevokeGuestPass204Response struct {
+}
+
+func (response RevokeGuestPass204Response) VisitRevokeGuestPassResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeGuestPassdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RevokeGuestPassdefaultJSONResponse) VisitRevokeGuestPassResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGuestPassRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type GetGuestPassResponseObject interface {
+	VisitGetGuestPassResponse(w http.ResponseWriter) error
+}
+
+type GetGuestPass200JSONResponse GuestPass
+
+func (response GetGuestPass200JSONResponse) VisitGetGuestPassResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGuestPassdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetGuestPassdefaultJSONResponse) VisitGetGuestPassResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateGuestPassRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Body   *CreateGuestPassJSONRequestBody
+}
+
+type CreateGuestPassResponseObject interface {
+	VisitCreateGuestPassResponse(w http.ResponseWriter) error
+}
+
+type CreateGuestPass201JSONResponse GuestPass
+
+func (response CreateGuestPass201JSONResponse) VisitCreateGuestPassResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateGuestPassdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateGuestPassdefaultJSONResponse) VisitCreateGuestPassResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGuestsRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type ListGuestsResponseObject interface {
+	VisitListGuestsResponse(w http.ResponseWriter) error
+}
+
+type ListGuests200JSONResponse []Guest
+
+func (response ListGuests200JSONResponse) VisitListGuestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGuestsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListGuestsdefaultJSONResponse) VisitListGuestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type KickGuestRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	UserId string `json:"userId"`
+}
+
+type KickGuestResponseObject interface {
+	VisitKickGuestResponse(w http.ResponseWriter) error
+}
+
+type KickGuest204Response struct {
+}
+
+func (response KickGuest204Response) VisitKickGuestResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type KickGuestdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response KickGuestdefaultJSONResponse) VisitKickGuestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetHistoryRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 	Params GetHistoryParams
@@ -5924,6 +6761,85 @@ type GetHistorydefaultJSONResponse struct {
 }
 
 func (response GetHistorydefaultJSONResponse) VisitGetHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNightsRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Params ListNightsParams
+}
+
+type ListNightsResponseObject interface {
+	VisitListNightsResponse(w http.ResponseWriter) error
+}
+
+type ListNights200JSONResponse []Night
+
+func (response ListNights200JSONResponse) VisitListNightsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNightsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListNightsdefaultJSONResponse) VisitListNightsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EndNightRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type EndNightResponseObject interface {
+	VisitEndNightResponse(w http.ResponseWriter) error
+}
+
+type EndNight201JSONResponse Night
+
+func (response EndNight201JSONResponse) VisitEndNightResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EndNightdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response EndNightdefaultJSONResponse) VisitEndNightResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -6331,6 +7247,126 @@ type GetQueueItemArtworkdefaultJSONResponse struct {
 }
 
 func (response GetQueueItemArtworkdefaultJSONResponse) VisitGetQueueItemArtworkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnheartSongRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	ItemId string `json:"itemId"`
+}
+
+type UnheartSongResponseObject interface {
+	VisitUnheartSongResponse(w http.ResponseWriter) error
+}
+
+type UnheartSong200JSONResponse Hearts
+
+func (response UnheartSong200JSONResponse) VisitUnheartSongResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnheartSongdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UnheartSongdefaultJSONResponse) VisitUnheartSongResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHeartsRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	ItemId string `json:"itemId"`
+}
+
+type GetHeartsResponseObject interface {
+	VisitGetHeartsResponse(w http.ResponseWriter) error
+}
+
+type GetHearts200JSONResponse Hearts
+
+func (response GetHearts200JSONResponse) VisitGetHeartsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHeartsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetHeartsdefaultJSONResponse) VisitGetHeartsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type HeartSongRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	ItemId string `json:"itemId"`
+}
+
+type HeartSongResponseObject interface {
+	VisitHeartSongResponse(w http.ResponseWriter) error
+}
+
+type HeartSong200JSONResponse Hearts
+
+func (response HeartSong200JSONResponse) VisitHeartSongResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type HeartSongdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response HeartSongdefaultJSONResponse) VisitHeartSongResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -6763,6 +7799,12 @@ type StrictServerInterface interface {
 	// BeginDisplayPairing Start pairing this device as a display
 	// (POST /display/pairing)
 	BeginDisplayPairing(ctx context.Context, request BeginDisplayPairingRequestObject) (BeginDisplayPairingResponseObject, error)
+	// GetGuestInvite Check a guest pass before joining
+	// (GET /guest/{token})
+	GetGuestInvite(ctx context.Context, request GetGuestInviteRequestObject) (GetGuestInviteResponseObject, error)
+	// JoinAsGuest Join a room as a guest
+	// (POST /guest/{token})
+	JoinAsGuest(ctx context.Context, request JoinAsGuestRequestObject) (JoinAsGuestResponseObject, error)
 	// GetHealth Liveness and build info
 	// (GET /healthz)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
@@ -6874,9 +7916,30 @@ type StrictServerInterface interface {
 	// UnpairDisplay Unpair a display
 	// (DELETE /rooms/{roomId}/displays/{displayId})
 	UnpairDisplay(ctx context.Context, request UnpairDisplayRequestObject) (UnpairDisplayResponseObject, error)
+	// RevokeGuestPass Revoke the room's guest pass
+	// (DELETE /rooms/{roomId}/guest-pass)
+	RevokeGuestPass(ctx context.Context, request RevokeGuestPassRequestObject) (RevokeGuestPassResponseObject, error)
+	// GetGuestPass The room's guest pass, to show as a QR code
+	// (GET /rooms/{roomId}/guest-pass)
+	GetGuestPass(ctx context.Context, request GetGuestPassRequestObject) (GetGuestPassResponseObject, error)
+	// CreateGuestPass Start a new guest pass
+	// (POST /rooms/{roomId}/guest-pass)
+	CreateGuestPass(ctx context.Context, request CreateGuestPassRequestObject) (CreateGuestPassResponseObject, error)
+	// ListGuests The room's guests
+	// (GET /rooms/{roomId}/guests)
+	ListGuests(ctx context.Context, request ListGuestsRequestObject) (ListGuestsResponseObject, error)
+	// KickGuest Remove a guest
+	// (DELETE /rooms/{roomId}/guests/{userId})
+	KickGuest(ctx context.Context, request KickGuestRequestObject) (KickGuestResponseObject, error)
 	// GetHistory Songs the room played, newest first
 	// (GET /rooms/{roomId}/history)
 	GetHistory(ctx context.Context, request GetHistoryRequestObject) (GetHistoryResponseObject, error)
+	// ListNights The room's past nights, and their songs of the night
+	// (GET /rooms/{roomId}/nights)
+	ListNights(ctx context.Context, request ListNightsRequestObject) (ListNightsResponseObject, error)
+	// EndNight End the night, and crown its song
+	// (POST /rooms/{roomId}/nights)
+	EndNight(ctx context.Context, request EndNightRequestObject) (EndNightResponseObject, error)
 	// GetPlayback What the room is playing
 	// (GET /rooms/{roomId}/playback)
 	GetPlayback(ctx context.Context, request GetPlaybackRequestObject) (GetPlaybackResponseObject, error)
@@ -6907,6 +7970,15 @@ type StrictServerInterface interface {
 	// GetQueueItemArtwork A queued song's artwork
 	// (GET /rooms/{roomId}/queue/{itemId}/artwork)
 	GetQueueItemArtwork(ctx context.Context, request GetQueueItemArtworkRequestObject) (GetQueueItemArtworkResponseObject, error)
+	// UnheartSong Take back a heart
+	// (DELETE /rooms/{roomId}/queue/{itemId}/hearts)
+	UnheartSong(ctx context.Context, request UnheartSongRequestObject) (UnheartSongResponseObject, error)
+	// GetHearts Who hearted a song
+	// (GET /rooms/{roomId}/queue/{itemId}/hearts)
+	GetHearts(ctx context.Context, request GetHeartsRequestObject) (GetHeartsResponseObject, error)
+	// HeartSong Heart a song
+	// (PUT /rooms/{roomId}/queue/{itemId}/hearts)
+	HeartSong(ctx context.Context, request HeartSongRequestObject) (HeartSongResponseObject, error)
 	// GetQueueItemLinerNotes A queued song's liner notes
 	// (GET /rooms/{roomId}/queue/{itemId}/liner-notes)
 	GetQueueItemLinerNotes(ctx context.Context, request GetQueueItemLinerNotesRequestObject) (GetQueueItemLinerNotesResponseObject, error)
@@ -7267,6 +8339,65 @@ func (sh *strictHandler) BeginDisplayPairing(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(BeginDisplayPairingResponseObject); ok {
 		if err := validResponse.VisitBeginDisplayPairingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetGuestInvite operation middleware
+func (sh *strictHandler) GetGuestInvite(w http.ResponseWriter, r *http.Request, token string) {
+	var request GetGuestInviteRequestObject
+
+	request.Token = token
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGuestInvite(ctx, request.(GetGuestInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGuestInvite")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGuestInviteResponseObject); ok {
+		if err := validResponse.VisitGetGuestInviteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// JoinAsGuest operation middleware
+func (sh *strictHandler) JoinAsGuest(w http.ResponseWriter, r *http.Request, token string) {
+	var request JoinAsGuestRequestObject
+
+	request.Token = token
+
+	var body JoinAsGuestJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.JoinAsGuest(ctx, request.(JoinAsGuestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "JoinAsGuest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(JoinAsGuestResponseObject); ok {
+		if err := validResponse.VisitJoinAsGuestResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -8303,6 +9434,144 @@ func (sh *strictHandler) UnpairDisplay(w http.ResponseWriter, r *http.Request, r
 	}
 }
 
+// RevokeGuestPass operation middleware
+func (sh *strictHandler) RevokeGuestPass(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request RevokeGuestPassRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeGuestPass(ctx, request.(RevokeGuestPassRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeGuestPass")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeGuestPassResponseObject); ok {
+		if err := validResponse.VisitRevokeGuestPassResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetGuestPass operation middleware
+func (sh *strictHandler) GetGuestPass(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request GetGuestPassRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGuestPass(ctx, request.(GetGuestPassRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGuestPass")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGuestPassResponseObject); ok {
+		if err := validResponse.VisitGetGuestPassResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateGuestPass operation middleware
+func (sh *strictHandler) CreateGuestPass(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request CreateGuestPassRequestObject
+
+	request.RoomId = roomId
+
+	var body CreateGuestPassJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateGuestPass(ctx, request.(CreateGuestPassRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateGuestPass")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateGuestPassResponseObject); ok {
+		if err := validResponse.VisitCreateGuestPassResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListGuests operation middleware
+func (sh *strictHandler) ListGuests(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request ListGuestsRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListGuests(ctx, request.(ListGuestsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListGuests")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListGuestsResponseObject); ok {
+		if err := validResponse.VisitListGuestsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// KickGuest operation middleware
+func (sh *strictHandler) KickGuest(w http.ResponseWriter, r *http.Request, roomId RoomId, userId string) {
+	var request KickGuestRequestObject
+
+	request.RoomId = roomId
+	request.UserId = userId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.KickGuest(ctx, request.(KickGuestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "KickGuest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(KickGuestResponseObject); ok {
+		if err := validResponse.VisitKickGuestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetHistory operation middleware
 func (sh *strictHandler) GetHistory(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetHistoryParams) {
 	var request GetHistoryRequestObject
@@ -8323,6 +9592,59 @@ func (sh *strictHandler) GetHistory(w http.ResponseWriter, r *http.Request, room
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetHistoryResponseObject); ok {
 		if err := validResponse.VisitGetHistoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListNights operation middleware
+func (sh *strictHandler) ListNights(w http.ResponseWriter, r *http.Request, roomId RoomId, params ListNightsParams) {
+	var request ListNightsRequestObject
+
+	request.RoomId = roomId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListNights(ctx, request.(ListNightsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListNights")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListNightsResponseObject); ok {
+		if err := validResponse.VisitListNightsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EndNight operation middleware
+func (sh *strictHandler) EndNight(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request EndNightRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EndNight(ctx, request.(EndNightRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EndNight")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EndNightResponseObject); ok {
+		if err := validResponse.VisitEndNightResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -8623,6 +9945,87 @@ func (sh *strictHandler) GetQueueItemArtwork(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetQueueItemArtworkResponseObject); ok {
 		if err := validResponse.VisitGetQueueItemArtworkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnheartSong operation middleware
+func (sh *strictHandler) UnheartSong(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string) {
+	var request UnheartSongRequestObject
+
+	request.RoomId = roomId
+	request.ItemId = itemId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnheartSong(ctx, request.(UnheartSongRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnheartSong")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnheartSongResponseObject); ok {
+		if err := validResponse.VisitUnheartSongResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetHearts operation middleware
+func (sh *strictHandler) GetHearts(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string) {
+	var request GetHeartsRequestObject
+
+	request.RoomId = roomId
+	request.ItemId = itemId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetHearts(ctx, request.(GetHeartsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetHearts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetHeartsResponseObject); ok {
+		if err := validResponse.VisitGetHeartsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// HeartSong operation middleware
+func (sh *strictHandler) HeartSong(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string) {
+	var request HeartSongRequestObject
+
+	request.RoomId = roomId
+	request.ItemId = itemId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.HeartSong(ctx, request.(HeartSongRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "HeartSong")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(HeartSongResponseObject); ok {
+		if err := validResponse.VisitHeartSongResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

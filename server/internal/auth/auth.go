@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -68,6 +69,10 @@ type Service struct {
 	// Displays waiting to pair, and wrong pairing codes by user.
 	pairings  *pairings
 	pairFails *limiter
+
+	// The key guest passes are signed with, once loaded.
+	keyMu   sync.Mutex
+	passKey []byte
 }
 
 // New returns a Service.
@@ -134,6 +139,9 @@ func (s *Service) InviteURL(code string) string {
 // Session is a signed-in user's session.
 type Session struct {
 	User store.User
+	// Guest is set for a guest (see JoinAsGuest), who may use their own
+	// room and nothing else.
+	Guest *store.Guest
 	// Token is set only when the session is new or was extended; the caller
 	// should then (re)send the cookie.
 	Token string
@@ -175,8 +183,23 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Session, err
 		return nil, err
 	}
 	out := &Session{User: u, Expires: sess.ExpiresAt, hash: hash}
+	until := now.Add(sessionTTL)
+	switch g, err := s.db.GetGuest(ctx, u.ID); {
+	case err == nil:
+		// A guest's session never outlives them.
+		if g.EndedAt.Valid || !now.Before(g.ExpiresAt) {
+			_ = s.db.DeleteSession(ctx, hash)
+			return nil, ErrUnauthenticated
+		}
+		out.Guest = &g
+		if g.ExpiresAt.Before(until) {
+			until = g.ExpiresAt
+		}
+	case !store.IsNotFound(err):
+		return nil, err
+	}
 	if now.Sub(sess.LastSeenAt) >= sessionTouchEvery {
-		out.Expires = now.Add(sessionTTL)
+		out.Expires = until
 		if err := s.db.TouchSession(ctx, store.TouchSessionParams{LastSeenAt: now, ExpiresAt: out.Expires, TokenHash: hash}); err != nil {
 			return nil, err
 		}

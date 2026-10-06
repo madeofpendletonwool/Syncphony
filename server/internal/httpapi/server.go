@@ -22,6 +22,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
+	"github.com/madeofpendletonwool/syncphony/server/internal/nights"
 	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
 	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
@@ -51,6 +52,8 @@ type Server struct {
 	Rooms    *rooms.Service
 	Queue    *queue.Service
 	Playback *playback.Engine
+	// Nights hearts songs and crowns each night's song of the night.
+	Nights   *nights.Service
 	Bus      realtime.Bus
 	Presence *realtime.Presence
 	// PingEvery is how often room sockets are pinged and their session
@@ -125,6 +128,9 @@ var publicOps = map[string]bool{
 	"PollDisplayPairing":  true,
 	"GetDisplay":          true,
 	"LeaveDisplay":        true,
+	// Guests join with a pass instead of a session.
+	"GetGuestInvite": true,
+	"JoinAsGuest":    true,
 }
 
 type ctxKey int
@@ -189,6 +195,11 @@ func (s *Server) authenticate(f StrictHandlerFunc, operationID string) StrictHan
 		}
 		if sess.Token != "" {
 			http.SetCookie(w, s.cookie(sess))
+		}
+		if sess.Guest != nil {
+			if err := guestAllowed(sess.Guest, operationID, req); err != nil {
+				return nil, err
+			}
 		}
 		return f(context.WithValue(ctx, ctxSession, sess), w, r, req)
 	}
@@ -276,7 +287,13 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var invalidPlayback *playback.InvalidInputError
 	var notPlayable *queue.NotPlayableError
 	var repeat *queue.RepeatError
+	var guestLimit *queue.GuestLimitError
+	var invalidHeart *nights.InvalidInputError
 	switch {
+	case errors.As(err, &guestLimit):
+		writeJSONError(w, http.StatusConflict, "guest_limit", guestLimit.Error())
+	case errors.As(err, &invalidHeart):
+		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidHeart.Error())
 	case errors.Is(err, queue.ErrCantBorrow):
 		writeJSONError(w, http.StatusForbidden, "cant_borrow", err.Error())
 	case errors.As(err, &repeat):
@@ -326,6 +343,14 @@ var errorCodes = []struct {
 	{auth.ErrPairingInvalid, http.StatusNotFound, "pairing_invalid"},
 	{auth.ErrPairingExpired, http.StatusGone, "pairing_expired"},
 	{auth.ErrTooManyPairings, http.StatusServiceUnavailable, "too_many_pairings"},
+	{auth.ErrGuestPassInvalid, http.StatusNotFound, "guest_pass_invalid"},
+	{auth.ErrPassFull, http.StatusConflict, "pass_full"},
+	{ErrGuestsOff, http.StatusForbidden, "guests_off"},
+	{nights.ErrNotFound, http.StatusNotFound, "not_found"},
+	{nights.ErrForbidden, http.StatusForbidden, "forbidden"},
+	{nights.ErrNotHost, http.StatusForbidden, "forbidden"},
+	{nights.ErrNotTonight, http.StatusConflict, "not_tonight"},
+	{nights.ErrNothingPlayed, http.StatusConflict, "nothing_played"},
 
 	{links.ErrUnknownProvider, http.StatusNotFound, "unknown_provider"},
 	{links.ErrNotFound, http.StatusNotFound, "not_found"},

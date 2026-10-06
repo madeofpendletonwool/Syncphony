@@ -38,6 +38,9 @@ const REPEAT_WINDOWS = [
 
 const MAX_WEIGHT = 4
 
+// Songs each guest may add over the night; 0 is no limit.
+const GUEST_SONGS = [5, 10, 20, 0]
+
 /**
  * Who can control playback in a room you own, and how turns work. Changes
  * save as you make them, and everyone in the room sees them at once.
@@ -59,6 +62,7 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
                 fairness: body.fairness ?? r.fairness,
                 matching: body.matching ?? r.matching,
                 autopilot: body.autopilot ?? r.autopilot,
+                guests: body.guests ?? r.guests,
               }
             : r,
         ),
@@ -242,6 +246,48 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
                   )}
                 </AnimatePresence>
 
+                <SectionTitle hint="Friends of friends scan a QR code and add songs, with no account. They search the server's shared services">
+                  Guests
+                </SectionTitle>
+                <Toggle
+                  label="Let guests join"
+                  hint="Anyone here can show the guest QR code, and so can the big screen"
+                  checked={room.guests.allowed}
+                  onChange={(allowed) => update.mutate({ guests: { ...room.guests, allowed } })}
+                />
+                <AnimatePresence initial={false}>
+                  {room.guests.allowed && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.25, ease: easeOutExpo }}
+                      className="-mt-2 flex flex-col gap-5 overflow-hidden"
+                    >
+                      <Setting label="Songs per guest" hint="Over their whole visit. Each guest gets their own turn">
+                        <ToggleGroup
+                          type="single"
+                          value={String(room.guests.maxSongs)}
+                          onValueChange={(v) => v && update.mutate({ guests: { ...room.guests, maxSongs: Number(v) } })}
+                          aria-label="Songs per guest"
+                        >
+                          {(GUEST_SONGS.includes(room.guests.maxSongs) ? GUEST_SONGS : [room.guests.maxSongs, ...GUEST_SONGS]).map((n) => (
+                            <ToggleGroupItem key={n} value={String(n)} className="min-w-11">
+                              {n === 0 ? 'No limit' : n}
+                            </ToggleGroupItem>
+                          ))}
+                        </ToggleGroup>
+                      </Setting>
+                      <Toggle
+                        label="Guests can vote"
+                        hint="Vote to skip, and heart songs for song of the night"
+                        checked={room.guests.canVote}
+                        onChange={(canVote) => update.mutate({ guests: { ...room.guests, canVote } })}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 <SectionTitle hint="Uses the services of the people in the room, and shared ones">Other services</SectionTitle>
                 <Toggle
                   label="Fill in from other services"
@@ -315,7 +361,7 @@ function Weights({ weights, onChange }: { weights: Fairness['weights']; onChange
         <p className="text-caption text-muted-foreground">Give someone more of a say, like whoever&apos;s birthday it is</p>
       </div>
       <ul className="flex flex-col gap-1">
-        {(users.data ?? []).map((u) => {
+        {(users.data ?? []).filter((u) => !u.guest).map((u) => {
           const w = weights[u.id] ?? 1
           return (
             <li key={u.id} className="flex items-center gap-3 rounded-2xl px-1 py-1">

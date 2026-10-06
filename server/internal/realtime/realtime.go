@@ -34,6 +34,14 @@ const (
 	LinkStatus = "link.status"
 	// ReactionSent carries an emoji someone sent to the room's big screen.
 	ReactionSent = "reaction.sent"
+	// HeartsUpdated carries who hearted a song, after someone hearted it
+	// or took it back.
+	HeartsUpdated = "hearts.updated"
+	// NightEnded carries a night that ended, and its song of the night.
+	NightEnded = "night.ended"
+	// GuestsUpdated says a room's guests or guest pass changed. It
+	// carries the room's ID.
+	GuestsUpdated = "guests.updated"
 )
 
 // Event is something that happened. Data holds domain values (store rows,

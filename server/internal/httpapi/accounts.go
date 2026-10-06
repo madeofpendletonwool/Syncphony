@@ -14,12 +14,42 @@ import (
 
 // --- Conversions --------------------------------------------------------------
 
-func toUser(u store.User) User {
+// toUser converts a user; g is their guest row if they're a guest.
+func toUser(u store.User, g *store.Guest) User {
 	out := User{Id: u.ID, Username: u.Username, DisplayName: u.DisplayName, Color: u.Color, Role: Role(u.Role), CreatedAt: u.CreatedAt}
 	if u.Avatar.Valid {
 		out.Avatar = &u.Avatar.String
 	}
+	if g != nil {
+		out.Guest = &UserGuest{RoomId: g.RoomID, ExpiresAt: g.ExpiresAt, Ended: g.EndedAt.Valid}
+	}
 	return out
+}
+
+// apiUser converts one user, looking up whether they're a guest.
+func (s *Server) apiUser(ctx context.Context, u store.User) (User, error) {
+	g, ok, err := s.Auth.GuestOf(ctx, u.ID)
+	if err != nil || !ok {
+		return toUser(u, nil), err
+	}
+	return toUser(u, &g), nil
+}
+
+// apiUsers converts users, marking guests.
+func (s *Server) apiUsers(ctx context.Context, users []store.User) ([]User, error) {
+	guests, err := s.Auth.AllGuests(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]User, len(users))
+	for i, u := range users {
+		var g *store.Guest
+		if row, ok := guests[u.ID]; ok {
+			g = &row
+		}
+		out[i] = toUser(u, g)
+	}
+	return out, nil
 }
 
 func (s *Server) toMe(ctx context.Context, u store.User) (Me, error) {
@@ -27,10 +57,13 @@ func (s *Server) toMe(ctx context.Context, u store.User) (Me, error) {
 	if err != nil {
 		return Me{}, err
 	}
-	pu := toUser(u)
+	pu, err := s.apiUser(ctx, u)
+	if err != nil {
+		return Me{}, err
+	}
 	return Me{
 		Id: pu.Id, Username: pu.Username, DisplayName: pu.DisplayName, Avatar: pu.Avatar, Color: pu.Color, Role: pu.Role, CreatedAt: pu.CreatedAt,
-		HasPassword: hasPassword, PasskeyCount: passkeys,
+		Guest: pu.Guest, HasPassword: hasPassword, PasskeyCount: passkeys,
 	}, nil
 }
 
@@ -272,11 +305,16 @@ func (s *Server) ListUsers(ctx context.Context, _ ListUsersRequestObject) (ListU
 	if err != nil {
 		return nil, err
 	}
-	out := make(ListUsers200JSONResponse, len(users))
-	for i, u := range users {
-		out[i] = toUser(u)
+	out, err := s.apiUsers(ctx, users)
+	// Guests see names, not the usernames members sign in with.
+	if sess, _ := ctx.Value(ctxSession).(*auth.Session); sess != nil && sess.Guest != nil {
+		for i := range out {
+			if out[i].Id != sess.User.ID {
+				out[i].Username = ""
+			}
+		}
 	}
-	return out, nil
+	return ListUsers200JSONResponse(out), err
 }
 
 // ListInvites lists invites (admins).

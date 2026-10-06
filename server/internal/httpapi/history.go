@@ -78,9 +78,22 @@ func (s *Server) ListSessions(ctx context.Context, req ListSessionsRequestObject
 		spans[i] = stats.Span{Start: r.StartedAt, End: r.EndedAt.Time, User: r.AddedBy}
 	}
 	sessions := stats.Sessions(spans)
+	// A night is a session that ended: the host ended it, or the room went
+	// quiet. Each carries its song of the night.
+	ns, err := s.Nights.List(ctx, req.RoomId, 2*limit)
+	if err != nil {
+		return nil, err
+	}
 	out := make(ListSessions200JSONResponse, 0, min(len(sessions), limit))
 	for _, ss := range sessions[:min(len(sessions), limit)] {
-		out = append(out, ListeningSession{StartedAt: ss.Start, EndedAt: ss.End, Plays: ss.Plays, People: ss.People})
+		ls := ListeningSession{StartedAt: ss.Start, EndedAt: ss.End, Plays: ss.Plays, People: ss.People}
+		for _, n := range ns {
+			if !n.StartedAt.Before(ss.Start) && !n.StartedAt.After(ss.End) {
+				ls.Night = ptr(toNight(n))
+				break
+			}
+		}
+		out = append(out, ls)
 	}
 	return out, nil
 }

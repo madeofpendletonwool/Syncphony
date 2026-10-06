@@ -3,7 +3,8 @@ import { useMemo } from 'react'
 import { errorMessage } from '@/api/errors'
 import { tap } from '@/lib/haptics'
 import type { PlayerCommands } from '@/lib/now-playing'
-import { can, playbackQuery, sendCommand, skipMode, type Playback, type PlaybackCommand } from '@/lib/playback'
+import { isMine } from '@/lib/autopilot'
+import { can, playbackQuery, sendCommand, skipMode, type Permission, type Playback, type PlaybackCommand } from '@/lib/playback'
 import type { Room } from '@/lib/room'
 import { toast } from '@/lib/toast'
 
@@ -11,8 +12,9 @@ import { toast } from '@/lib/toast'
  * Transport controls for the room, limited to what its permissions let you
  * do. The owner can do anything and anyone can skip their own song; in a
  * room that votes on skips, everyone else gets a vote instead of `next`.
+ * Guests only skip their own songs, and vote if the room lets them.
  */
-export function useRoomControls(room: Room | undefined, playback: Playback | undefined, userId: string): PlayerCommands {
+export function useRoomControls(room: Room | undefined, playback: Playback | undefined, userId: string, guest = false): PlayerCommands {
   const queryClient = useQueryClient()
 
   return useMemo(() => {
@@ -31,11 +33,13 @@ export function useRoomControls(room: Room | undefined, playback: Playback | und
       }
     }
     const playing = playback.state === 'playing' || playback.state === 'loading'
-    const skip = skipMode(room, userId, item)
+    const allowed = (p: Permission) => !guest && can(room, userId, p)
+    let skip = skipMode(room, userId, item)
+    if (guest && !isMine(item, userId)) skip = skip === 'vote' && room.guests.canVote ? 'vote' : undefined
     const votes = playback.skipVotes
     const voted = !!votes?.voters.includes(userId)
     return {
-      toggle: can(room, userId, 'playPause')
+      toggle: allowed('playPause')
         ? () =>
             playing
               ? send({ action: 'pause' }, (p) => ({ ...p, state: 'paused', positionMs: currentPosition(p), at: new Date().toISOString() }))
@@ -43,7 +47,7 @@ export function useRoomControls(room: Room | undefined, playback: Playback | und
         : undefined,
       // There's no going back in a fair queue; "previous" restarts the song,
       // like most players do past the first few seconds.
-      previous: can(room, userId, 'seek') ? () => send({ action: 'seek', positionMs: 0 }, (p) => ({ ...p, positionMs: 0, at: new Date().toISOString() })) : undefined,
+      previous: allowed('seek') ? () => send({ action: 'seek', positionMs: 0 }, (p) => ({ ...p, positionMs: 0, at: new Date().toISOString() })) : undefined,
       next: skip === 'skip' ? () => send({ action: 'skip', itemId: item.id }) : undefined,
       vote:
         skip === 'vote' && votes
@@ -61,11 +65,11 @@ export function useRoomControls(room: Room | undefined, playback: Playback | und
                 })),
             }
           : undefined,
-      seek: can(room, userId, 'seek')
+      seek: allowed('seek')
         ? (positionMs: number) => send({ action: 'seek', positionMs }, (p) => ({ ...p, positionMs, at: new Date().toISOString() }))
         : undefined,
     }
-  }, [room, playback, userId, queryClient])
+  }, [room, playback, userId, guest, queryClient])
 }
 
 /** Where a playing song is now, from its position at the last report. */

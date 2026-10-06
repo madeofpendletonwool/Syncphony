@@ -1,19 +1,22 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Sparkles } from 'lucide-react'
+import { Heart, Sparkles } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo } from 'react'
 import { Artwork } from '@/components/artwork'
 import { LyricsView } from '@/components/lyrics/lyrics-view'
 import { AutopilotMark } from '@/components/room/autopilot-badge'
+import { CrownMoment } from '@/components/room/crown-moment'
 import { AlbumBackdrop } from '@/components/shell/album-backdrop'
 import { UserAvatar } from '@/components/user-avatar'
 import { useAlbumPalette } from '@/hooks/use-album-palette'
 import { usePosition } from '@/hooks/use-position'
 import { autopilotReason } from '@/lib/autopilot'
+import { guestPassQuery } from '@/lib/guests'
 import { laneStyle } from '@/lib/lane'
 import { linerCards, linerNotesQuery } from '@/lib/liner-notes'
 import { inGap, lyricsQuery, offsetKey, useLyricsOffset } from '@/lib/lyrics'
 import { easeOutExpo, spring } from '@/lib/motion'
+import { heartsQuery } from '@/lib/nights'
 import { formatDuration, type NowPlaying, type User } from '@/lib/now-playing'
 import { playbackQuery, queueArtworkUrl, toNowPlaying, type QueueItem } from '@/lib/playback'
 import { queueQuery } from '@/lib/room'
@@ -69,13 +72,18 @@ export function TvStage({
   const byId = new Map(items.map((i) => [i.id, i]))
   const upNext = (queue.data?.upNext ?? []).map((id) => byId.get(id)).filter((i): i is QueueItem => !!i)
   const userById = (id: string) => users.data?.find((u) => u.id === id)
-  const joinUrl = `${location.origin}/room?join=${encodeURIComponent(roomId)}`
+  // With a guest pass, anyone can scan in; members get to the room either way.
+  const pass = useQuery(guestPassQuery(roomId))
+  const join = pass.data
+    ? { url: pass.data.url, guests: true }
+    : { url: `${location.origin}/room?join=${encodeURIComponent(roomId)}`, guests: false }
 
   return (
     <div className="relative isolate h-dvh cursor-none overflow-hidden select-none">
       <AlbumBackdrop src={np?.artworkUrl} />
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgb(0_0_0/0.55))]" />
       <FloatingReactions users={users.data} />
+      <CrownMoment roomId={roomId} variant="stage" />
 
       <div className="burn-in-drift flex h-full flex-col gap-[3vh] px-[4vw] pt-[4vh] pb-[3.5vh]">
         <header className="flex items-center justify-between gap-6">
@@ -89,13 +97,13 @@ export function TvStage({
         <main className="grid min-h-0 flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)] gap-[4vw]">
           {np ? <NowPlayingColumn np={np} /> : <QuietColumn />}
           <section className="relative flex min-h-0 flex-col justify-center">
-            {np ? <StageWords np={np} /> : <JoinPrompt url={joinUrl} big />}
+            {np ? <StageWords np={np} /> : <JoinPrompt {...join} big />}
           </section>
         </main>
 
         <footer className="flex items-end justify-between gap-[3vw]">
           <UpNext items={upNext.slice(0, UP_NEXT_SHOWN)} more={Math.max(0, upNext.length - UP_NEXT_SHOWN)} roomId={roomId} userById={userById} />
-          {np && <JoinPrompt url={joinUrl} />}
+          {np && <JoinPrompt {...join} />}
         </footer>
       </div>
     </div>
@@ -146,6 +154,7 @@ function NowPlayingColumn({ np }: { np: NowPlaying }) {
                 </p>
               </div>
             )}
+            <StageHearts np={np} />
           </div>
         </motion.div>
       </AnimatePresence>
@@ -223,6 +232,31 @@ function QuietColumn() {
   )
 }
 
+/** Hearts toward song of the night, as they come in. */
+function StageHearts({ np }: { np: NowPlaying }) {
+  const hearts = useQuery({ ...heartsQuery(np.roomId ?? '', np.itemId ?? ''), enabled: !!np.itemId })
+  const n = hearts.data?.userIds.length ?? 0
+  return (
+    <AnimatePresence>
+      {n > 0 && (
+        <motion.p
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          className="mt-[1.5vh] flex items-center gap-2 text-[clamp(0.9rem,1.4vw,1.4rem)] text-muted-foreground"
+        >
+          <motion.span key={n} initial={{ scale: 1.6 }} animate={{ scale: 1 }} transition={spring}>
+            <Heart className="size-[2.6vh] fill-rose-500 text-rose-500" />
+          </motion.span>
+          <span className="tabular-nums">
+            {n} {n === 1 ? 'heart' : 'hearts'}
+          </span>
+        </motion.p>
+      )}
+    </AnimatePresence>
+  )
+}
+
 /** Whose turn it is next, in the fair rotation. */
 function UpNext({
   items,
@@ -281,7 +315,7 @@ function UpNext({
   )
 }
 
-function JoinPrompt({ url, big }: { url: string; big?: boolean }) {
+function JoinPrompt({ url, guests, big }: { url: string; guests: boolean; big?: boolean }) {
   return (
     <div className={cn('glass flex shrink-0 items-center gap-[1.2vw] rounded-[2.5vh] p-[1.4vh]', big && 'w-fit flex-col gap-[2vh] self-center p-[3vh]')}>
       <div className="rounded-[1.2vh] bg-white p-[0.8vh] text-black">
@@ -290,6 +324,7 @@ function JoinPrompt({ url, big }: { url: string; big?: boolean }) {
       <p className={cn('max-w-[12ch] text-[clamp(0.85rem,1.2vw,1.25rem)] leading-snug font-medium', big && 'max-w-none text-center text-[clamp(1.1rem,1.8vw,1.9rem)]')}>
         Scan to join
         {big ? ' and add songs' : ''}
+        {guests && <span className="block text-[0.85em] font-normal text-muted-foreground">No account needed</span>}
       </p>
     </div>
   )
