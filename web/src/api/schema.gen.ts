@@ -1011,6 +1011,178 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/queue/{itemId}/hearts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        /** Who hearted a song */
+        get: operations["getHearts"];
+        /**
+         * Heart a song
+         * @description A heart toward the song of the night. It isn't a vote to skip.
+         *     Only the playing song, or one that played earlier tonight
+         *     (`not_tonight`, 409, otherwise). You can't heart your own song
+         *     (`invalid_input`), and in rooms where guests can't vote, guests
+         *     can't heart (`forbidden`). Everyone in the room gets
+         *     `hearts.updated`.
+         */
+        put: operations["heartSong"];
+        post?: never;
+        /** Take back a heart */
+        delete: operations["unheartSong"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/nights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /** The room's past nights, and their songs of the night */
+        get: operations["listNights"];
+        put?: never;
+        /**
+         * End the night, and crown its song
+         * @description The room's owner or an admin wraps up the night. The most-hearted
+         *     song since the night began is crowned song of the night, and
+         *     everyone in the room (the big screen too) gets `night.ended`.
+         *     Nights also end on their own once the room has been quiet for two
+         *     hours, the same gap that separates listening sessions.
+         *     `nothing_played` (409) if nothing has played since the last night
+         *     ended.
+         */
+        post: operations["endNight"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/guest-pass": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The room's guest pass, to show as a QR code
+         * @description The pass guests scan to join without an account. `not_found` (404)
+         *     when the room has none that's still good. Guests can't see it.
+         */
+        get: operations["getGuestPass"];
+        put?: never;
+        /**
+         * Start a new guest pass
+         * @description Any member, in a room that allows guests (`guests_off`, 403,
+         *     otherwise). It replaces the room's current pass, whose code stops
+         *     working; guests who joined with it stay. Everyone in the room gets
+         *     `guests.updated`.
+         */
+        post: operations["createGuestPass"];
+        /**
+         * Revoke the room's guest pass
+         * @description No one else can join with it. Guests already in stay until they
+         *     expire or are removed. The room's owner, an admin, or whoever
+         *     started the pass.
+         */
+        delete: operations["revokeGuestPass"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/guests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /** The room's guests */
+        get: operations["listGuests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/guests/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                userId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a guest
+         * @description Signs the guest out and takes their waiting songs out of the
+         *     queue. Songs they already played stay in the room's history and
+         *     recaps. The room's owner or an admin.
+         */
+        delete: operations["kickGuest"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/guest/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Check a guest pass before joining
+         * @description `guest_pass_invalid` (404) if it's wrong, expired or revoked, or
+         *     the room no longer allows guests. Wrong passes are rate limited by IP.
+         */
+        get: operations["getGuestInvite"];
+        put?: never;
+        /**
+         * Join a room as a guest
+         * @description Makes a guest account and signs it in until the pass expires. A
+         *     guest has no password, passkey, services or settings. They can
+         *     search the server's shared services, add songs to their own lane
+         *     (up to the room's limit; `guest_limit`, 409, past it), react, and
+         *     vote and heart if the room allows it, in this room only. When they
+         *     expire or are removed, their waiting songs leave the queue; what
+         *     they played stays in the room's history under their name.
+         */
+        post: operations["joinAsGuest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms": {
         parameters: {
             query?: never;
@@ -1018,7 +1190,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Every room */
+        /**
+         * Every room
+         * @description A guest sees only their own room.
+         */
         get: operations["listRooms"];
         put?: never;
         /** Create a room you own */
@@ -1200,12 +1375,106 @@ export interface components {
              */
             color: string;
             role: components["schemas"]["Role"];
+            guest?: components["schemas"]["UserGuest"];
             /** Format: date-time */
             createdAt: string;
         };
         Me: components["schemas"]["User"] & {
             hasPassword: boolean;
             passkeyCount: number;
+        };
+        /** @description Set on guests, who joined one room with a QR code instead of an invite. */
+        UserGuest: {
+            roomId: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /**
+             * @description The guest expired or was removed. They're kept only so the room's
+             *     history and recaps can show their name.
+             */
+            ended: boolean;
+        };
+        /**
+         * @description Whether people without an account may join the room by scanning a
+         *     guest pass, and what they may do.
+         */
+        RoomGuests: {
+            /** @default false */
+            allowed: boolean;
+            /**
+             * @description Songs each guest may add over their visit. 0 means no limit.
+             * @default 10
+             */
+            maxSongs: number;
+            /**
+             * @description Guests may vote to skip and heart songs.
+             * @default true
+             */
+            canVote: boolean;
+        };
+        GuestPass: {
+            id: string;
+            roomId: string;
+            /** @description The link to show as a QR code. It carries the signed pass. */
+            url: string;
+            createdBy?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        CreateGuestPassRequest: {
+            /**
+             * Format: date-time
+             * @description When the pass, and everyone who joins with it, expires: e.g. the
+             *     end of the night. 15 minutes to 24 hours from now.
+             */
+            expiresAt: string;
+        };
+        GuestInvite: {
+            roomId: string;
+            roomName: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        JoinAsGuestRequest: {
+            displayName: string;
+        };
+        Guest: {
+            user: components["schemas"]["User"];
+            /** Format: date-time */
+            joinedAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @description Songs they've added, toward the room's limit. */
+            songs: number;
+        };
+        Hearts: {
+            roomId: string;
+            itemId: string;
+            /** @description Who hearted it, in the order they did. */
+            userIds: string[];
+        };
+        /**
+         * @description A night in the room: from its first song until the host ended it or
+         *     the room went quiet. Fed into recaps.
+         */
+        Night: {
+            id: string;
+            roomId: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            endedAt: string;
+            /** @enum {string} */
+            endedBy: "host" | "idle";
+            plays: number;
+            songOfTheNight?: components["schemas"]["SongOfTheNight"];
+        };
+        /** @description The night's most-hearted song. Absent if nothing got a heart. */
+        SongOfTheNight: {
+            item: components["schemas"]["QueueItem"];
+            hearts: number;
         };
         /** @description Fields to change. Send `avatar` as "" to remove it. */
         ProfileUpdate: {
@@ -1634,6 +1903,10 @@ export interface components {
          *     - `link.status`: ServiceLink. One of your links changed status.
          *     - `room.updated`: Room. The room's name or settings changed.
          *     - `reaction.sent`: Reaction. Someone sent an emoji to the big screen.
+         *     - `hearts.updated`: Hearts. Someone hearted a song, or took it back.
+         *     - `night.ended`: Night. The night is over; crown its song of the night.
+         *     - `guests.updated`: `{"roomId": ...}`. A guest joined or was removed,
+         *       or the guest pass changed: fetch them again.
          *
          *     A paired display connects with its display cookie instead, to its
          *     own room only. So does a signed-in user with `display=1`: either way
@@ -1645,7 +1918,7 @@ export interface components {
          */
         RoomEvent: {
             /** @enum {string} */
-            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "reaction.sent";
+            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "reaction.sent" | "hearts.updated" | "night.ended" | "guests.updated";
             /**
              * Format: int64
              * @description Queue version, on `queue.updated` only.
@@ -1817,6 +2090,7 @@ export interface components {
             plays: number;
             /** @description User IDs whose songs played, most first. */
             people: string[];
+            night?: components["schemas"]["Night"];
         };
         /** @description The track as it was when queued; still shown if its service is offline. */
         QueuedTrack: {
@@ -2027,6 +2301,7 @@ export interface components {
             fairness: components["schemas"]["RoomFairness"];
             matching: components["schemas"]["RoomMatching"];
             autopilot: components["schemas"]["RoomAutopilot"];
+            guests: components["schemas"]["RoomGuests"];
             permissions: components["schemas"]["RoomPermissions"];
             skipVotePercent: components["schemas"]["SkipVotePercent"];
             /** Format: date-time */
@@ -2038,6 +2313,7 @@ export interface components {
             fairness?: components["schemas"]["RoomFairness"];
             matching?: components["schemas"]["RoomMatching"];
             autopilot?: components["schemas"]["RoomAutopilot"];
+            guests?: components["schemas"]["RoomGuests"];
             permissions?: components["schemas"]["RoomPermissionsChange"];
             skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };
@@ -2047,6 +2323,7 @@ export interface components {
             fairness?: components["schemas"]["RoomFairness"];
             matching?: components["schemas"]["RoomMatching"];
             autopilot?: components["schemas"]["RoomAutopilot"];
+            guests?: components["schemas"]["RoomGuests"];
             permissions?: components["schemas"]["RoomPermissionsChange"];
             skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };
@@ -3421,6 +3698,284 @@ export interface operations {
                 };
                 content?: never;
             };
+            default: components["responses"]["Error"];
+        };
+    };
+    getHearts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The song's hearts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Hearts"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    heartSong: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The song's hearts, yours included */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Hearts"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    unheartSong: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The song's hearts, without yours */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Hearts"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listNights: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Nights, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Night"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    endNight: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The night that ended */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Night"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getGuestPass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The room's current guest pass */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestPass"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createGuestPass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGuestPassRequest"];
+            };
+        };
+        responses: {
+            /** @description The new pass */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestPass"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeGuestPass: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listGuests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Guests still in the room, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Guest"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    kickGuest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getGuestInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The room the pass joins */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestInvite"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    joinAsGuest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinAsGuestRequest"];
+            };
+        };
+        responses: {
+            201: components["responses"]["SignedIn"];
             default: components["responses"]["Error"];
         };
     };

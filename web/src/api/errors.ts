@@ -67,6 +67,11 @@ const messages: Record<string, string> = {
   not_paired: 'Approve the code first.',
   pairing_invalid: "No screen is showing that code. Check it and try again.",
   too_many_pairings: 'Too many screens are waiting to pair. Try again in a few minutes.',
+  guest_pass_invalid: 'That guest code has expired. Ask someone in the room to show it again.',
+  pass_full: 'This guest code is full. Ask for a new one.',
+  guests_off: "This room doesn't let guests join. Its owner can turn that on in room settings.",
+  not_tonight: 'Hearts are for songs playing tonight.',
+  nothing_played: 'Nothing has played since the last night ended.',
 }
 
 /** A sentence to show the user for an error from the API or the browser. */
@@ -77,8 +82,8 @@ export function errorMessage(err: unknown): string {
         ? `Too many attempts. Try again in ${formatWait(err.retryAfter)}.`
         : 'Too many attempts. Try again in a bit.'
     }
-    // not_playable's message names the song and service.
-    if (err.code === 'invalid_input' || err.code === 'bad_request' || err.code === 'not_playable') return capitalize(err.message)
+    // not_playable's and guest_limit's messages name the song and service, or the limit.
+    if (['invalid_input', 'bad_request', 'not_playable', 'guest_limit'].includes(err.code)) return capitalize(err.message)
     return messages[err.code] ?? 'Something went wrong. Try again.'
   }
   if (typeof err === 'string') return messages[err] ?? 'Something went wrong. Try again.'

@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { ChevronLeft, LoaderCircle } from 'lucide-react'
+import { ChevronLeft, Crown, LoaderCircle } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { StatsView } from '@/components/history/stats-view'
@@ -186,7 +186,7 @@ function Recaps({ room }: { room: Room }) {
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={current.startedAt} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={spring}>
           <h2 className="mb-3 px-1 text-title">{sessionName(current)}</h2>
-          <StatsView roomId={room.id} range={sessionRange(current)} recap />
+          <StatsView roomId={room.id} range={sessionRange(current)} recap night={current.night} />
         </motion.div>
       </AnimatePresence>
     </div>
@@ -215,7 +215,10 @@ function SessionCard({
         active && 'ring-2 ring-primary',
       )}
     >
-      <span className="text-sm font-medium">{sessionName(session)}</span>
+      <span className="flex items-center gap-1.5 text-sm font-medium">
+        {sessionName(session)}
+        {session.night?.songOfTheNight && <Crown className="size-3.5 text-amber-500 dark:text-amber-300" aria-label="Has a song of the night" />}
+      </span>
       <span className="text-caption text-muted-foreground">
         {start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {session.plays} songs ·{' '}
         {formatListening(Date.parse(session.endedAt) - start.getTime())}

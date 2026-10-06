@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Clock, Disc3, SkipForward } from 'lucide-react'
+import { Clock, Crown, Disc3, Heart, SkipForward } from 'lucide-react'
 import { motion } from 'motion/react'
 import type { ReactNode } from 'react'
 import { QueueRow } from '@/components/room/queue-row'
@@ -9,6 +9,7 @@ import { UserAvatar } from '@/components/user-avatar'
 import { formatListening, statsQuery, type Range, type RoomStats } from '@/lib/history'
 import { laneStyle } from '@/lib/lane'
 import { fadeUp, stagger } from '@/lib/motion'
+import type { Night } from '@/lib/nights'
 import type { User } from '@/lib/now-playing'
 import { usersQuery } from '@/lib/users'
 
@@ -16,7 +17,7 @@ import { usersQuery } from '@/lib/users'
  * What a room played over a range: totals, top tracks and artists, and
  * everyone's share. A recap also shows how the session opened and closed.
  */
-export function StatsView({ roomId, range, recap }: { roomId: string; range?: Range; recap?: boolean }) {
+export function StatsView({ roomId, range, recap, night }: { roomId: string; range?: Range; recap?: boolean; night?: Night }) {
   const stats = useQuery(statsQuery(roomId, range))
   const users = useQuery(usersQuery)
   const userById = (id: string) => users.data?.find((u) => u.id === id)
@@ -42,6 +43,27 @@ export function StatsView({ roomId, range, recap }: { roomId: string; range?: Ra
         <Tile icon={<Clock />} label="listening" value={formatListening(s.listeningMs)} />
         <Tile icon={<SkipForward />} label="skipped" value={String(s.skipped)} />
       </motion.div>
+
+      {recap && night?.songOfTheNight && (
+        <motion.section variants={fadeUp} className="glass flex flex-col rounded-3xl p-1.5 ring-1 ring-amber-400/40">
+          <p className="flex items-center gap-1.5 px-3 pt-2 text-caption font-medium tracking-wide text-amber-500 uppercase dark:text-amber-300">
+            <Crown className="size-3.5" />
+            Song of the night
+          </p>
+          <QueueRow
+            roomId={roomId}
+            item={night.songOfTheNight.item}
+            user={userById(night.songOfTheNight.item.addedBy)}
+            byline
+            trailing={
+              <span className="flex items-center gap-1 pr-2 text-sm text-muted-foreground tabular-nums">
+                <Heart className="size-3.5 fill-rose-500 text-rose-500" />
+                {night.songOfTheNight.hearts}
+              </span>
+            }
+          />
+        </motion.section>
+      )}
 
       {recap && s.first && s.last && (
         <motion.section variants={fadeUp} className="glass flex flex-col rounded-3xl p-1.5">

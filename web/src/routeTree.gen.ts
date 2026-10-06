@@ -15,6 +15,7 @@ import { Route as TvRouteImport } from './routes/tv'
 import { Route as AppAuthedRouteImport } from './routes/_app/_authed'
 import { Route as AppDesignRouteImport } from './routes/_app/design'
 import { Route as InviteCodeRouteImport } from './routes/invite.$code'
+import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as AppAuthedIndexRouteImport } from './routes/_app/_authed/index'
 import { Route as AppAuthedHistoryRouteImport } from './routes/_app/_authed/history'
 import { Route as AppAuthedMeRouteImport } from './routes/_app/_authed/me'
@@ -52,6 +53,11 @@ const AppDesignRoute = AppDesignRouteImport.update({
 const InviteCodeRoute = InviteCodeRouteImport.update({
   id: '/invite/$code',
   path: '/invite/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JoinTokenRoute = JoinTokenRouteImport.update({
+  id: '/join/$token',
+  path: '/join/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppAuthedIndexRoute = AppAuthedIndexRouteImport.update({
@@ -115,6 +121,7 @@ export interface FileRoutesByFullPath {
   '/tv': typeof TvRoute
   '/design': typeof AppDesignRoute
   '/invite/$code': typeof InviteCodeRoute
+  '/join/$token': typeof JoinTokenRoute
   '/history': typeof AppAuthedHistoryRoute
   '/me': typeof AppAuthedMeRoute
   '/room': typeof AppAuthedRoomRoute
@@ -131,6 +138,7 @@ export interface FileRoutesByTo {
   '/tv': typeof TvRoute
   '/design': typeof AppDesignRoute
   '/invite/$code': typeof InviteCodeRoute
+  '/join/$token': typeof JoinTokenRoute
   '/history': typeof AppAuthedHistoryRoute
   '/me': typeof AppAuthedMeRoute
   '/room': typeof AppAuthedRoomRoute
@@ -149,6 +157,7 @@ export interface FileRoutesById {
   '/_app/_authed': typeof AppAuthedRouteWithChildren
   '/_app/design': typeof AppDesignRoute
   '/invite/$code': typeof InviteCodeRoute
+  '/join/$token': typeof JoinTokenRoute
   '/_app/_authed/history': typeof AppAuthedHistoryRoute
   '/_app/_authed/me': typeof AppAuthedMeRoute
   '/_app/_authed/room': typeof AppAuthedRoomRoute
@@ -168,6 +177,7 @@ export interface FileRouteTypes {
     | '/tv'
     | '/design'
     | '/invite/$code'
+    | '/join/$token'
     | '/history'
     | '/me'
     | '/room'
@@ -184,6 +194,7 @@ export interface FileRouteTypes {
     | '/tv'
     | '/design'
     | '/invite/$code'
+    | '/join/$token'
     | '/history'
     | '/me'
     | '/room'
@@ -201,6 +212,7 @@ export interface FileRouteTypes {
     | '/_app/_authed'
     | '/_app/design'
     | '/invite/$code'
+    | '/join/$token'
     | '/_app/_authed/history'
     | '/_app/_authed/me'
     | '/_app/_authed/room'
@@ -218,6 +230,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   TvRoute: typeof TvRoute
   InviteCodeRoute: typeof InviteCodeRoute
+  JoinTokenRoute: typeof JoinTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -262,6 +275,13 @@ declare module '@tanstack/react-router' {
       path: '/invite/$code'
       fullPath: '/invite/$code'
       preLoaderRoute: typeof InviteCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/join/$token': {
+      id: '/join/$token'
+      path: '/join/$token'
+      fullPath: '/join/$token'
+      preLoaderRoute: typeof JoinTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/_authed/': {
@@ -385,6 +405,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   TvRoute: TvRoute,
   InviteCodeRoute: InviteCodeRoute,
+  JoinTokenRoute: JoinTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

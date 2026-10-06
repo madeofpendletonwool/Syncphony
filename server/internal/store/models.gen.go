@@ -35,6 +35,30 @@ type Display struct {
 	ExpiresAt  time.Time
 }
 
+type Guest struct {
+	UserID    string
+	RoomID    string
+	PassID    sql.NullString
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	EndedAt   sql.NullTime
+}
+
+type GuestPass struct {
+	ID        string
+	RoomID    string
+	CreatedBy sql.NullString
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	RevokedAt sql.NullTime
+}
+
+type Heart struct {
+	QueueItemID string
+	UserID      string
+	CreatedAt   time.Time
+}
+
 type Invite struct {
 	Code      string
 	CreatedBy sql.NullString
@@ -77,6 +101,17 @@ type MusicbrainzTrack struct {
 	ExpiresAt        time.Time
 }
 
+type Night struct {
+	ID          string
+	RoomID      string
+	StartedAt   time.Time
+	EndedAt     time.Time
+	EndedBy     string
+	Plays       int64
+	QueueItemID sql.NullString
+	Hearts      int64
+}
+
 type PlayHistory struct {
 	ID          string
 	RoomID      string
@@ -114,6 +149,12 @@ type Room struct {
 	Settings       string
 	CreatedAt      time.Time
 	QueueVersion   int64
+}
+
+type ServerKey struct {
+	Name      string
+	Key       []byte
+	CreatedAt time.Time
 }
 
 type ServiceLink struct {

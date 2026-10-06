@@ -4,6 +4,7 @@ package httpapi
 
 import (
 	"context"
+	"slices"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
@@ -14,6 +15,10 @@ func (s *Server) ListRooms(ctx context.Context, _ ListRoomsRequestObject) (ListR
 	rs, err := s.Rooms.List(ctx)
 	if err != nil {
 		return nil, err
+	}
+	// A guest sees their own room only.
+	if g := sessionFrom(ctx).Guest; g != nil {
+		rs = slices.DeleteFunc(rs, func(r store.Room) bool { return r.ID != g.RoomID })
 	}
 	out := make(ListRooms200JSONResponse, len(rs))
 	for i, r := range rs {
@@ -33,6 +38,9 @@ func (s *Server) CreateRoom(ctx context.Context, req CreateRoomRequestObject) (C
 	}
 	if a := req.Body.Autopilot; a != nil {
 		st.Autopilot = fromAutopilot(*a)
+	}
+	if g := req.Body.Guests; g != nil {
+		st.Guests = fromGuests(*g)
 	}
 	var mode string
 	if req.Body.FairnessMode != nil {
@@ -71,6 +79,9 @@ func (s *Server) UpdateRoom(ctx context.Context, req UpdateRoomRequestObject) (U
 	if a := req.Body.Autopilot; a != nil {
 		u.Autopilot = ptr(fromAutopilot(*a))
 	}
+	if g := req.Body.Guests; g != nil {
+		u.Guests = ptr(fromGuests(*g))
+	}
 	r, err := s.Rooms.Update(ctx, sessionFrom(ctx).User.ID, req.RoomId, u)
 	if err != nil {
 		return nil, err
@@ -95,6 +106,7 @@ func toRoom(r store.Room) Room {
 	}
 	out.Matching = RoomMatching{Fallback: st.Matching.FallbackOn(), Borrow: st.Matching.Borrow}
 	out.Autopilot = RoomAutopilot{On: st.Autopilot.On, Adventure: RoomAutopilotAdventure(st.Autopilot.Adventure)}
+	out.Guests = RoomGuests{Allowed: st.Guests.Allowed, MaxSongs: st.Guests.SongLimit(), CanVote: st.Guests.CanVote()}
 	if out.Fairness.Weights == nil {
 		out.Fairness.Weights = map[string]int{}
 	}
@@ -107,6 +119,10 @@ func fromMatching(m RoomMatching) rooms.Matching {
 
 func fromAutopilot(a RoomAutopilot) rooms.Autopilot {
 	return rooms.Autopilot{On: a.On, Adventure: string(a.Adventure)}
+}
+
+func fromGuests(g RoomGuests) rooms.Guests {
+	return rooms.Guests{Allowed: g.Allowed, MaxSongs: &g.MaxSongs, NoVote: !g.CanVote}
 }
 
 func fromFairness(f RoomFairness) rooms.Fairness {

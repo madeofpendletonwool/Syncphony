@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link, redirect, useNavigate } from '@tanstack/react-router'
 import { ArrowRight, Check, ExternalLink, LoaderCircle, Plus, RefreshCw, Unlink, Users } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { UserAvatar } from '@/components/user-avatar'
-import { useMe } from '@/lib/auth'
+import { meQuery, useMe } from '@/lib/auth'
 import { easeOutExpo, fadeUp, stagger } from '@/lib/motion'
 import { linksQuery, providersQuery, sourceName, usableLinksQuery } from '@/lib/services'
 import { relativeTime } from '@/lib/time'
@@ -28,6 +28,11 @@ type Search = { welcome?: boolean; linked?: string; link_error?: string }
 
 // The server's OAuth2 callback lands here with ?linked= or ?link_error=.
 export const Route = createFileRoute('/_app/_authed/settings/services')({
+  // Guests use the room's shared services; they have none of their own.
+  beforeLoad: async ({ context }) => {
+    const me = await context.queryClient.ensureQueryData(meQuery)
+    if (me?.guest) throw redirect({ to: '/me', replace: true })
+  },
   validateSearch: (search: Record<string, unknown>): Search => ({
     welcome: search.welcome === true || search.welcome === 'true' || undefined,
     linked: typeof search.linked === 'string' ? search.linked : undefined,

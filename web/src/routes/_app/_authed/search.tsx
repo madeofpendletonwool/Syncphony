@@ -375,6 +375,18 @@ function Sources({ links }: { links: ServiceLink[] }) {
 }
 
 function NoLinks() {
+  const me = useMe()
+  if (me.guest) {
+    return (
+      <motion.section variants={fadeUp} initial="hidden" animate="show" className="glass mt-6 flex flex-col items-center gap-3 rounded-3xl px-6 py-12 text-center">
+        <div className="grid size-14 place-items-center rounded-2xl bg-muted text-muted-foreground">
+          <Waypoints className="size-7" />
+        </div>
+        <h2 className="text-headline">Nothing to search yet</h2>
+        <p className="text-sm text-muted-foreground">Guests search the music the room shares. Ask the host to share a service.</p>
+      </motion.section>
+    )
+  }
   return (
     <motion.section
       variants={stagger}

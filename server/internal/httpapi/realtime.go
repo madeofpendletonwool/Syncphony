@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
+	"github.com/madeofpendletonwool/syncphony/server/internal/nights"
 	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
@@ -43,6 +45,11 @@ func (s *Server) RoomSocket() http.Handler {
 		}
 		rc := &roomConn{s: s, token: token, display: r.URL.Query().Get("display") == "1"}
 		if sess, err := s.Auth.Authenticate(ctx, token); err == nil {
+			// A guest may watch their own room only.
+			if sess.Guest != nil && sess.Guest.RoomID != r.PathValue("id") {
+				writeError(w, r, auth.ErrForbidden)
+				return
+			}
 			rc.user = sess.User
 		} else if c, derr := r.Cookie(DisplayCookie); derr == nil && errors.Is(err, auth.ErrUnauthenticated) {
 			// A paired display, which may watch its own room only.
@@ -194,11 +201,12 @@ func (rc *roomConn) hello(ctx context.Context) error {
 		present[id] = true
 	}
 	hello := RoomHello{RoomId: rc.room.ID, RoomName: rc.room.Name, You: rc.user.ID, Members: []User{}, ServerTime: time.Now().UTC()}
-	for _, u := range users {
-		if present[u.ID] {
-			hello.Members = append(hello.Members, toUser(u))
-		}
+	users = slices.DeleteFunc(users, func(u store.User) bool { return !present[u.ID] })
+	members, err := s.apiUsers(ctx, users)
+	if err != nil {
+		return err
 	}
+	hello.Members = append(hello.Members, members...)
 	if err := rc.write(ctx, realtime.Hello, 0, hello); err != nil {
 		return err
 	}
@@ -243,12 +251,22 @@ func (rc *roomConn) send(ctx context.Context, e realtime.Event) error {
 		if e.Type == realtime.MemberJoined && d.ID == rc.user.ID {
 			return nil // the client knows it joined
 		}
-		data = toUser(d)
+		u, err := rc.s.apiUser(ctx, d)
+		if err != nil {
+			return err
+		}
+		data = u
 	case store.ServiceLink:
 		data = toServiceLink(d)
 	case store.Room:
 		data = toRoom(d)
 	case Reaction:
+		data = d
+	case nights.Hearts:
+		data = toHearts(d)
+	case nights.Night:
+		data = toNight(d)
+	case guestsChanged:
 		data = d
 	default:
 		slog.Error("realtime: no API form for event", "type", e.Type, "data", e.Data)

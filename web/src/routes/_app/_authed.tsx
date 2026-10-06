@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Outlet, redirect, useRouter } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { RoomLive } from '@/components/room-live'
+import { CrownMoment } from '@/components/room/crown-moment'
 import { PageTransition } from '@/components/shell/app-shell'
 import { meQuery } from '@/lib/auth'
 
@@ -25,6 +26,7 @@ function Authed() {
   return (
     <>
       <RoomLive />
+      <CrownMoment />
       <PageTransition>
         <Outlet />
       </PageTransition>

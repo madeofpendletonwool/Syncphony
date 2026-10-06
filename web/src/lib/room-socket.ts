@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'react'
 import type { components } from '@/api/schema.gen'
 import { meQuery } from './auth'
 import { syncServerClock } from './clock'
+import { guestPassQuery, guestsQuery } from './guests'
+import { crown, heartsQuery, nightsQuery, type Hearts, type Night } from './nights'
 import { newer, playbackQuery, type Playback } from './playback'
 import { addReaction, type Reaction } from './reactions'
 import { queueQuery, roomsQuery, type QueueSnapshot, type Room } from './room'
@@ -144,6 +146,22 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
     }
     case 'reaction.sent':
       addReaction(ev.data as Reaction)
+      break
+    case 'hearts.updated': {
+      const h = ev.data as Hearts
+      queryClient.setQueryData(heartsQuery(roomId, h.itemId).queryKey, h)
+      break
+    }
+    case 'night.ended': {
+      crown(ev.data as Night)
+      void queryClient.invalidateQueries({ queryKey: nightsQuery(roomId).queryKey })
+      void queryClient.invalidateQueries({ queryKey: ['sessions', roomId] })
+      break
+    }
+    case 'guests.updated':
+      void queryClient.invalidateQueries({ queryKey: guestPassQuery(roomId).queryKey })
+      void queryClient.invalidateQueries({ queryKey: guestsQuery(roomId).queryKey })
+      void queryClient.invalidateQueries({ queryKey: ['users'] })
       break
     case 'link.status': {
       const link = ev.data as ServiceLink

@@ -13,6 +13,7 @@ import { laneStyle } from '@/lib/lane'
 import { useInstall } from '@/lib/pwa'
 import { linksQuery } from '@/lib/services'
 import { setPreference, useThemePreference, type ThemePreference } from '@/lib/theme'
+import { relativeTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute('/_app/_authed/me')({
@@ -31,23 +32,32 @@ function Me() {
           <UserAvatar user={me} ring className="size-14 text-lg" />
           <div className="min-w-0">
             <p className="truncate text-headline">{me.displayName}</p>
-            <p className="truncate text-sm text-muted-foreground">@{me.username}</p>
+            {!me.guest && <p className="truncate text-sm text-muted-foreground">@{me.username}</p>}
           </div>
           <Badge variant="lane" style={laneStyle(me.color)} className="ml-auto">
-            Your lane
+            {me.guest ? 'Guest' : 'Your lane'}
           </Badge>
         </section>
 
-        <InstallCard />
+        {me.guest ? (
+          <p className="glass rounded-3xl p-5 text-sm text-muted-foreground">
+            You joined as a guest, so there&apos;s nothing to set up. Your pass ends {relativeTime(me.guest.expiresAt)}; after that
+            your picks stay in the room&apos;s history under your name.
+          </p>
+        ) : (
+          <>
+            <InstallCard />
 
-        <nav aria-label="Settings" className="glass flex flex-col rounded-3xl p-1.5">
-          <ServicesRow />
-          {me.role === 'admin' && (
-            <SettingsRow to="/settings/people" icon={<Users />}>
-              People and invites
-            </SettingsRow>
-          )}
-        </nav>
+            <nav aria-label="Settings" className="glass flex flex-col rounded-3xl p-1.5">
+              <ServicesRow />
+              {me.role === 'admin' && (
+                <SettingsRow to="/settings/people" icon={<Users />}>
+                  People and invites
+                </SettingsRow>
+              )}
+            </nav>
+          </>
+        )}
 
         <section className="glass rounded-3xl p-5">
           <h2 className="text-headline">Appearance</h2>
@@ -77,7 +87,7 @@ function Me() {
           </SettingsRow>
         </nav>
 
-        <SignOutButton />
+        <SignOutButton guest={!!me.guest} />
         <ServerStatus />
       </div>
     </>
@@ -156,7 +166,7 @@ function InstallCard() {
   )
 }
 
-function SignOutButton() {
+function SignOutButton({ guest }: { guest: boolean }) {
   const signOut = useSignOut()
   const [pending, setPending] = useState(false)
   return (
@@ -170,7 +180,7 @@ function SignOutButton() {
       }}
     >
       {pending ? <LoaderCircle className="animate-spin" /> : <LogOut data-icon="inline-start" />}
-      Sign out
+      {guest ? 'Leave' : 'Sign out'}
     </Button>
   )
 }

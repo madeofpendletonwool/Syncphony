@@ -36,6 +36,8 @@ var displayOps = map[string]bool{
 	"GetQueueItemPalette":    true,
 	"GetQueueItemLyrics":     true,
 	"GetQueueItemLinerNotes": true,
+	"GetHearts":              true,
+	"GetGuestPass":           true,
 }
 
 // displayRoom is the room a display-readable request is about. ok is
@@ -55,6 +57,10 @@ func displayRoom(req any) (roomID string, ok bool) {
 	case GetQueueItemLyricsRequestObject:
 		return r.RoomId, true
 	case GetQueueItemLinerNotesRequestObject:
+		return r.RoomId, true
+	case GetHeartsRequestObject:
+		return r.RoomId, true
+	case GetGuestPassRequestObject:
 		return r.RoomId, true
 	}
 	return "", false

@@ -25,6 +25,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
 	"github.com/madeofpendletonwool/syncphony/server/internal/match"
 	"github.com/madeofpendletonwool/syncphony/server/internal/musicbrainz"
+	"github.com/madeofpendletonwool/syncphony/server/internal/nights"
 	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
 	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
@@ -215,11 +216,13 @@ func run() error {
 		onUpdate(r)
 		pilot.RoomUpdated(r)
 	}
+	nightSvc := nights.New(db, a.bus)
 	api := &httpapi.Server{
 		Version: version, Auth: accounts, Links: a.links, Lyrics: lyricsSvc, LinerNotes: notes, Artwork: art, Palettes: palettes,
-		Rooms: roomSvc, Queue: queueSvc, Playback: player, Bus: a.bus, Presence: presence,
+		Rooms: roomSvc, Queue: queueSvc, Playback: player, Nights: nightSvc, Bus: a.bus, Presence: presence,
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	}
+	go tick(ctx, api, nightSvc)
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api.Handler())
 	mux.Handle("GET /ws/rooms/{id}", api.RoomSocket())
@@ -255,6 +258,26 @@ func run() error {
 	return nil
 }
 
+// tick ends guests whose time is up, and the night in rooms that went
+// quiet, every minute until ctx is done.
+func tick(ctx context.Context, api *httpapi.Server, ns *nights.Service) {
+	t := time.NewTicker(time.Minute)
+	defer t.Stop()
+	for {
+		if err := api.EndExpiredGuests(ctx); err != nil {
+			slog.Warn("ending expired guests", "err", err)
+		}
+		if err := ns.Sweep(ctx); err != nil {
+			slog.Warn("ending quiet rooms' nights", "err", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
 // sweep deletes expired sessions and displays, cached lyrics, MusicBrainz
 // matches and liner notes every hour until ctx is done.
 func sweep(ctx context.Context, db *store.Store, accounts *auth.Service, ly *lyrics.Service, mb *musicbrainz.Service, notes *linernotes.Service) {
@@ -268,6 +291,9 @@ func sweep(ctx context.Context, db *store.Store, accounts *auth.Service, ly *lyr
 		}
 		if err := accounts.SweepDisplays(ctx); err != nil {
 			slog.Warn("sweeping expired displays", "err", err)
+		}
+		if err := accounts.SweepGuestPasses(ctx); err != nil {
+			slog.Warn("sweeping old guest passes", "err", err)
 		}
 		if err := ly.Sweep(ctx); err != nil {
 			slog.Warn("sweeping expired lyrics", "err", err)

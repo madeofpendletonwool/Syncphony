@@ -23,7 +23,7 @@ export function SpeakerPanel({ room, prominent }: { room: Room; prominent?: bool
   const [starting, setStarting] = useState(false)
   const here = state.roomId === room.id && state.status !== 'off'
   const other = playback.data?.player
-  const allowed = can(room, me.id, 'speaker')
+  const allowed = !me.guest && can(room, me.id, 'speaker')
   const thisDevice = deviceNoun()
 
   const start = () => {
@@ -79,7 +79,7 @@ export function SpeakerPanel({ room, prominent }: { room: Room; prominent?: bool
     return (
       <p className="flex items-center justify-center gap-1.5 text-caption text-muted-foreground">
         <Speaker className="size-3.5" />
-        {other ? `Playing on ${other.name}` : 'Only the room owner can start the speaker'}
+        {other ? `Playing on ${other.name}` : me.guest ? 'Waiting for the host to start the speaker' : 'Only the room owner can start the speaker'}
       </p>
     )
   }
