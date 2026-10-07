@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"sync"
@@ -120,6 +121,41 @@ func TestProfileSkips(t *testing.T) {
 	}
 	if want := []string{"skipped", "skipped", "skipped", "forgiven", "forgiven", "forgiven", "autopilot liked"}; !slices.Equal(p.Recent, want[:recentReach-1]) {
 		t.Errorf("recent = %v", p.Recent)
+	}
+}
+
+// Suggestions narrow the taste to a member's, or to what's queued (ADR
+// 0010); the room's skips still turn artists away.
+func TestProfileNarrow(t *testing.T) {
+	alices := item("alice", "Hers", "One")
+	h := []store.ListHistoryRow{
+		played(alices, now.Add(-10*time.Minute), store.EndFinished),
+		played(item("bob", "His", "Two"), now.Add(-20*time.Minute), store.EndFinished),
+		skipped(item("bob", "Skipped", "Three"), now.Add(-30*time.Minute), 5*time.Second),
+	}
+	waiting := item("bob", "Waiting", "Four")
+	waiting.State = store.ItemQueued
+	in := Input{History: h, Upcoming: []store.QueueItem{waiting}, Now: now}
+	room := NewProfile(in)
+
+	mine := room.narrow(in, "alice", false)
+	if len(mine.Artists) != 1 || weight(mine, "Hers") != 1 || mine.Artists["hers"].Seed.ID != alices.ID {
+		t.Errorf("alice's taste = %v: want only Hers, seeded by her song", slices.Collect(maps.Keys(mine.Artists)))
+	}
+	if !mine.Avoid["skipped"] || !mine.Heard[SongKey("His", "Two")] {
+		t.Error("alice's taste forgot what the room skipped or heard")
+	}
+	if len(mine.memberVibes) != 1 {
+		t.Errorf("alice's taste mixes %d members", len(mine.memberVibes))
+	}
+
+	queued := room.narrow(in, "", true)
+	if len(queued.Artists) != 1 || weight(queued, "Waiting") != 1 {
+		t.Errorf("the queued taste = %v: want only Waiting", slices.Collect(maps.Keys(queued.Artists)))
+	}
+	// Alice queued nothing: what she played stands in.
+	if both := room.narrow(in, "alice", true); weight(both, "Hers") != 1 || len(both.Artists) != 1 {
+		t.Errorf("alice's queued taste = %v: want Hers", slices.Collect(maps.Keys(both.Artists)))
 	}
 }
 

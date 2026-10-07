@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
-	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 	"github.com/madeofpendletonwool/syncphony/server/internal/suggest"
 )
@@ -33,19 +32,7 @@ func (s *Server) GetQueueItemSimilar(ctx context.Context, req GetQueueItemSimila
 		// A Finder isn't safe for concurrent use, so each link gets one.
 		f := suggest.NewFinder(s.Links, rand.IntN)
 		defer f.Close()
-		if !recommends {
-			// Services that only search have more by the same artist.
-			sess, ok := f.Open(ctx, l.ID)
-			if !ok {
-				return nil
-			}
-			return f.ByArtist(ctx, sess, l, seed)
-		}
-		rec, sess, ok := f.Recommender(ctx, l.ID)
-		if !ok {
-			return nil
-		}
-		return f.Similar(ctx, rec, sess, l, seed, rooms.AdventureSimilar)
+		return f.Like(ctx, l, seed, recommends)
 	})
 	if err != nil {
 		return nil, err

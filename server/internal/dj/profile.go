@@ -205,6 +205,50 @@ func NewProfile(in Input) Profile {
 	return p
 }
 
+// narrow reads a narrower taste than the room's, for suggestions (ADR
+// 0010): the members' songs playing and waiting, if queued and there are
+// any; and of those, one member's, if member isn't "". What the room
+// heard, turned away and doubts stays the room's.
+func (p Profile) narrow(in Input, member string, queued bool) Profile {
+	if member == "" && !queued {
+		return p
+	}
+	if queued {
+		var up []store.QueueItem
+		for _, it := range in.Upcoming {
+			if !it.IsAutopilot() && (member == "" || it.AddedBy == member) {
+				up = append(up, it)
+			}
+		}
+		if len(up) > 0 {
+			q := Input{Upcoming: up, Now: in.Now}
+			p.Artists, p.RecentSongs = tastes(q, reactions(q, profileReach), time.Time{}).Artists, up
+		}
+	}
+	if member != "" {
+		most := 0.0
+		for _, t := range p.Artists {
+			most = max(most, t.ByMember[member])
+		}
+		mine := map[string]*Taste{}
+		for a, t := range p.Artists {
+			w := t.ByMember[member]
+			if w <= 0 {
+				continue
+			}
+			seed := t.seeds[member]
+			mine[a] = &Taste{
+				Artist: t.Artist, Weight: w / most, Plays: t.Plays, ByMember: map[string]float64{member: w / most},
+				Seed: seed, seeds: map[string]store.QueueItem{member: seed},
+			}
+		}
+		p.Artists = mine
+		p.RecentSongs = slices.DeleteFunc(slices.Clone(p.RecentSongs), func(it store.QueueItem) bool { return it.AddedBy != member })
+	}
+	p.members(in)
+	return p
+}
+
 // tastes adds up the room's reactions into the artists it likes and turns
 // away, those since boost (if not zero) counting vibeBoost times as much.
 func tastes(in Input, rs []reaction, boost time.Time) Profile {

@@ -28,7 +28,8 @@ const (
 	// shortlist is how many of the best candidates a pick is drawn from,
 	// at most perArtist of any one artist, so a pick chooses between
 	// artists rather than among one's songs; drawn is how many are drawn
-	// to try in order.
+	// to try in order. Asking for more picks draws twice as many, from a
+	// shortlist at least as long.
 	shortlist = 25
 	perArtist = 2
 	drawn     = 8
@@ -116,8 +117,8 @@ func score(cands []candidate, p Profile, lt LongTerm, explore float64, deepCut b
 }
 
 // diverse keeps, in order, the best perArtist songs of each artist, up to
-// shortlist songs.
-func diverse(scored []candidate) []candidate {
+// n songs.
+func diverse(scored []candidate, n int) []candidate {
 	var out []candidate
 	count := map[string]int{}
 	for _, c := range scored {
@@ -125,7 +126,7 @@ func diverse(scored []candidate) []candidate {
 			count[c.artist]++
 			out = append(out, c)
 		}
-		if len(out) == shortlist {
+		if len(out) == n {
 			break
 		}
 	}
@@ -136,7 +137,7 @@ func diverse(scored []candidate) []candidate {
 // probability that grows with its score (softmax at temp), without
 // replacement. rand returns a number in [0, n).
 func draw(scored []candidate, n int, temp float64, rand func(int) int) []candidate {
-	pool := diverse(scored)
+	pool := diverse(scored, max(shortlist, n))
 	var out []candidate
 	for len(out) < n && len(pool) > 0 {
 		top := pool[0].score

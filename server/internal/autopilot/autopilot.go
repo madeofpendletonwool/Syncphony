@@ -357,7 +357,7 @@ func (f *fill) remember(upcoming []store.QueueItem) {
 	for i, h := range f.history {
 		f.seen.Item(h.QueueItem)
 		if i < discoveryAvoid {
-			if a := suggest.ArtistKey(suggest.TrackOf(h.QueueItem)); a != "" {
+			if a := suggest.ArtistKey(dj.TrackOf(h.QueueItem)); a != "" {
 				f.recentArtists[a] = true
 			}
 		}
@@ -556,7 +556,7 @@ func (f *fill) fromGraph(ctx context.Context, users []string) []pick {
 			}}
 		}
 		if p.Seed.ID != "" {
-			seed := suggest.TrackOf(p.Seed)
+			seed := dj.TrackOf(p.Seed)
 			info.SeedItemID, info.SeedTitle = p.Seed.ID, seed.Title
 			if len(seed.Artists) > 0 {
 				info.SeedArtist = seed.Artists[0].Name

@@ -3,14 +3,17 @@
 // Package suggest finds songs to keep a room's vibe going: songs like the
 // ones the room has been playing and has queued. Search shows them before
 // you type, as "your vibe" (like your own songs) and "group vibe" (like
-// everyone's). A song the room skipped doesn't seed, and turns its artist
-// away, unless the room finished or queued one of theirs. Autopilot finds
-// its songs with the same Finder. See docs/adr/0010-suggestions.md.
+// everyone's). See docs/adr/0010-suggestions.md.
 //
-// Suggestions only come from links the asker can add from, so every one
-// can be queued with a tap. Services that recommend (provider.Recommender)
-// give songs like each seed; services that only search give more by the
-// seed's artist.
+// The DJ (internal/dj, ADR 0012) picks them, as it does autopilot's songs:
+// from your taste or the room's, scored the same way. When there's no
+// music graph, or it knows nothing near the room's taste, the services'
+// own recommendations stand in, through the Finder autopilot falls back
+// on too: services that recommend (provider.Recommender) give songs like
+// each seed; services that only search give more by the seed's artist.
+//
+// Either way, suggestions only come from links the asker can add from, so
+// every one can be queued with a tap.
 package suggest
 
 import (
@@ -67,7 +70,7 @@ const (
 	// historyReach is how many of the room's plays are read: the songs not
 	// to suggest, and where played seeds come from.
 	historyReach = 200
-	// maxSeeds is how many songs one list is built from.
+	// maxSeeds is how many songs one list is built from, without the DJ.
 	maxSeeds = 6
 	// linksPerSeed is how many services are asked about each seed.
 	linksPerSeed = 2
@@ -75,6 +78,11 @@ const (
 	window = SimilarTop * 2
 	// MaxLimit is the most suggestions one list has.
 	MaxLimit = 50
+	// explore is how far the DJ strays for suggestions: near the vibe, as
+	// autopilot's "similar" (rooms.Autopilot).
+	explore = 25
+	// autopilotReach is how many of autopilot's own songs the DJ reads.
+	autopilotReach = 50
 )
 
 // Suggestion is a song to queue, and the song it's like.
@@ -100,6 +108,9 @@ type Service struct {
 	db    *store.Store
 	rooms *rooms.Service
 	links UsableLinks
+	// Graph, if set, is the music knowledge the DJ suggests from (ADR
+	// 0012), before falling back on the services' own recommendations.
+	Graph dj.Graph
 	// TTL is how long a list is reused while the queue doesn't change.
 	// Default 2m.
 	TTL time.Duration
@@ -209,20 +220,25 @@ func (s *Service) build(ctx context.Context, q Query, snap rooms.QueueSnapshot, 
 	if len(seeds) == 0 {
 		return nil, nil
 	}
-	turned := TurnedAway(snap, history, s.Now())
 	links, err := s.links.Usable(ctx, q.UserID)
 	if err != nil {
 		return nil, err
 	}
-	var recommend, search []store.ServiceLink
+	var recommend, search, searchable []store.ServiceLink
 	for _, l := range links {
 		p, err := s.links.Provider(l.Provider)
+		if err != nil {
+			continue
+		}
+		caps := p.Info().Capabilities
 		switch {
-		case err != nil:
-		case p.Info().Capabilities.Recommendations:
+		case caps.Recommendations:
 			recommend = append(recommend, l)
-		case p.Info().Capabilities.CanSearch(provider.KindTrack):
+		case caps.CanSearch(provider.KindTrack):
 			search = append(search, l)
+		}
+		if caps.CanSearch(provider.KindTrack) {
+			searchable = append(searchable, l)
 		}
 	}
 	if len(recommend)+len(search) == 0 {
@@ -231,6 +247,10 @@ func (s *Service) build(ctx context.Context, q Query, snap rooms.QueueSnapshot, 
 
 	f := NewFinder(s.links, s.Rand)
 	defer f.Close()
+	if out, err := s.fromDJ(ctx, q, snap, history, searchable, f, seen); err != nil || len(out) > 0 {
+		return out, err
+	}
+	turned := TurnedAway(snap, history, s.Now())
 	perSeed := (q.Limit + len(seeds) - 1) / len(seeds)
 	lists := make([][]Suggestion, len(seeds))
 	for i, sd := range seeds {
@@ -239,19 +259,10 @@ func (s *Service) build(ctx context.Context, q Query, snap rooms.QueueSnapshot, 
 		}
 		taken := Seen{}
 		for _, l := range linksFor(sd, recommend, search) {
-			var cands []provider.Track
-			if slices.ContainsFunc(recommend, func(r store.ServiceLink) bool { return r.ID == l.ID }) {
-				rec, sess, ok := f.Recommender(ctx, l.ID)
-				if !ok {
-					continue
-				}
-				cands = f.Similar(ctx, rec, sess, l, sd, rooms.AdventureSimilar)
-			} else if sess, ok := f.Open(ctx, l.ID); ok {
-				cands = f.ByArtist(ctx, sess, l, sd)
-			}
+			recommends := slices.ContainsFunc(recommend, func(r store.ServiceLink) bool { return r.ID == l.ID })
 			var fresh []provider.Track
-			for _, t := range cands {
-				if !seen.Has(t) && !taken.Has(t) && !turned[djArtist(t)] {
+			for _, t := range f.Like(ctx, l, sd, recommends) {
+				if !seen.Has(t) && !taken.Has(t) && !turned[ArtistKey(t)] {
 					taken.Track(t)
 					fresh = append(fresh, t)
 				}
@@ -282,6 +293,48 @@ func (s *Service) build(ctx context.Context, q Query, snap rooms.QueueSnapshot, 
 		}
 		if !more {
 			break
+		}
+	}
+	return out, nil
+}
+
+// fromDJ asks the DJ for suggestions from the music graph, found on the
+// asker's links that search. Each is credited to the member's song it's
+// like; a pick only autopilot's songs led to has none, and is left out.
+// It's empty if there's no graph, or it knows nothing near the vibe.
+func (s *Service) fromDJ(ctx context.Context, q Query, snap rooms.QueueSnapshot, history []store.ListHistoryRow, links []store.ServiceLink, f *Finder, seen Seen) ([]Suggestion, error) {
+	if s.Graph == nil || len(links) == 0 {
+		return nil, nil
+	}
+	in := dj.Input{History: history, Upcoming: snap.Items, Hearts: map[string]int{}, Now: s.Now()}
+	var err error
+	if in.Mine, err = s.db.ListAutopilot(ctx, store.ListAutopilotParams{RoomID: q.RoomID, Limit: autopilotReach}); err != nil {
+		return nil, err
+	}
+	if len(history) > 0 {
+		counts, err := s.db.HeartCountsSince(ctx, store.HeartCountsSinceParams{RoomID: q.RoomID, Since: history[len(history)-1].PlayHistory.StartedAt})
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range counts {
+			in.Hearts[c.QueueItemID] = int(c.Hearts)
+		}
+	}
+	for _, it := range in.Mine {
+		seen.Item(it) // removed ones too: someone didn't want that song
+	}
+	r := dj.Request{
+		Input: in, Explore: explore, Links: links, Sessions: f, Want: q.Limit,
+		Fresh: func(t provider.Track) bool { return !seen.Has(t) }, Queued: q.Origin == OriginQueue,
+	}
+	if q.Scope == ScopeMine {
+		r.Member = q.UserID
+	}
+	engine := &dj.Engine{Graph: s.Graph, Rand: s.Rand}
+	var out []Suggestion
+	for _, p := range engine.Choose(ctx, r) {
+		if p.Seed.ID != "" {
+			out = append(out, Suggestion{Track: p.Track, Seed: p.Seed})
 		}
 	}
 	return out, nil
@@ -344,12 +397,11 @@ func Seeds(scope Scope, origin Origin, userID string, snap rooms.QueueSnapshot, 
 	return pickSeeds(scope, userID, all)
 }
 
-// TurnedAway returns the artists (dj.ArtistKey) the room turned away: as
-// the DJ does (dj.Profile, ADR 0012), those whose decayed signal, skips
-// against plays, hearts and queued songs, is below the DJ's threshold.
-// A skip long ago, faded to almost nothing, doesn't turn an artist away
-// (MAD-762). Songs by them aren't suggested. MAD-759 moves the rest of
-// suggestions onto the DJ.
+// TurnedAway returns the artists (dj.ArtistKey) the room turned away, for
+// suggestions without the DJ: as the DJ does (dj.Profile, ADR 0012), those
+// whose decayed signal, skips against plays, hearts and queued songs, is
+// below the DJ's threshold. A skip long ago, faded to almost nothing,
+// doesn't turn an artist away (MAD-762).
 func TurnedAway(snap rooms.QueueSnapshot, history []store.ListHistoryRow, now time.Time) map[string]bool {
 	return dj.NewProfile(dj.Input{History: history, Upcoming: snap.Items, Now: now}).Avoid
 }
@@ -409,12 +461,4 @@ func linksFor(sd Seed, recommend, search []store.ServiceLink) []store.ServiceLin
 	}
 	out := append(first(recommend), first(search)...)
 	return out[:min(len(out), linksPerSeed)]
-}
-
-// djArtist is a track's artist as the DJ keys it.
-func djArtist(t provider.Track) string {
-	if len(t.Artists) == 0 {
-		return ""
-	}
-	return dj.ArtistKey(t.Artists[0].Name)
 }

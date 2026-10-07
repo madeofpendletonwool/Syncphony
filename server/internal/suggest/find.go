@@ -4,10 +4,10 @@ package suggest
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"strings"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/dj"
 	"github.com/madeofpendletonwool/syncphony/server/internal/match"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
@@ -34,14 +34,7 @@ type Seed struct {
 }
 
 // SeedOf returns it as a seed.
-func SeedOf(it store.QueueItem) Seed { return Seed{Item: it, Track: TrackOf(it)} }
-
-// TrackOf returns the track an item snapshotted when it was queued.
-func TrackOf(it store.QueueItem) provider.Track {
-	var t provider.Track
-	_ = json.Unmarshal([]byte(it.Metadata), &t)
-	return t
-}
+func SeedOf(it store.QueueItem) Seed { return Seed{Item: it, Track: dj.TrackOf(it)} }
 
 // Keys are the ways a song is recognized: on its service, by ISRC on any
 // service, and by title and artist.
@@ -56,12 +49,13 @@ func Keys(t provider.Track) []string {
 	return out
 }
 
-// ArtistKey is a song's first artist, for comparing.
+// ArtistKey is a song's first artist, compared as the DJ does
+// (dj.ArtistKey).
 func ArtistKey(t provider.Track) string {
 	if len(t.Artists) == 0 {
 		return ""
 	}
-	return strings.ToLower(strings.TrimSpace(t.Artists[0].Name))
+	return dj.ArtistKey(t.Artists[0].Name)
 }
 
 // Seen is a set of songs, by Keys.
@@ -69,7 +63,7 @@ type Seen map[string]bool
 
 // Item adds a queued song, and the stand-in it played through, if any.
 func (s Seen) Item(it store.QueueItem) {
-	t := TrackOf(it)
+	t := dj.TrackOf(it)
 	t.Ref = provider.TrackRef{Provider: it.Provider, ID: it.TrackID}
 	s.Track(t)
 	if it.ViaLinkID.Valid {
@@ -145,6 +139,23 @@ func (f *Finder) Recommender(ctx context.Context, linkID string) (provider.Recom
 	}
 	r, ok := sess.(provider.Recommender)
 	return r, sess, ok
+}
+
+// Like asks one service for songs like sd's, most alike first: similar
+// songs from one that recommends, else more by sd's artist.
+func (f *Finder) Like(ctx context.Context, l store.ServiceLink, sd Seed, recommends bool) []provider.Track {
+	if !recommends {
+		sess, ok := f.Open(ctx, l.ID)
+		if !ok {
+			return nil
+		}
+		return f.ByArtist(ctx, sess, l, sd)
+	}
+	rec, sess, ok := f.Recommender(ctx, l.ID)
+	if !ok {
+		return nil
+	}
+	return f.Similar(ctx, rec, sess, l, sd, rooms.AdventureSimilar)
 }
 
 // Similar asks one service for songs like sd's, most alike first. With

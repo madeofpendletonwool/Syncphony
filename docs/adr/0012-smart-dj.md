@@ -81,7 +81,7 @@ MusicBrainz joins when `SYNCPHONY_MUSICBRAINZ_URL` isn't off. `TestLive` in `int
 
 ## The DJ (stage 2)
 
-`internal/dj` picks songs, and `autopilot` asks it first. It knows nothing about queues or turns: it's given what the room did, and returns songs to try, best first. It doesn't import `suggest`, so suggestions can move onto it later (MAD-759).
+`internal/dj` picks songs, and `autopilot` asks it first. It knows nothing about queues or turns: it's given what the room did, and returns songs to try, best first. It doesn't import `suggest`. Suggestions (ADR 0010) ask it too (MAD-759).
 
 ### The room's taste (MAD-753)
 
@@ -253,6 +253,6 @@ If the graph has no sources, knows nothing near the room's taste, or none of its
 - The first fill after a cold start knows only the artists it fetched in time. The warmer catches up from the songs being queued.
 - `AutopilotInfo.reason` is stored with each song; it isn't in the API until MAD-760.
 - A room's long-term taste is the room's: it's deleted with the room. It names members by ID, and keeps an artist only while its likes or skips are above 0.005, about 15 nights of silence for one play.
-- Suggestions (ADR 0010) turn artists away by the same rule as the DJ (`suggest.TurnedAway` reads `dj.Profile.Avoid`), so a skip fades there too (MAD-762). MAD-759 moves the rest of suggestions onto the DJ.
+- Suggestions (ADR 0010) come from the DJ too (MAD-759): the asker's taste for "your vibe", the room's for "group vibe", found only on the asker's links. Without a graph they fall back on the services' recommendations, turning artists away by the DJ's rule (`suggest.TurnedAway` reads `dj.Profile.Avoid`), so a skip fades there too (MAD-762).
 - Tempo is often unknown: Deezer has a BPM for some songs and 0 for many, and few libraries tag it. Set flow treats 0 as unknown, so a room with little known about its songs plays as it did before; it flows better as the cache warms.
 - Energy is a guess from tags and tempo. A band tagged "rock" plays its ballads as rock.
