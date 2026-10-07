@@ -1164,6 +1164,13 @@ export interface paths {
          *     left out, matched by track or by ISRC across services. If that
          *     leaves nothing, the add is refused with `repeat` (409) and a
          *     message to show.
+         *
+         *     With `warnDuplicates`, songs the room already has (waiting,
+         *     playing, or started in the last three hours) refuse the add with
+         *     `duplicate` (409), listing each copy so the app can say where it is
+         *     and offer "add anyway": the same request without `warnDuplicates`.
+         *     Songs match by track, ISRC or MusicBrainz recording across
+         *     services, or carefully by title, artist and length.
          */
         post: operations["addToQueue"];
         delete?: never;
@@ -2803,6 +2810,28 @@ export interface components {
         };
         AddToQueueRequest: {
             items: components["schemas"]["TrackToQueue"][];
+            /**
+             * @description Refuse with `duplicate` if a song is already waiting or playing,
+             *     or played recently, instead of adding it.
+             */
+            warnDuplicates?: boolean;
+        };
+        AddToQueueConflict: {
+            /** @example duplicate */
+            code: string;
+            message: string;
+            /** @description With `duplicate`, the room's copy of each song. */
+            duplicates?: components["schemas"]["QueueDuplicate"][];
+        };
+        QueueDuplicate: {
+            /** @description The song being added. */
+            title: string;
+            item: components["schemas"]["QueueItem"];
+            /**
+             * Format: date-time
+             * @description When the copy last started, if it already played.
+             */
+            playedAt?: string;
         };
         /**
          * @description A song from search (`linkId` and `trackId`), or a song the room
@@ -4942,6 +4971,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QueueSnapshot"];
+                };
+            };
+            /**
+             * @description Refused: `duplicate` (see `duplicates`), `repeat`, or
+             *     `guest_limit`.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddToQueueConflict"];
                 };
             };
             default: components["responses"]["Error"];

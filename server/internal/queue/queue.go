@@ -197,6 +197,12 @@ var ErrCantBorrow = errors.New("that song is on someone else's service, and this
 // playing, or started within the window, are left out. If that leaves
 // nothing to add, it's a *RepeatError.
 func (s *Service) Add(ctx context.Context, roomID, userID string, refs []TrackRef) (rooms.QueueSnapshot, error) {
+	return s.AddWith(ctx, roomID, userID, refs, AddOptions{})
+}
+
+// AddWith is Add with options. With WarnDuplicates, songs the room already
+// has (after the repeat guard) refuse the add with a *DuplicateError.
+func (s *Service) AddWith(ctx context.Context, roomID, userID string, refs []TrackRef, opts AddOptions) (rooms.QueueSnapshot, error) {
 	if len(refs) == 0 {
 		return rooms.QueueSnapshot{}, &InvalidInputError{"add at least one song"}
 	}
@@ -218,6 +224,15 @@ func (s *Service) Add(ctx context.Context, roomID, userID string, refs []TrackRe
 		tracks, err := s.withoutRepeats(ctx, q, room, tracks, now)
 		if err != nil {
 			return err
+		}
+		if opts.WarnDuplicates {
+			dups, err := s.duplicates(ctx, q, roomID, tracks, now)
+			if err != nil {
+				return err
+			}
+			if len(dups) > 0 {
+				return &DuplicateError{Duplicates: dups}
+			}
 		}
 		if err := guestLimit(ctx, q, room, userID, len(tracks)); err != nil {
 			return err

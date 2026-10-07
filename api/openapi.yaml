@@ -1433,6 +1433,13 @@ paths:
         left out, matched by track or by ISRC across services. If that
         leaves nothing, the add is refused with `repeat` (409) and a
         message to show.
+
+        With `warnDuplicates`, songs the room already has (waiting,
+        playing, or started in the last three hours) refuse the add with
+        `duplicate` (409), listing each copy so the app can say where it is
+        and offer "add anyway": the same request without `warnDuplicates`.
+        Songs match by track, ISRC or MusicBrainz recording across
+        services, or carefully by title, artist and length.
       tags: [queue]
       requestBody:
         required: true
@@ -1447,6 +1454,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QueueSnapshot"
+        "409":
+          description: |
+            Refused: `duplicate` (see `duplicates`), `repeat`, or
+            `guest_limit`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddToQueueConflict"
         default:
           $ref: "#/components/responses/Error"
 
@@ -4139,6 +4154,40 @@ components:
           maxItems: 100
           items:
             $ref: "#/components/schemas/TrackToQueue"
+        warnDuplicates:
+          type: boolean
+          description: |
+            Refuse with `duplicate` if a song is already waiting or playing,
+            or played recently, instead of adding it.
+
+    AddToQueueConflict:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: duplicate
+        message:
+          type: string
+        duplicates:
+          type: array
+          description: With `duplicate`, the room's copy of each song.
+          items:
+            $ref: "#/components/schemas/QueueDuplicate"
+
+    QueueDuplicate:
+      type: object
+      required: [title, item]
+      properties:
+        title:
+          type: string
+          description: The song being added.
+        item:
+          $ref: "#/components/schemas/QueueItem"
+        playedAt:
+          type: string
+          format: date-time
+          description: When the copy last started, if it already played.
 
     TrackToQueue:
       type: object

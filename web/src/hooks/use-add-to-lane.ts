@@ -5,11 +5,13 @@ import { errorMessage, unwrap } from '@/api/errors'
 import { useMe } from '@/lib/auth'
 import { isMine } from '@/lib/autopilot'
 import { trackKey, type TrackResult } from '@/lib/browse'
+import { duplicateMessage, DuplicatesFound } from '@/lib/duplicates'
 import { tap } from '@/lib/haptics'
 import type { QueueItem } from '@/lib/playback'
 import { queueQuery, useCurrentRoom, type QueueSnapshot } from '@/lib/room'
 import { createStore, useStore } from '@/lib/store'
 import { toast } from '@/lib/toast'
+import { usersQuery } from '@/lib/users'
 
 export type LaneStatus = 'idle' | 'adding' | 'added'
 
@@ -54,6 +56,7 @@ export function useAddToLane() {
   const { room } = useCurrentRoom()
   const queryClient = useQueryClient()
   const queue = useQuery({ ...queueQuery(room?.id ?? ''), enabled: !!room })
+  const users = useQuery(usersQuery)
   const adding = useStore(pending)
 
   // Songs already waiting (or playing) in your lane.
@@ -68,20 +71,24 @@ export function useAddToLane() {
   )
 
   const mutation = useMutation({
-    mutationFn: (tracks: LaneTrack[]) => {
+    mutationFn: async ({ tracks, anyway }: { tracks: LaneTrack[]; anyway?: boolean }) => {
       if (!room) throw new Error('no room')
-      return unwrap(
-        api.POST('/rooms/{roomId}/queue', {
-          params: { path: { roomId: room.id } },
-          body: { items: tracks.map((t) => (t.fromItemId ? { fromItemId: t.fromItemId } : { linkId: t.linkId, trackId: t.trackId })) },
-        }),
-      )
+      const call = api.POST('/rooms/{roomId}/queue', {
+        params: { path: { roomId: room.id } },
+        body: {
+          items: tracks.map((t) => (t.fromItemId ? { fromItemId: t.fromItemId } : { linkId: t.linkId, trackId: t.trackId })),
+          warnDuplicates: !anyway,
+        },
+      })
+      const { error } = await call
+      if (error && 'duplicates' in error && error.code === 'duplicate' && error.duplicates) throw new DuplicatesFound(error.duplicates)
+      return unwrap(call)
     },
-    onMutate: (tracks) => {
+    onMutate: ({ tracks }) => {
       tap()
       setPending(tracks.map(trackKey), true)
     },
-    onSuccess: (snap, tracks) => {
+    onSuccess: (snap, { tracks }) => {
       queryClient.setQueryData(queueQuery(snap.roomId).queryKey, snap)
       const added = lastAdded(snap, me.id, tracks.length)
       toast({
@@ -89,9 +96,18 @@ export function useAddToLane() {
         action: added.length > 0 ? { label: 'Undo', onClick: () => void undo(snap.roomId, added) } : undefined,
       })
     },
-    onError: (err) => toast({ message: room ? errorMessage(err) : 'Join a room first.', tone: 'error' }),
-    onSettled: (_data, _err, tracks) => setPending(tracks.map(trackKey), false),
+    onError: (err, { tracks }) => {
+      if (err instanceof DuplicatesFound) {
+        const message = duplicateMessage(err.duplicates, me.id, (id) => users.data?.find((u) => u.id === id)?.displayName)
+        toast({ message, action: { label: 'Add anyway', onClick: () => mutation.mutate({ tracks, anyway: true }) } }, 6000)
+        return
+      }
+      toast({ message: room ? errorMessage(err) : 'Join a room first.', tone: 'error' })
+    },
+    onSettled: (_data, _err, { tracks }) => setPending(tracks.map(trackKey), false),
   })
+  const { mutate } = mutation
+  const add = useCallback((tracks: LaneTrack[]) => mutate({ tracks }), [mutate])
 
   const undo = async (roomId: string, ids: string[]) => {
     try {
@@ -114,7 +130,7 @@ export function useAddToLane() {
     [adding, inLane],
   )
 
-  return { add: mutation.mutate, status, room, queue: queue.data }
+  return { add, status, room, queue: queue.data }
 }
 
 /**

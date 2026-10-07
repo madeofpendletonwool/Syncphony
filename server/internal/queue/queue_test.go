@@ -3,6 +3,7 @@
 package queue_test
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -616,5 +617,88 @@ func TestQueueAgain(t *testing.T) {
 	}
 	if _, err := e.q.Add(ctx, e.room.ID, e.bob.ID, []queue.TrackRef{{LinkID: e.bob.link}}); !isInvalid(err) {
 		t.Errorf("no track: %v", err)
+	}
+}
+
+func TestDuplicateWarning(t *testing.T) {
+	e := newEnv(t)
+	ctx := t.Context()
+	warn := queue.AddOptions{WarnDuplicates: true}
+	addWarn := func(m member, rs []queue.TrackRef) []queue.Duplicate {
+		t.Helper()
+		_, err := e.q.AddWith(ctx, e.room.ID, m.ID, rs, warn)
+		var dup *queue.DuplicateError
+		if err != nil && !errors.As(err, &dup) {
+			t.Fatalf("AddWith: %v", err)
+		}
+		if dup == nil {
+			return nil
+		}
+		return dup.Duplicates
+	}
+	snap := e.add(e.alice, "t01", "t02")
+
+	// Already in alice's lane: bob is warned, and nothing is added.
+	dups := addWarn(e.bob, refs(e.bob, "t03", "t01"))
+	if len(dups) != 1 || dups[0].Item.ID != itemID(t, snap, e.alice, "t01") || !dups[0].PlayedAt.IsZero() {
+		t.Fatalf("queued song: %+v", dups)
+	}
+	if got, _ := e.db.ListUpcoming(ctx, e.room.ID); len(got) != 2 {
+		t.Fatalf("warned add went through: %d items", len(got))
+	}
+	// The same song on another service (same ISRC).
+	l2, err := e.links.LinkWithCredentials(ctx, e.bob.ID, "fake2", map[string]string{"username": fake.Username, "password": fake.Password})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dups := addWarn(e.bob, []queue.TrackRef{{LinkID: l2.ID, TrackID: "t02"}}); len(dups) != 1 {
+		t.Fatalf("same ISRC on another service: %+v", dups)
+	}
+	// The same MusicBrainz recording, once enrichment knows it.
+	for _, id := range []string{"t02", "t04"} {
+		if err := e.db.PutMusicBrainzTrack(ctx, store.PutMusicBrainzTrackParams{
+			Provider: "fake", TrackID: id, RecordingMbid: "rec-1", Method: "isrc", ResolvedAt: e.now, ExpiresAt: e.now.Add(24 * time.Hour),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if dups := addWarn(e.bob, refs(e.bob, "t04")); len(dups) != 1 || dups[0].Item.TrackID != "t02" {
+		t.Fatalf("same recording: %+v", dups)
+	}
+	// Add anyway: without the warning it goes through.
+	bobs := e.add(e.bob, "t01")
+
+	// Played recently: warned with when, until the window passes.
+	id := itemID(t, snap, e.alice, "t01")
+	if _, err := e.q.Change(ctx, e.room.ID, func(q *store.Queries, _ store.Room) error {
+		if err := q.SetQueueItemState(ctx, store.SetQueueItemStateParams{State: store.ItemPlayed, UpdatedAt: e.clock(), ID: id}); err != nil {
+			return err
+		}
+		ph, err := q.StartPlay(ctx, store.StartPlayParams{ID: store.NewID(), RoomID: e.room.ID, QueueItemID: id, StartedAt: e.clock()})
+		if err != nil {
+			return err
+		}
+		return q.EndPlay(ctx, store.EndPlayParams{ID: ph.ID, EndedAt: sql.NullTime{Time: e.clock(), Valid: true}, EndReason: sql.NullString{String: "finished", Valid: true}})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.q.Remove(ctx, e.room.ID, e.bob.ID, itemID(t, bobs, e.bob, "t01")); err != nil {
+		t.Fatal(err)
+	}
+	if dups := addWarn(e.alice, refs(e.alice, "t01")); len(dups) != 1 || dups[0].PlayedAt.IsZero() || dups[0].Item.ID != id {
+		t.Fatalf("played recently: %+v", dups)
+	}
+	e.mu.Lock()
+	e.now = e.now.Add(queue.DuplicateWindow + time.Minute)
+	e.mu.Unlock()
+	if dups := addWarn(e.alice, refs(e.alice, "t01")); dups != nil {
+		t.Fatalf("played long ago: %+v", dups)
+	}
+
+	// A room that doesn't repeat songs still refuses outright.
+	e.setSettings(`{"fairness":{"repeatWindowMinutes":60}}`)
+	var repeat *queue.RepeatError
+	if _, err := e.q.AddWith(ctx, e.room.ID, e.bob.ID, refs(e.bob, "t02"), warn); !errors.As(err, &repeat) {
+		t.Fatalf("repeat guard: %v", err)
 	}
 }
