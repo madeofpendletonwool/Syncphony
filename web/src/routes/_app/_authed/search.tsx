@@ -10,6 +10,7 @@ import { Notice } from '@/components/notice'
 import { PageHeader } from '@/components/page-header'
 import { ProviderIcon } from '@/components/provider-icon'
 import { Shelf } from '@/components/shelf'
+import { SourcePicker } from '@/components/source-picker'
 import { JoinRoomPrompt } from '@/components/start-room'
 import { TrackRow } from '@/components/track-row'
 import { Button } from '@/components/ui/button'
@@ -18,9 +19,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { VibeSuggestions } from '@/components/vibe-suggestions'
 import { laneTrackOf, useAddToLane, type LaneTrack } from '@/hooks/use-add-to-lane'
+import { useLinkNames } from '@/hooks/use-link-names'
 import { useMe } from '@/lib/auth'
 import {
   collectionQuery,
+  fromSource,
   interleave,
   playlistsQuery,
   randomTracks,
@@ -37,6 +40,7 @@ import { fadeUp, stagger } from '@/lib/motion'
 import { playbackQuery } from '@/lib/playback'
 import { clearSearches, forgetSearch, rememberSearch, useRecentSearches } from '@/lib/recent-searches'
 import { useCurrentRoom } from '@/lib/room'
+import { resolveSource, saveSearchSource, useSavedSearchSource } from '@/lib/search-source'
 import { providersQuery, sourceName, usableLinksQuery } from '@/lib/services'
 import { toast } from '@/lib/toast'
 import { usersQuery } from '@/lib/users'
@@ -44,19 +48,23 @@ import { cn } from '@/lib/utils'
 
 type ServiceLink = components['schemas']['ServiceLink']
 
+/** The one link Search is narrowed to, and what to call it. */
+type Source = { linkId: string; name: string }
+
 const tabs = ['all', 'songs', 'albums', 'artists'] as const
 type Tab = (typeof tabs)[number]
 
 export const Route = createFileRoute('/_app/_authed/search')({
-  validateSearch: (search: Record<string, unknown>): { q?: string; tab?: Tab } => ({
+  validateSearch: (search: Record<string, unknown>): { q?: string; tab?: Tab; from?: string } => ({
     q: typeof search.q === 'string' && search.q.trim() ? search.q : undefined,
     tab: tabs.includes(search.tab as Tab) && search.tab !== 'all' ? (search.tab as Tab) : undefined,
+    from: typeof search.from === 'string' && search.from ? search.from : undefined,
   }),
   component: Search,
 })
 
 function Search() {
-  const { q = '', tab = 'all' } = Route.useSearch()
+  const { q = '', tab = 'all', from } = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
   const [text, setText] = useState(q)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -72,6 +80,18 @@ function Search() {
 
   const links = useQuery(usableLinksQuery)
   const results = useQuery({ ...searchQuery(q), enabled: q !== '', placeholderData: keepPreviousData })
+
+  // Narrowing to one account is kept in the URL, like the tab, and saved on
+  // this device for next time. It only filters what's already loaded.
+  const searchable = links.data?.filter((l) => l.status === 'ok')
+  const names = useLinkNames(searchable ?? [])
+  const saved = useSavedSearchSource()
+  const sourceId = resolveSource(from, saved, searchable?.map((l) => l.id))
+  const source = sourceId ? { linkId: sourceId, name: names.get(sourceId) ?? 'that service' } : undefined
+  const pickSource = (linkId: string | undefined) => {
+    saveSearchSource(linkId)
+    void navigate({ search: (s) => ({ ...s, from: linkId }), replace: true })
+  }
 
   // A search is worth remembering once it found something and the typing
   // has settled.
@@ -146,35 +166,56 @@ function Search() {
             <ToggleGroupItem value="artists">Artists</ToggleGroupItem>
           </ToggleGroup>
         )}
+        {searchable && <SourcePicker links={searchable} value={sourceId} onChange={pickSource} />}
       </div>
 
       <JoinRoomPrompt className="mt-4" />
-      {links.data && <Sources links={links.data} />}
+      {/* The picker already names every account it searches. */}
+      {links.data && (searchable?.length ?? 0) < 2 && <Sources links={links.data} />}
 
       {links.data && links.data.length === 0 ? (
         <NoLinks />
       ) : !q ? (
-        links.data && <Browse links={links.data} onSearch={searchFor} />
+        links.data && <Browse links={links.data} source={source} onSearch={searchFor} />
       ) : results.isPending ? (
         <ResultsSkeleton />
       ) : results.isError ? (
         <Notice className="mt-6">{errorMessage(results.error)}</Notice>
       ) : (
         <div className={cn('transition-opacity duration-200', results.isPlaceholderData && 'opacity-60')}>
-          <Results key={results.data.query} groups={results.data.groups} tab={tab} />
+          <Results
+            key={results.data.query}
+            groups={results.data.groups}
+            tab={tab}
+            source={source}
+            onShowAll={() => pickSource(undefined)}
+          />
         </div>
       )}
     </>
   )
 }
 
-function Results({ groups, tab }: { groups: SearchGroup[]; tab: Tab }) {
+function Results({
+  groups: everyGroup,
+  tab,
+  source,
+  onShowAll,
+}: {
+  groups: SearchGroup[]
+  tab: Tab
+  source?: Source
+  onShowAll: () => void
+}) {
   const me = useMe()
   const navigate = useNavigate({ from: Route.fullPath })
   const { add, status } = useAddToLane()
   const providers = useQuery(providersQuery)
   const iconOf = (provider: string) => providers.data?.find((p) => p.id === provider)?.icon ?? provider
   const nameOf = (provider: string) => providers.data?.find((p) => p.id === provider)?.name ?? provider
+
+  // Narrowed to one account, its results and warnings are all that show.
+  const groups = fromSource(everyGroup, source?.linkId)
 
   // Tag results with their service only when they come from more than one.
   const ok = groups.filter((g) => !g.error)
@@ -235,8 +276,19 @@ function Results({ groups, tab }: { groups: SearchGroup[]; tab: Tab }) {
       ))}
 
       {empty ? (
-        failed.length < groups.length && (
-          <p className="mt-10 text-center text-sm text-muted-foreground">Nothing matches that. Try fewer words?</p>
+        source ? (
+          failed.length === 0 && (
+            <div className="mt-10 flex flex-col items-center gap-3 text-center">
+              <p className="text-sm text-muted-foreground">Nothing on {source.name} matches that.</p>
+              <Button variant="secondary" size="sm" onClick={onShowAll}>
+                All services
+              </Button>
+            </div>
+          )
+        ) : (
+          failed.length < groups.length && (
+            <p className="mt-10 text-center text-sm text-muted-foreground">Nothing matches that. Try fewer words?</p>
+          )
         )
       ) : tab === 'songs' ? (
         songList()
@@ -288,11 +340,12 @@ function Results({ groups, tab }: { groups: SearchGroup[]; tab: Tab }) {
  * like what's playing, like the room's vibe, and ones you queued lately, then from every link
  * its playlists (Liked Songs and starred songs among them), albums played
  * lately and most, new additions, and favorites, each kind grouped across
- * links.
+ * links. Narrowed to one account, all but recent searches come from it.
  */
-function Browse({ links, onSearch }: { links: ServiceLink[]; onSearch: (q: string) => void }) {
+function Browse({ links: allLinks, source, onSearch }: { links: ServiceLink[]; source?: Source; onSearch: (q: string) => void }) {
   const providers = useQuery(providersQuery)
   const recent = useRecentSearches()
+  const links = source ? allLinks.filter((l) => l.id === source.linkId) : allLinks
   const can = (l: ServiceLink, cap: 'playlists' | 'collection' | 'recommendations') =>
     providers.data?.find((p) => p.id === l.provider)?.capabilities[cap] ?? false
   const withPlaylists = links.filter((l) => can(l, 'playlists'))
@@ -303,10 +356,10 @@ function Browse({ links, onSearch }: { links: ServiceLink[]; onSearch: (q: strin
   return (
     <div className="mt-6 flex flex-col gap-8">
       {recent.length > 0 && <RecentSearches searches={recent} onSearch={onSearch} />}
-      {recommends && <SurpriseMe />}
-      {recommends && <LikeWhatsPlaying />}
-      <VibeSuggestions />
-      <RecentAdds links={links} />
+      {recommends && <SurpriseMe linkId={source?.linkId} />}
+      {recommends && <LikeWhatsPlaying linkId={source?.linkId} />}
+      <VibeSuggestions source={source} />
+      <RecentAdds links={links} linkId={source?.linkId} />
       {withPlaylists.map((l) => (
         <PlaylistShelf key={l.id} link={l} />
       ))}
@@ -352,14 +405,21 @@ function RecentSearches({ searches, onSearch }: { searches: string[]; onSearch: 
 /** How many songs a surprise adds. */
 const SURPRISE_COUNT = 5
 
-/** Adds a few songs picked at random to your lane. */
-function SurpriseMe() {
+/**
+ * How many to ask for when narrowed to one link. The server asks each link
+ * for this many and mixes them, so enough are left once the others' go.
+ */
+const SURPRISE_POOL = 50
+
+/** Adds a few songs picked at random to your lane, from linkId if given. */
+function SurpriseMe({ linkId }: { linkId?: string }) {
   const { add } = useAddToLane()
   const [busy, setBusy] = useState(false)
   const surprise = async () => {
     setBusy(true)
     try {
-      const { tracks } = await randomTracks(SURPRISE_COUNT)
+      const { tracks: picked } = await randomTracks(linkId ? SURPRISE_POOL : SURPRISE_COUNT)
+      const tracks = fromSource(picked, linkId).slice(0, SURPRISE_COUNT)
       if (tracks.length === 0) toast({ message: 'Couldn’t find anything to pick from right now.', tone: 'error' })
       else add(tracks)
     } catch (err) {
@@ -389,19 +449,20 @@ function SurpriseMe() {
   )
 }
 
-/** Songs like the one the room is playing, while it plays. */
-function LikeWhatsPlaying() {
+/** Songs like the one the room is playing, while it plays, from linkId if given. */
+function LikeWhatsPlaying({ linkId }: { linkId?: string }) {
   const { room } = useCurrentRoom()
   const playback = useQuery({ ...playbackQuery(room?.id ?? ''), enabled: !!room })
   const item = playback.data?.item
   const similar = useQuery({ ...similarQuery(room?.id ?? '', item?.id ?? ''), enabled: !!room && !!item })
   const { add, status } = useAddToLane()
-  if (!room || !item || similar.isError || similar.data?.tracks.length === 0) return null
+  const tracks = similar.data && fromSource(similar.data.tracks, linkId)
+  if (!room || !item || similar.isError || tracks?.length === 0) return null
   return (
     <Section title={`More like “${item.track.title}”`}>
-      {similar.data ? (
+      {tracks ? (
         <motion.ul variants={stagger} initial="hidden" animate="show" className="flex flex-col">
-          {similar.data.tracks.slice(0, 5).map((t) => (
+          {tracks.slice(0, 5).map((t) => (
             <TrackRow key={trackKey(t)} track={t} status={status(t)} onAdd={() => add([t])} />
           ))}
         </motion.ul>
@@ -412,8 +473,8 @@ function LikeWhatsPlaying() {
   )
 }
 
-/** Songs you queued lately in this room, to queue again. */
-function RecentAdds({ links }: { links: ServiceLink[] }) {
+/** Songs you queued lately in this room, to queue again, from linkId if given. */
+function RecentAdds({ links, linkId: only }: { links: ServiceLink[]; linkId?: string }) {
   const me = useMe()
   const { room } = useCurrentRoom()
   const history = useQuery({ ...myHistoryQuery(room?.id ?? '', me.id), enabled: !!room })
@@ -424,7 +485,7 @@ function RecentAdds({ links }: { links: ServiceLink[] }) {
   const tracks: LaneTrack[] = []
   for (const { item } of history.data) {
     const linkId = item.track.linkId
-    if (!linkId || item.autopilot || !(usable.has(linkId) || room.matching.borrow)) continue
+    if (!linkId || item.autopilot || (only && linkId !== only) || !(usable.has(linkId) || room.matching.borrow)) continue
     const t = laneTrackOf(item, linkId)
     if (seen.has(trackKey(t))) continue
     seen.add(trackKey(t))

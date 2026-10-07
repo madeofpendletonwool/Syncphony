@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { artworkUrl, interleave, pickRandom, totalDuration, trackKey, type SearchGroup } from './browse'
+import { artworkUrl, fromSource, interleave, pickRandom, totalDuration, trackKey, type SearchGroup } from './browse'
 
 const group = (linkId: string, titles: string[]): SearchGroup => ({
   linkId,
@@ -27,6 +27,21 @@ describe('interleave', () => {
   })
   it('handles no groups', () => {
     expect(interleave([], (g) => g.tracks)).toEqual([])
+  })
+})
+
+describe('fromSource', () => {
+  const groups = [group('a', ['a1']), group('b', ['b1']), group('c', [])]
+
+  it('keeps only the picked link', () => {
+    expect(fromSource(groups, 'b').map((g) => g.linkId)).toEqual(['b'])
+    expect(fromSource(groups[1].tracks, 'a')).toEqual([])
+  })
+  it('keeps everything when no link is picked', () => {
+    expect(fromSource(groups, undefined)).toBe(groups)
+  })
+  it('is empty for a link that has nothing here', () => {
+    expect(fromSource(groups, 'gone')).toEqual([])
   })
 })
 

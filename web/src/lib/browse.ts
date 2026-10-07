@@ -99,6 +99,11 @@ export function interleave<T>(groups: SearchGroup[], pick: (g: SearchGroup) => T
   return out
 }
 
+/** The items from one link, or all of them when no link is picked. */
+export function fromSource<T extends { linkId?: string }>(items: T[], linkId: string | undefined): T[] {
+  return linkId ? items.filter((i) => i.linkId === linkId) : items
+}
+
 /** "Artist A, Artist B" */
 export const artistNames = (artists: { name: string }[]) => artists.map((a) => a.name).join(', ')
 

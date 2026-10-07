@@ -26,9 +26,10 @@ const empty: Record<VibeScope, string> = {
 /**
  * "Keep the vibe going": songs like the room's, to add with a tap. Your vibe
  * is like your own songs; the group's is like everyone's. The list follows
- * the room from song to song, and shuffles on demand.
+ * the room from song to song, and shuffles on demand. With a source, only
+ * that link's songs show.
  */
-export function VibeSuggestions({ className }: { className?: string }) {
+export function VibeSuggestions({ source, className }: { source?: { linkId: string; name: string }; className?: string }) {
   const me = useMe()
   const { room } = useCurrentRoom()
   const [scope, setScope] = useState<VibeScope>('mine')
@@ -47,7 +48,8 @@ export function VibeSuggestions({ className }: { className?: string }) {
   const providers = useQuery(providersQuery)
   if (!room) return null
 
-  const items = list.data?.items ?? []
+  const all = list.data?.items ?? []
+  const items = source ? all.filter((s) => s.track.linkId === source.linkId) : all
   const nameOf = (id: string) => users.data?.find((u) => u.id === id)?.displayName
   // Tag songs with their service only when the list mixes services.
   const mixed = new Set(items.map((s) => s.track.linkId)).size > 1
@@ -85,7 +87,9 @@ export function VibeSuggestions({ className }: { className?: string }) {
       ) : list.isError ? (
         <Notice>{errorMessage(list.error)}</Notice>
       ) : items.length === 0 ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">{empty[scope]}</p>
+        <p className="py-6 text-center text-sm text-muted-foreground">
+          {source && all.length > 0 ? `None of these are on ${source.name}. Shuffle for more?` : empty[scope]}
+        </p>
       ) : (
         <motion.ul
           key={`${scope}:${shuffle}:${playing ?? ''}`}

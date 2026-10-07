@@ -28,6 +28,18 @@ export function sourceName(providerName: string, ownerName: string | undefined, 
   return `${ownerName.split(' ')[0]}'s ${providerName}`
 }
 
+/**
+ * Names for several links at once, from nameOf (usually sourceName). Links
+ * that would read the same, like two Navidromes of your own, get their
+ * account added: "Navidrome · alice on music.example.com".
+ */
+export function linkNames<L extends { id: string; accountLabel: string }>(links: L[], nameOf: (link: L) => string) {
+  const base = links.map(nameOf)
+  return new Map(
+    links.map((l, i) => [l.id, base.indexOf(base[i]) !== base.lastIndexOf(base[i]) ? `${base[i]} · ${l.accountLabel}` : base[i]]),
+  )
+}
+
 // Keyed by ProviderInfo.icon. Unknown providers get a generic note.
 const icons: Record<string, { icon: typeof Music; color: string }> = {
   navidrome: { icon: Server, color: '#3b82f6' },

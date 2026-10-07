@@ -11,8 +11,8 @@ import { VibeSuggestions } from './vibe-suggestions'
 const GET = vi.hoisted(() => vi.fn())
 vi.mock('@/api/client', () => ({ api: { GET, POST: vi.fn(), DELETE: vi.fn() } }))
 
-const song = (id: string, title: string, seedTitle: string, userId: string): Suggestion => ({
-  track: { linkId: 'l1', provider: 'fake', trackId: id, title, artists: [{ name: 'Null Island' }], durationMs: 1000, explicit: false },
+const song = (id: string, title: string, seedTitle: string, userId: string, linkId = 'l1'): Suggestion => ({
+  track: { linkId, provider: 'fake', trackId: id, title, artists: [{ name: 'Null Island' }], durationMs: 1000, explicit: false },
   because: { itemId: `item-${seedTitle}`, title: seedTitle, userId },
 })
 
@@ -25,7 +25,7 @@ function serve(lists: Record<string, Suggestion[]>) {
   })
 }
 
-function renderVibe() {
+function renderVibe(source?: { linkId: string; name: string }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   client.setQueryData(meQuery.queryKey, { id: 'alice', displayName: 'Alice' } as Me)
   client.setQueryData(roomsQuery.queryKey, [{ id: 'r1', name: 'Living room' } as Room])
@@ -35,7 +35,7 @@ function renderVibe() {
   chooseRoom('r1')
   return render(
     <QueryClientProvider client={client}>
-      <VibeSuggestions />
+      <VibeSuggestions source={source} />
     </QueryClientProvider>,
   )
 }
@@ -71,5 +71,18 @@ describe('VibeSuggestions', () => {
     await screen.findByText('Longitude')
     fireEvent.click(screen.getByRole('button', { name: 'Shuffle suggestions' }))
     await waitFor(() => expect(calls().at(-1)).toMatchObject({ scope: 'mine', refresh: true }))
+  })
+
+  it('shows only the picked account’s songs', async () => {
+    serve({ mine: [song('t08', 'Longitude', 'Latitude', 'alice', 'l1'), song('t09', 'Meridian', 'Latitude', 'alice', 'l2')] })
+    renderVibe({ linkId: 'l2', name: 'Spotify' })
+    expect(await screen.findByText('Meridian')).toBeTruthy()
+    expect(screen.queryByText('Longitude')).toBeNull()
+  })
+
+  it('says so when none are on the picked account', async () => {
+    serve({ mine: [song('t08', 'Longitude', 'Latitude', 'alice', 'l1')] })
+    renderVibe({ linkId: 'l2', name: 'Spotify' })
+    expect(await screen.findByText('None of these are on Spotify. Shuffle for more?')).toBeTruthy()
   })
 })
