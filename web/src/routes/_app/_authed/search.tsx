@@ -15,6 +15,7 @@ import { TrackRow } from '@/components/track-row'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { VibeSuggestions } from '@/components/vibe-suggestions'
 import { laneTrackOf, useAddToLane, type LaneTrack } from '@/hooks/use-add-to-lane'
@@ -24,6 +25,7 @@ import {
   interleave,
   playlistsQuery,
   randomTracks,
+  searchesPublicPlaylists,
   searchQuery,
   similarQuery,
   trackKey,
@@ -35,6 +37,7 @@ import {
 import { myHistoryQuery } from '@/lib/history'
 import { fadeUp, stagger } from '@/lib/motion'
 import { playbackQuery } from '@/lib/playback'
+import { setPublicPlaylists, usePublicPlaylists } from '@/lib/public-playlists'
 import { clearSearches, forgetSearch, rememberSearch, useRecentSearches } from '@/lib/recent-searches'
 import { useCurrentRoom } from '@/lib/room'
 import { providersQuery, sourceName, usableLinksQuery } from '@/lib/services'
@@ -44,7 +47,7 @@ import { cn } from '@/lib/utils'
 
 type ServiceLink = components['schemas']['ServiceLink']
 
-const tabs = ['all', 'songs', 'albums', 'artists'] as const
+const tabs = ['all', 'songs', 'albums', 'artists', 'playlists'] as const
 type Tab = (typeof tabs)[number]
 
 export const Route = createFileRoute('/_app/_authed/search')({
@@ -71,11 +74,14 @@ function Search() {
   }, [text, q, navigate])
 
   const links = useQuery(usableLinksQuery)
-  const results = useQuery({ ...searchQuery(q), enabled: q !== '', placeholderData: keepPreviousData })
+  const publicPlaylists = usePublicPlaylists()
+  const results = useQuery({ ...searchQuery(q, publicPlaylists), enabled: q !== '', placeholderData: keepPreviousData })
 
   // A search is worth remembering once it found something and the typing
   // has settled.
-  const found = results.data?.query === q && results.data.groups.some((g) => g.tracks.length + g.albums.length + g.artists.length > 0)
+  const found =
+    results.data?.query === q &&
+    results.data.groups.some((g) => g.tracks.length + g.albums.length + g.artists.length + g.playlists.length > 0)
   useEffect(() => {
     if (!found) return
     const t = setTimeout(() => rememberSearch(q), 1500)
@@ -108,8 +114,8 @@ function Search() {
             inputMode="search"
             enterKeyHint="search"
             autoFocus={!q}
-            aria-label="Search songs, albums and artists"
-            placeholder="Songs, albums, artists"
+            aria-label="Search songs, albums, artists and playlists"
+            placeholder="Songs, albums, artists, playlists"
             value={text}
             onChange={(e) => setText(e.target.value)}
             className="glass h-13 rounded-2xl pr-12 pl-12 text-base [&::-webkit-search-cancel-button]:hidden"
@@ -144,6 +150,7 @@ function Search() {
             <ToggleGroupItem value="songs">Songs</ToggleGroupItem>
             <ToggleGroupItem value="albums">Albums</ToggleGroupItem>
             <ToggleGroupItem value="artists">Artists</ToggleGroupItem>
+            <ToggleGroupItem value="playlists">Playlists</ToggleGroupItem>
           </ToggleGroup>
         )}
       </div>
@@ -188,9 +195,24 @@ function Results({ groups, tab }: { groups: SearchGroup[]; tab: Tab }) {
   const tracks = interleave(ok, (g) => g.tracks)
   const albums = interleave(ok, (g) => g.albums)
   const artists = interleave(ok, (g) => g.artists)
+  const playlists = interleave(ok, (g) => g.playlists)
   const failed = groups.filter((g) => g.error)
-  const empty = tracks.length + albums.length + artists.length === 0
+  const empty = tracks.length + albums.length + artists.length + playlists.length === 0
   const seeAll = (t: Tab) => () => void navigate({ search: (s) => ({ ...s, tab: t }), replace: true })
+
+  // Public playlists are a choice, offered only where a service can search them.
+  const publicPlaylists = usePublicPlaylists()
+  const publicSwitch = searchesPublicPlaylists(groups, providers.data) && (
+    <span className="flex items-center gap-2 text-caption text-muted-foreground">
+      Public
+      <Switch checked={publicPlaylists} onChange={setPublicPlaylists} label="Include public playlists" />
+    </span>
+  )
+  const noPlaylists = (
+    <p className="text-sm text-muted-foreground">
+      {publicPlaylists ? 'No playlists match.' : 'None of your playlists match.'}
+    </p>
+  )
 
   const songList = (limit?: number) => (
     <motion.ul variants={stagger} initial="hidden" animate="show" className="flex flex-col">
@@ -213,6 +235,16 @@ function Results({ groups, tab }: { groups: SearchGroup[]; tab: Tab }) {
       ))}
     </motion.div>
   )
+  const playlistGrid =
+    playlists.length > 0 ? (
+      <motion.div variants={stagger} initial="hidden" animate="show" className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3">
+        {playlists.map((p) => (
+          <PlaylistCard key={`${p.linkId}:${p.id}`} playlist={p} linkId={p.linkId} providerIcon={tag(p.linkId)} />
+        ))}
+      </motion.div>
+    ) : (
+      noPlaylists
+    )
 
   return (
     <div className="mt-6 flex flex-col gap-8">
@@ -234,9 +266,21 @@ function Results({ groups, tab }: { groups: SearchGroup[]; tab: Tab }) {
         </Notice>
       ))}
 
-      {empty ? (
+      {tab === 'playlists' ? (
+        <div className="flex flex-col gap-4">
+          {publicSwitch && <div className="flex justify-end">{publicSwitch}</div>}
+          {playlistGrid}
+        </div>
+      ) : empty ? (
         failed.length < groups.length && (
-          <p className="mt-10 text-center text-sm text-muted-foreground">Nothing matches that. Try fewer words?</p>
+          <div className="mt-10 flex flex-col items-center gap-3">
+            <p className="text-center text-sm text-muted-foreground">Nothing matches that. Try fewer words?</p>
+            {publicSwitch && !publicPlaylists && (
+              <Button variant="outline" size="sm" onClick={() => setPublicPlaylists(true)}>
+                Look through public playlists too
+              </Button>
+            )}
+          </div>
         )
       ) : tab === 'songs' ? (
         songList()
@@ -275,6 +319,25 @@ function Results({ groups, tab }: { groups: SearchGroup[]; tab: Tab }) {
                   </div>
                 ))}
               </Shelf>
+            </Section>
+          )}
+          {(playlists.length > 0 || publicSwitch) && (
+            <Section title="Playlists" more={playlists.length > 4 ? seeAll('playlists') : undefined} aside={publicSwitch}>
+              {playlists.length > 0 ? (
+                <Shelf>
+                  {playlists.slice(0, 10).map((p) => (
+                    <PlaylistCard
+                      key={`${p.linkId}:${p.id}`}
+                      playlist={p}
+                      linkId={p.linkId}
+                      providerIcon={tag(p.linkId)}
+                      className="w-36 shrink-0 snap-start"
+                    />
+                  ))}
+                </Shelf>
+              ) : (
+                noPlaylists
+              )}
             </Section>
           )}
         </>
@@ -538,17 +601,21 @@ function Section({
   title,
   more,
   action,
+  aside,
   children,
 }: {
   title: string
   more?: () => void
   action?: { label: string; onClick: () => void }
+  /** Shown by the title, before "See all". */
+  aside?: ReactNode
   children: ReactNode
 }) {
   return (
     <section>
       <div className="mb-2 flex items-center justify-between gap-2">
         <h2 className="min-w-0 truncate text-headline">{title}</h2>
+        {aside && <div className="ml-auto">{aside}</div>}
         {more && (
           <Button variant="ghost" size="sm" onClick={more} className="-mr-2 text-muted-foreground">
             See all
