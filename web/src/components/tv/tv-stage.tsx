@@ -10,7 +10,7 @@ import { AlbumBackdrop } from '@/components/shell/album-backdrop'
 import { UserAvatar } from '@/components/user-avatar'
 import { useAlbumPalette } from '@/hooks/use-album-palette'
 import { usePosition } from '@/hooks/use-position'
-import { autopilotReason } from '@/lib/autopilot'
+import { autopilotReason, autopilotSource } from '@/lib/autopilot'
 import { guestPassQuery } from '@/lib/guests'
 import { laneStyle } from '@/lib/lane'
 import { linerCards, linerNotesQuery } from '@/lib/liner-notes'
@@ -148,6 +148,9 @@ function NowPlayingColumn({ np }: { np: NowPlaying }) {
                 <p className="text-[clamp(0.95rem,1.5vw,1.5rem)]">
                   <span className="font-semibold text-primary">Autopilot</span>
                   <span className="text-muted-foreground"> · {autopilotReason(np.autopilot)}</span>
+                  {autopilotSource(np.autopilot) && (
+                    <span className="text-muted-foreground/70"> · {autopilotSource(np.autopilot)}</span>
+                  )}
                 </p>
               </div>
             )}
@@ -308,6 +311,11 @@ function UpNext({
                     <span className={cn('size-2 shrink-0 rounded-full bg-(--lane)', item.autopilot && 'bg-primary')} />
                     {item.autopilot ? 'Autopilot' : (u?.displayName ?? 'Someone')}
                   </p>
+                  {item.autopilot && (
+                    <p className="truncate text-[clamp(0.7rem,0.85vw,0.9rem)] text-primary" title={autopilotReason(item.autopilot)}>
+                      {autopilotReason(item.autopilot)}
+                    </p>
+                  )}
                 </div>
               </motion.li>
             )

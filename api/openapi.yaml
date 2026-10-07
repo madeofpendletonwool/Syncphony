@@ -4555,6 +4555,17 @@ components:
           type: string
         seedArtist:
           type: string
+        reason:
+          type: string
+          description: |
+            Why the DJ chose it, in a few words: "Because Sam's Radiohead →
+            Portishead (similar 0.82)", "A top song by Radiohead, an artist
+            the room loves", "Bridging Sam's Radiohead and Jo's Massive
+            Attack". Absent for a song a service recommended, or one picked
+            at random; say "Like {seedTitle}" then.
+        source:
+          type: string
+          description: The music knowledge the reason came from, for a credit, e.g. "Last.fm, Deezer".
 
     Palette:
       type: object

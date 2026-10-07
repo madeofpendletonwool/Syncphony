@@ -4,7 +4,7 @@ import { api } from '@/api/client'
 import { errorMessage, unwrap } from '@/api/errors'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { autopilotReason, type AutopilotPick } from '@/lib/autopilot'
+import { autopilotReason, autopilotSource, type AutopilotPick } from '@/lib/autopilot'
 import { tap } from '@/lib/haptics'
 import type { QueueItem } from '@/lib/playback'
 import { queueQuery } from '@/lib/room'
@@ -18,6 +18,17 @@ export function AutopilotBadge({ pick, className }: { pick: AutopilotPick; class
       <WandSparkles aria-hidden />
       Autopilot
     </Badge>
+  )
+}
+
+/** Why autopilot chose a song, and where the DJ's knowledge came from. */
+export function AutopilotWhy({ pick, className }: { pick: AutopilotPick; className?: string }) {
+  const source = autopilotSource(pick)
+  return (
+    <p className={cn('text-pretty text-muted-foreground', className)}>
+      <span className="text-primary">{autopilotReason(pick)}</span>
+      {source && <span className="text-muted-foreground/70"> · {source}</span>}
+    </p>
   )
 }
 
