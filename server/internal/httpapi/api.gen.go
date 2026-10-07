@@ -762,9 +762,23 @@ type Accent struct {
 	H float64 `json:"h"`
 }
 
+// AddToQueueConflict defines model for AddToQueueConflict.
+type AddToQueueConflict struct {
+	// Code Example: duplicate
+	Code string `json:"code"`
+
+	// Duplicates With `duplicate`, the room's copy of each song.
+	Duplicates *[]QueueDuplicate `json:"duplicates,omitempty"`
+	Message    string            `json:"message"`
+}
+
 // AddToQueueRequest defines model for AddToQueueRequest.
 type AddToQueueRequest struct {
 	Items []TrackToQueue `json:"items"`
+
+	// WarnDuplicates Refuse with `duplicate` if a song is already waiting or playing,
+	// or played recently, instead of adding it.
+	WarnDuplicates *bool `json:"warnDuplicates,omitempty"`
 }
 
 // AlbumCredit defines model for AlbumCredit.
@@ -1589,6 +1603,17 @@ type ProviderInfoLinkMethod string
 
 // ProviderInfoPlayback defines model for ProviderInfo.Playback.
 type ProviderInfoPlayback string
+
+// QueueDuplicate defines model for QueueDuplicate.
+type QueueDuplicate struct {
+	Item QueueItem `json:"item"`
+
+	// PlayedAt When the copy last started, if it already played.
+	PlayedAt *time.Time `json:"playedAt,omitempty"`
+
+	// Title The song being added.
+	Title string `json:"title"`
+}
 
 // QueueItem defines model for QueueItem.
 type QueueItem struct {
@@ -10239,6 +10264,20 @@ func (response AddToQueue200JSONResponse) VisitAddToQueueResponse(w http.Respons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddToQueue409JSONResponse AddToQueueConflict
+
+func (response AddToQueue409JSONResponse) VisitAddToQueueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }

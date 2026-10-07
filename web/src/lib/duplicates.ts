@@ -1,27 +1,36 @@
-import type { QueueItem } from './playback'
+import type { components } from '@/api/schema.gen'
+import { isMine } from './autopilot'
+import { relativeTime } from './time'
 
-type Song = Pick<QueueItem['track'], 'provider' | 'trackId' | 'title' | 'artists'>
+export type QueueDuplicate = components['schemas']['QueueDuplicate']
 
-/** A title or artist, loosely: case, accents, "(Remastered 2011)" and punctuation aside. */
-function loose(s: string) {
-  return s
-    .normalize('NFKD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(/\s*[([].*?[)\]]/g, '')
-    .replace(/\s+-\s+.*$/, '')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim()
+/** An add the server held back: these songs are already in the room, or played recently. */
+export class DuplicatesFound extends Error {
+  readonly duplicates: QueueDuplicate[]
+
+  constructor(duplicates: QueueDuplicate[]) {
+    super('duplicate')
+    this.name = 'DuplicatesFound'
+    this.duplicates = duplicates
+  }
 }
 
-/** The same song: the same track, or the same title by the same artist on another service. */
-export function sameSong(a: Song, b: Song) {
-  if (a.provider === b.provider && a.trackId === b.trackId) return true
-  const artist = (s: Song) => loose(s.artists[0] ?? '')
-  return loose(a.title) !== '' && loose(a.title) === loose(b.title) && artist(a) === artist(b)
+/** Where the room's copy is: "playing now", "already in Sam’s lane", "played 20 minutes ago". */
+export function whereIs(d: QueueDuplicate, meId: string, nameOf: (userId: string) => string | undefined, now = Date.now()) {
+  const it = d.item
+  if (d.playedAt) return `played ${relativeTime(d.playedAt, now)}`
+  if (it.state === 'playing') return 'playing now'
+  if (it.autopilot) return 'already up next'
+  if (isMine(it, meId)) return 'already in your lane'
+  return `already in ${nameOf(it.addedBy) ?? 'someone'}’s lane`
 }
 
-/** The copy of a song already waiting or playing in the room, if there is one. */
-export function queuedCopy(items: readonly QueueItem[], song: Song) {
-  return items.find((i) => (i.state === 'queued' || i.state === 'playing') && sameSong(i.track, song))
+/** The warning to show before adding anyway. */
+export function duplicateMessage(dups: readonly QueueDuplicate[], meId: string, nameOf: (userId: string) => string | undefined, now = Date.now()) {
+  if (dups.length === 1) return `“${dups[0].title}” ${isOrWas(whereIs(dups[0], meId, nameOf, now))}`
+  return `${dups.length} of these songs are already queued or played recently`
+}
+
+function isOrWas(where: string) {
+  return where.startsWith('played') ? where : `is ${where}`
 }

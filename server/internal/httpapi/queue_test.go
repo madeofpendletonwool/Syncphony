@@ -144,3 +144,31 @@ func TestQueueAPI(t *testing.T) {
 		t.Fatalf("after undoing the clear: %v", got)
 	}
 }
+
+func TestQueueDuplicateWarning(t *testing.T) {
+	e := newEnv(t)
+	alice := e.admin()
+	bob := e.member(alice, "bob")
+	room := e.room(t, me(t, alice).Id)
+	aliceLink, bobLink := linkFake(t, alice), linkFake(t, bob)
+	path := "/rooms/" + room.ID + "/queue"
+
+	var snap httpapi.QueueSnapshot
+	alice.want(http.StatusOK, "POST", path, addReq(aliceLink, "t01")).decode(t, &snap)
+
+	req := addReq(bobLink, "t01")
+	req.WarnDuplicates = ptr(true)
+	var conflict httpapi.AddToQueueConflict
+	bob.want(http.StatusConflict, "POST", path, req).decode(t, &conflict)
+	if conflict.Code != "duplicate" || conflict.Duplicates == nil || len(*conflict.Duplicates) != 1 {
+		t.Fatalf("conflict: %+v", conflict)
+	}
+	if d := (*conflict.Duplicates)[0]; d.Title != "Reference Tone" || d.Item.Id != snap.Items[0].Id || d.Item.AddedBy != snap.Items[0].AddedBy || d.PlayedAt != nil {
+		t.Fatalf("duplicate: %+v", d)
+	}
+	// Add anyway.
+	bob.want(http.StatusOK, "POST", path, addReq(bobLink, "t01")).decode(t, &snap)
+	if len(snap.Items) != 2 {
+		t.Fatalf("added anyway: %d items", len(snap.Items))
+	}
+}

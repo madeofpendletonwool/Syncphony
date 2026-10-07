@@ -4,6 +4,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
 )
@@ -23,7 +24,20 @@ func (s *Server) AddToQueue(ctx context.Context, req AddToQueueRequestObject) (A
 	for i, it := range req.Body.Items {
 		refs[i] = queue.TrackRef{LinkID: deref(it.LinkId), TrackID: deref(it.TrackId), FromItemID: deref(it.FromItemId)}
 	}
-	snap, err := s.Queue.Add(ctx, req.RoomId, sessionFrom(ctx).User.ID, refs)
+	opts := queue.AddOptions{WarnDuplicates: req.Body.WarnDuplicates != nil && *req.Body.WarnDuplicates}
+	snap, err := s.Queue.AddWith(ctx, req.RoomId, sessionFrom(ctx).User.ID, refs, opts)
+	var dup *queue.DuplicateError
+	if errors.As(err, &dup) {
+		out := AddToQueueConflict{Code: "duplicate", Message: dup.Error(), Duplicates: &[]QueueDuplicate{}}
+		for _, d := range dup.Duplicates {
+			qd := QueueDuplicate{Title: d.Title, Item: toQueueItem(d.Item)}
+			if !d.PlayedAt.IsZero() {
+				qd.PlayedAt = ptr(d.PlayedAt)
+			}
+			*out.Duplicates = append(*out.Duplicates, qd)
+		}
+		return AddToQueue409JSONResponse(out), nil
+	}
 	if err != nil {
 		return nil, err
 	}

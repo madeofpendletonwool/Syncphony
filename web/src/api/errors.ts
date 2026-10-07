@@ -86,8 +86,8 @@ export function errorMessage(err: unknown): string {
         ? `Too many attempts. Try again in ${formatWait(err.retryAfter)}.`
         : 'Too many attempts. Try again in a bit.'
     }
-    // not_playable's and guest_limit's messages name the song and service, or the limit.
-    if (['invalid_input', 'bad_request', 'not_playable', 'guest_limit'].includes(err.code)) return capitalize(err.message)
+    // not_playable's, guest_limit's and repeat's messages name the song and service, or the limit.
+    if (['invalid_input', 'bad_request', 'not_playable', 'guest_limit', 'repeat'].includes(err.code)) return capitalize(err.message)
     return messages[err.code] ?? 'Something went wrong. Try again.'
   }
   if (typeof err === 'string') return messages[err] ?? 'Something went wrong. Try again.'
