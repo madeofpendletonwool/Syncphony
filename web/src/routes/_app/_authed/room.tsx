@@ -3,7 +3,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { Check, ChevronDown, Crown, History, LogOut, MonitorPlay, Plus, QrCode, Settings2, Sparkles, Speaker } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { DropdownMenu } from 'radix-ui'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { errorMessage } from '@/api/errors'
 import { Artwork } from '@/components/artwork'
 import { PageHeader } from '@/components/page-header'
@@ -14,6 +14,8 @@ import { HeartButton } from '@/components/room/heart-button'
 import { MyLane } from '@/components/room/my-lane'
 import { QueueRow } from '@/components/room/queue-row'
 import { ReactionBar } from '@/components/room/reaction-bar'
+import { RecentlyPlayed } from '@/components/room/recently-played'
+import { RemoveTheirs } from '@/components/room/remove-theirs'
 import { RoomSettings } from '@/components/room/room-settings'
 import { SongDetails } from '@/components/room/song-details'
 import { SpeakerPanel } from '@/components/room/speaker-panel'
@@ -27,6 +29,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Slider } from '@/components/ui/slider'
 import { UserAvatar } from '@/components/user-avatar'
 import { usePosition } from '@/hooks/use-position'
+import { useQueueRemoval } from '@/hooks/use-queue-removal'
 import { useMe } from '@/lib/auth'
 import { isMine } from '@/lib/autopilot'
 import { laneStyle } from '@/lib/lane'
@@ -51,6 +54,8 @@ export const Route = createFileRoute('/_app/_authed/room')({
 
 // How much of the fair order to show before summarizing the rest.
 const UP_NEXT_SHOWN = 12
+// How many of the songs just played to show; History has the rest.
+const RECENT_SHOWN = 5
 
 function Room() {
   const me = useMe()
@@ -97,6 +102,7 @@ function Room() {
   const upNext = (queue.data?.upNext ?? []).map((id) => byId.get(id)).filter((i): i is QueueItem => !!i)
   const mine = items.filter((i) => isMine(i, me.id) && i.state === 'queued').sort((a, b) => a.lanePosition - b.lanePosition)
   const before = songsBeforeYours(queue.data?.upNext ?? [], items, me.id)
+  const owner = room.ownerId === me.id
 
   return (
     <>
@@ -147,7 +153,15 @@ function Room() {
                       leading={
                         <span className="w-5 shrink-0 text-center text-sm text-muted-foreground tabular-nums">{i + 1}</span>
                       }
-                      trailing={item.autopilot && <NotThisOne roomId={room.id} item={item} />}
+                      trailing={
+                        item.autopilot ? (
+                          <NotThisOne roomId={room.id} item={item} />
+                        ) : (
+                          owner &&
+                          item.addedBy !== me.id &&
+                          item.state === 'queued' && <RemoveTheirs roomId={room.id} item={item} owner={userById(item.addedBy)} />
+                        )
+                      }
                     />
                   </motion.li>
                 ))}
@@ -162,11 +176,20 @@ function Room() {
         </motion.section>
 
         <motion.section variants={fadeUp}>
-          <SectionTitle title="Your lane" count={mine.length} hint={mine.length > 1 ? 'Drag to reorder · swipe to remove' : undefined} />
+          <SectionTitle
+            title="Your lane"
+            count={mine.length}
+            hint={mine.length > 1 ? 'Drag to reorder · swipe to remove' : undefined}
+            action={mine.length > 1 && <ClearLane roomId={room.id} />}
+          />
           <MyLane roomId={room.id} items={mine} me={me} />
         </motion.section>
 
         <Lanes items={items} me={me.id} userById={userById} />
+
+        <motion.div variants={fadeUp}>
+          <RecentlyPlayed roomId={room.id} itemId={np?.itemId} limit={RECENT_SHOWN} />
+        </motion.div>
       </motion.div>
     </>
   )
@@ -454,15 +477,35 @@ function GuestNote({ room, added }: { room: RoomInfo; added: number }) {
   )
 }
 
-function SectionTitle({ title, count, hint }: { title: string; count?: number; hint?: string }) {
+function SectionTitle({ title, count, hint, action }: { title: string; count?: number; hint?: string; action?: ReactNode }) {
   return (
     <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
       <h2 className="text-headline">
         {title}
         {count !== undefined && count > 0 && <span className="ml-2 text-muted-foreground tabular-nums">{count}</span>}
       </h2>
-      {hint && <span className="text-caption text-muted-foreground">{hint}</span>}
+      {(hint || action) && (
+        <span className="flex items-baseline gap-3">
+          {hint && <span className="text-caption text-muted-foreground">{hint}</span>}
+          {action}
+        </span>
+      )}
     </div>
+  )
+}
+
+/** Empties your lane, with a moment to Undo. */
+function ClearLane({ roomId }: { roomId: string }) {
+  const { clear } = useQueueRemoval(roomId)
+  return (
+    <button
+      type="button"
+      onClick={() => clear.mutate()}
+      disabled={clear.isPending}
+      className="rounded-full text-sm font-medium text-muted-foreground outline-none hover:text-destructive focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+    >
+      Clear
+    </button>
   )
 }
 

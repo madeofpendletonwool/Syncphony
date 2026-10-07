@@ -1441,6 +1441,55 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /rooms/{roomId}/queue/restore:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    post:
+      operationId: restoreQueueItems
+      summary: Undo removing songs
+      description: |
+        Puts songs removed in the last minute back in the queue, each where
+        it was in its lane. Only whoever removed a song, or the room's owner,
+        can restore it. All are restored, or none: a song that wasn't
+        removed, or was removed too long ago, is refused with
+        `undo_expired` (409).
+      tags: [queue]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestoreQueueItemsRequest"
+      responses:
+        "200":
+          description: The queue after the change
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueSnapshot"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/lane:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    delete:
+      operationId: clearLane
+      summary: Remove all your waiting songs
+      description: |
+        Your playing song plays on. The songs removed can be put back with
+        `POST /rooms/{roomId}/queue/restore` for a minute.
+      tags: [queue]
+      responses:
+        "200":
+          description: The queue after the change, and what was removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClearedLane"
+        default:
+          $ref: "#/components/responses/Error"
+
   /rooms/{roomId}/stats:
     parameters:
       - $ref: "#/components/parameters/RoomId"
@@ -3882,6 +3931,29 @@ components:
         fromItemId:
           type: string
           description: One of the room's queue items, from history or stats.
+
+    RestoreQueueItemsRequest:
+      type: object
+      required: [itemIds]
+      properties:
+        itemIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: string
+
+    ClearedLane:
+      type: object
+      required: [queue, removed]
+      properties:
+        queue:
+          $ref: "#/components/schemas/QueueSnapshot"
+        removed:
+          type: array
+          description: The IDs of the songs removed, in lane order, to restore them.
+          items:
+            type: string
 
     MoveQueueItemRequest:
       type: object

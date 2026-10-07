@@ -295,6 +295,83 @@ func TestRemove(t *testing.T) {
 	}
 }
 
+func TestRestore(t *testing.T) {
+	e := newEnv(t)
+	ctx := t.Context()
+	e.add(e.alice, "t01", "t02", "t03")
+	snap := e.add(e.bob, "t04")
+	t02, t04 := itemID(t, snap, e.alice, "t02"), itemID(t, snap, e.bob, "t04")
+
+	if _, err := e.q.Remove(ctx, e.room.ID, e.alice.ID, t02); err != nil {
+		t.Fatal(err)
+	}
+	// The owner removes bob's song: it stays out unless she undoes it.
+	if _, err := e.q.Remove(ctx, e.room.ID, e.alice.ID, t04); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.q.Restore(ctx, e.room.ID, e.bob.ID, []string{t04}); !errors.Is(err, queue.ErrForbidden) {
+		t.Errorf("restoring your song the owner removed: %v", err)
+	}
+	if _, err := e.q.Restore(ctx, e.room.ID, e.bob.ID, []string{t02}); !errors.Is(err, queue.ErrForbidden) {
+		t.Errorf("restoring someone else's song: %v", err)
+	}
+	snap, err := e.q.Restore(ctx, e.room.ID, e.alice.ID, []string{t02, t04})
+	if err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	// Each is back where it was in its lane.
+	if got, want := upNext(snap, e.alice, e.bob), "alice:t01 bob:t04 alice:t02 alice:t03"; got != want {
+		t.Errorf("after restoring: %q, want %q", got, want)
+	}
+	if _, err := e.q.Restore(ctx, e.room.ID, e.alice.ID, []string{t02}); !errors.Is(err, queue.ErrUndoExpired) {
+		t.Errorf("restoring a waiting song: %v", err)
+	}
+	if _, err := e.q.Restore(ctx, e.room.ID, e.alice.ID, []string{"nope"}); !errors.Is(err, queue.ErrNotFound) {
+		t.Errorf("restoring a missing item: %v", err)
+	}
+	if _, err := e.q.Restore(ctx, e.room.ID, e.alice.ID, nil); !isInvalid(err) {
+		t.Errorf("restoring nothing: %v", err)
+	}
+
+	// Too late.
+	if _, err := e.q.Remove(ctx, e.room.ID, e.alice.ID, t02); err != nil {
+		t.Fatal(err)
+	}
+	e.mu.Lock()
+	e.now = e.now.Add(queue.UndoWindow)
+	e.mu.Unlock()
+	if _, err := e.q.Restore(ctx, e.room.ID, e.alice.ID, []string{t02}); !errors.Is(err, queue.ErrUndoExpired) {
+		t.Errorf("restoring after the undo window: %v", err)
+	}
+}
+
+func TestClearLane(t *testing.T) {
+	e := newEnv(t)
+	ctx := t.Context()
+	e.add(e.alice, "t01", "t02", "t03")
+	e.add(e.bob, "t04")
+
+	snap, removed, err := e.q.ClearLane(ctx, e.room.ID, e.alice.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed) != 3 {
+		t.Errorf("removed %d songs, want 3", len(removed))
+	}
+	if got, want := upNext(snap, e.alice, e.bob), "bob:t04"; got != want {
+		t.Errorf("after clearing: %q, want %q", got, want)
+	}
+	if snap, err = e.q.Restore(ctx, e.room.ID, e.alice.ID, removed); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if got, want := upNext(snap, e.alice, e.bob), "alice:t01 bob:t04 alice:t02 alice:t03"; got != want {
+		t.Errorf("after undoing: %q, want %q", got, want)
+	}
+	if _, removed, err = e.q.ClearLane(ctx, e.room.ID, e.bob.ID); err != nil || len(removed) != 1 {
+		t.Errorf("clearing bob's lane: %d removed, %v", len(removed), err)
+	}
+}
+
 // TestPlayback drives the queue the way the playback engine will, through
 // Change, and checks that what's playing and who played last shape the order.
 func TestPlayback(t *testing.T) {

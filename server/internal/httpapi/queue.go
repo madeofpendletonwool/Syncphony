@@ -47,3 +47,24 @@ func (s *Server) RemoveQueueItem(ctx context.Context, req RemoveQueueItemRequest
 	}
 	return RemoveQueueItem200JSONResponse(toQueueSnapshot(snap)), nil
 }
+
+// RestoreQueueItems puts songs removed moments ago back where they were.
+func (s *Server) RestoreQueueItems(ctx context.Context, req RestoreQueueItemsRequestObject) (RestoreQueueItemsResponseObject, error) {
+	snap, err := s.Queue.Restore(ctx, req.RoomId, sessionFrom(ctx).User.ID, req.Body.ItemIds)
+	if err != nil {
+		return nil, err
+	}
+	return RestoreQueueItems200JSONResponse(toQueueSnapshot(snap)), nil
+}
+
+// ClearLane removes all of the caller's waiting songs.
+func (s *Server) ClearLane(ctx context.Context, req ClearLaneRequestObject) (ClearLaneResponseObject, error) {
+	snap, removed, err := s.Queue.ClearLane(ctx, req.RoomId, sessionFrom(ctx).User.ID)
+	if err != nil {
+		return nil, err
+	}
+	if removed == nil {
+		removed = []string{}
+	}
+	return ClearLane200JSONResponse{Queue: toQueueSnapshot(snap), Removed: removed}, nil
+}

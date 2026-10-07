@@ -114,7 +114,7 @@ export function useAddToLane() {
     [adding, inLane],
   )
 
-  return { add: mutation.mutate, status, room }
+  return { add: mutation.mutate, status, room, queue: queue.data }
 }
 
 /**

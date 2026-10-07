@@ -755,6 +755,14 @@ type ClaimPlayerRequest struct {
 	Name string `json:"name"`
 }
 
+// ClearedLane defines model for ClearedLane.
+type ClearedLane struct {
+	Queue QueueSnapshot `json:"queue"`
+
+	// Removed The IDs of the songs removed, in lane order, to restore them.
+	Removed []string `json:"removed"`
+}
+
 // CreateGuestPassRequest defines model for CreateGuestPassRequest.
 type CreateGuestPassRequest struct {
 	// ExpiresAt When the pass, and everyone who joins with it, expires: e.g. the
@@ -1568,6 +1576,11 @@ type ResetPasswordRequest struct {
 	NewPassword Password `json:"newPassword"`
 }
 
+// RestoreQueueItemsRequest defines model for RestoreQueueItemsRequest.
+type RestoreQueueItemsRequest struct {
+	ItemIds []string `json:"itemIds"`
+}
+
 // Role defines model for Role.
 type Role string
 
@@ -2342,6 +2355,9 @@ type ReportPlaybackJSONRequestBody = PlayerReport
 // AddToQueueJSONRequestBody defines body for AddToQueue for application/json ContentType.
 type AddToQueueJSONRequestBody = AddToQueueRequest
 
+// RestoreQueueItemsJSONRequestBody defines body for RestoreQueueItems for application/json ContentType.
+type RestoreQueueItemsJSONRequestBody = RestoreQueueItemsRequest
+
 // MoveQueueItemJSONRequestBody defines body for MoveQueueItem for application/json ContentType.
 type MoveQueueItemJSONRequestBody = MoveQueueItemRequest
 
@@ -2590,6 +2606,9 @@ type ServerInterface interface {
 	// GetHistory Songs the room played, newest first
 	// (GET /rooms/{roomId}/history)
 	GetHistory(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetHistoryParams)
+	// ClearLane Remove all your waiting songs
+	// (DELETE /rooms/{roomId}/lane)
+	ClearLane(w http.ResponseWriter, r *http.Request, roomId RoomId)
 	// ListNights The room's past nights, and their songs of the night
 	// (GET /rooms/{roomId}/nights)
 	ListNights(w http.ResponseWriter, r *http.Request, roomId RoomId, params ListNightsParams)
@@ -2620,6 +2639,9 @@ type ServerInterface interface {
 	// AddToQueue Add songs to the end of your lane
 	// (POST /rooms/{roomId}/queue)
 	AddToQueue(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// RestoreQueueItems Undo removing songs
+	// (POST /rooms/{roomId}/queue/restore)
+	RestoreQueueItems(w http.ResponseWriter, r *http.Request, roomId RoomId)
 	// RemoveQueueItem Remove a queued song
 	// (DELETE /rooms/{roomId}/queue/{itemId})
 	RemoveQueueItem(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
@@ -4465,6 +4487,32 @@ func (siw *ServerInterfaceWrapper) GetHistory(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// ClearLane operation middleware
+func (siw *ServerInterfaceWrapper) ClearLane(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClearLane(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListNights operation middleware
 func (siw *ServerInterfaceWrapper) ListNights(w http.ResponseWriter, r *http.Request) {
 
@@ -4748,6 +4796,32 @@ func (siw *ServerInterfaceWrapper) AddToQueue(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AddToQueue(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RestoreQueueItems operation middleware
+func (siw *ServerInterfaceWrapper) RestoreQueueItems(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RestoreQueueItems(w, r, roomId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5848,6 +5922,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artwork", wrapper.GetLinkArtwork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.GetQueue)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/queue", wrapper.AddToQueue)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/queue/restore", wrapper.RestoreQueueItems)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/lane", wrapper.ClearLane)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/stats", wrapper.GetRoomStats)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/sessions", wrapper.ListSessions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/history", wrapper.GetHistory)
@@ -8829,6 +8905,45 @@ func (response GetHistorydefaultJSONResponse) VisitGetHistoryResponse(w http.Res
 	return err
 }
 
+type ClearLaneRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type ClearLaneResponseObject interface {
+	VisitClearLaneResponse(w http.ResponseWriter) error
+}
+
+type ClearLane200JSONResponse ClearedLane
+
+func (response ClearLane200JSONResponse) VisitClearLaneResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearLanedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ClearLanedefaultJSONResponse) VisitClearLaneResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListNightsRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 	Params ListNightsParams
@@ -9215,6 +9330,46 @@ type AddToQueuedefaultJSONResponse struct {
 }
 
 func (response AddToQueuedefaultJSONResponse) VisitAddToQueueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreQueueItemsRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Body   *RestoreQueueItemsJSONRequestBody
+}
+
+type RestoreQueueItemsResponseObject interface {
+	VisitRestoreQueueItemsResponse(w http.ResponseWriter) error
+}
+
+type RestoreQueueItems200JSONResponse QueueSnapshot
+
+func (response RestoreQueueItems200JSONResponse) VisitRestoreQueueItemsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreQueueItemsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RestoreQueueItemsdefaultJSONResponse) VisitRestoreQueueItemsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -10482,6 +10637,9 @@ type StrictServerInterface interface {
 	// GetHistory Songs the room played, newest first
 	// (GET /rooms/{roomId}/history)
 	GetHistory(ctx context.Context, request GetHistoryRequestObject) (GetHistoryResponseObject, error)
+	// ClearLane Remove all your waiting songs
+	// (DELETE /rooms/{roomId}/lane)
+	ClearLane(ctx context.Context, request ClearLaneRequestObject) (ClearLaneResponseObject, error)
 	// ListNights The room's past nights, and their songs of the night
 	// (GET /rooms/{roomId}/nights)
 	ListNights(ctx context.Context, request ListNightsRequestObject) (ListNightsResponseObject, error)
@@ -10512,6 +10670,9 @@ type StrictServerInterface interface {
 	// AddToQueue Add songs to the end of your lane
 	// (POST /rooms/{roomId}/queue)
 	AddToQueue(ctx context.Context, request AddToQueueRequestObject) (AddToQueueResponseObject, error)
+	// RestoreQueueItems Undo removing songs
+	// (POST /rooms/{roomId}/queue/restore)
+	RestoreQueueItems(ctx context.Context, request RestoreQueueItemsRequestObject) (RestoreQueueItemsResponseObject, error)
 	// RemoveQueueItem Remove a queued song
 	// (DELETE /rooms/{roomId}/queue/{itemId})
 	RemoveQueueItem(ctx context.Context, request RemoveQueueItemRequestObject) (RemoveQueueItemResponseObject, error)
@@ -12737,6 +12898,32 @@ func (sh *strictHandler) GetHistory(w http.ResponseWriter, r *http.Request, room
 	}
 }
 
+// ClearLane operation middleware
+func (sh *strictHandler) ClearLane(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request ClearLaneRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ClearLane(ctx, request.(ClearLaneRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ClearLane")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ClearLaneResponseObject); ok {
+		if err := validResponse.VisitClearLaneResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListNights operation middleware
 func (sh *strictHandler) ListNights(w http.ResponseWriter, r *http.Request, roomId RoomId, params ListNightsParams) {
 	var request ListNightsRequestObject
@@ -13027,6 +13214,39 @@ func (sh *strictHandler) AddToQueue(w http.ResponseWriter, r *http.Request, room
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AddToQueueResponseObject); ok {
 		if err := validResponse.VisitAddToQueueResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RestoreQueueItems operation middleware
+func (sh *strictHandler) RestoreQueueItems(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request RestoreQueueItemsRequestObject
+
+	request.RoomId = roomId
+
+	var body RestoreQueueItemsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RestoreQueueItems(ctx, request.(RestoreQueueItemsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RestoreQueueItems")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RestoreQueueItemsResponseObject); ok {
+		if err := validResponse.VisitRestoreQueueItemsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
