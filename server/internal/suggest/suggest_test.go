@@ -241,6 +241,26 @@ func TestQueueVibe(t *testing.T) {
 	}
 }
 
+func TestSkipMemory(t *testing.T) {
+	e := newEnv(t, fake.Options{})
+	e.play(e.add(e.alice, "t01").ID, store.EndFinished)
+	// The room skipped Null Island, and they're what comes after The
+	// Test Patterns: more of them isn't the vibe.
+	e.play(e.add(e.bob, "t07").ID, store.EndSkipped)
+
+	got := e.suggest(e.alice, suggest.ScopeMine, suggest.OriginHistory, 8, false)
+	if want := []string{"t02", "t03", "t04", "t05", "t06"}; !slices.Equal(ids(got), want) {
+		t.Fatalf("suggested %v, want only The Test Patterns %v", ids(got), want)
+	}
+
+	// A full listen says the room did want them after all.
+	e.play(e.add(e.alice, "t08").ID, store.EndFinished)
+	got = e.suggest(e.alice, suggest.ScopeMine, suggest.OriginHistory, 4, false)
+	if !slices.Contains(ids(got), "t09") {
+		t.Fatalf("suggested %v, want Null Island back after a full listen", ids(got))
+	}
+}
+
 func TestNothingToGoOn(t *testing.T) {
 	e := newEnv(t, fake.Options{})
 	if got := e.suggest(e.alice, suggest.ScopeGroup, suggest.OriginHistory, 10, false); len(got) != 0 {

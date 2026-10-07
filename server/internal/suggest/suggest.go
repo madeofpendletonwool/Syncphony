@@ -3,8 +3,9 @@
 // Package suggest finds songs to keep a room's vibe going: songs like the
 // ones the room has been playing and has queued. Search shows them before
 // you type, as "your vibe" (like your own songs) and "group vibe" (like
-// everyone's). Autopilot finds its songs with the same Finder. See
-// docs/adr/0010-suggestions.md.
+// everyone's). A song the room skipped doesn't seed, and turns its artist
+// away, unless the room finished or queued one of theirs. Autopilot finds
+// its songs with the same Finder. See docs/adr/0010-suggestions.md.
 //
 // Suggestions only come from links the asker can add from, so every one
 // can be queued with a tap. Services that recommend (provider.Recommender)
@@ -207,6 +208,7 @@ func (s *Service) build(ctx context.Context, q Query, snap rooms.QueueSnapshot, 
 	if len(seeds) == 0 {
 		return nil, nil
 	}
+	turned := TurnedAway(snap, history)
 	links, err := s.links.Usable(ctx, q.UserID)
 	if err != nil {
 		return nil, err
@@ -246,13 +248,13 @@ func (s *Service) build(ctx context.Context, q Query, snap rooms.QueueSnapshot, 
 			} else if sess, ok := f.Open(ctx, l.ID); ok {
 				cands = f.ByArtist(ctx, sess, l, sd)
 			}
-			var fresh []provider.Track
-			for _, t := range cands {
-				if !seen.Has(t) && !taken.Has(t) {
-					taken.Track(t)
-					fresh = append(fresh, t)
-				}
+		var fresh []provider.Track
+		for _, t := range cands {
+			if !seen.Has(t) && !taken.Has(t) && !turned[ArtistKey(t)] {
+				taken.Track(t)
+				fresh = append(fresh, t)
 			}
+		}
 			for _, t := range s.sample(fresh, perSeed-len(lists[i])) {
 				lists[i] = append(lists[i], Suggestion{Track: t, Seed: sd.Item})
 			}
@@ -339,6 +341,40 @@ func Seeds(scope Scope, origin Origin, userID string, snap rooms.QueueSnapshot, 
 		}
 	}
 	return pickSeeds(scope, userID, all)
+}
+
+// TurnedAway returns the artists the room skipped a song of and never
+// finished or queued one of theirs: a skip says the room didn't want that
+// vibe, but a full listen or a queued song says it did. Songs by those
+// artists aren't suggested, either side of the room's history.
+func TurnedAway(snap rooms.QueueSnapshot, history []store.ListHistoryRow) map[string]bool {
+	liked := map[string]bool{}
+	for _, it := range snap.Items {
+		liked[ArtistKey(TrackOf(it))] = true
+	}
+	var out map[string]bool
+	for _, h := range history {
+		if !h.PlayHistory.EndedAt.Valid {
+			continue
+		}
+		a := ArtistKey(TrackOf(h.QueueItem))
+		if a == "" {
+			continue
+		}
+		switch h.PlayHistory.EndReason.String {
+		case store.EndSkipped:
+			if out == nil {
+				out = map[string]bool{}
+			}
+			out[a] = true
+		case store.EndFinished:
+			liked[a] = true
+		}
+	}
+	for a := range liked {
+		delete(out, a)
+	}
+	return out
 }
 
 // pickSeeds picks the seeds from items: each member's songs take turns,

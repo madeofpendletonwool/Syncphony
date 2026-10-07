@@ -1309,7 +1309,8 @@ export interface paths {
          *     playing now, from links you can add from. `mine` is like your own
          *     songs; `group` is like everyone's, members taking turns. Songs
          *     waiting, playing or recently played aren't suggested, nor are
-         *     autopilot's.
+         *     autopilot's, nor songs by an artist the room skipped a song of
+         *     without ever finishing or queuing one of theirs.
          *     `source=queue` reads the vibe from what's playing and waiting
          *     instead, so a queued change of vibe is reflected; what played
          *     through stands in when nothing's queued.
