@@ -103,7 +103,7 @@ MusicBrainz joins when `SYNCPHONY_MUSICBRAINZ_URL` isn't off. `TestLive` in `int
 
   Each signal halves every 2 hours. A song's length comes from its metadata, or is taken as 4 minutes. "Similar" is what the graph's cache knows.
 - **Fair across members.** Each member's likes are scaled to the same total, however many songs they've queued. Members in the room count 1.5, members who left 1, and autopilot's songs 0.5. Weights are relative to the room's favorite artist, which scores 1.
-- **Turned away.** An artist whose decayed net signal is below −0.25 (about one skip in the last two hours outweighing the room's liking) is left out entirely, both as a seed and as a pick. A skip long ago, decayed to almost nothing, no longer turns an artist away (MAD-762). Between −0.25 and 0 the artist is *in doubt*, and their songs lose up to 0.3. Autopilot's fallback uses the same rule; it replaced ADR 0008's "avoid that artist for 20 songs".
+- **Turned away.** An artist whose decayed net signal is below −0.25 (about one skip in the last two hours outweighing the room's liking) is left out entirely, both as a seed and as a pick. A skip long ago, decayed to almost nothing, no longer turns an artist away (MAD-762). Suggestions use the same rule. Between −0.25 and 0 the artist is *in doubt*, and their songs lose up to 0.3. Autopilot's fallback uses the same rule; it replaced ADR 0008's "avoid that artist for 20 songs".
 - **Tonight.** Artists liked so long ago that they weigh under 1% of the favorite drop out. Spacing counts only songs of the current session: the run since the room was last quiet for 2 hours (`stats.SessionGap`).
 - **Heard.** Songs the room heard or has waiting are compared by artist and title without qualifiers, so a remaster or live take of a song the room just heard doesn't play.
 
@@ -253,6 +253,6 @@ If the graph has no sources, knows nothing near the room's taste, or none of its
 - The first fill after a cold start knows only the artists it fetched in time. The warmer catches up from the songs being queued.
 - `AutopilotInfo.reason` is stored with each song; it isn't in the API until MAD-760.
 - A room's long-term taste is the room's: it's deleted with the room. It names members by ID, and keeps an artist only while its likes or skips are above 0.005, about 15 nights of silence for one play.
-- Suggestions (ADR 0010) still use their own unfaded "turned away" rule until MAD-759 moves them onto the DJ.
+- Suggestions (ADR 0010) turn artists away by the same rule as the DJ (`suggest.TurnedAway` reads `dj.Profile.Avoid`), so a skip fades there too (MAD-762). MAD-759 moves the rest of suggestions onto the DJ.
 - Tempo is often unknown: Deezer has a BPM for some songs and 0 for many, and few libraries tag it. Set flow treats 0 as unknown, so a room with little known about its songs plays as it did before; it flows better as the cache warms.
 - Energy is a guess from tags and tempo. A band tagged "rock" plays its ballads as rock.

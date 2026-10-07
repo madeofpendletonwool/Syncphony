@@ -70,6 +70,7 @@ func newEnv(t *testing.T, opts fake.Options) *env {
 	e.q.Now = e.clock
 	e.sg = suggest.New(db, e.rooms, e.links)
 	e.sg.Rand = func(n int) int { return e.pick % n }
+	e.sg.Now = e.clock
 	e.alice = e.member(opts.ID, "alice")
 	e.bob = e.member(opts.ID, "bob")
 	e.room, err = e.rooms.Create(t.Context(), e.alice.ID, "Living room", "", rooms.Settings{})
@@ -253,11 +254,26 @@ func TestSkipMemory(t *testing.T) {
 		t.Fatalf("suggested %v, want only The Test Patterns %v", ids(got), want)
 	}
 
-	// A full listen says the room did want them after all.
+	// Full listens say the room did want them after all: two outweigh a
+	// quick skip.
 	e.play(e.add(e.alice, "t08").ID, store.EndFinished)
+	e.play(e.add(e.bob, "t11").ID, store.EndFinished)
 	got = e.suggest(e.alice, suggest.ScopeMine, suggest.OriginHistory, 4, false)
 	if !slices.Contains(ids(got), "t09") {
-		t.Fatalf("suggested %v, want Null Island back after a full listen", ids(got))
+		t.Fatalf("suggested %v, want Null Island back after full listens", ids(got))
+	}
+}
+
+// A skip fades: two days on, it no longer turns an artist away (MAD-762).
+func TestSkipFades(t *testing.T) {
+	e := newEnv(t, fake.Options{})
+	e.play(e.add(e.alice, "t01").ID, store.EndFinished)
+	e.play(e.add(e.bob, "t07").ID, store.EndSkipped)
+	e.mu.Lock()
+	e.now = e.now.Add(48 * time.Hour)
+	e.mu.Unlock()
+	if got := ids(e.suggest(e.alice, suggest.ScopeMine, suggest.OriginHistory, 8, false)); !slices.Contains(got, "t08") {
+		t.Fatalf("two days after the skip: suggested %v, want Null Island back", got)
 	}
 }
 
