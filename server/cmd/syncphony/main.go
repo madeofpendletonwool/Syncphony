@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
 	"github.com/madeofpendletonwool/syncphony/server/internal/match"
 	"github.com/madeofpendletonwool/syncphony/server/internal/musicbrainz"
+	"github.com/madeofpendletonwool/syncphony/server/internal/musicgraph"
 	"github.com/madeofpendletonwool/syncphony/server/internal/nights"
 	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
 	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
@@ -186,8 +188,12 @@ func run() error {
 	} else {
 		slog.Info("MusicBrainz is off: artwork comes only from linked services, and there are no liner notes")
 	}
+	graph := newMusicGraph(cfg, db, mb, userAgent)
+	if len(graph.Sources()) > 0 {
+		go graph.Run(ctx)
+	}
 	roomSvc := rooms.New(db, a.bus)
-	go sweep(ctx, db, accounts, roomSvc, lyricsSvc, mb, notes)
+	go sweep(ctx, db, accounts, roomSvc, lyricsSvc, mb, notes, graph)
 	queueSvc := queue.New(db, roomSvc, a.links)
 	art := artwork.New(a.links, mb)
 	palettes := palette.New(db, art)
@@ -197,6 +203,9 @@ func run() error {
 			mb.Enqueue(ts...)
 		}
 		palettes.Enqueue(ts...)
+		if len(graph.Sources()) > 0 {
+			graph.Warm(ts...)
+		}
 	}
 	var transcoder transcode.Transcoder
 	if ff := (transcode.FFmpeg{}); ff.Available() {
@@ -287,9 +296,42 @@ func tick(ctx context.Context, api *httpapi.Server, ns *nights.Service) {
 	}
 }
 
+// newMusicGraph sets up the DJ's music knowledge (ADR 0012) from the
+// sources that are configured.
+func newMusicGraph(cfg config.Config, db *store.Store, mb *musicbrainz.Service, userAgent string) *musicgraph.Service {
+	var sources []musicgraph.Source
+	if cfg.LastFMKey != "" {
+		sources = append(sources, musicgraph.NewLastFM(musicgraph.LastFMOptions{Key: cfg.LastFMKey, UserAgent: userAgent}))
+	} else {
+		slog.Info("Last.fm is off: set SYNCPHONY_LASTFM_KEY for the best similar artists and songs")
+	}
+	if cfg.ListenBrainzURL != "" {
+		sources = append(sources, musicgraph.NewListenBrainz(musicgraph.ListenBrainzOptions{
+			BaseURL: cfg.ListenBrainzURL, Token: cfg.ListenBrainzToken, UserAgent: userAgent,
+		}))
+	}
+	if cfg.DeezerURL != "" {
+		sources = append(sources, musicgraph.NewDeezer(musicgraph.DeezerOptions{BaseURL: cfg.DeezerURL, UserAgent: userAgent}))
+	}
+	opts := musicgraph.Options{}
+	if mb != nil {
+		sources = append(sources, musicgraph.NewMusicBrainz(mb))
+		opts.Finder = mb
+	}
+	opts.Sources = sources
+	graph := musicgraph.New(db, opts)
+	if len(sources) > 0 {
+		slog.Info("music knowledge for the DJ", "sources", strings.Join(graph.Sources(), ", "))
+	} else {
+		slog.Info("music knowledge is off: no sources are configured")
+	}
+	return graph
+}
+
 // sweep deletes expired sessions, displays and room invites, cached lyrics,
-// MusicBrainz matches and liner notes every hour until ctx is done.
-func sweep(ctx context.Context, db *store.Store, accounts *auth.Service, rs *rooms.Service, ly *lyrics.Service, mb *musicbrainz.Service, notes *linernotes.Service) {
+// MusicBrainz matches, liner notes and music knowledge every hour until ctx
+// is done.
+func sweep(ctx context.Context, db *store.Store, accounts *auth.Service, rs *rooms.Service, ly *lyrics.Service, mb *musicbrainz.Service, notes *linernotes.Service, graph *musicgraph.Service) {
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()
 	for {
@@ -317,6 +359,9 @@ func sweep(ctx context.Context, db *store.Store, accounts *auth.Service, rs *roo
 			if err := notes.Sweep(ctx); err != nil {
 				slog.Warn("sweeping expired liner notes", "err", err)
 			}
+		}
+		if err := graph.Sweep(ctx); err != nil {
+			slog.Warn("sweeping expired music knowledge", "err", err)
 		}
 		select {
 		case <-ctx.Done():

@@ -1,0 +1,8 @@
+{"id":"0b3a1c55-2f0c-4a35-9a3e-6a1f33a0e001","name":"The Square Roots","type":"Group",
+ "genres":[
+   {"id":"ceeaa283-5d7b-4202-8d1d-e25d116b2a18","name":"alternative rock","count":4,"disambiguation":""},
+   {"id":"b7ef058e-6d83-4ca4-8123-9724bff4648b","name":"art rock","count":9,"disambiguation":""}],
+ "tags":[
+   {"name":"alternative rock","count":4},
+   {"name":"british","count":2},
+   {"name":"downvoted","count":-1}]}
