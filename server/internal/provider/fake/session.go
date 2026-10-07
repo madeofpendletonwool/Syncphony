@@ -110,7 +110,8 @@ func (s *session) Search(ctx context.Context, q provider.SearchQuery) (provider.
 				page.Artists = append(page.Artists, toArtist(a))
 			}
 		case provider.KindPlaylist:
-			for _, pl := range playlists {
+			// Like a service's search: everyone's playlists, the account's own too.
+			for _, pl := range slices.Concat(playlists, publicPlaylists) {
 				if match(pl.name) {
 					page.Playlists = append(page.Playlists, toPlaylist(pl.id, pl.name, len(pl.tracks())))
 				}
@@ -273,7 +274,8 @@ func (s *session) PlaylistTracks(ctx context.Context, id, cursor string) (provid
 	if err := s.begin(ctx); err != nil {
 		return provider.Page[provider.Track]{}, err
 	}
-	i := slices.IndexFunc(playlists, func(pl playlist) bool { return pl.id == id })
+	all := slices.Concat(playlists, publicPlaylists)
+	i := slices.IndexFunc(all, func(pl playlist) bool { return pl.id == id })
 	if i < 0 {
 		return provider.Page[provider.Track]{}, fmt.Errorf("fake: playlist %q: %w", id, provider.ErrNotFound)
 	}
@@ -285,7 +287,7 @@ func (s *session) PlaylistTracks(ctx context.Context, id, cursor string) (provid
 		}
 		offset = n
 	}
-	ts := playlists[i].tracks()
+	ts := all[i].tracks()
 	var page provider.Page[provider.Track]
 	if window(&ts, offset, playlistPageSize) {
 		page.Next = strconv.Itoa(offset + playlistPageSize)

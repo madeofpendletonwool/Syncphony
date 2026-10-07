@@ -75,6 +75,7 @@ type Server struct {
 	TrustedProxies []netip.Prefix
 
 	reactions reactionLimiter
+	playlists playlistCache
 }
 
 var _ StrictServerInterface = (*Server)(nil)

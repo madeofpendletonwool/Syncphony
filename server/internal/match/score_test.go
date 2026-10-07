@@ -69,8 +69,8 @@ func TestSimplify(t *testing.T) {
 		"  AC/DC  ":         "ac dc",
 		"Sigur Rós":         "sigur ros",
 	} {
-		if got := simplify(in); got != want {
-			t.Errorf("simplify(%q) = %q, want %q", in, got, want)
+		if got := Simplify(in); got != want {
+			t.Errorf("Simplify(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

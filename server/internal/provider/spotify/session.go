@@ -68,6 +68,12 @@ func (s *session) Search(ctx context.Context, q provider.SearchQuery) (provider.
 		switch k {
 		case provider.KindTrack, provider.KindAlbum, provider.KindArtist:
 			types = append(types, string(k))
+		case provider.KindPlaylist:
+			// Found playlists are read through the library.
+			if s.p.library == nil {
+				return provider.SearchPage{}, fmt.Errorf("spotify: search %q: %w", k, provider.ErrUnsupported)
+			}
+			types = append(types, string(k))
 		default:
 			return provider.SearchPage{}, fmt.Errorf("spotify: search %q: %w", k, provider.ErrUnsupported)
 		}
@@ -120,6 +126,14 @@ func (s *session) Search(ctx context.Context, q provider.SearchQuery) (provider.
 		for _, a := range r.Artists.Items {
 			if a.ID != "" {
 				page.Artists = append(page.Artists, provider.Artist{ID: a.ID, Name: a.Name, Artwork: s.artworkRef(a.Images)})
+			}
+		}
+	}
+	if r.Playlists != nil {
+		more = more || r.Playlists.Next != nil
+		for _, pl := range r.Playlists.Items {
+			if pl.ID != "" {
+				page.Playlists = append(page.Playlists, s.playlist(pl))
 			}
 		}
 	}
@@ -240,6 +254,20 @@ func (s *session) album(a album) provider.Album {
 		TrackCount: a.TotalTracks,
 		Artwork:    s.artworkRef(a.Images),
 	}
+}
+
+func (s *session) playlist(pl playlist) provider.Playlist {
+	out := provider.Playlist{ID: pl.ID, Name: pl.Name, Owner: pl.Owner.DisplayName, Artwork: s.artworkRef(pl.Images)}
+	if out.Owner == "" {
+		out.Owner = pl.Owner.ID
+	}
+	switch {
+	case pl.Items != nil:
+		out.TrackCount = pl.Items.Total
+	case pl.Tracks != nil:
+		out.TrackCount = pl.Tracks.Total
+	}
+	return out
 }
 
 func credits(list []artistCredit) []provider.ArtistCredit {
