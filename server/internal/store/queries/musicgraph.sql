@@ -27,3 +27,9 @@ ON CONFLICT (key) DO UPDATE SET
 
 -- name: DeleteExpiredMusicGraphTracks :exec
 DELETE FROM musicgraph_tracks WHERE expires_at <= ?;
+
+-- name: ListMusicGraphArtists :many
+SELECT * FROM musicgraph_artists WHERE expires_at > sqlc.arg(now) ORDER BY fetched_at;
+
+-- name: ListMusicGraphTracks :many
+SELECT * FROM musicgraph_tracks WHERE expires_at > sqlc.arg(now) ORDER BY fetched_at;

@@ -97,6 +97,73 @@ func (q *Queries) GetMusicGraphTrack(ctx context.Context, arg GetMusicGraphTrack
 	return i, err
 }
 
+const listMusicGraphArtists = `-- name: ListMusicGraphArtists :many
+SELECT "key", mbid, found, facts, fetched_at, expires_at FROM musicgraph_artists WHERE expires_at > ?1 ORDER BY fetched_at
+`
+
+func (q *Queries) ListMusicGraphArtists(ctx context.Context, now time.Time) ([]MusicgraphArtist, error) {
+	rows, err := q.db.QueryContext(ctx, listMusicGraphArtists, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MusicgraphArtist{}
+	for rows.Next() {
+		var i MusicgraphArtist
+		if err := rows.Scan(
+			&i.Key,
+			&i.Mbid,
+			&i.Found,
+			&i.Facts,
+			&i.FetchedAt,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMusicGraphTracks = `-- name: ListMusicGraphTracks :many
+SELECT "key", found, facts, fetched_at, expires_at FROM musicgraph_tracks WHERE expires_at > ?1 ORDER BY fetched_at
+`
+
+func (q *Queries) ListMusicGraphTracks(ctx context.Context, now time.Time) ([]MusicgraphTrack, error) {
+	rows, err := q.db.QueryContext(ctx, listMusicGraphTracks, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MusicgraphTrack{}
+	for rows.Next() {
+		var i MusicgraphTrack
+		if err := rows.Scan(
+			&i.Key,
+			&i.Found,
+			&i.Facts,
+			&i.FetchedAt,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const putMusicGraphArtist = `-- name: PutMusicGraphArtist :exec
 INSERT INTO musicgraph_artists (key, mbid, found, facts, fetched_at, expires_at)
 VALUES (?, ?, ?, ?, ?, ?)

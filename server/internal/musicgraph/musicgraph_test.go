@@ -67,14 +67,18 @@ var routes = map[string]string{
 // fake stands in for Last.fm, Deezer and ListenBrainz.
 type fake struct {
 	*httptest.Server
-	mu       sync.Mutex
-	routes   map[string]string
-	status   map[string]int // a prefix to fail with a status
+	mu     sync.Mutex
+	routes map[string]string
+	status map[string]int // a prefix to fail with a status
+	// throttle is how many more requests under a prefix get a 429.
+	throttle map[string]int
+	// headers are sent with every answer under a prefix.
+	headers  map[string]http.Header
 	requests []*http.Request
 }
 
 func newFake(t *testing.T) *fake {
-	f := &fake{routes: map[string]string{}, status: map[string]int{}}
+	f := &fake{routes: map[string]string{}, status: map[string]int{}, throttle: map[string]int{}, headers: map[string]http.Header{}}
 	for k, v := range routes {
 		f.routes[k] = v
 	}
@@ -112,6 +116,19 @@ func (f *fake) serve(w http.ResponseWriter, r *http.Request) {
 	for prefix, s := range f.status {
 		if strings.HasPrefix(r.URL.Path, prefix) {
 			status = s
+		}
+	}
+	for prefix, n := range f.throttle {
+		if strings.HasPrefix(r.URL.Path, prefix) && n > 0 {
+			f.throttle[prefix]--
+			status = http.StatusTooManyRequests
+		}
+	}
+	for prefix, h := range f.headers {
+		if strings.HasPrefix(r.URL.Path, prefix) {
+			for k, v := range h {
+				w.Header()[k] = v
+			}
 		}
 	}
 	f.mu.Unlock()
@@ -208,6 +225,7 @@ type env struct {
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
+	t.Cleanup(musicgraph.SetBackOff(10 * time.Millisecond))
 	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -398,6 +416,60 @@ func TestRateLimits(t *testing.T) {
 	}
 }
 
+// A throttled request is waited out and tried again, so the source still
+// answers.
+func TestThrottleIsRetried(t *testing.T) {
+	e := newEnv(t)
+	e.http.throttle["/labs/"] = 1
+	e.http.routes["/lastfm/?artist.getTopTags&Radiohead"] = `{"error":29,"message":"Rate Limit Exceeded"}`
+	a, err := e.svc.Artist(t.Context(), radiohead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(a.Sources, "listenbrainz") {
+		t.Errorf("sources %v: want ListenBrainz, after a retry", a.Sources)
+	}
+	if slices.Contains(a.Sources, "lastfm") {
+		t.Errorf("sources %v: Last.fm was throttled twice, and should have given up", a.Sources)
+	}
+	e.now = e.now.Add(2 * time.Hour)
+	if _, ok, _ := e.svc.CachedArtist(t.Context(), radiohead); ok {
+		t.Error("an answer missing a throttled source was kept past MissTTL")
+	}
+}
+
+// A source that says its window is used up is left alone until the next.
+func TestHeedsRateLimitHeaders(t *testing.T) {
+	e := newEnv(t)
+	e.http.headers["/labs/"] = http.Header{"X-Ratelimit-Remaining": {"0"}, "X-Ratelimit-Reset-In": {"1"}}
+	src := musicgraph.NewListenBrainz(musicgraph.ListenBrainzOptions{BaseURL: e.http.URL + "/lb", LabsURL: e.http.URL + "/labs", Interval: -1})
+	start := time.Now()
+	if _, err := src.Artist(t.Context(), musicgraph.ArtistRef{Name: "Radiohead", MBID: radioheadMBID}); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d < time.Second {
+		t.Errorf("the next request went after %v, before the window reset", d)
+	}
+}
+
+// ListenBrainz sometimes refuses anonymous requests for popularity. Its
+// similar artists still count, and the answer is kept the full TTL.
+func TestListenBrainzWithoutToken(t *testing.T) {
+	e := newEnv(t)
+	e.http.fail("/lb/", http.StatusUnauthorized)
+	a, err := e.svc.Artist(t.Context(), radiohead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(a.Sources, "listenbrainz") || !slices.Contains(a.Similar[0].Sources, "listenbrainz") {
+		t.Errorf("sources %v, Portishead's %v: want ListenBrainz's similar artists", a.Sources, a.Similar[0].Sources)
+	}
+	e.now = e.now.Add(2 * time.Hour)
+	if _, ok, _ := e.svc.CachedArtist(t.Context(), radiohead); !ok {
+		t.Error("a refusal for want of a token was treated as a failure, kept only until MissTTL")
+	}
+}
+
 func TestTrackMergesSources(t *testing.T) {
 	e := newEnv(t)
 	creep := musicgraph.SongRef{Title: "Creep", Artist: radiohead, ISRC: "GBAYE9200070", MBID: creepMBID}
@@ -498,6 +570,52 @@ func TestWarm(t *testing.T) {
 		if strings.Contains(p, "Massive Attack") {
 			t.Errorf("warmed two hops out: %s", p)
 		}
+	}
+}
+
+func TestRepair(t *testing.T) {
+	e := newEnv(t)
+	e.http.routes["/lastfm/?artist.getSimilar&Muse"] = `{"similarartists":{"artist":[{"name":"Radiohead","mbid":"","match":"1"}]}}`
+	e.http.routes["/lastfm/?artist.getTopTracks&Muse"] = `{"toptracks":{"track":[{"name":"Uprising","playcount":"10","mbid":""}]}}`
+	e.http.routes["/lastfm/?artist.getTopTags&Muse"] = `{"toptags":{"tag":[{"name":"rock","count":100}]}}`
+	muse := musicgraph.ArtistRef{Name: "Muse"}
+	if _, err := e.svc.Artist(t.Context(), muse); err != nil {
+		t.Fatal(err)
+	}
+	// ListenBrainz is down while Radiohead is fetched: kept only a day.
+	e.http.fail("/labs/", http.StatusInternalServerError)
+	if a, err := e.svc.Artist(t.Context(), radiohead); err != nil || slices.Contains(a.Sources, "listenbrainz") {
+		t.Fatalf("Artist = %v, %v", a.Sources, err)
+	}
+	e.http.mu.Lock()
+	delete(e.http.status, "/labs/")
+	e.http.mu.Unlock()
+
+	n := e.http.count()
+	e.now = e.now.Add(time.Minute)
+	got, err := e.svc.Repair(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Artists != 1 || got.Complete != 1 {
+		t.Errorf("repaired %+v, want Radiohead, complete now", got)
+	}
+	for _, p := range e.http.paths()[n:] {
+		if strings.Contains(p, "Muse") {
+			t.Errorf("asked about Muse again, though every source answered: %s", p)
+		}
+	}
+	a, ok, err := e.svc.CachedArtist(t.Context(), radiohead)
+	if !ok || err != nil || !slices.Contains(a.Sources, "listenbrainz") {
+		t.Errorf("after repair: %v, %v, %v", a.Sources, ok, err)
+	}
+	e.now = e.now.Add(2 * time.Hour)
+	if _, ok, _ := e.svc.CachedArtist(t.Context(), radiohead); !ok {
+		t.Error("a repaired answer should be kept the full TTL")
+	}
+	// Nothing left to repair.
+	if got, _ := e.svc.Repair(t.Context()); got.Artists != 0 {
+		t.Errorf("repaired again: %+v", got)
 	}
 }
 

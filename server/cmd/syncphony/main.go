@@ -191,6 +191,7 @@ func run() error {
 	graph := newMusicGraph(cfg, db, mb, userAgent)
 	if len(graph.Sources()) > 0 {
 		go graph.Run(ctx)
+		go repairMusicGraph(ctx, graph)
 	}
 	roomSvc := rooms.New(db, a.bus)
 	go sweep(ctx, db, accounts, roomSvc, lyricsSvc, mb, notes, graph)
@@ -329,6 +330,18 @@ func newMusicGraph(cfg config.Config, db *store.Store, mb *musicbrainz.Service, 
 		slog.Info("music knowledge is off: no sources are configured")
 	}
 	return graph
+}
+
+// repairMusicGraph fetches again the music knowledge cached while a source
+// was failing, so a fix or an outage that's over fills it in now.
+func repairMusicGraph(ctx context.Context, graph *musicgraph.Service) {
+	r, err := graph.Repair(ctx)
+	switch {
+	case err != nil && ctx.Err() == nil:
+		slog.Warn("repairing music knowledge", "err", err)
+	case r.Artists+r.Tracks > 0:
+		slog.Info("repaired music knowledge", "artists", r.Artists, "tracks", r.Tracks, "complete", r.Complete)
+	}
 }
 
 // sweep deletes expired sessions, displays and room invites, cached lyrics,

@@ -5,6 +5,7 @@ package musicgraph
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,10 +21,11 @@ const (
 	// requestTimeout bounds one request, including the wait for our turn.
 	requestTimeout = 20 * time.Second
 	maxResponse    = 4 << 20
-	// backOffFor is how long a source that said we're too fast is left
-	// alone, when it doesn't say.
-	backOffFor = 5 * time.Second
 )
+
+// backOffFor is how long a source that said we're too fast is left alone,
+// when it doesn't say. Tests shorten it.
+var backOffFor = 5 * time.Second
 
 // client calls one source's web API, keeping to its rate limit across
 // every caller.
@@ -80,15 +82,29 @@ func (c *client) backOff(d time.Duration) {
 // get fetches u and hands the response to read, which sees every status
 // but a throttle (429, 503), so a source whose errors come in the body can
 // read them. The body is limited to maxResponse.
+//
+// A throttle, from the status or from read (Last.fm's and Deezer's come in
+// the body), is waited out and tried once more, within requestTimeout.
 func (c *client) get(ctx context.Context, u string, params url.Values, read func(status int, body io.Reader) error) error {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
-	if err := c.wait(ctx); err != nil {
-		return err
-	}
 	if len(params) > 0 {
 		u += "?" + params.Encode()
 	}
+	var err error
+	for range 2 {
+		if err = c.wait(ctx); err != nil {
+			return err
+		}
+		err = c.once(ctx, u, read)
+		if !errors.Is(err, provider.ErrRateLimited) {
+			return err
+		}
+	}
+	return err
+}
+
+func (c *client) once(ctx context.Context, u string, read func(status int, body io.Reader) error) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return err
@@ -103,6 +119,7 @@ func (c *client) get(ctx context.Context, u string, params url.Values, read func
 		return fmt.Errorf("%s: %w: %w", c.name, provider.ErrUnavailable, err)
 	}
 	defer resp.Body.Close()
+	c.heed(resp.Header)
 	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
 		d := backOffFor
 		if s, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && s > 0 {
@@ -112,6 +129,21 @@ func (c *client) get(ctx context.Context, u string, params url.Values, read func
 		return fmt.Errorf("%s: %w", c.name, &provider.RateLimitError{RetryAfter: d})
 	}
 	return read(resp.StatusCode, io.LimitReader(resp.Body, maxResponse))
+}
+
+// heed follows a source's rate limit headers (ListenBrainz sends them):
+// with the window's requests about used up, it waits for the next window
+// instead of being turned away.
+func (c *client) heed(h http.Header) {
+	left, err := strconv.Atoi(h.Get("X-RateLimit-Remaining"))
+	if err != nil || left > 1 {
+		return
+	}
+	in, err := strconv.Atoi(h.Get("X-RateLimit-Reset-In"))
+	if err != nil || in < 0 {
+		in = int(backOffFor / time.Second)
+	}
+	c.backOff(time.Duration(in)*time.Second + 250*time.Millisecond)
 }
 
 // getJSON fetches u and decodes a 200's JSON into v. A 404 is

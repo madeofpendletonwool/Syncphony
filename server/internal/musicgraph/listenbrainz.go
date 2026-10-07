@@ -5,10 +5,13 @@ package musicgraph
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
@@ -33,7 +36,14 @@ const listenBrainzAlgorithm = "session_based_days_7500_session_300_contribution_
 type ListenBrainz struct {
 	base, labs string
 	c          *client
+	token      bool
+	// warned is set once the server's been told a token would help.
+	warned atomic.Bool
 }
+
+// errNeedsToken is ListenBrainz turning away a request without a token:
+// it does that to anonymous requests for song popularity, now and then.
+var errNeedsToken = errors.New("listenbrainz: this endpoint asks for a token")
 
 // ListenBrainzOptions configure a ListenBrainz.
 type ListenBrainzOptions struct {
@@ -45,8 +55,8 @@ type ListenBrainzOptions struct {
 	BaseURL, LabsURL string
 	// Client makes the requests. Default http.DefaultClient.
 	Client *http.Client
-	// Interval is the least time between requests. Default 250ms;
-	// negative means none, for tests.
+	// Interval is the least time between requests. Default 350ms, under
+	// ListenBrainz's 30 per 10 seconds; negative means none, for tests.
 	Interval time.Duration
 }
 
@@ -59,13 +69,13 @@ func NewListenBrainz(opts ListenBrainzOptions) *ListenBrainz {
 		opts.LabsURL = DefaultListenBrainzLabsURL
 	}
 	if opts.Interval == 0 {
-		opts.Interval = 250 * time.Millisecond
+		opts.Interval = 350 * time.Millisecond
 	}
 	c := newClient("listenbrainz", opts.UserAgent, opts.Client, opts.Interval)
 	if opts.Token != "" {
 		c.header.Set("Authorization", "Token "+opts.Token)
 	}
-	return &ListenBrainz{base: trimSlash(opts.BaseURL), labs: trimSlash(opts.LabsURL), c: c}
+	return &ListenBrainz{base: trimSlash(opts.BaseURL), labs: trimSlash(opts.LabsURL), c: c, token: opts.Token != ""}
 }
 
 // Name implements Source.
@@ -97,8 +107,14 @@ func (l *ListenBrainz) Artist(ctx context.Context, a ArtistRef) (Artist, error) 
 		}
 	}
 
+	// Without a token, popularity is sometimes refused. The similar
+	// artists still count, and the answer isn't a failure to try again.
 	top, err := l.topRecordings(ctx, a.MBID)
-	if err != nil {
+	if errors.Is(err, errNeedsToken) {
+		if !l.token && !l.warned.Swap(true) {
+			slog.Info("ListenBrainz turned away a request for song popularity without a token; set SYNCPHONY_LISTENBRAINZ_TOKEN (from listenbrainz.org/settings) for its popularity data")
+		}
+	} else if err != nil {
 		return Artist{}, err
 	}
 	most = 0
@@ -130,6 +146,8 @@ func (l *ListenBrainz) topRecordings(ctx context.Context, mbid string) ([]lbReco
 		case http.StatusOK:
 		case http.StatusNotFound:
 			return fmt.Errorf("listenbrainz: %w", provider.ErrNotFound)
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return errNeedsToken
 		default:
 			return fmt.Errorf("listenbrainz: top recordings: HTTP %d: %w", status, provider.ErrUnavailable)
 		}
