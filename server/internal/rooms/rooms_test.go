@@ -144,12 +144,27 @@ func TestUpdateSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a := rooms.ParseSettings(r.Settings).Autopilot; !a.On || a.Adventure != rooms.AdventureDiscovery {
+	if a := rooms.ParseSettings(r.Settings).Autopilot; !a.On || a.Adventure != rooms.AdventureDiscovery || a.ExploreLevel() != rooms.ExploreDiscovery {
 		t.Errorf("autopilot: %+v", a)
+	}
+	// Explore decides, and the adventure follows the half it falls in.
+	for _, c := range []struct {
+		explore   int
+		adventure string
+	}{{0, rooms.AdventureSimilar}, {49, rooms.AdventureSimilar}, {50, rooms.AdventureDiscovery}, {100, rooms.AdventureDiscovery}} {
+		r, err = s.Update(ctx, rooms.Actor{UserID: owner.ID}, r.ID, rooms.Update{Autopilot: &rooms.Autopilot{On: true, Adventure: rooms.AdventureSimilar, Explore: new(c.explore)}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if a := rooms.ParseSettings(r.Settings).Autopilot; a.ExploreLevel() != c.explore || a.Adventure != c.adventure {
+			t.Errorf("explore %d: %+v, want %s", c.explore, a, c.adventure)
+		}
 	}
 	var invalid *rooms.InvalidInputError
 	for _, u := range []rooms.Update{
 		{Autopilot: &rooms.Autopilot{On: true, Adventure: "wild"}},
+		{Autopilot: &rooms.Autopilot{On: true, Explore: new(101)}},
+		{Autopilot: &rooms.Autopilot{On: true, Explore: new(-1)}},
 		{Permissions: rooms.Permissions{Seek: rooms.Vote}},
 		{Permissions: rooms.Permissions{Skip: "anyone"}},
 		{SkipVotePercent: new(100)},
@@ -161,6 +176,20 @@ func TestUpdateSettings(t *testing.T) {
 	} {
 		if _, err := s.Update(ctx, rooms.Actor{UserID: owner.ID}, r.ID, u); !errors.As(err, &invalid) {
 			t.Errorf("%+v: %v", u, err)
+		}
+	}
+}
+
+// Rooms set up before explore read it from their adventure.
+func TestExploreFromAdventure(t *testing.T) {
+	for raw, want := range map[string]int{
+		`{"version":1}`: rooms.ExploreSimilar,
+		`{"version":1,"autopilot":{"on":true,"adventure":"discovery"}}`:              rooms.ExploreDiscovery,
+		`{"version":1,"autopilot":{"on":true,"adventure":"discovery","explore":10}}`: 10,
+		`{"version":1,"autopilot":{"on":true,"explore":500}}`:                        rooms.ExploreSimilar,
+	} {
+		if got := rooms.ParseSettings(raw).Autopilot.ExploreLevel(); got != want {
+			t.Errorf("%s: explore %d, want %d", raw, got, want)
 		}
 	}
 }

@@ -1821,12 +1821,22 @@ type RoomActivity struct {
 type RoomAutopilot struct {
 	// Adventure `similar` stays close to the room's songs, their artists
 	// included. `discovery` plays other artists, further afield.
+	// `explore` replaces it: the server keeps it in step, as the
+	// half `explore` falls in (`discovery` from 50).
 	Adventure RoomAutopilotAdventure `json:"adventure"`
-	On        bool                   `json:"on"`
+
+	// Explore How far the DJ strays, from 0 (the room's own artists and their
+	// hits) to 100 (new artists further afield, deeper cuts). Always
+	// set in responses. In a request it decides; left out, it's 25
+	// for `similar` and 75 for `discovery`.
+	Explore *int `json:"explore,omitempty"`
+	On      bool `json:"on"`
 }
 
 // RoomAutopilotAdventure `similar` stays close to the room's songs, their artists
 // included. `discovery` plays other artists, further afield.
+// `explore` replaces it: the server keeps it in step, as the
+// half `explore` falls in (`discovery` from 50).
 type RoomAutopilotAdventure string
 
 // RoomEvent A message on the room WebSocket, `GET /ws/rooms/{roomId}?since=<version>`.

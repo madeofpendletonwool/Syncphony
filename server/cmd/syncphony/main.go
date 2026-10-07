@@ -223,6 +223,9 @@ func run() error {
 	// queue and room changes as the player, after it.
 	pilot := autopilot.New(db, roomSvc, queueSvc, a.links, presence)
 	pilot.Player = player
+	if len(graph.Sources()) > 0 {
+		pilot.Graph = graph
+	}
 	defer pilot.Close()
 	onChange, onUpdate := queueSvc.OnChange, roomSvc.OnUpdate
 	queueSvc.OnChange = func(roomID string) {

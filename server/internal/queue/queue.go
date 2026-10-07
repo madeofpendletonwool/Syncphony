@@ -293,6 +293,29 @@ type AutopilotInfo struct {
 	SeedItemID string `json:"seedItemId,omitempty"`
 	SeedTitle  string `json:"seedTitle,omitempty"`
 	SeedArtist string `json:"seedArtist,omitempty"`
+	// Reason is the DJ's reasoning (ADR 0012). It's nil for a song a
+	// service recommended, or one picked at random.
+	Reason *AutopilotReason `json:"reason,omitempty"`
+}
+
+// AutopilotReason is why the DJ chose a song: how it relates to the room
+// and the parts of its score.
+type AutopilotReason struct {
+	// Kind is "artist" (an artist the room likes), "similar-artist",
+	// "two-steps" (an artist like one like the room's) or "similar-song".
+	Kind string `json:"kind"`
+	// Via is the room's artist it leads from.
+	Via string `json:"via,omitempty"`
+	// Similarity to the room's taste, popularity among the artist's songs,
+	// and novelty to the room, each 0 to 1, and the score they made.
+	Similarity float64 `json:"similarity"`
+	Popularity float64 `json:"popularity"`
+	Novelty    float64 `json:"novelty"`
+	Score      float64 `json:"score"`
+	// DeepCut is a loved artist's lesser-known song, picked for being one.
+	DeepCut bool `json:"deepCut,omitempty"`
+	// Sources are the music knowledge sources that led to it.
+	Sources []string `json:"sources,omitempty"`
 }
 
 // ParseAutopilot reads an autopilot item's info. ok is false for a

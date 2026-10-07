@@ -9,6 +9,7 @@ import type { components } from '@/api/schema.gen'
 import { Notice } from '@/components/notice'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { UserAvatar } from '@/components/user-avatar'
@@ -298,24 +299,14 @@ export function RoomSettings({
                       transition={{ duration: 0.25, ease: easeOutExpo }}
                       className="-mt-2 overflow-hidden"
                     >
-                      <Setting
-                        label="How adventurous"
-                        hint={
-                          room.autopilot.adventure === 'discovery'
-                            ? 'Other artists, further afield'
-                            : 'Close to what the room has played, the same artists included'
+                      <Explore
+                        value={room.autopilot.explore ?? (room.autopilot.adventure === 'discovery' ? 75 : 25)}
+                        onChange={(explore) =>
+                          update.mutate({
+                            autopilot: { ...room.autopilot, explore, adventure: explore >= 50 ? 'discovery' : 'similar' },
+                          })
                         }
-                      >
-                        <ToggleGroup
-                          type="single"
-                          value={room.autopilot.adventure}
-                          onValueChange={(v) => v && update.mutate({ autopilot: { ...room.autopilot, adventure: v as Room['autopilot']['adventure'] } })}
-                          aria-label="How adventurous autopilot is"
-                        >
-                          <ToggleGroupItem value="similar">Similar</ToggleGroupItem>
-                          <ToggleGroupItem value="discovery">Discovery</ToggleGroupItem>
-                        </ToggleGroup>
-                      </Setting>
+                      />
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -458,6 +449,42 @@ function Weights({ weights, onChange }: { weights: Fairness['weights']; onChange
         })}
       </ul>
     </div>
+  )
+}
+
+// What each stretch of the explore slider plays.
+function exploreHint(v: number) {
+  if (v < 20) return "The room's own artists and their biggest songs"
+  if (v < 45) return 'Close to what the room has played, with a few new artists'
+  if (v < 70) return "A mix of the room's artists and ones like them"
+  return 'New artists further afield, and deeper cuts'
+}
+
+// How far the DJ strays. It saves when you let go, not on every step.
+function Explore({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [drag, setDrag] = useState<number>()
+  const v = drag ?? value
+  return (
+    <Setting label="How adventurous" hint={exploreHint(v)}>
+      <div className="flex flex-col gap-1">
+        <Slider
+          aria-label="How adventurous autopilot is"
+          min={0}
+          max={100}
+          step={5}
+          value={[v]}
+          onValueChange={([next]) => setDrag(next)}
+          onValueCommit={([next]) => {
+            onChange(next)
+            setDrag(undefined)
+          }}
+        />
+        <div className="flex justify-between text-caption text-muted-foreground">
+          <span>Familiar</span>
+          <span>Adventurous</span>
+        </div>
+      </div>
+    </Setting>
   )
 }
 

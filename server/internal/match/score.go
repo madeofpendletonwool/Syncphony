@@ -70,6 +70,11 @@ var (
 	feat     = regexp.MustCompile(`(?i)\s*\b(feat\.?|ft\.?|featuring)\s.*$`)
 )
 
+// Title normalizes a title, without its qualifiers, and returns the words
+// in them that mark a different recording ("Song (Live at Wembley)" is
+// "song" with ["live"]; "Song - 2011 Remaster" is just "song").
+func Title(s string) (string, []string) { return title(s) }
+
 // title normalizes a title and pulls out the variant words in its
 // qualifiers ("Song (Live at Wembley)" is "song" with ["live"]).
 func title(s string) (string, []string) {
