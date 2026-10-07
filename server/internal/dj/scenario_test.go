@@ -236,7 +236,7 @@ func simulate(t *testing.T, g *graph, h []store.ListHistoryRow, lt LongTerm, see
 	for range fills {
 		in := Input{History: h, Now: at}
 		in.Tags, in.Related = CachedTags(t.Context(), g, in), Related(t.Context(), g)
-		order := e.shortlist(t.Context(), NewProfile(in), lt, 25)
+		order := e.shortlist(t.Context(), NewProfile(in), Request{Input: in, LongTerm: lt, Explore: 25}, in.Tags)
 		if len(order) == 0 {
 			break
 		}

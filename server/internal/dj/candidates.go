@@ -92,6 +92,8 @@ type candidate struct {
 	// scored by score.
 	similarity, novelty, prior, score float64
 	deepCut                           bool
+	// flow is how it fits the set, by flowing.
+	flow Flow
 }
 
 // walk follows the music graph out from the room's favorite artists and

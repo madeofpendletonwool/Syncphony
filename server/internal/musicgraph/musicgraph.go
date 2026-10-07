@@ -501,6 +501,16 @@ func (s *Service) WarmArtist(as ...ArtistRef) {
 	}
 }
 
+// WarmTrack asks for songs to be fetched in the background: ones a fill
+// wanted the tempo or year of and found nothing cached for.
+func (s *Service) WarmTrack(ss ...SongRef) {
+	for _, sr := range ss {
+		if strings.TrimSpace(sr.Title) != "" && artistKey(sr.Artist) != "" {
+			s.enqueue(job{song: &sr})
+		}
+	}
+}
+
 func (s *Service) enqueue(j job) {
 	k := j.key()
 	s.mu.Lock()

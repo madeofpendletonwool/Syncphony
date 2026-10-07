@@ -160,6 +160,17 @@ func TestUpdateSettings(t *testing.T) {
 			t.Errorf("explore %d: %+v, want %s", c.explore, a, c.adventure)
 		}
 	}
+	// The energy curve is on unless turned off.
+	if a := rooms.ParseSettings(r.Settings).Autopilot; !a.EnergyCurveOn() {
+		t.Errorf("energy curve off by default: %+v", a)
+	}
+	r, err = s.Update(ctx, rooms.Actor{UserID: owner.ID}, r.ID, rooms.Update{Autopilot: &rooms.Autopilot{On: true, EnergyCurve: new(false)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := rooms.ParseSettings(r.Settings).Autopilot; a.EnergyCurveOn() {
+		t.Errorf("energy curve still on: %+v", a)
+	}
 	var invalid *rooms.InvalidInputError
 	for _, u := range []rooms.Update{
 		{Autopilot: &rooms.Autopilot{On: true, Adventure: "wild"}},

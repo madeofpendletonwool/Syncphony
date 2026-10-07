@@ -323,6 +323,27 @@ type AutopilotReason struct {
 	DeepCut bool `json:"deepCut,omitempty"`
 	// Sources are the music knowledge sources that led to it.
 	Sources []string `json:"sources,omitempty"`
+	// Flow is how it fit the set (MAD-757), when the DJ knew anything to
+	// tell.
+	Flow *AutopilotFlow `json:"flow,omitempty"`
+}
+
+// AutopilotFlow is how a DJ's pick fit the set: what was known about it,
+// and how well it followed the song before it.
+type AutopilotFlow struct {
+	// BPM and Year are its tempo and when it came out, if known.
+	BPM  float64 `json:"bpm,omitempty"`
+	Year int     `json:"year,omitempty"`
+	// Energy is how energetic it is, and Target the room's energy curve's
+	// then, from 0 to 1, if known and on.
+	Energy *float64 `json:"energy,omitempty"`
+	Target *float64 `json:"target,omitempty"`
+	// Fit is how well it followed the song before it and fit the curve,
+	// from 0 to 1, if anything was known to tell.
+	Fit *float64 `json:"fit,omitempty"`
+	// Ahead are the songs the DJ planned after it, as "Artist – Title".
+	// They weren't queued: it plans again after every change.
+	Ahead []string `json:"ahead,omitempty"`
 }
 
 // ParseAutopilot reads an autopilot item's info. ok is false for a

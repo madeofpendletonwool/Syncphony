@@ -214,7 +214,7 @@ func (s *Service) Fill(ctx context.Context, roomID string) error {
 		return err
 	}
 	f := &fill{
-		s: s, roomID: roomID, room: room, adventure: settings.Adventure, explore: settings.ExploreLevel(),
+		s: s, roomID: roomID, room: room, adventure: settings.Adventure, explore: settings.ExploreLevel(), energyCurve: settings.EnergyCurveOn(),
 		in: in, history: history, mine: in.Mine, finder: suggest.NewFinder(s.links, s.Rand),
 	}
 	defer f.close()
@@ -324,9 +324,11 @@ type fill struct {
 	room      store.Room
 	adventure string
 	explore   int
-	in        dj.Input
-	history   []store.ListHistoryRow
-	mine      []store.QueueItem
+	// energyCurve follows the room's energy curve.
+	energyCurve bool
+	in          dj.Input
+	history     []store.ListHistoryRow
+	mine        []store.QueueItem
 
 	// seen holds the songs not to play: recent, waiting, or removed.
 	seen suggest.Seen
@@ -531,6 +533,7 @@ func (f *fill) fromGraph(ctx context.Context, users []string) []pick {
 	engine := &dj.Engine{Graph: f.s.Graph, Rand: f.s.Rand}
 	picks := engine.Choose(ctx, dj.Request{
 		Input: f.in, Explore: f.explore, Links: f.searchable, Sessions: f.finder, Fresh: f.fresh, LongTerm: lt,
+		EnergyCurve: f.energyCurve,
 	})
 	fallback := f.room.OwnerID
 	if len(users) > 0 {
@@ -545,6 +548,7 @@ func (f *fill) fromGraph(ctx context.Context, users []string) []pick {
 		if !p.Why.LovedAt.IsZero() {
 			info.Reason.LovedAt = &p.Why.LovedAt
 		}
+		info.Reason.Flow = flowOf(p.Why.Flow)
 		if p.Seed.ID != "" {
 			seed := suggest.TrackOf(p.Seed)
 			info.SeedItemID, info.SeedTitle = p.Seed.ID, seed.Title
@@ -555,6 +559,24 @@ func (f *fill) fromGraph(ctx context.Context, users []string) []pick {
 		out = append(out, pick{track: p.Track, forUser: cmp.Or(p.ForUser, fallback), info: info})
 	}
 	return out
+}
+
+// flowOf is how a pick fit the set, for its reason; nil if the DJ knew
+// nothing to tell.
+func flowOf(fl dj.Flow) *queue.AutopilotFlow {
+	known := func(v float64) *float64 {
+		if v < 0 {
+			return nil
+		}
+		return &v
+	}
+	out := queue.AutopilotFlow{
+		BPM: fl.BPM, Year: fl.Year, Energy: known(fl.Energy), Target: known(fl.Target), Fit: known(fl.Fit), Ahead: fl.Ahead,
+	}
+	if out.BPM == 0 && out.Year == 0 && out.Energy == nil && out.Target == nil && out.Fit == nil && len(out.Ahead) == 0 {
+		return nil
+	}
+	return &out
 }
 
 // linksFor orders the links to try for a seed: the one it played from,

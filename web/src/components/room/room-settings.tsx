@@ -297,7 +297,7 @@ export function RoomSettings({
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }}
                       transition={{ duration: 0.25, ease: easeOutExpo }}
-                      className="-mt-2 overflow-hidden"
+                      className="-mt-2 flex flex-col gap-5 overflow-hidden"
                     >
                       <Explore
                         value={room.autopilot.explore ?? (room.autopilot.adventure === 'discovery' ? 75 : 25)}
@@ -306,6 +306,12 @@ export function RoomSettings({
                             autopilot: { ...room.autopilot, explore, adventure: explore >= 50 ? 'discovery' : 'similar' },
                           })
                         }
+                      />
+                      <Toggle
+                        label="Energy curve"
+                        hint="Builds the energy as the night goes on, then lets it settle late"
+                        checked={room.autopilot.energyCurve ?? true}
+                        onChange={(energyCurve) => update.mutate({ autopilot: { ...room.autopilot, energyCurve } })}
                       />
                     </motion.div>
                   )}

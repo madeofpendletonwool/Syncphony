@@ -142,6 +142,12 @@ type Profile struct {
 	// RecentSongs are the members' songs the room liked lately, newest
 	// first, for songs like them.
 	RecentSongs []store.QueueItem
+	// Before are the songs that play before the pick, nearest first: the
+	// one playing, then this session's, for set flow.
+	Before []provider.Track
+	// SessionStart is when this session started: the room's first play
+	// since it was last quiet for stats.SessionGap, or now.
+	SessionStart time.Time
 }
 
 // ArtistKey is how artists are compared: the simplified name.
@@ -338,13 +344,17 @@ func cosine(a, b map[string]float64) float64 {
 // heard notes the songs the room heard or has waiting, and its last ones.
 func (p *Profile) heard(in Input) {
 	p.Heard, p.RecentAlbums = map[string]bool{}, map[string]bool{}
+	p.SessionStart = in.Now
 	seen := map[string]bool{}
 	for _, it := range in.Upcoming {
 		seen[it.ID] = true
 		t := TrackOf(it)
 		p.Heard[SongKey(artistOf(t), t.Title)] = true
-		if it.State == store.ItemPlaying && !it.IsAutopilot() {
-			p.recent(t)
+		if it.State == store.ItemPlaying {
+			p.Before = append(p.Before, t)
+			if !it.IsAutopilot() {
+				p.recent(t)
+			}
 		}
 	}
 	session, after := true, in.Now // after is when the newer play started
@@ -360,6 +370,10 @@ func (p *Profile) heard(in Input) {
 		after = h.PlayHistory.StartedAt
 		if session {
 			p.recent(t)
+			p.SessionStart = h.PlayHistory.StartedAt
+			if len(p.Before) < recentReach {
+				p.Before = append(p.Before, t)
+			}
 		}
 		if h.PlayHistory.EndedAt.Valid && endReason(h) == store.EndFinished && !it.IsAutopilot() && len(p.RecentSongs) < recentReach {
 			p.RecentSongs = append(p.RecentSongs, it)

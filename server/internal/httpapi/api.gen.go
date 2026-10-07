@@ -1844,6 +1844,11 @@ type RoomAutopilot struct {
 	// half `explore` falls in (`discovery` from 50).
 	Adventure RoomAutopilotAdventure `json:"adventure"`
 
+	// EnergyCurve Shapes the DJ's set to how long the room has been going and the
+	// time of day: a gentle rise in energy, then settling. Always set
+	// in responses; left out of a request, it's on.
+	EnergyCurve *bool `json:"energyCurve,omitempty"`
+
 	// Explore How far the DJ strays, from 0 (the room's own artists and their
 	// hits) to 100 (new artists further afield, deeper cuts). Always
 	// set in responses. In a request it decides; left out, it's 25

@@ -266,6 +266,8 @@ type graph struct {
 	tracks  map[string]musicgraph.Track
 	warmed  []string
 	fetched []string
+	// warmedSongs are the titles of songs WarmTrack was asked for.
+	warmedSongs []string
 }
 
 func (g *graph) Artist(_ context.Context, a musicgraph.ArtistRef) (musicgraph.Artist, error) {
@@ -305,6 +307,14 @@ func (g *graph) WarmArtist(as ...musicgraph.ArtistRef) {
 	defer g.mu.Unlock()
 	for _, a := range as {
 		g.warmed = append(g.warmed, a.Name)
+	}
+}
+
+func (g *graph) WarmTrack(ss ...musicgraph.SongRef) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, s := range ss {
+		g.warmedSongs = append(g.warmedSongs, s.Title)
 	}
 }
 
