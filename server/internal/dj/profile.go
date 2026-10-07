@@ -101,6 +101,8 @@ type Taste struct {
 	// credit on a song it leads to. Its ID is "" if only autopilot played
 	// them.
 	Seed store.QueueItem
+	// seeds are each member's newest song of theirs the room liked.
+	seeds map[string]store.QueueItem
 }
 
 // Fan is the member who likes the artist most, or "" if none does.
@@ -148,6 +150,15 @@ type Profile struct {
 	// SessionStart is when this session started: the room's first play
 	// since it was last quiet for stats.SessionGap, or now.
 	SessionStart time.Time
+	// LastBridge is autopilot's last song being a bridge between members'
+	// tastes, so this one is someone's turn.
+	LastBridge bool
+	// memberVibes are each member's artists and tags; present, who's
+	// here; served, how many of autopilot's songs ago it last credited
+	// each member. See bridge.go.
+	memberVibes map[string]map[string]float64
+	present     map[string]bool
+	served      map[string]int
 }
 
 // ArtistKey is how artists are compared: the simplified name.
@@ -190,6 +201,7 @@ func NewProfile(in Input) Profile {
 	p := tastes(in, rs, boost)
 	p.Shifted = !boost.IsZero()
 	p.heard(in)
+	p.members(in)
 	return p
 }
 
@@ -226,6 +238,9 @@ func tastes(in Input, rs []reaction, boost time.Time) Profile {
 			taste.Plays++
 			if taste.Seed.ID == "" {
 				taste.Seed = r.item
+			}
+			if _, ok := taste.seeds[r.who]; !ok {
+				taste.seeds[r.who] = r.item
 			}
 		}
 	}
@@ -388,7 +403,7 @@ func (p *Profile) heard(in Input) {
 func (p *Profile) taste(key, name string) *Taste {
 	t, ok := p.Artists[key]
 	if !ok {
-		t = &Taste{Artist: musicgraph.ArtistRef{Name: name}, ByMember: map[string]float64{}}
+		t = &Taste{Artist: musicgraph.ArtistRef{Name: name}, ByMember: map[string]float64{}, seeds: map[string]store.QueueItem{}}
 		p.Artists[key] = t
 	}
 	return t
