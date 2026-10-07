@@ -5052,6 +5052,13 @@ components:
             hits) to 100 (new artists further afield, deeper cuts). Always
             set in responses. In a request it decides; left out, it's 25
             for `similar` and 75 for `discovery`.
+        energyCurve:
+          type: boolean
+          default: true
+          description: |
+            Shapes the DJ's set to how long the room has been going and the
+            time of day: a gentle rise in energy, then settling. Always set
+            in responses; left out of a request, it's on.
 
     RoomVisibility:
       type: string

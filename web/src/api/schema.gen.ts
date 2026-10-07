@@ -3393,6 +3393,13 @@ export interface components {
              *     for `similar` and 75 for `discovery`.
              */
             explore?: number;
+            /**
+             * @description Shapes the DJ's set to how long the room has been going and the
+             *     time of day: a gentle rise in energy, then settling. Always set
+             *     in responses; left out of a request, it's on.
+             * @default true
+             */
+            energyCurve: boolean;
         };
         /**
          * @description Who can see and join the room. `open`: everyone on the server.

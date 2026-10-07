@@ -78,6 +78,10 @@ func TestDJPicksFromTheGraph(t *testing.T) {
 	if r == nil || r.Kind != "similar-artist" || r.Via != "The Test Patterns" || r.Popularity != 1 || r.Score <= 0 {
 		t.Fatalf("reason = %+v", r)
 	}
+	// It planned what might follow, and the room's energy curve is on.
+	if r.Flow == nil || len(r.Flow.Ahead) == 0 || r.Flow.Target == nil {
+		t.Errorf("flow = %+v: want a plan ahead, and the curve's target", r.Flow)
+	}
 	if info.SeedItemID != seed.ID || info.SeedTitle != "Reference Tone" {
 		t.Errorf("seed = %+v, want alice's Reference Tone", info)
 	}

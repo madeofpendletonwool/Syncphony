@@ -266,10 +266,12 @@ type song struct {
 	BitRate     int    `json:"bitRate"`  // kbit/s
 	ContentType string `json:"contentType"`
 	CoverArt    string `json:"coverArt"`
+	Year        int    `json:"year"`
 	// OpenSubsonic fields.
 	Artists        []credit `json:"artists"`
 	ISRC           []string `json:"isrc"`
 	ExplicitStatus string   `json:"explicitStatus"`
+	BPM            int      `json:"bpm"`
 	// MusicBrainzID is the recording's MBID, from tags.
 	MusicBrainzID string `json:"musicBrainzId"`
 }

@@ -240,6 +240,7 @@ func (s *session) track(t track, on *album) provider.Track {
 	if al != nil {
 		out.Album = provider.AlbumCredit{ID: al.ID, Title: al.Name}
 		out.Artwork = s.artworkRef(al.Images)
+		out.Year, _ = strconv.Atoi(al.ReleaseDate[:min(4, len(al.ReleaseDate))])
 	}
 	return out
 }

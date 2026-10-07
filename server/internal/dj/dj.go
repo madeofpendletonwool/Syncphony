@@ -29,6 +29,7 @@ type Graph interface {
 	CachedArtist(ctx context.Context, a musicgraph.ArtistRef) (musicgraph.Artist, bool, error)
 	CachedTrack(ctx context.Context, s musicgraph.SongRef) (musicgraph.Track, bool, error)
 	WarmArtist(as ...musicgraph.ArtistRef)
+	WarmTrack(ss ...musicgraph.SongRef)
 }
 
 // Sessions opens links. suggest.Finder is one: it keeps the sessions it
@@ -74,6 +75,9 @@ type Request struct {
 	// LongTerm is the room's taste over past nights (Memory.Load): a weak
 	// prior on the picks, and where throwbacks come from.
 	LongTerm LongTerm
+	// EnergyCurve follows the room's energy curve (rooms.Autopilot): a
+	// gentle rise over a session, then settling, moved by the time of day.
+	EnergyCurve bool
 }
 
 // Pick is a song the DJ chose.
@@ -107,6 +111,8 @@ type Why struct {
 	DeepCut bool
 	// Sources are the sources that led to it.
 	Sources []string
+	// Flow is how it fits the set (MAD-757).
+	Flow Flow
 }
 
 // Choose returns songs for the room to hear next, best first, found on
@@ -125,7 +131,7 @@ func (e *Engine) Choose(ctx context.Context, r Request) []Pick {
 	if len(p.Artists) == 0 || len(r.Links) == 0 {
 		return nil
 	}
-	order := e.shortlist(ctx, p, r.LongTerm, r.Explore)
+	order := e.shortlist(ctx, p, r, in.Tags)
 	want := cmp.Or(r.Want, defaultWant)
 	var out []Pick
 	for _, c := range order {
@@ -139,7 +145,7 @@ func (e *Engine) Choose(ctx context.Context, r Request) []Pick {
 		taste := p.Artists[c.via]
 		pick := Pick{Track: t, Why: Why{
 			Kind: c.kind, Similarity: c.similarity, Popularity: c.popularity, Novelty: c.novelty,
-			Prior: c.prior, Score: c.score, DeepCut: c.deepCut, Sources: c.sources, LovedAt: c.lovedAt,
+			Prior: c.prior, Score: c.score, DeepCut: c.deepCut, Sources: c.sources, LovedAt: c.lovedAt, Flow: c.flow,
 		}}
 		switch {
 		case c.kind == KindThrowback:
@@ -156,18 +162,19 @@ func (e *Engine) Choose(ctx context.Context, r Request) []Pick {
 }
 
 // shortlist returns the candidates to try, in order: drawn from the best
-// the walk found, at an explore level from 0 to 100.
-func (e *Engine) shortlist(ctx context.Context, p Profile, lt LongTerm, explore int) []candidate {
-	x := float64(min(max(explore, 0), 100)) / 100
+// the walk found, scored on how they flow from what the room just heard.
+func (e *Engine) shortlist(ctx context.Context, p Profile, r Request, tags map[string][]musicgraph.Tag) []candidate {
+	x := float64(min(max(r.Explore, 0), 100)) / 100
 	var back []string
 	if e.Rand(100) < throwbackChance(p) {
-		back = Throwbacks(p, lt)
+		back = Throwbacks(p, r.LongTerm)
 	}
 	wctx, cancel := context.WithTimeout(ctx, walkTimeout)
-	cands := e.walk(wctx, p, lt, x, back)
+	cands := e.walk(wctx, p, r.LongTerm, x, back)
 	cancel()
 	deepCut := e.Rand(100) < deepCutPercent
-	return draw(score(cands, p, lt, x, deepCut), drawn, lerp(tempFamiliar, tempExplore, x), e.Rand)
+	pool := e.flowing(ctx, p, tags, diverse(score(cands, p, r.LongTerm, x, deepCut)), r.EnergyCurve, r.Now)
+	return draw(pool, drawn, lerp(tempFamiliar, tempExplore, x), e.Rand)
 }
 
 // CachedTags returns the tags of the artists the room played lately, as

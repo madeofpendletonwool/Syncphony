@@ -153,7 +153,14 @@ type Autopilot struct {
 	// and their hits) to 100 (artists further afield, deeper cuts). Nil
 	// reads Adventure: ExploreSimilar or ExploreDiscovery.
 	Explore *int `json:"explore,omitempty"`
+	// EnergyCurve shapes the DJ's set to how long the room has been going
+	// and the time of day: a gentle rise, then settling. Nil means the
+	// default, on.
+	EnergyCurve *bool `json:"energyCurve,omitempty"`
 }
+
+// EnergyCurveOn reports whether EnergyCurve is on.
+func (a Autopilot) EnergyCurveOn() bool { return a.EnergyCurve == nil || *a.EnergyCurve }
 
 // What Explore reads as for a room set up before it, by Adventure.
 const (

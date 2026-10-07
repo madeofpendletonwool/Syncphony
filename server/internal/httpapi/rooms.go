@@ -127,7 +127,7 @@ func toRoom(r store.Room) Room {
 		},
 	}
 	out.Matching = RoomMatching{Fallback: st.Matching.FallbackOn(), Borrow: st.Matching.Borrow}
-	out.Autopilot = RoomAutopilot{On: st.Autopilot.On, Adventure: RoomAutopilotAdventure(st.Autopilot.Adventure), Explore: new(st.Autopilot.ExploreLevel())}
+	out.Autopilot = RoomAutopilot{On: st.Autopilot.On, Adventure: RoomAutopilotAdventure(st.Autopilot.Adventure), Explore: new(st.Autopilot.ExploreLevel()), EnergyCurve: new(st.Autopilot.EnergyCurveOn())}
 	out.Guests = RoomGuests{Allowed: st.Guests.Allowed, MaxSongs: st.Guests.SongLimit(), CanVote: st.Guests.CanVote()}
 	if out.Fairness.Weights == nil {
 		out.Fairness.Weights = map[string]int{}
@@ -140,7 +140,7 @@ func fromMatching(m RoomMatching) rooms.Matching {
 }
 
 func fromAutopilot(a RoomAutopilot) rooms.Autopilot {
-	return rooms.Autopilot{On: a.On, Adventure: string(a.Adventure), Explore: a.Explore}
+	return rooms.Autopilot{On: a.On, Adventure: string(a.Adventure), Explore: a.Explore, EnergyCurve: a.EnergyCurve}
 }
 
 func fromGuests(g RoomGuests) rooms.Guests {

@@ -162,6 +162,8 @@ func (s *session) track(so song) provider.Track {
 		Explicit: so.ExplicitStatus == "explicit",
 		MBID:     so.MusicBrainzID,
 		Artwork:  provider.ArtworkRef(so.CoverArt),
+		BPM:      so.BPM,
+		Year:     so.Year,
 	}
 	if len(so.ISRC) > 0 {
 		t.ISRC = so.ISRC[0]

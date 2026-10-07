@@ -1,8 +1,8 @@
 # ADR 0012: Smart DJ: music knowledge apart from the services
 
-- **Status:** accepted (stages 1 and 2 of Phase 7, and learning from stage 3)
+- **Status:** accepted (stages 1 and 2 of Phase 7, and learning and set flow from stage 3)
 - **Date:** 2026-10-07
-- **Issues:** MAD-750 (Phase 7); stage 1: MAD-751, MAD-752; stage 2: MAD-753, MAD-754, MAD-755; stage 3: MAD-756, MAD-762
+- **Issues:** MAD-750 (Phase 7); stage 1: MAD-751, MAD-752; stage 2: MAD-753, MAD-754, MAD-755; stage 3: MAD-756, MAD-757, MAD-762
 
 ## Context
 
@@ -176,6 +176,43 @@ A persisted affinity can drag a room back to an old vibe. A room on a week of Be
 
 `TestLive` folds a multi-night history and logs a throwback fill.
 
+### Set flow: plan ahead, with tempo, era and energy (MAD-757)
+
+The DJ plays a set, not separate picks. It still queues one song at a time and plans again on every queue change (ADR 0008), so it stays close to the room; but each candidate is judged by how it follows what's playing and where it leads.
+
+**What it knows about a song (`dj/flow.go`).**
+- **Tempo:** the graph's BPM (Deezer), else the service's tag (Navidrome's `bpm`, now on `provider.Track`). 0 is unknown, not slow, and a BPM outside 40–250 is a tagging error.
+- **Era:** the graph's year (MusicBrainz's first release, else Deezer's), else the service's (Navidrome's `year`; Spotify's album release date). Failing those, a decade from the artist's tags, like "80s".
+- **Energy,** 0 to 1: no source the DJ can use says how energetic a song is (Spotify's audio features are closed), so it's a guess. The artist's tags are looked up in a table of styles (ambient 0.1, folk 0.35, rock 0.65, metal 0.9…), weighted by tag, and mixed 60/40 with the tempo's energy (70 BPM and under calm, 170 and over all out).
+- The song before the pick is the one playing, then this session's; each of tempo, era and energy comes from the nearest of the last 3 that knows it.
+- Only the cache is read, so a fill doesn't wait on the network. The shortlist's songs that aren't cached are warmed (`WarmTrack`), so the next fill knows them.
+
+**Flow terms.** Each term's fit is 0 to 1 and adds `weight·(fit − ½)` to the score, so a good fit raises it, a poor one lowers it, and an unknown one leaves it alone:
+
+| Term | Fits fully | Fits not at all | Weight |
+|---|---|---|---|
+| Tempo | within ±8%, half and double time included | 25% off | 0.12 |
+| Era | the same decade, or within 4 years | 20 years apart | 0.10 |
+| Energy | a change of up to 0.15 | a jump of 0.5 | 0.12 |
+| Energy curve | the curve's energy | 0.4 off it | 0.10 |
+
+Together they move a score by at most ±0.22, and the plan ahead (below) by ±0.11 more: enough to choose between songs the room would like about as much, not to play something it wouldn't.
+
+**The energy curve,** on by default, and switchable in room settings (`autopilot.energyCurve`, "Energy curve"):
+- Over a session (since the room was last quiet for `stats.SessionGap`) the energy rises gently from 0.45 to 0.75 over the first 90 minutes, then settles to 0.6 between 3 and 5 hours in.
+- The time of day moves it, in the server's time zone: +0.05 late in the evening, −0.15 in the small hours and early morning, −0.05 mid-morning.
+- It's kept within 0.2–0.9.
+
+**Planning ahead.**
+- From the shortlist (the 25 best, at most 2 per artist), each candidate starts a plan of 4 songs. After it, the plan takes the best next song each time, by score plus flow from the one before, with no artist twice, and the curve's energy 4 minutes further on each step.
+- A candidate scores the flow into it, plus half the mean flow of the rest of its plan. A song that fits now but leads nowhere (an era nothing else on the shortlist shares) loses to one that fits as well and leads on.
+- The pick is still drawn by softmax, so plans vary.
+- Only the first song is queued. The rest of its plan is stored in its reason, and the DJ plans again after any change.
+
+**Reasons.** `AutopilotInfo.reason.flow` has the pick's tempo, year, energy, the curve's target, its fit, and `ahead`, the songs planned after it.
+
+**Harmonic key** (Camelot) is left for later: none of the sources gives a song's key.
+
 ### Fallback
 
 If the graph has no sources, knows nothing near the room's taste, or none of its picks can be found, autopilot falls back to ADR 0008's chain, unchanged: the services' recommendations, then autopilot's own trail, then random songs.
@@ -193,4 +230,5 @@ If the graph has no sources, knows nothing near the room's taste, or none of its
 - `AutopilotInfo.reason` is stored with each song; it isn't in the API until MAD-760.
 - A room's long-term taste is the room's: it's deleted with the room. It names members by ID, and keeps an artist only while its likes or skips are above 0.005, about 15 nights of silence for one play.
 - Suggestions (ADR 0010) still use their own unfaded "turned away" rule until MAD-759 moves them onto the DJ.
-- Tempo is often unknown: Deezer has a BPM for some songs and 0 for many. Set flow (MAD-757) must treat 0 as unknown, not slow.
+- Tempo is often unknown: Deezer has a BPM for some songs and 0 for many, and few libraries tag it. Set flow treats 0 as unknown, so a room with little known about its songs plays as it did before; it flows better as the cache warms.
+- Energy is a guess from tags and tempo. A band tagged "rock" plays its ballads as rock.

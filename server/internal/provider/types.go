@@ -26,6 +26,10 @@ type Track struct {
 	MBID     string
 	Explicit bool
 	Artwork  ArtworkRef
+	// BPM is its tempo, from the service's tags, or 0 if unknown.
+	BPM int `json:",omitempty"`
+	// Year is when its album came out, or 0 if unknown.
+	Year int `json:",omitempty"`
 }
 
 // ArtistCredit names an artist on a track or album. ID is the provider's
