@@ -1309,7 +1309,11 @@ export interface paths {
          *     playing now, from links you can add from. `mine` is like your own
          *     songs; `group` is like everyone's, members taking turns. Songs
          *     waiting, playing or recently played aren't suggested, nor are
-         *     autopilot's.
+         *     autopilot's, nor songs by an artist the room skipped a song of
+         *     without ever finishing or queuing one of theirs.
+         *     `source=queue` reads the vibe from what's playing and waiting
+         *     instead, so a queued change of vibe is reflected; what played
+         *     through stands in when nothing's queued.
          *     Services that recommend (Navidrome) give similar songs; ones that
          *     only search (Spotify) give more by the seed's artist. The list is
          *     empty when the room has nothing to go on yet.
@@ -4819,6 +4823,8 @@ export interface operations {
         parameters: {
             query?: {
                 scope?: "mine" | "group";
+                /** @description Where the vibe is read from, what's played through and playing, or what's queued. */
+                source?: "history" | "queue";
                 limit?: number;
                 /** @description Build a new list instead of reusing the last one. */
                 refresh?: boolean;

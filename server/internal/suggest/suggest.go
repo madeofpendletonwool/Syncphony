@@ -3,8 +3,9 @@
 // Package suggest finds songs to keep a room's vibe going: songs like the
 // ones the room has been playing and has queued. Search shows them before
 // you type, as "your vibe" (like your own songs) and "group vibe" (like
-// everyone's). Autopilot finds its songs with the same Finder. See
-// docs/adr/0010-suggestions.md.
+// everyone's). A song the room skipped doesn't seed, and turns its artist
+// away, unless the room finished or queued one of theirs. Autopilot finds
+// its songs with the same Finder. See docs/adr/0010-suggestions.md.
 //
 // Suggestions only come from links the asker can add from, so every one
 // can be queued with a tap. Services that recommend (provider.Recommender)
@@ -38,6 +39,21 @@ const (
 // ErrScope is a scope that isn't ScopeMine or ScopeGroup.
 var ErrScope = errors.New("suggest: unknown scope")
 
+// Origin is where a list's vibe is read from.
+type Origin string
+
+const (
+	// OriginHistory reads what's playing and what played through.
+	OriginHistory Origin = "history"
+	// OriginQueue reads what's playing and waiting, so a queued change
+	// of vibe is reflected. What played through stands in when nothing's
+	// queued.
+	OriginQueue Origin = "queue"
+)
+
+// ErrOrigin is an origin that isn't OriginHistory or OriginQueue.
+var ErrOrigin = errors.New("suggest: unknown origin")
+
 // UsableLinks opens links, and lists the ones a user may add songs from.
 // It's links.Service.
 type UsableLinks interface {
@@ -70,7 +86,10 @@ type Suggestion struct {
 type Query struct {
 	RoomID, UserID string
 	Scope          Scope
-	Limit          int
+	// Origin is where the vibe is read from. The zero value reads as
+	// history.
+	Origin Origin
+	Limit  int
 	// Refresh skips the cached list, for a new shuffle.
 	Refresh bool
 }
@@ -98,6 +117,7 @@ type Service struct {
 type cacheKey struct {
 	room, user string
 	scope      Scope
+	origin     Origin
 	version    int64
 	limit      int
 }
@@ -123,12 +143,18 @@ func (s *Service) Suggest(ctx context.Context, q Query) ([]Suggestion, error) {
 	if q.Scope != ScopeMine && q.Scope != ScopeGroup {
 		return nil, ErrScope
 	}
+	if q.Origin == "" {
+		q.Origin = OriginHistory
+	}
+	if q.Origin != OriginHistory && q.Origin != OriginQueue {
+		return nil, ErrOrigin
+	}
 	q.Limit = min(max(q.Limit, 1), MaxLimit)
 	snap, err := s.rooms.QueueSnapshot(ctx, q.RoomID)
 	if err != nil {
 		return nil, err
 	}
-	key := cacheKey{room: q.RoomID, user: q.UserID, scope: q.Scope, version: snap.Version, limit: q.Limit}
+	key := cacheKey{room: q.RoomID, user: q.UserID, scope: q.Scope, origin: q.Origin, version: snap.Version, limit: q.Limit}
 	if !q.Refresh {
 		if out, ok := s.cached(key); ok {
 			return out, nil
@@ -163,7 +189,7 @@ func (s *Service) store(k cacheKey, out []Suggestion) {
 	defer s.mu.Unlock()
 	now := s.Now()
 	for old, c := range s.cache {
-		if now.Sub(c.at) >= s.TTL || (old.room == k.room && old.user == k.user && old.scope == k.scope) {
+		if now.Sub(c.at) >= s.TTL || (old.room == k.room && old.user == k.user && old.scope == k.scope && old.origin == k.origin) {
 			delete(s.cache, old)
 		}
 	}
@@ -178,10 +204,11 @@ func (s *Service) build(ctx context.Context, q Query, snap rooms.QueueSnapshot, 
 	for _, h := range history {
 		seen.Item(h.QueueItem)
 	}
-	seeds := Seeds(q.Scope, q.UserID, snap, history)
+	seeds := Seeds(q.Scope, q.Origin, q.UserID, snap, history)
 	if len(seeds) == 0 {
 		return nil, nil
 	}
+	turned := TurnedAway(snap, history)
 	links, err := s.links.Usable(ctx, q.UserID)
 	if err != nil {
 		return nil, err
@@ -223,7 +250,7 @@ func (s *Service) build(ctx context.Context, q Query, snap rooms.QueueSnapshot, 
 			}
 			var fresh []provider.Track
 			for _, t := range cands {
-				if !seen.Has(t) && !taken.Has(t) {
+				if !seen.Has(t) && !taken.Has(t) && !turned[ArtistKey(t)] {
 					taken.Track(t)
 					fresh = append(fresh, t)
 				}
@@ -286,10 +313,12 @@ func (s *Service) sample(cands []provider.Track, n int) []provider.Track {
 
 // Seeds returns the songs a list is like, best first: the song playing,
 // then what's waiting in fair order, then what played through, newest
-// first. Mine is only the user's own; group takes turns between members,
-// so nobody's taste takes over. Autopilot's songs and songs the room
-// skipped don't seed.
-func Seeds(scope Scope, userID string, snap rooms.QueueSnapshot, history []store.ListHistoryRow) []Seed {
+// first. The queue origin stops after what's playing and waiting, so a
+// queued change of vibe is reflected; what played through stands in when
+// nothing's queued. Mine is only the user's own; group takes turns
+// between members, so nobody's taste takes over. Autopilot's songs and
+// songs the room skipped don't seed.
+func Seeds(scope Scope, origin Origin, userID string, snap rooms.QueueSnapshot, history []store.ListHistoryRow) []Seed {
 	var all []store.QueueItem
 	byID := map[string]store.QueueItem{}
 	for _, it := range snap.Items {
@@ -301,16 +330,60 @@ func Seeds(scope Scope, userID string, snap rooms.QueueSnapshot, history []store
 	for _, id := range snap.UpNext {
 		all = append(all, byID[id])
 	}
+	if origin == OriginQueue {
+		if out := pickSeeds(scope, userID, all); len(out) > 0 {
+			return out
+		}
+	}
 	for _, h := range history {
 		if h.PlayHistory.EndedAt.Valid && h.PlayHistory.EndReason.String == store.EndFinished {
 			all = append(all, h.QueueItem)
 		}
 	}
+	return pickSeeds(scope, userID, all)
+}
 
+// TurnedAway returns the artists the room skipped a song of and never
+// finished or queued one of theirs: a skip says the room didn't want that
+// vibe, but a full listen or a queued song says it did. Songs by those
+// artists aren't suggested, either side of the room's history.
+func TurnedAway(snap rooms.QueueSnapshot, history []store.ListHistoryRow) map[string]bool {
+	liked := map[string]bool{}
+	for _, it := range snap.Items {
+		liked[ArtistKey(TrackOf(it))] = true
+	}
+	var out map[string]bool
+	for _, h := range history {
+		if !h.PlayHistory.EndedAt.Valid {
+			continue
+		}
+		a := ArtistKey(TrackOf(h.QueueItem))
+		if a == "" {
+			continue
+		}
+		switch h.PlayHistory.EndReason.String {
+		case store.EndSkipped:
+			if out == nil {
+				out = map[string]bool{}
+			}
+			out[a] = true
+		case store.EndFinished:
+			liked[a] = true
+		}
+	}
+	for a := range liked {
+		delete(out, a)
+	}
+	return out
+}
+
+// pickSeeds picks the seeds from items: each member's songs take turns,
+// up to maxSeeds.
+func pickSeeds(scope Scope, userID string, items []store.QueueItem) []Seed {
 	var users []string
 	byUser := map[string][]Seed{}
 	seen := Seen{}
-	for _, it := range all {
+	for _, it := range items {
 		if it.ID == "" || it.IsAutopilot() || (scope == ScopeMine && it.AddedBy != userID) {
 			continue
 		}

@@ -9,11 +9,14 @@ import (
 )
 
 // GetSuggestions returns songs to keep a room's vibe going: like your own
-// songs, or like everyone's.
+// songs or like everyone's, from what's played through or what's queued.
 func (s *Server) GetSuggestions(ctx context.Context, req GetSuggestionsRequestObject) (GetSuggestionsResponseObject, error) {
-	q := suggest.Query{RoomID: req.RoomId, UserID: sessionFrom(ctx).User.ID, Scope: suggest.ScopeMine, Limit: 20}
+	q := suggest.Query{RoomID: req.RoomId, UserID: sessionFrom(ctx).User.ID, Scope: suggest.ScopeMine, Origin: suggest.OriginHistory, Limit: 20}
 	if req.Params.Scope != nil {
 		q.Scope = suggest.Scope(*req.Params.Scope)
+	}
+	if req.Params.Source != nil {
+		q.Origin = suggest.Origin(*req.Params.Source)
 	}
 	if req.Params.Limit != nil {
 		q.Limit = *req.Params.Limit
