@@ -712,6 +712,15 @@ type AutopilotPick struct {
 	SeedTitle  *string `json:"seedTitle,omitempty"`
 }
 
+// Backup defines model for Backup.
+type Backup struct {
+	Bytes     int64     `json:"bytes"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Name Example: syncphony-20261006-193000.db
+	Name string `json:"name"`
+}
+
 // BeginOAuthLinkRequest Set `provider` to link a new account, or `linkId` to re-link one. For
 // providers that pair first, set only `pairingId`, the approved pairing.
 type BeginOAuthLinkRequest struct {
@@ -1594,6 +1603,25 @@ type Room struct {
 	SkipVotePercent SkipVotePercent `json:"skipVotePercent"`
 }
 
+// RoomActivity defines model for RoomActivity.
+type RoomActivity struct {
+	// Members IDs of who has the room open right now.
+	Members []string `json:"members"`
+	OwnerId string   `json:"ownerId"`
+
+	// Player The device a room plays through.
+	Player   *Player `json:"player,omitempty"`
+	RoomId   string  `json:"roomId"`
+	RoomName string  `json:"roomName"`
+
+	// State `idle`: nothing to play, or no speaker. `loading`: waiting for the
+	// speaker to start the song.
+	State PlaybackState `json:"state"`
+
+	// Title The song playing or paused, if any.
+	Title *string `json:"title,omitempty"`
+}
+
 // RoomAutopilot When the queue runs dry, autopilot adds songs like the ones the
 // room has been playing, taking seeds from each member's songs in
 // turn. It only plays while the room has a speaker.
@@ -1778,6 +1806,32 @@ type SearchResults struct {
 	// Groups Empty if you have no links.
 	Groups []SearchGroup `json:"groups"`
 	Query  string        `json:"query"`
+}
+
+// ServerInfo defines model for ServerInfo.
+type ServerInfo struct {
+	// Backups Backups on the server, newest first.
+	Backups       []Backup  `json:"backups"`
+	DatabaseBytes int64     `json:"databaseBytes"`
+	StartedAt     time.Time `json:"startedAt"`
+
+	// Version The build, from `git describe`, e.g. `v0.3.0-4-g1a2b3c4`.
+	Version string `json:"version"`
+}
+
+// ServerSettings defines model for ServerSettings.
+type ServerSettings struct {
+	// InstanceName What the app calls this server. Empty means just "Syncphony".
+	InstanceName string `json:"instanceName"`
+
+	// InviteExpiryHours How long a new invite lasts unless whoever makes it says otherwise.
+	InviteExpiryHours int `json:"inviteExpiryHours"`
+}
+
+// ServerSettingsUpdate defines model for ServerSettingsUpdate.
+type ServerSettingsUpdate struct {
+	InstanceName      *string `json:"instanceName,omitempty"`
+	InviteExpiryHours *int    `json:"inviteExpiryHours,omitempty"`
 }
 
 // ServiceLink defines model for ServiceLink.
@@ -2042,6 +2096,23 @@ type UserGuest struct {
 	RoomId    string    `json:"roomId"`
 }
 
+// UserSession defines model for UserSession.
+type UserSession struct {
+	// CreatedAt When it signed in.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Current This is the session making the request.
+	Current bool   `json:"current"`
+	Id      string `json:"id"`
+
+	// LastSeenAt Roughly when it was last used (updated at most hourly).
+	LastSeenAt time.Time `json:"lastSeenAt"`
+
+	// UserAgent The browser's User-Agent when it signed in; may be empty.
+	UserAgent string `json:"userAgent"`
+	UserId    string `json:"userId"`
+}
+
 // Username 2 to 32 characters: lowercase letters, digits, `.`, `_` and `-`.
 type Username = string
 
@@ -2277,6 +2348,9 @@ type MoveQueueItemJSONRequestBody = MoveQueueItemRequest
 // SendReactionJSONRequestBody defines body for SendReaction for application/json ContentType.
 type SendReactionJSONRequestBody = ReactionRequest
 
+// UpdateServerSettingsJSONRequestBody defines body for UpdateServerSettings for application/json ContentType.
+type UpdateServerSettingsJSONRequestBody = ServerSettingsUpdate
+
 // UpdateUserJSONRequestBody defines body for UpdateUser for application/json ContentType.
 type UpdateUserJSONRequestBody = UpdateUserRequest
 
@@ -2285,6 +2359,24 @@ type CreateResetLinkJSONRequestBody = CreateResetLinkRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// CreateBackup Back up the database now (admin)
+	// (POST /admin/backups)
+	CreateBackup(w http.ResponseWriter, r *http.Request)
+	// ListAllLinks Every linked service on the server, and its health (admin)
+	// (GET /admin/links)
+	ListAllLinks(w http.ResponseWriter, r *http.Request)
+	// ListActiveRooms Every room, who's in it, and what it's playing through (admin)
+	// (GET /admin/rooms)
+	ListActiveRooms(w http.ResponseWriter, r *http.Request)
+	// GetServerInfo The server's version, uptime, database and backups (admin)
+	// (GET /admin/server)
+	GetServerInfo(w http.ResponseWriter, r *http.Request)
+	// ListAllSessions Everyone's signed-in devices (admin)
+	// (GET /admin/sessions)
+	ListAllSessions(w http.ResponseWriter, r *http.Request)
+	// RevokeSession Sign out anyone's device (admin)
+	// (DELETE /admin/sessions/{id})
+	RevokeSession(w http.ResponseWriter, r *http.Request, id string)
 	// Login Sign in with a username and password
 	// (POST /auth/login)
 	Login(w http.ResponseWriter, r *http.Request)
@@ -2576,6 +2668,12 @@ type ServerInterface interface {
 	// Search Search every service you've linked, and shared ones
 	// (GET /search)
 	Search(w http.ResponseWriter, r *http.Request, params SearchParams)
+	// GetServerSettings The server's own settings
+	// (GET /server-settings)
+	GetServerSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateServerSettings Change the server's settings (admin)
+	// (PATCH /server-settings)
+	UpdateServerSettings(w http.ResponseWriter, r *http.Request)
 	// ListUserAudit Who changed whose account, and when (admin)
 	// (GET /user-audit)
 	ListUserAudit(w http.ResponseWriter, r *http.Request)
@@ -2607,6 +2705,102 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// CreateBackup operation middleware
+func (siw *ServerInterfaceWrapper) CreateBackup(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateBackup(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAllLinks operation middleware
+func (siw *ServerInterfaceWrapper) ListAllLinks(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAllLinks(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListActiveRooms operation middleware
+func (siw *ServerInterfaceWrapper) ListActiveRooms(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListActiveRooms(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetServerInfo operation middleware
+func (siw *ServerInterfaceWrapper) GetServerInfo(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetServerInfo(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAllSessions operation middleware
+func (siw *ServerInterfaceWrapper) ListAllSessions(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAllSessions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeSession operation middleware
+func (siw *ServerInterfaceWrapper) RevokeSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeSession(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // Login operation middleware
 func (siw *ServerInterfaceWrapper) Login(w http.ResponseWriter, r *http.Request) {
@@ -5280,6 +5474,34 @@ func (siw *ServerInterfaceWrapper) Search(w http.ResponseWriter, r *http.Request
 	handler.ServeHTTP(w, r)
 }
 
+// GetServerSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetServerSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetServerSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateServerSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateServerSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateServerSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListUserAudit operation middleware
 func (siw *ServerInterfaceWrapper) ListUserAudit(w http.ResponseWriter, r *http.Request) {
 
@@ -5587,6 +5809,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/me/sessions", wrapper.RevokeOtherSessions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/sessions", wrapper.ListMySessions)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/me/sessions/{id}", wrapper.RevokeMySession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/server-settings", wrapper.GetServerSettings)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/server-settings", wrapper.UpdateServerSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/server", wrapper.GetServerInfo)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/backups", wrapper.CreateBackup)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/links", wrapper.ListAllLinks)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/rooms", wrapper.ListActiveRooms)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/sessions", wrapper.ListAllSessions)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/admin/sessions/{id}", wrapper.RevokeSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/users", wrapper.ListUsers)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/users/{id}", wrapper.RemoveUser)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/users/{id}", wrapper.UpdateUser)
@@ -5677,6 +5907,229 @@ type SignedInJSONResponse struct {
 	Body Me
 
 	Headers SignedInResponseHeaders
+}
+
+type CreateBackupRequestObject struct {
+}
+
+type CreateBackupResponseObject interface {
+	VisitCreateBackupResponse(w http.ResponseWriter) error
+}
+
+type CreateBackup201JSONResponse Backup
+
+func (response CreateBackup201JSONResponse) VisitCreateBackupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBackupdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateBackupdefaultJSONResponse) VisitCreateBackupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAllLinksRequestObject struct {
+}
+
+type ListAllLinksResponseObject interface {
+	VisitListAllLinksResponse(w http.ResponseWriter) error
+}
+
+type ListAllLinks200JSONResponse []ServiceLink
+
+func (response ListAllLinks200JSONResponse) VisitListAllLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAllLinksdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListAllLinksdefaultJSONResponse) VisitListAllLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListActiveRoomsRequestObject struct {
+}
+
+type ListActiveRoomsResponseObject interface {
+	VisitListActiveRoomsResponse(w http.ResponseWriter) error
+}
+
+type ListActiveRooms200JSONResponse []RoomActivity
+
+func (response ListActiveRooms200JSONResponse) VisitListActiveRoomsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListActiveRoomsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListActiveRoomsdefaultJSONResponse) VisitListActiveRoomsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetServerInfoRequestObject struct {
+}
+
+type GetServerInfoResponseObject interface {
+	VisitGetServerInfoResponse(w http.ResponseWriter) error
+}
+
+type GetServerInfo200JSONResponse ServerInfo
+
+func (response GetServerInfo200JSONResponse) VisitGetServerInfoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetServerInfodefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetServerInfodefaultJSONResponse) VisitGetServerInfoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAllSessionsRequestObject struct {
+}
+
+type ListAllSessionsResponseObject interface {
+	VisitListAllSessionsResponse(w http.ResponseWriter) error
+}
+
+type ListAllSessions200JSONResponse []UserSession
+
+func (response ListAllSessions200JSONResponse) VisitListAllSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAllSessionsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListAllSessionsdefaultJSONResponse) VisitListAllSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeSessionRequestObject struct {
+	Id string `json:"id"`
+}
+
+type RevokeSessionResponseObject interface {
+	VisitRevokeSessionResponse(w http.ResponseWriter) error
+}
+
+type RevokeSession204Response struct {
+}
+
+func (response RevokeSession204Response) VisitRevokeSessionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeSessiondefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RevokeSessiondefaultJSONResponse) VisitRevokeSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type LoginRequestObject struct {
@@ -9451,6 +9904,83 @@ func (response SearchdefaultJSONResponse) VisitSearchResponse(w http.ResponseWri
 	return err
 }
 
+type GetServerSettingsRequestObject struct {
+}
+
+type GetServerSettingsResponseObject interface {
+	VisitGetServerSettingsResponse(w http.ResponseWriter) error
+}
+
+type GetServerSettings200JSONResponse ServerSettings
+
+func (response GetServerSettings200JSONResponse) VisitGetServerSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetServerSettingsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetServerSettingsdefaultJSONResponse) VisitGetServerSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateServerSettingsRequestObject struct {
+	Body *UpdateServerSettingsJSONRequestBody
+}
+
+type UpdateServerSettingsResponseObject interface {
+	VisitUpdateServerSettingsResponse(w http.ResponseWriter) error
+}
+
+type UpdateServerSettings200JSONResponse ServerSettings
+
+func (response UpdateServerSettings200JSONResponse) VisitUpdateServerSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateServerSettingsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateServerSettingsdefaultJSONResponse) VisitUpdateServerSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListUserAuditRequestObject struct {
 }
 
@@ -9721,6 +10251,24 @@ func (response CreateResetLinkdefaultJSONResponse) VisitCreateResetLinkResponse(
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// CreateBackup Back up the database now (admin)
+	// (POST /admin/backups)
+	CreateBackup(ctx context.Context, request CreateBackupRequestObject) (CreateBackupResponseObject, error)
+	// ListAllLinks Every linked service on the server, and its health (admin)
+	// (GET /admin/links)
+	ListAllLinks(ctx context.Context, request ListAllLinksRequestObject) (ListAllLinksResponseObject, error)
+	// ListActiveRooms Every room, who's in it, and what it's playing through (admin)
+	// (GET /admin/rooms)
+	ListActiveRooms(ctx context.Context, request ListActiveRoomsRequestObject) (ListActiveRoomsResponseObject, error)
+	// GetServerInfo The server's version, uptime, database and backups (admin)
+	// (GET /admin/server)
+	GetServerInfo(ctx context.Context, request GetServerInfoRequestObject) (GetServerInfoResponseObject, error)
+	// ListAllSessions Everyone's signed-in devices (admin)
+	// (GET /admin/sessions)
+	ListAllSessions(ctx context.Context, request ListAllSessionsRequestObject) (ListAllSessionsResponseObject, error)
+	// RevokeSession Sign out anyone's device (admin)
+	// (DELETE /admin/sessions/{id})
+	RevokeSession(ctx context.Context, request RevokeSessionRequestObject) (RevokeSessionResponseObject, error)
 	// Login Sign in with a username and password
 	// (POST /auth/login)
 	Login(ctx context.Context, request LoginRequestObject) (LoginResponseObject, error)
@@ -10012,6 +10560,12 @@ type StrictServerInterface interface {
 	// Search Search every service you've linked, and shared ones
 	// (GET /search)
 	Search(ctx context.Context, request SearchRequestObject) (SearchResponseObject, error)
+	// GetServerSettings The server's own settings
+	// (GET /server-settings)
+	GetServerSettings(ctx context.Context, request GetServerSettingsRequestObject) (GetServerSettingsResponseObject, error)
+	// UpdateServerSettings Change the server's settings (admin)
+	// (PATCH /server-settings)
+	UpdateServerSettings(ctx context.Context, request UpdateServerSettingsRequestObject) (UpdateServerSettingsResponseObject, error)
 	// ListUserAudit Who changed whose account, and when (admin)
 	// (GET /user-audit)
 	ListUserAudit(ctx context.Context, request ListUserAuditRequestObject) (ListUserAuditResponseObject, error)
@@ -10072,6 +10626,152 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// CreateBackup operation middleware
+func (sh *strictHandler) CreateBackup(w http.ResponseWriter, r *http.Request) {
+	var request CreateBackupRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateBackup(ctx, request.(CreateBackupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateBackup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateBackupResponseObject); ok {
+		if err := validResponse.VisitCreateBackupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAllLinks operation middleware
+func (sh *strictHandler) ListAllLinks(w http.ResponseWriter, r *http.Request) {
+	var request ListAllLinksRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAllLinks(ctx, request.(ListAllLinksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAllLinks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAllLinksResponseObject); ok {
+		if err := validResponse.VisitListAllLinksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListActiveRooms operation middleware
+func (sh *strictHandler) ListActiveRooms(w http.ResponseWriter, r *http.Request) {
+	var request ListActiveRoomsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListActiveRooms(ctx, request.(ListActiveRoomsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListActiveRooms")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListActiveRoomsResponseObject); ok {
+		if err := validResponse.VisitListActiveRoomsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetServerInfo operation middleware
+func (sh *strictHandler) GetServerInfo(w http.ResponseWriter, r *http.Request) {
+	var request GetServerInfoRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetServerInfo(ctx, request.(GetServerInfoRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetServerInfo")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetServerInfoResponseObject); ok {
+		if err := validResponse.VisitGetServerInfoResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAllSessions operation middleware
+func (sh *strictHandler) ListAllSessions(w http.ResponseWriter, r *http.Request) {
+	var request ListAllSessionsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAllSessions(ctx, request.(ListAllSessionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAllSessions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAllSessionsResponseObject); ok {
+		if err := validResponse.VisitListAllSessionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeSession operation middleware
+func (sh *strictHandler) RevokeSession(w http.ResponseWriter, r *http.Request, id string) {
+	var request RevokeSessionRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeSession(ctx, request.(RevokeSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeSessionResponseObject); ok {
+		if err := validResponse.VisitRevokeSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // Login operation middleware
@@ -12774,6 +13474,61 @@ func (sh *strictHandler) Search(w http.ResponseWriter, r *http.Request, params S
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SearchResponseObject); ok {
 		if err := validResponse.VisitSearchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetServerSettings operation middleware
+func (sh *strictHandler) GetServerSettings(w http.ResponseWriter, r *http.Request) {
+	var request GetServerSettingsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetServerSettings(ctx, request.(GetServerSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetServerSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetServerSettingsResponseObject); ok {
+		if err := validResponse.VisitGetServerSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateServerSettings operation middleware
+func (sh *strictHandler) UpdateServerSettings(w http.ResponseWriter, r *http.Request) {
+	var request UpdateServerSettingsRequestObject
+
+	var body UpdateServerSettingsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateServerSettings(ctx, request.(UpdateServerSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateServerSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateServerSettingsResponseObject); ok {
+		if err := validResponse.VisitUpdateServerSettingsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

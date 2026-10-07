@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/admin"
 	"github.com/madeofpendletonwool/syncphony/server/internal/artwork"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
@@ -226,7 +227,7 @@ func run() error {
 	}
 	nightSvc := nights.New(db, a.bus)
 	api := &httpapi.Server{
-		Version: version, Auth: accounts, Links: a.links, Lyrics: lyricsSvc, LinerNotes: notes, Artwork: art, Palettes: palettes,
+		Version: version, StartedAt: time.Now().UTC(), Admin: admin.New(db, filepath.Join(cfg.DataDir, "backups")), Auth: accounts, Links: a.links, Lyrics: lyricsSvc, LinerNotes: notes, Artwork: art, Palettes: palettes,
 		Rooms: roomSvc, Queue: queueSvc, Playback: player, Nights: nightSvc, Suggest: suggest.New(db, roomSvc, a.links),
 		Bus: a.bus, Presence: presence,
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,

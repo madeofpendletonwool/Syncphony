@@ -95,6 +95,21 @@ func (s *Store) Close() error { return s.db.Close() }
 // Ping checks the database is reachable.
 func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 
+// BackupTo writes a consistent copy of the database to path, which must
+// not exist. The server keeps running while it does.
+func (s *Store) BackupTo(ctx context.Context, path string) error {
+	_, err := s.db.ExecContext(ctx, "VACUUM INTO ?", path)
+	return err
+}
+
+// Size is how many bytes the database takes up, not counting its
+// write-ahead log.
+func (s *Store) Size(ctx context.Context) (int64, error) {
+	var n int64
+	err := s.db.QueryRowContext(ctx, "SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()").Scan(&n)
+	return n, err
+}
+
 // Tx runs fn in a transaction, committing if it returns nil.
 func (s *Store) Tx(ctx context.Context, fn func(q *Queries) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)

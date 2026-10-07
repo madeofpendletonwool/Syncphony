@@ -28,8 +28,10 @@ var guestOps = map[string]bool{
 	"GetMe":         true,
 	"ListUsers":     true,
 	"GetUserAvatar": true,
-	"ListRooms":     true,
-	"GetRoom":       true,
+	// The server's name, for the app's title.
+	"GetServerSettings": true,
+	"ListRooms":         true,
+	"GetRoom":           true,
 	// Shared services: what a guest searches and adds from.
 	"ListProviders":     true,
 	"ListLinks":         true,

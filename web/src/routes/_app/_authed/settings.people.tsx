@@ -15,6 +15,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { UserAvatar } from '@/components/user-avatar'
 import { meQuery, useMe } from '@/lib/auth'
 import { easeOutExpo, fadeUp, spring, stagger } from '@/lib/motion'
+import { serverSettingsQuery } from '@/lib/server'
 import { relativeTime } from '@/lib/time'
 import { usersQuery } from '@/lib/users'
 import { cn } from '@/lib/utils'
@@ -58,7 +59,11 @@ function Invites() {
   const queryClient = useQueryClient()
   const invites = useQuery(invitesQuery)
   const [role, setRole] = useState<Role>('member')
-  const [hours, setHours] = useState<number>(168)
+  // The server's default, until you pick one.
+  const defaultHours = useQuery(serverSettingsQuery).data?.inviteExpiryHours ?? 168
+  const [picked, setHours] = useState<number>()
+  const hours = picked ?? defaultHours
+  const options = expiries.some((e) => e.hours === hours) ? expiries : [...expiries, { hours, label: `${hours} hours` }]
   const [fresh, setFresh] = useState<string>()
   // When the page opened; close enough for sorting invites into pending and past.
   const [now] = useState(Date.now)
@@ -93,7 +98,7 @@ function Invites() {
             onValueChange={(v) => v && setHours(Number(v))}
             aria-label="Expires after"
           >
-            {expiries.map((e) => (
+            {options.map((e) => (
               <ToggleGroupItem key={e.hours} value={String(e.hours)}>
                 {e.label}
               </ToggleGroupItem>

@@ -174,6 +174,11 @@ type ServerKey struct {
 	CreatedAt time.Time
 }
 
+type ServerSetting struct {
+	ID       int64
+	Settings string
+}
+
 type ServiceLink struct {
 	ID                   string
 	UserID               string

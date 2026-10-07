@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/admin"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/config"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
@@ -24,6 +25,9 @@ commands:
            print a one-time link that lets <username> set a new password or
            passkey, signing them out everywhere else. For when no admin can
            sign in to make one. Lasts 24 hours unless -hours says otherwise.
+  backup   copy the database into <data dir>/backups, keeping the newest 7.
+           Safe while the server runs; schedule it with cron. Admins see
+           the backups on the Server page.
 
 Run it where the server's SYNCPHONY_* settings are set, e.g.
   docker compose exec syncphony syncphony admin reset-link alice`
@@ -36,6 +40,8 @@ func adminCommand(args []string) error {
 	switch args[0] {
 	case "reset-link":
 		return resetLinkCommand(context.Background(), args[1:], os.Stdout)
+	case "backup":
+		return backupCommand(context.Background(), os.Stdout)
 	default:
 		fmt.Fprintln(os.Stderr, adminUsage)
 		return fmt.Errorf("admin: unknown command %q", args[0])
@@ -74,5 +80,25 @@ func resetLinkCommand(ctx context.Context, args []string, out io.Writer) error {
 	}
 	fmt.Fprintf(out, "Reset link for %s (@%s), good once until %s:\n\n  %s\n\n", u.DisplayName, u.Username, link.ExpiresAt.Local().Format(time.RFC1123), link.URL)
 	fmt.Fprintln(out, "Using it signs them out everywhere else.")
+	return nil
+}
+
+func backupCommand(ctx context.Context, out io.Writer) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	db, err := store.Open(ctx, filepath.Join(cfg.DataDir, "syncphony.db"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	dir := filepath.Join(cfg.DataDir, "backups")
+	b, err := admin.New(db, dir).Backup(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Backed up to %s (%d bytes).\n", filepath.Join(dir, b.Name), b.Bytes)
+	fmt.Fprintln(out, "Linked services' credentials in it are sealed: restoring needs the same vault key.")
 	return nil
 }

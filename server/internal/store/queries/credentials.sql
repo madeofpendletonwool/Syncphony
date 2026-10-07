@@ -65,3 +65,11 @@ SELECT count(*) FROM credentials_passkey WHERE user_id = ?;
 
 -- name: DeleteOtherSessions :exec
 DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?;
+
+-- ListAllSessions returns everyone's unexpired sessions, most recently used
+-- first. Guests' are left out: they come and go with their pass.
+-- name: ListAllSessions :many
+SELECT sessions.* FROM sessions
+WHERE sessions.expires_at > sqlc.arg(now)
+  AND NOT EXISTS (SELECT 1 FROM guests WHERE guests.user_id = sessions.user_id)
+ORDER BY sessions.last_seen_at DESC, sessions.created_at DESC;
