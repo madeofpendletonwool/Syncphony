@@ -90,8 +90,8 @@ func TestLive(t *testing.T) {
 	}
 	for _, explore := range []float64{0, 0.5, 1} {
 		cands := e.walk(t.Context(), p, lt, explore, nil)
-		show(fmt.Sprintf("explore %.1f, %d candidates", explore, len(cands)), diverse(score(cands, p, lt, explore, false)))
+		show(fmt.Sprintf("explore %.1f, %d candidates", explore, len(cands)), diverse(score(cands, p, lt, explore, false), shortlist))
 	}
 	back := Throwbacks(p, lt)
-	show(fmt.Sprintf("a throwback fill, bringing back %v", back), diverse(score(e.walk(t.Context(), p, lt, 0.25, back), p, lt, 0.25, false)))
+	show(fmt.Sprintf("a throwback fill, bringing back %v", back), diverse(score(e.walk(t.Context(), p, lt, 0.25, back), p, lt, 0.25, false), shortlist))
 }

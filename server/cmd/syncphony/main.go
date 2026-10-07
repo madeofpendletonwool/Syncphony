@@ -226,9 +226,12 @@ func run() error {
 	pilot := autopilot.New(db, roomSvc, queueSvc, a.links, presence)
 	pilot.Player = player
 	pilot.Memory = &dj.Memory{DB: db}
+	// Suggestions (ADR 0010) ask the same DJ.
+	suggestions := suggest.New(db, roomSvc, a.links)
 	if len(graph.Sources()) > 0 {
 		pilot.Graph = graph
 		pilot.Memory.Graph = graph
+		suggestions.Graph = graph
 	}
 	defer pilot.Close()
 	onChange, onUpdate := queueSvc.OnChange, roomSvc.OnUpdate
@@ -243,7 +246,7 @@ func run() error {
 	nightSvc := nights.New(db, a.bus)
 	api := &httpapi.Server{
 		Version: version, StartedAt: time.Now().UTC(), Admin: admin.New(db, filepath.Join(cfg.DataDir, "backups")), Auth: accounts, Links: a.links, Lyrics: lyricsSvc, LinerNotes: notes, Artwork: art, Palettes: palettes,
-		Rooms: roomSvc, Queue: queueSvc, Playback: player, Nights: nightSvc, Suggest: suggest.New(db, roomSvc, a.links), Autopilot: pilot,
+		Rooms: roomSvc, Queue: queueSvc, Playback: player, Nights: nightSvc, Suggest: suggestions, Autopilot: pilot,
 		Bus: a.bus, Presence: presence,
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	}

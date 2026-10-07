@@ -15,6 +15,7 @@ import (
 	"cmp"
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/match"
@@ -48,6 +49,8 @@ const (
 	linksPerSong = 2
 	// defaultWant is how many picks Choose returns, unless asked.
 	defaultWant = 2
+	// findAtOnce is how many picks are looked for on services at once.
+	findAtOnce = 6
 )
 
 // Engine picks songs.
@@ -78,6 +81,13 @@ type Request struct {
 	// EnergyCurve follows the room's energy curve (rooms.Autopilot): a
 	// gentle rise over a session, then settling, moved by the time of day.
 	EnergyCurve bool
+	// Member narrows the taste to one member's, for their own suggestions
+	// ("your vibe", ADR 0010). The room's skips still turn artists away.
+	Member string
+	// Queued reads the taste from the members' songs playing and waiting
+	// (Member's, if set), when there are any, so a queued change of vibe
+	// is the vibe.
+	Queued bool
 }
 
 // Pick is a song the DJ chose.
@@ -131,49 +141,80 @@ func (e *Engine) Choose(ctx context.Context, r Request) []Pick {
 	if in.Related == nil {
 		in.Related = Related(ctx, e.Graph)
 	}
-	p := NewProfile(in)
+	p := NewProfile(in).narrow(in, r.Member, r.Queued)
 	if len(p.Artists) == 0 || len(r.Links) == 0 {
 		return nil
 	}
 	order := e.shortlist(ctx, p, r, in.Tags)
 	want := cmp.Or(r.Want, defaultWant)
+	sessions := &lockedSessions{s: r.Sessions}
 	var out []Pick
-	for _, c := range order {
+	taken := map[provider.TrackRef]bool{}
+	for len(order) > 0 && len(out) < want {
 		if ctx.Err() != nil {
 			break // out of time: play what was found
 		}
-		t, ok := e.find(ctx, r, p, c)
-		if !ok {
-			continue
+		// Look for as many as are still wanted at once, in the draw's
+		// order, so a fill tries the same candidates as one by one.
+		batch := order[:min(len(order), want-len(out), findAtOnce)]
+		order = order[len(batch):]
+		found := make([]provider.Track, len(batch))
+		ok := make([]bool, len(batch))
+		var wg sync.WaitGroup
+		for i, c := range batch {
+			wg.Go(func() { found[i], ok[i] = e.find(ctx, r, sessions, p, c) })
 		}
-		taste := p.Artists[c.via]
-		pick := Pick{Track: t, Why: Why{
-			Kind: c.kind, Similarity: c.similarity, Popularity: c.popularity, Novelty: c.novelty,
-			Prior: c.prior, Score: c.score, DeepCut: c.deepCut, Sources: c.sources, LovedAt: c.lovedAt, Flow: c.flow,
-			Bridge: c.bridge, Turn: c.turn,
-		}}
-		switch {
-		case c.kind == KindThrowback:
-			pick.Why.Via = r.LongTerm.Artists[c.via].Name
-		case taste != nil:
-			pick.ForUser, pick.Seed, pick.Why.Via = taste.Fan(), taste.Seed, taste.Artist.Name
-		}
-		// A bridge is for the one of its members served longer ago; a turn,
-		// for its member, if the song is near their taste.
-		switch {
-		case c.bridge != nil:
-			pick.ForUser = p.servedLongestAgo(c.bridge.Users[:])
-			pick.Seed = p.memberSeed(pick.ForUser, c.reachVia[pick.ForUser])
-		case c.turn != "" && c.reach[c.turn] >= bridgeReach:
-			pick.ForUser = c.turn
-			pick.Seed = p.memberSeed(c.turn, c.reachVia[c.turn])
-		}
-		out = append(out, pick)
-		if len(out) >= want {
-			break
+		wg.Wait()
+		for i, c := range batch {
+			if !ok[i] || taken[found[i].Ref] {
+				continue
+			}
+			taken[found[i].Ref] = true
+			out = append(out, p.pick(r, c, found[i]))
 		}
 	}
 	return out
+}
+
+// pick is candidate c, found as t, with why it was chosen and whom for.
+func (p Profile) pick(r Request, c candidate, t provider.Track) Pick {
+	taste := p.Artists[c.via]
+	pick := Pick{Track: t, Why: Why{
+		Kind: c.kind, Similarity: c.similarity, Popularity: c.popularity, Novelty: c.novelty,
+		Prior: c.prior, Score: c.score, DeepCut: c.deepCut, Sources: c.sources, LovedAt: c.lovedAt, Flow: c.flow,
+		Bridge: c.bridge, Turn: c.turn,
+	}}
+	switch {
+	case c.kind == KindThrowback:
+		pick.Why.Via = r.LongTerm.Artists[c.via].Name
+	case taste != nil:
+		pick.ForUser, pick.Seed, pick.Why.Via = taste.Fan(), taste.Seed, taste.Artist.Name
+	}
+	// A bridge is for the one of its members served longer ago; a turn,
+	// for its member, if the song is near their taste.
+	switch {
+	case c.bridge != nil:
+		pick.ForUser = p.servedLongestAgo(c.bridge.Users[:])
+		pick.Seed = p.memberSeed(pick.ForUser, c.reachVia[pick.ForUser])
+	case c.turn != "" && c.reach[c.turn] >= bridgeReach:
+		pick.ForUser = c.turn
+		pick.Seed = p.memberSeed(c.turn, c.reachVia[c.turn])
+	}
+	return pick
+}
+
+// lockedSessions opens links one at a time, for finding picks at once:
+// a Sessions like suggest.Finder isn't safe for concurrent use. The
+// sessions it opens are.
+type lockedSessions struct {
+	mu sync.Mutex
+	s  Sessions
+}
+
+func (l *lockedSessions) Open(ctx context.Context, linkID string) (provider.Session, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.s.Open(ctx, linkID)
 }
 
 // shortlist returns the candidates to try, in order: drawn from the best
@@ -189,11 +230,13 @@ func (e *Engine) shortlist(ctx context.Context, p Profile, r Request, tags map[s
 	cancel()
 	deepCut := e.Rand(100) < deepCutPercent
 	mx := mixFor(p)
-	pool := e.flowing(ctx, p, tags, diverse(mixed(score(cands, p, r.LongTerm, x, deepCut), p, mx)), r.EnergyCurve, r.Now)
+	// A long list (suggestions) draws from a longer shortlist.
+	n := max(drawn, 2*cmp.Or(r.Want, defaultWant))
+	pool := e.flowing(ctx, p, tags, diverse(mixed(score(cands, p, r.LongTerm, x, deepCut), p, mx), max(shortlist, n)), r.EnergyCurve, r.Now)
 	for i := range pool {
 		pool[i].turn = mx.turn
 	}
-	return draw(pool, drawn, lerp(tempFamiliar, tempExplore, x), e.Rand)
+	return draw(pool, n, lerp(tempFamiliar, tempExplore, x), e.Rand)
 }
 
 // CachedTags returns the tags of the artists the room played lately, as
@@ -222,14 +265,14 @@ func CachedTags(ctx context.Context, g Graph, in Input) map[string][]musicgraph.
 
 // find looks for a candidate on the room's services: first the one the
 // song it leads from played from, then the others in order.
-func (e *Engine) find(ctx context.Context, r Request, p Profile, c candidate) (provider.Track, bool) {
+func (e *Engine) find(ctx context.Context, r Request, sessions Sessions, p Profile, c candidate) (provider.Track, bool) {
 	want := provider.Track{Title: c.song.Title, ISRC: c.song.ISRC, MBID: c.song.MBID, Artists: []provider.ArtistCredit{{Name: c.song.Artist.Name}}}
 	links := r.Links
 	if taste := p.Artists[c.via]; taste != nil && taste.Seed.ID != "" {
 		links = first(links, source(taste.Seed))
 	}
 	for _, l := range links[:min(len(links), linksPerSong)] {
-		sess, ok := r.Sessions.Open(ctx, l.ID)
+		sess, ok := sessions.Open(ctx, l.ID)
 		if !ok {
 			continue
 		}

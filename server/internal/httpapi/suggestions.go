@@ -5,6 +5,7 @@ package httpapi
 import (
 	"context"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/dj"
 	"github.com/madeofpendletonwool/syncphony/server/internal/suggest"
 )
 
@@ -30,7 +31,7 @@ func (s *Server) GetSuggestions(ctx context.Context, req GetSuggestionsRequestOb
 	}
 	out := Suggestions{Scope: SuggestionsScope(q.Scope), Items: make([]Suggestion, len(ss))}
 	for i, sg := range ss {
-		seed := suggest.TrackOf(sg.Seed)
+		seed := dj.TrackOf(sg.Seed)
 		because := SuggestionSeed{ItemId: sg.Seed.ID, Title: seed.Title, UserId: sg.Seed.AddedBy}
 		if len(seed.Artists) > 0 {
 			because.Artist = ptr(seed.Artists[0].Name)
