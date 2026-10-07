@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { DatabaseBackup, DoorOpen, LoaderCircle, LogOut, Speaker } from 'lucide-react'
+import { AudioLines, DatabaseBackup, DoorOpen, History, LoaderCircle, LogOut, Speaker } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { api } from '@/api/client'
@@ -28,6 +28,7 @@ import { usersQuery } from '@/lib/users'
 
 type User = components['schemas']['User']
 type ServerSettings = components['schemas']['ServerSettings']
+type RoomTaste = components['schemas']['RoomTaste']
 
 export const Route = createFileRoute('/_app/_authed/settings/server')({
   beforeLoad: async ({ context }) => {
@@ -301,6 +302,7 @@ const stateLabels: Record<components['schemas']['PlaybackState'], string> = {
 }
 
 function Rooms() {
+  const [tasteOf, setTasteOf] = useState<string | null>(null)
   const rooms = useQuery(roomsQuery)
   const users = useQuery(usersQuery)
   const userById = (id: string) => users.data?.find((u) => u.id === id)
@@ -342,6 +344,17 @@ function Rooms() {
                     </Badge>
                   )}
                   <Badge variant={r.state === 'playing' ? 'default' : 'outline'}>{stateLabels[r.state]}</Badge>
+                  {r.canEnter && (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      aria-expanded={tasteOf === r.roomId}
+                      onClick={() => setTasteOf(tasteOf === r.roomId ? null : r.roomId)}
+                    >
+                      <AudioLines data-icon="inline-start" />
+                      DJ's taste
+                    </Button>
+                  )}
                   {!r.canEnter && (
                     <Button size="xs" variant="ghost" disabled={join.isPending} onClick={() => join.mutate(r.roomId)}>
                       {join.isPending && join.variables === r.roomId ? <LoaderCircle className="animate-spin" /> : <DoorOpen data-icon="inline-start" />}
@@ -373,12 +386,94 @@ function Rooms() {
                   </span>
                   <span>Owner: {userById(r.ownerId)?.displayName ?? 'someone'}</span>
                 </div>
+                {tasteOf === r.roomId && <Taste roomId={r.roomId} />}
               </li>
             )
           })}
         </ul>
       )}
     </Card>
+  )
+}
+
+/** What the DJ has learned of a room's taste, to check its learning makes sense. */
+function Taste({ roomId }: { roomId: string }) {
+  const taste = useQuery({
+    queryKey: ['admin', 'rooms', roomId, 'taste'],
+    queryFn: () => unwrap(api.GET('/admin/rooms/{roomId}/taste', { params: { path: { roomId } } })),
+  })
+  if (taste.isPending) return <Loading />
+  if (taste.isError) return <Notice className="mt-2">{errorMessage(taste.error)}</Notice>
+  const t: RoomTaste = taste.data
+  return (
+    <div className="mt-2 grid gap-4 rounded-2xl bg-muted/40 p-4 sm:grid-cols-2">
+      <section className="flex flex-col gap-2">
+        <h3 className="flex items-center gap-2 text-sm font-medium">
+          Tonight
+          {t.shifted && <Badge variant="outline">Vibe changing</Badge>}
+        </h3>
+        {t.tonight.length === 0 ? (
+          <p className="text-caption text-muted-foreground">Nothing yet.</p>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {t.tonight.map((a) => (
+              <WeightRow key={a.name} name={a.name} weight={a.weight} note={`${a.plays} ${a.plays === 1 ? 'play' : 'plays'}`} />
+            ))}
+          </ul>
+        )}
+        {t.avoided.length > 0 && <p className="text-caption text-muted-foreground">Turned away: {t.avoided.join(', ')}</p>}
+      </section>
+      <section className="flex flex-col gap-2">
+        <h3 className="flex items-center gap-1.5 text-sm font-medium">
+          <History className="size-3.5" />
+          Past {t.nights === 1 ? 'night' : `${t.nights} nights`}
+        </h3>
+        {t.artists.length === 0 ? (
+          <p className="text-caption text-muted-foreground">No nights have ended yet.</p>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {t.artists.map((a) => (
+              <WeightRow
+                key={a.name}
+                name={a.name}
+                weight={a.weight}
+                note={[
+                  a.lovedAt ? (a.nightsAgo === 0 ? 'last night' : `${a.nightsAgo} nights ago`) : 'never liked',
+                  a.veto > 0 ? `veto ${Math.round(a.veto * 100)}%` : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+                badge={a.throwback ? 'Throwback' : undefined}
+              />
+            ))}
+          </ul>
+        )}
+        {t.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {t.tags.map((g) => (
+              <Badge key={g.name} variant="outline" style={{ opacity: 0.4 + 0.6 * g.weight }}>
+                {g.name}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function WeightRow({ name, weight, note, badge }: { name: string; weight: number; note: string; badge?: string }) {
+  return (
+    <li className="flex flex-col gap-0.5">
+      <div className="flex items-baseline gap-2 text-sm">
+        <span className="min-w-0 flex-1 truncate">{name}</span>
+        {badge && <Badge variant="outline">{badge}</Badge>}
+        <span className="shrink-0 text-caption text-muted-foreground">{note}</span>
+      </div>
+      <div className="h-1 overflow-hidden rounded-full bg-border">
+        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.round(weight * 100)}%` }} />
+      </div>
+    </li>
   )
 }
 

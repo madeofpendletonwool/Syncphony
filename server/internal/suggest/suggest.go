@@ -346,7 +346,9 @@ func Seeds(scope Scope, origin Origin, userID string, snap rooms.QueueSnapshot, 
 // TurnedAway returns the artists the room skipped a song of and never
 // finished or queued one of theirs: a skip says the room didn't want that
 // vibe, but a full listen or a queued song says it did. Songs by those
-// artists aren't suggested, either side of the room's history.
+// artists aren't suggested, either side of the room's history. Unlike the
+// DJ's (dj.Profile, ADR 0012), it doesn't fade with time; suggestions move
+// onto the DJ in MAD-759.
 func TurnedAway(snap rooms.QueueSnapshot, history []store.ListHistoryRow) map[string]bool {
 	liked := map[string]bool{}
 	for _, it := range snap.Items {

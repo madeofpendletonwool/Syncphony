@@ -635,6 +635,28 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /admin/rooms/{roomId}/taste:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: getRoomTaste
+      summary: What the DJ has learned of a room's taste (admin)
+      description: |
+        Tonight's taste, read from the room's latest plays, and its taste
+        over past nights, a weak prior on the DJ's picks (ADR 0012), to
+        check that the learning makes sense. Like what a room is playing,
+        it's the room's own business: a room you can't open isn't found.
+      tags: [admin]
+      responses:
+        "200":
+          description: The room's taste
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomTaste"
+        default:
+          $ref: "#/components/responses/Error"
+
   /admin/sessions:
     get:
       operationId: listAllSessions
@@ -3373,6 +3395,85 @@ components:
           description: The song playing or paused, if any.
         player:
           $ref: "#/components/schemas/Player"
+
+    RoomTaste:
+      type: object
+      required: [nights, shifted, tonight, avoided, artists, tags]
+      properties:
+        nights:
+          type: integer
+          description: How many past nights the DJ has learned from.
+        shifted:
+          type: boolean
+          description: The vibe is changing, so the latest songs count more.
+        tonight:
+          type: array
+          description: The artists the room likes tonight, most first.
+          items:
+            $ref: "#/components/schemas/TonightArtist"
+        avoided:
+          type: array
+          description: Artists the room turned away lately.
+          items:
+            type: string
+        artists:
+          type: array
+          description: |
+            The artists the room liked over past nights, most first, then
+            those it turned away.
+          items:
+            $ref: "#/components/schemas/LastingArtist"
+        tags:
+          type: array
+          description: The tags the room liked over past nights, most first.
+          items:
+            $ref: "#/components/schemas/TasteTag"
+
+    TonightArtist:
+      type: object
+      required: [name, weight, plays]
+      properties:
+        name:
+          type: string
+        weight:
+          type: number
+          description: From 0 to 1, against the room's favorite.
+        plays:
+          type: integer
+          description: Songs of theirs members chose or let play through.
+
+    LastingArtist:
+      type: object
+      required: [name, weight, veto, nightsAgo, throwback]
+      properties:
+        name:
+          type: string
+        weight:
+          type: number
+          description: From 0 to 1, against the artist the room liked most.
+        veto:
+          type: number
+          description: How much the room turned them away, from 0 to 1. It fades by night.
+        nightsAgo:
+          type: integer
+          description: How many nights ago the room last liked them; 0 is the last night.
+        lovedAt:
+          type: string
+          format: date-time
+          description: When that night ended. Absent if the room never liked them.
+        throwback:
+          type: boolean
+          description: The DJ could bring them back as a throwback now.
+
+    TasteTag:
+      type: object
+      required: [name, weight]
+      properties:
+        name:
+          type: string
+        weight:
+          type: number
+          description: From 0 to 1, against the strongest.
 
     Ceremony:
       type: object

@@ -1,8 +1,8 @@
 # ADR 0012: Smart DJ: music knowledge apart from the services
 
-- **Status:** accepted (stages 1 and 2 of Phase 7)
+- **Status:** accepted (stages 1 and 2 of Phase 7, and learning from stage 3)
 - **Date:** 2026-10-07
-- **Issues:** MAD-750 (Phase 7); stage 1: MAD-751, MAD-752; stage 2: MAD-753, MAD-754, MAD-755
+- **Issues:** MAD-750 (Phase 7); stage 1: MAD-751, MAD-752; stage 2: MAD-753, MAD-754, MAD-755; stage 3: MAD-756, MAD-762
 
 ## Context
 
@@ -93,13 +93,18 @@ MusicBrainz joins when `SYNCPHONY_MUSICBRAINZ_URL` isn't off. `TestLive` in `int
   |---|---|
   | let a member's song play through | +1 |
   | has a member's song playing or waiting | +0.8 |
-  | let one of autopilot's songs play through | +0.5 |
-  | skipped a song (anyone's) | −1 |
+  | let one of autopilot's songs play through | +0.5 (a throwback: +0.25) |
+  | hearted a song | +0.4 a heart, up to 3 |
+  | queued a song again within 3 hours of it playing | +0.6 |
+  | queued a song by the artist of autopilot's song, or a similar one, while it played or within 5 minutes | +0.7 for autopilot's song's artist, from that member |
+  | skipped a song (anyone's) in its first 10 seconds | −1.5 |
+  | skipped it later | −1 just after 10 seconds, to −0.2 at the end |
   | removed one of autopilot's songs | −0.5 |
 
-  Each signal halves every 2 hours.
+  Each signal halves every 2 hours. A song's length comes from its metadata, or is taken as 4 minutes. "Similar" is what the graph's cache knows.
 - **Fair across members.** Each member's likes are scaled to the same total, however many songs they've queued. Members in the room count 1.5, members who left 1, and autopilot's songs 0.5. Weights are relative to the room's favorite artist, which scores 1.
-- **Turned away.** An artist the room skipped more than it liked is left out entirely, both as a seed and as a pick.
+- **Turned away.** An artist whose decayed net signal is below −0.25 (about one skip in the last two hours outweighing the room's liking) is left out entirely, both as a seed and as a pick. A skip long ago, decayed to almost nothing, no longer turns an artist away (MAD-762). Between −0.25 and 0 the artist is *in doubt*, and their songs lose up to 0.3. Autopilot's fallback uses the same rule; it replaced ADR 0008's "avoid that artist for 20 songs".
+- **Tonight.** Artists liked so long ago that they weigh under 1% of the favorite drop out. Spacing counts only songs of the current session: the run since the room was last quiet for 2 hours (`stats.SessionGap`).
 - **Heard.** Songs the room heard or has waiting are compared by artist and title without qualifiers, so a remaster or live take of a song the room just heard doesn't play.
 
 ### Candidates and finding them (MAD-754)
@@ -128,6 +133,49 @@ MusicBrainz joins when `SYNCPHONY_MUSICBRAINZ_URL` isn't off. `TestLive` in `int
 - **Picking.** The 25 best candidates, with at most 2 songs per artist, are drawn without replacement by softmax. The temperature runs from 0.05 at explore 0 to 0.15 at 100. The per-artist cap came from a live run: without it, one artist's catalog filled the whole shortlist.
 - **Reasons.** Each pick stores its reasoning in `AutopilotInfo.reason`: the kind of relation, the via artist, similarity, popularity, novelty, score, whether it's a deep cut, and the sources. Explaining picks (MAD-760) reads it.
 
+### Learning: present taste first, history as a weak prior (MAD-756)
+
+A persisted affinity can drag a room back to an old vibe. A room on a week of Beatles shouldn't be pulled back to the Arctic Monkeys it played the week before. So the DJ keeps two layers.
+
+- **Tonight's taste (`Profile`) drives the picks**, as above.
+- **The long-term taste (`LongTerm`) is only a weak prior.** It raises a candidate's score by `prior · s/(1−s)`, with `s = priorShare = 0.12`, so it's never more than 12% of the score. History can tip a choice between near-equal candidates, but it can't outvote what the room is playing now. The prior is 0.6 × the room's long-term liking of the artist, plus 0.4 × its liking of the artist's tags (weighted by tag).
+
+**Nights, not wall time.**
+- `dj.Memory` folds each night once it ends. Nights are the ones `nights` already keeps, ended by the host or by `stats.SessionGap` of quiet.
+- Folding a night first fades everything before it by 0.7, then adds the night's likes and skips. Those use the same signals as tonight's taste, without decay.
+- Last weekend still counts and three months ago is faint, however many idle days fall in between. Wall-time decay alone would treat a week-long gap and a busy week the same.
+- A room seen for the first time folds its last 30 nights.
+- Folding happens when the DJ picks, or when the debug view is opened.
+- It's stored in `dj_rooms` (nights folded, and when the last ended) and `dj_affinities`: likes and skips per room, artist or tag, and member, plus the night it was last liked.
+
+**Fair.** Like the profile, each member's long-term likes add up to the same, so a member who's been around for months doesn't outweigh someone new. Autopilot's songs the room let play count 0.5.
+
+**Long-term vetoes fade.**
+- An artist's veto is `(skips − 0.5·likes) / 3`, clamped to 0–1, and costs up to 0.3 of a score.
+- It fades with the nights like everything else, so it's a graded penalty that recovers, not a ban.
+- A skipped throwback counts twice against its artist.
+
+**Throwbacks: deliberate history.**
+- On 10% of fills, the 3 artists the room loved most in past nights, but hasn't liked in its last 3 nights or played this session, compete as `throwback` candidates. They must weigh at least 0.03 against the room's long-term favorite, discounted by any veto, and weigh under 0.2 tonight.
+- A throwback's similarity is its long-term liking against the most-loved throwback's, so the top one is as near as the room's nearest artist. It still has to win the draw.
+- The chance halves for each throwback the room skipped in its last 100 plays. A quick skip also turns the artist away for the rest of the night, and counts double in their veto when the night is folded.
+- A throwback's reason has kind `"throwback"`, `via` the artist, and `lovedAt`, when the night ended that the room last liked them. MAD-760 can then say "a throwback: the room played a lot of X in September".
+- A throwback the room lets play counts half as much as other autopilot songs tonight, so one throwback doesn't start a run.
+
+**A change of vibe.**
+- Once the members have at least 13 songs, their 10 latest unskipped songs are compared with the rest of the room's reactions. The comparison is the cosine similarity of artist and tag vectors, with tags from the graph's cache.
+- Under 0.35, everything since the 10th latest song counts 3 times as much, so the DJ follows the change instead of averaging it away.
+- Once the night settles on the new vibe, the comparison is close again and the boost stops.
+
+**Seeing it.** `GET /admin/rooms/{roomId}/taste` (admins, in rooms they can open) returns tonight's top artists, the artists turned away, whether the vibe is changing, the long-term artists (weight, veto, nights since last liked, throwback eligibility), and the long-term tags. The server settings page shows it under each room as "DJ's taste".
+
+**Tests.** `scenario_test.go` builds a room with weeks of history in a real database: three weeks ago, a week of Arctic Monkeys; then a week of the Beatles; tonight, a few songs of something new. It checks the following:
+- The picks follow tonight's songs, then the Beatles.
+- The Arctic Monkeys come only as an occasional throwback, under 10% of picks and never twice within 5 songs.
+- Skipping a throwback makes the next one rarer.
+
+`TestLive` folds a multi-night history and logs a throwback fill.
+
 ### Fallback
 
 If the graph has no sources, knows nothing near the room's taste, or none of its picks can be found, autopilot falls back to ADR 0008's chain, unchanged: the services' recommendations, then autopilot's own trail, then random songs.
@@ -143,4 +191,6 @@ If the graph has no sources, knows nothing near the room's taste, or none of its
 - An artist's name can belong to more than one artist. Deezer takes the one with the most fans, and MusicBrainz the best search result.
 - The first fill after a cold start knows only the artists it fetched in time. The warmer catches up from the songs being queued.
 - `AutopilotInfo.reason` is stored with each song; it isn't in the API until MAD-760.
+- A room's long-term taste is the room's: it's deleted with the room. It names members by ID, and keeps an artist only while its likes or skips are above 0.005, about 15 nights of silence for one play.
+- Suggestions (ADR 0010) still use their own unfaded "turned away" rule until MAD-759 moves them onto the DJ.
 - Tempo is often unknown: Deezer has a BPM for some songs and 0 for many. Set flow (MAD-757) must treat 0 as unknown, not slow.

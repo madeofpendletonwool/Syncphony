@@ -64,7 +64,7 @@ A song autopilot won't pick:
 - anything waiting or playing,
 - anything among its own last 50 songs, including the ones someone removed.
 
-Songs are recognized by service and ID, by ISRC, or by artist and title. The room's repeat guard still applies when the song is added. When the room skips one of autopilot's songs (not a failure), autopilot avoids that artist for its next 20 songs.
+Songs are recognized by service and ID, by ISRC, or by artist and title. The room's repeat guard still applies when the song is added. When the room skips one of autopilot's songs (not a failure), autopilot avoids that artist while the skip outweighs the room's liking of them; the skip fades with time (ADR 0012, "Learning"). This replaced a fixed "avoid that artist for its next 20 songs".
 
 ## Consequences
 

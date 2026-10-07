@@ -1116,6 +1116,25 @@ type JoinAsGuestRequest struct {
 	DisplayName string `json:"displayName"`
 }
 
+// LastingArtist defines model for LastingArtist.
+type LastingArtist struct {
+	// LovedAt When that night ended. Absent if the room never liked them.
+	LovedAt *time.Time `json:"lovedAt,omitempty"`
+	Name    string     `json:"name"`
+
+	// NightsAgo How many nights ago the room last liked them; 0 is the last night.
+	NightsAgo int `json:"nightsAgo"`
+
+	// Throwback The DJ could bring them back as a throwback now.
+	Throwback bool `json:"throwback"`
+
+	// Veto How much the room turned them away, from 0 to 1. It fades by night.
+	Veto float32 `json:"veto"`
+
+	// Weight From 0 to 1, against the artist the room liked most.
+	Weight float32 `json:"weight"`
+}
+
 // LinerNotes defines model for LinerNotes.
 type LinerNotes struct {
 	Artist *LinerNotesArtist `json:"artist,omitempty"`
@@ -2069,6 +2088,28 @@ type RoomStats struct {
 	TopTracks  []TrackCount  `json:"topTracks"`
 }
 
+// RoomTaste defines model for RoomTaste.
+type RoomTaste struct {
+	// Artists The artists the room liked over past nights, most first, then
+	// those it turned away.
+	Artists []LastingArtist `json:"artists"`
+
+	// Avoided Artists the room turned away lately.
+	Avoided []string `json:"avoided"`
+
+	// Nights How many past nights the DJ has learned from.
+	Nights int `json:"nights"`
+
+	// Shifted The vibe is changing, so the latest songs count more.
+	Shifted bool `json:"shifted"`
+
+	// Tags The tags the room liked over past nights, most first.
+	Tags []TasteTag `json:"tags"`
+
+	// Tonight The artists the room likes tonight, most first.
+	Tonight []TonightArtist `json:"tonight"`
+}
+
 // RoomVisibility Who can see and join the room. `open`: everyone on the server.
 // `unlisted`: its members, and anyone with one of its invite links,
 // which any member can share. `private`: the members its owner lets
@@ -2235,6 +2276,25 @@ type Suggestions struct {
 
 // SuggestionsScope defines model for Suggestions.Scope.
 type SuggestionsScope string
+
+// TasteTag defines model for TasteTag.
+type TasteTag struct {
+	Name string `json:"name"`
+
+	// Weight From 0 to 1, against the strongest.
+	Weight float32 `json:"weight"`
+}
+
+// TonightArtist defines model for TonightArtist.
+type TonightArtist struct {
+	Name string `json:"name"`
+
+	// Plays Songs of theirs members chose or let play through.
+	Plays int `json:"plays"`
+
+	// Weight From 0 to 1, against the room's favorite.
+	Weight float32 `json:"weight"`
+}
 
 // TrackCount A song and how many times it played to the end. `item` is its latest play.
 type TrackCount struct {
@@ -2678,6 +2738,9 @@ type ServerInterface interface {
 	// ListActiveRooms Every room, who's in it, and what it's playing through (admin)
 	// (GET /admin/rooms)
 	ListActiveRooms(w http.ResponseWriter, r *http.Request)
+	// GetRoomTaste What the DJ has learned of a room's taste (admin)
+	// (GET /admin/rooms/{roomId}/taste)
+	GetRoomTaste(w http.ResponseWriter, r *http.Request, roomId RoomId)
 	// GetServerInfo The server's version, uptime, database and backups (admin)
 	// (GET /admin/server)
 	GetServerInfo(w http.ResponseWriter, r *http.Request)
@@ -3082,6 +3145,32 @@ func (siw *ServerInterfaceWrapper) ListActiveRooms(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListActiveRooms(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRoomTaste operation middleware
+func (siw *ServerInterfaceWrapper) GetRoomTaste(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRoomTaste(w, r, roomId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6497,6 +6586,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/backups", wrapper.CreateBackup)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/links", wrapper.ListAllLinks)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/rooms", wrapper.ListActiveRooms)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/rooms/{roomId}/taste", wrapper.GetRoomTaste)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/sessions", wrapper.ListAllSessions)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/admin/sessions/{id}", wrapper.RevokeSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/users", wrapper.ListUsers)
@@ -6705,6 +6795,45 @@ type ListActiveRoomsdefaultJSONResponse struct {
 }
 
 func (response ListActiveRoomsdefaultJSONResponse) VisitListActiveRoomsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoomTasteRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type GetRoomTasteResponseObject interface {
+	VisitGetRoomTasteResponse(w http.ResponseWriter) error
+}
+
+type GetRoomTaste200JSONResponse RoomTaste
+
+func (response GetRoomTaste200JSONResponse) VisitGetRoomTasteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoomTastedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetRoomTastedefaultJSONResponse) VisitGetRoomTasteResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -11383,6 +11512,9 @@ type StrictServerInterface interface {
 	// ListActiveRooms Every room, who's in it, and what it's playing through (admin)
 	// (GET /admin/rooms)
 	ListActiveRooms(ctx context.Context, request ListActiveRoomsRequestObject) (ListActiveRoomsResponseObject, error)
+	// GetRoomTaste What the DJ has learned of a room's taste (admin)
+	// (GET /admin/rooms/{roomId}/taste)
+	GetRoomTaste(ctx context.Context, request GetRoomTasteRequestObject) (GetRoomTasteResponseObject, error)
 	// GetServerInfo The server's version, uptime, database and backups (admin)
 	// (GET /admin/server)
 	GetServerInfo(ctx context.Context, request GetServerInfoRequestObject) (GetServerInfoResponseObject, error)
@@ -11849,6 +11981,32 @@ func (sh *strictHandler) ListActiveRooms(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListActiveRoomsResponseObject); ok {
 		if err := validResponse.VisitListActiveRoomsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRoomTaste operation middleware
+func (sh *strictHandler) GetRoomTaste(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request GetRoomTasteRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRoomTaste(ctx, request.(GetRoomTasteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRoomTaste")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRoomTasteResponseObject); ok {
+		if err := validResponse.VisitGetRoomTasteResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

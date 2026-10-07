@@ -20,6 +20,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/admin"
 	"github.com/madeofpendletonwool/syncphony/server/internal/artwork"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
+	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
@@ -61,9 +62,12 @@ type Server struct {
 	// Nights hearts songs and crowns each night's song of the night.
 	Nights *nights.Service
 	// Suggest finds songs to keep a room's vibe going.
-	Suggest  *suggest.Service
-	Bus      realtime.Bus
-	Presence *realtime.Presence
+	Suggest *suggest.Service
+	// Autopilot keeps rooms' music going; admins can see what its DJ has
+	// learned of a room's taste. Optional.
+	Autopilot *autopilot.Service
+	Bus       realtime.Bus
+	Presence  *realtime.Presence
 	// PingEvery is how often room sockets are pinged and their session
 	// re-checked. Default 30s.
 	PingEvery time.Duration

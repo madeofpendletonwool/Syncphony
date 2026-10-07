@@ -43,6 +43,25 @@ type Display struct {
 	Audio      bool
 }
 
+type DjAffinity struct {
+	RoomID    string
+	Kind      string
+	Key       string
+	Member    string
+	Name      string
+	Likes     float64
+	Skips     float64
+	LastNight int64
+	LastAt    sql.NullTime
+}
+
+type DjRoom struct {
+	RoomID        string
+	Nights        int64
+	FoldedThrough time.Time
+	UpdatedAt     time.Time
+}
+
 type Guest struct {
 	UserID    string
 	RoomID    string
