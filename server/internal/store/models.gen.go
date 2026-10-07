@@ -146,6 +146,7 @@ type QueueItem struct {
 	ViaTrackID   sql.NullString
 	Palette      sql.NullString
 	Autopilot    sql.NullString
+	RemovedBy    sql.NullString
 }
 
 type ResetLink struct {

@@ -56,10 +56,13 @@ export function StatsView({ roomId, range, recap, night }: { roomId: string; ran
             user={userById(night.songOfTheNight.item.addedBy)}
             byline
             trailing={
-              <span className="flex items-center gap-1 pr-2 text-sm text-muted-foreground tabular-nums">
-                <Heart className="size-3.5 fill-rose-500 text-rose-500" />
-                {night.songOfTheNight.hearts}
-              </span>
+              <>
+                <span className="flex shrink-0 items-center gap-1 text-sm text-muted-foreground tabular-nums">
+                  <Heart className="size-3.5 fill-rose-500 text-rose-500" />
+                  {night.songOfTheNight.hearts}
+                </span>
+                <RequeueButton item={night.songOfTheNight.item} />
+              </>
             }
           />
         </motion.section>

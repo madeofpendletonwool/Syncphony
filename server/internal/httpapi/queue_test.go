@@ -120,4 +120,27 @@ func TestQueueAPI(t *testing.T) {
 	if r := alice.do("DELETE", path+"/"+smpte, nil); r.status != http.StatusConflict || r.code() != "not_queued" {
 		t.Errorf("removing twice: %d %s", r.status, r.body)
 	}
+
+	// Undo: bob can't put back what alice removed; alice can.
+	if r := bob.do("POST", path+"/restore", httpapi.RestoreQueueItemsRequest{ItemIds: []string{smpte}}); r.status != http.StatusForbidden {
+		t.Errorf("bob restoring: %d %s", r.status, r.body)
+	}
+	alice.want(http.StatusOK, "POST", path+"/restore", httpapi.RestoreQueueItemsRequest{ItemIds: []string{smpte}}).decode(t, &snap)
+	if got := titles(snap); len(got) != 4 || got[1] != "SMPTE" {
+		t.Fatalf("after restoring SMPTE: %v", got)
+	}
+	if r := alice.do("POST", path+"/restore", httpapi.RestoreQueueItemsRequest{ItemIds: []string{smpte}}); r.status != http.StatusConflict || r.code() != "undo_expired" {
+		t.Errorf("restoring a waiting song: %d %s", r.status, r.body)
+	}
+
+	// Clearing your lane, and undoing it.
+	var cleared httpapi.ClearedLane
+	alice.want(http.StatusOK, "DELETE", "/rooms/"+room.ID+"/lane", nil).decode(t, &cleared)
+	if got := titles(cleared.Queue); len(cleared.Removed) != 3 || len(got) != 1 || got[0] != "SMPTE" {
+		t.Fatalf("after clearing: %v, removed %v", got, cleared.Removed)
+	}
+	alice.want(http.StatusOK, "POST", path+"/restore", httpapi.RestoreQueueItemsRequest{ItemIds: cleared.Removed}).decode(t, &snap)
+	if got := titles(snap); len(got) != 4 || got[0] != "Right Channel" {
+		t.Fatalf("after undoing the clear: %v", got)
+	}
 }

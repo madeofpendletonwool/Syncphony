@@ -1169,6 +1169,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/queue/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo removing songs
+         * @description Puts songs removed in the last minute back in the queue, each where
+         *     it was in its lane. Only whoever removed a song, or the room's owner,
+         *     can restore it. All are restored, or none: a song that wasn't
+         *     removed, or was removed too long ago, is refused with
+         *     `undo_expired` (409).
+         */
+        post: operations["restoreQueueItems"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/lane": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove all your waiting songs
+         * @description Your playing song plays on. The songs removed can be put back with
+         *     `POST /rooms/{roomId}/queue/restore` for a minute.
+         */
+        delete: operations["clearLane"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/stats": {
         parameters: {
             query?: never;
@@ -2591,6 +2640,14 @@ export interface components {
             trackId?: string;
             /** @description One of the room's queue items, from history or stats. */
             fromItemId?: string;
+        };
+        RestoreQueueItemsRequest: {
+            itemIds: string[];
+        };
+        ClearedLane: {
+            queue: components["schemas"]["QueueSnapshot"];
+            /** @description The IDs of the songs removed, in lane order, to restore them. */
+            removed: string[];
         };
         MoveQueueItemRequest: {
             /** @description Where in your lane to put the song; 0 is the front. Past the end means the end. */
@@ -4617,6 +4674,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QueueSnapshot"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    restoreQueueItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreQueueItemsRequest"];
+            };
+        };
+        responses: {
+            /** @description The queue after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueSnapshot"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    clearLane: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The queue after the change, and what was removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClearedLane"];
                 };
             };
             default: components["responses"]["Error"];

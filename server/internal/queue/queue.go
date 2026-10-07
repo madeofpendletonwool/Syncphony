@@ -29,7 +29,14 @@ var (
 	ErrNotFound  = errors.New("queue item not found")
 	ErrForbidden = errors.New("that isn't yours to change")
 	ErrNotQueued = errors.New("that song isn't waiting in the queue any more")
+	// ErrUndoExpired is restoring a song removed too long ago, or one that
+	// wasn't removed.
+	ErrUndoExpired = errors.New("it's too late to undo that")
 )
+
+// UndoWindow is how long after a song is removed it can be restored. The
+// app offers Undo for a few seconds; this leaves room for a slow network.
+const UndoWindow = time.Minute
 
 // NotPlayableError is a song its service said it won't play, refused when
 // it was added. It is provider.ErrNotPlayable.
@@ -497,7 +504,7 @@ func (s *Service) Remove(ctx context.Context, roomID, userID, itemID string) (ro
 		if it.AddedBy != userID && room.OwnerID != userID && !it.IsAutopilot() {
 			return ErrForbidden
 		}
-		return q.SetQueueItemState(ctx, store.SetQueueItemStateParams{State: store.ItemRemoved, UpdatedAt: s.Now(), ID: itemID})
+		return q.RemoveQueueItem(ctx, store.RemoveQueueItemParams{RemovedBy: sql.NullString{String: userID, Valid: true}, UpdatedAt: s.Now(), ID: itemID})
 	})
 }
 
@@ -510,20 +517,66 @@ func (s *Service) GuestSongs(ctx context.Context, roomID, userID string) (int, e
 // RemoveLane takes all of userID's waiting songs out of a room's queue,
 // as when a guest leaves. Their playing song plays on.
 func (s *Service) RemoveLane(ctx context.Context, roomID, userID string) error {
-	_, err := s.Change(ctx, roomID, func(q *store.Queries, _ store.Room) error {
+	_, _, err := s.ClearLane(ctx, roomID, userID)
+	return err
+}
+
+// ClearLane takes all of userID's waiting songs out of a room's queue and
+// returns the queue after, and the IDs of the songs removed, in lane order,
+// to Restore them. Their playing song plays on.
+func (s *Service) ClearLane(ctx context.Context, roomID, userID string) (rooms.QueueSnapshot, []string, error) {
+	var removed []string
+	snap, err := s.Change(ctx, roomID, func(q *store.Queries, _ store.Room) error {
 		lane, err := q.ListLane(ctx, store.ListLaneParams{RoomID: roomID, AddedBy: userID})
 		if err != nil {
 			return err
 		}
 		now := s.Now()
 		for _, it := range lane {
-			if err := q.SetQueueItemState(ctx, store.SetQueueItemStateParams{State: store.ItemRemoved, UpdatedAt: now, ID: it.ID}); err != nil {
+			if err := q.RemoveQueueItem(ctx, store.RemoveQueueItemParams{RemovedBy: sql.NullString{String: userID, Valid: true}, UpdatedAt: now, ID: it.ID}); err != nil {
+				return err
+			}
+			removed = append(removed, it.ID)
+		}
+		return nil
+	})
+	return snap, removed, err
+}
+
+// Restore puts songs removed within the UndoWindow back in the queue, for
+// Undo. Removing keeps an item's place in its lane, so each goes back
+// where it was. Only whoever removed a song, or the room's owner, can
+// restore it: a song the owner took out stays out. A song that wasn't
+// removed, or was removed too long ago, is ErrUndoExpired; then none are
+// restored.
+func (s *Service) Restore(ctx context.Context, roomID, userID string, itemIDs []string) (rooms.QueueSnapshot, error) {
+	if len(itemIDs) == 0 {
+		return rooms.QueueSnapshot{}, &InvalidInputError{"restore at least one song"}
+	}
+	if len(itemIDs) > MaxAdd {
+		return rooms.QueueSnapshot{}, &InvalidInputError{fmt.Sprintf("restore at most %d songs at a time", MaxAdd)}
+	}
+	return s.Change(ctx, roomID, func(q *store.Queries, room store.Room) error {
+		now := s.Now()
+		for _, id := range itemIDs {
+			it, err := q.GetQueueItem(ctx, id)
+			if store.IsNotFound(err) || (err == nil && it.RoomID != roomID) {
+				return ErrNotFound
+			} else if err != nil {
+				return err
+			}
+			if it.State != store.ItemRemoved || now.Sub(it.UpdatedAt) > UndoWindow {
+				return ErrUndoExpired
+			}
+			if it.RemovedBy.String != userID && room.OwnerID != userID {
+				return ErrForbidden
+			}
+			if err := q.RestoreQueueItem(ctx, store.RestoreQueueItemParams{UpdatedAt: now, ID: id}); err != nil {
 				return err
 			}
 		}
 		return nil
 	})
-	return err
 }
 
 // queuedItem returns an item of the room that's still waiting to play.

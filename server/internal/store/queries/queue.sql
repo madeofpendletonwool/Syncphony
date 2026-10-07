@@ -26,6 +26,14 @@ SELECT * FROM queue_items WHERE room_id = ? AND state = 'playing';
 -- name: SetQueueItemState :exec
 UPDATE queue_items SET state = ?, updated_at = ? WHERE id = ?;
 
+-- RemoveQueueItem takes a waiting song out of the queue, noting who did.
+-- name: RemoveQueueItem :exec
+UPDATE queue_items SET state = 'removed', removed_by = ?, updated_at = ? WHERE id = ?;
+
+-- RestoreQueueItem puts a removed song back, in the place it had.
+-- name: RestoreQueueItem :exec
+UPDATE queue_items SET state = 'queued', removed_by = NULL, updated_at = ? WHERE id = ? AND state = 'removed';
+
 -- name: MoveQueueItem :exec
 UPDATE queue_items SET lane_position = ?, updated_at = ? WHERE id = ? AND state = 'queued';
 

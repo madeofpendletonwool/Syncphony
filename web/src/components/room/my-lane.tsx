@@ -4,11 +4,10 @@ import { AnimatePresence, motion, Reorder, useDragControls, useMotionValue, useT
 import { useState } from 'react'
 import { api } from '@/api/client'
 import { errorMessage, unwrap } from '@/api/errors'
-import { lastAdded } from '@/hooks/use-add-to-lane'
-import { tap } from '@/lib/haptics'
+import { useQueueRemoval } from '@/hooks/use-queue-removal'
 import type { User } from '@/lib/now-playing'
 import type { QueueItem } from '@/lib/playback'
-import { queueQuery, type QueueSnapshot } from '@/lib/room'
+import { queueQuery } from '@/lib/room'
 import { toast } from '@/lib/toast'
 import { QueueRow } from './queue-row'
 
@@ -34,46 +33,11 @@ export function MyLane({ roomId, items, me }: { roomId: string; items: QueueItem
     onSettled: () => setDraft(undefined),
   })
 
-  const remove = useMutation({
-    mutationFn: (item: QueueItem) =>
-      unwrap(api.DELETE('/rooms/{roomId}/queue/{itemId}', { params: { path: { roomId, itemId: item.id } } })),
-    onMutate: (item) => {
-      tap()
-      setDraft(order.filter((id) => id !== item.id))
-      // Where it was, for Undo; read now, before live updates drop it.
-      return { position: serverOrder.indexOf(item.id) }
-    },
-    onSuccess: (snap, item, ctx) => {
-      queryClient.setQueryData(key, snap)
-      const position = ctx?.position ?? -1
-      toast({
-        message: `Removed “${item.track.title}”`,
-        action: item.track.linkId ? { label: 'Undo', onClick: () => void restore(item, position) } : undefined,
-      })
-    },
-    onError: (err) => toast({ message: errorMessage(err), tone: 'error' }),
-    onSettled: () => setDraft(undefined),
-  })
-
-  // Undo: add the song again and put it back where it was.
-  const restore = async (item: QueueItem, position: number) => {
-    try {
-      let snap: QueueSnapshot = await unwrap(
-        api.POST('/rooms/{roomId}/queue', {
-          params: { path: { roomId } },
-          body: { items: [{ linkId: item.track.linkId!, trackId: item.track.trackId }] },
-        }),
-      )
-      const [id] = lastAdded(snap, me.id, 1)
-      if (id && position >= 0) {
-        snap = await unwrap(
-          api.PATCH('/rooms/{roomId}/queue/{itemId}', { params: { path: { roomId, itemId: id } }, body: { position } }),
-        )
-      }
-      queryClient.setQueryData(key, snap)
-    } catch (err) {
-      toast({ message: errorMessage(err), tone: 'error' })
-    }
+  const { remove } = useQueueRemoval(roomId)
+  const removeItem = (item: QueueItem) => {
+    // Gone at once; the server's queue catches up.
+    setDraft(order.filter((id) => id !== item.id))
+    remove.mutate({ item }, { onSettled: () => setDraft(undefined) })
   }
 
   const dropped = (id: string) => {
@@ -100,7 +64,7 @@ export function MyLane({ roomId, items, me }: { roomId: string; items: QueueItem
               item={item}
               me={me}
               onDrop={() => dropped(id)}
-              onRemove={() => remove.mutate(item)}
+              onRemove={() => removeItem(item)}
             />
           )
         })}

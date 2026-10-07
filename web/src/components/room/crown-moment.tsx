@@ -3,6 +3,7 @@ import { Crown, Heart, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo } from 'react'
 import { Artwork } from '@/components/artwork'
+import { RequeueButton } from '@/components/room/requeue-button'
 import { Button } from '@/components/ui/button'
 import { UserAvatar } from '@/components/user-avatar'
 import { laneStyle } from '@/lib/lane'
@@ -101,6 +102,8 @@ function Moment({ night, variant }: { night: Night; variant: 'phone' | 'stage' }
                 {song.hearts} {song.hearts === 1 ? 'heart' : 'hearts'}
               </span>
             </div>
+            {/* One more time: on phones, straight back into your lane. */}
+            {!stage && <RequeueButton item={song.item} className="size-11" />}
           </>
         ) : (
           <p className={cn('max-w-[32ch] text-white/75', stage ? 'text-[clamp(1.1rem,2vw,2.2rem)]' : 'text-sm')}>
