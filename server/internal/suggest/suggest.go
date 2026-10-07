@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/dj"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
@@ -208,7 +209,7 @@ func (s *Service) build(ctx context.Context, q Query, snap rooms.QueueSnapshot, 
 	if len(seeds) == 0 {
 		return nil, nil
 	}
-	turned := TurnedAway(snap, history)
+	turned := TurnedAway(snap, history, s.Now())
 	links, err := s.links.Usable(ctx, q.UserID)
 	if err != nil {
 		return nil, err
@@ -250,7 +251,7 @@ func (s *Service) build(ctx context.Context, q Query, snap rooms.QueueSnapshot, 
 			}
 			var fresh []provider.Track
 			for _, t := range cands {
-				if !seen.Has(t) && !taken.Has(t) && !turned[ArtistKey(t)] {
+				if !seen.Has(t) && !taken.Has(t) && !turned[djArtist(t)] {
 					taken.Track(t)
 					fresh = append(fresh, t)
 				}
@@ -343,40 +344,14 @@ func Seeds(scope Scope, origin Origin, userID string, snap rooms.QueueSnapshot, 
 	return pickSeeds(scope, userID, all)
 }
 
-// TurnedAway returns the artists the room skipped a song of and never
-// finished or queued one of theirs: a skip says the room didn't want that
-// vibe, but a full listen or a queued song says it did. Songs by those
-// artists aren't suggested, either side of the room's history. Unlike the
-// DJ's (dj.Profile, ADR 0012), it doesn't fade with time; suggestions move
-// onto the DJ in MAD-759.
-func TurnedAway(snap rooms.QueueSnapshot, history []store.ListHistoryRow) map[string]bool {
-	liked := map[string]bool{}
-	for _, it := range snap.Items {
-		liked[ArtistKey(TrackOf(it))] = true
-	}
-	var out map[string]bool
-	for _, h := range history {
-		if !h.PlayHistory.EndedAt.Valid {
-			continue
-		}
-		a := ArtistKey(TrackOf(h.QueueItem))
-		if a == "" {
-			continue
-		}
-		switch h.PlayHistory.EndReason.String {
-		case store.EndSkipped:
-			if out == nil {
-				out = map[string]bool{}
-			}
-			out[a] = true
-		case store.EndFinished:
-			liked[a] = true
-		}
-	}
-	for a := range liked {
-		delete(out, a)
-	}
-	return out
+// TurnedAway returns the artists (dj.ArtistKey) the room turned away: as
+// the DJ does (dj.Profile, ADR 0012), those whose decayed signal, skips
+// against plays, hearts and queued songs, is below the DJ's threshold.
+// A skip long ago, faded to almost nothing, doesn't turn an artist away
+// (MAD-762). Songs by them aren't suggested. MAD-759 moves the rest of
+// suggestions onto the DJ.
+func TurnedAway(snap rooms.QueueSnapshot, history []store.ListHistoryRow, now time.Time) map[string]bool {
+	return dj.NewProfile(dj.Input{History: history, Upcoming: snap.Items, Now: now}).Avoid
 }
 
 // pickSeeds picks the seeds from items: each member's songs take turns,
@@ -434,4 +409,12 @@ func linksFor(sd Seed, recommend, search []store.ServiceLink) []store.ServiceLin
 	}
 	out := append(first(recommend), first(search)...)
 	return out[:min(len(out), linksPerSeed)]
+}
+
+// djArtist is a track's artist as the DJ keys it.
+func djArtist(t provider.Track) string {
+	if len(t.Artists) == 0 {
+		return ""
+	}
+	return dj.ArtistKey(t.Artists[0].Name)
 }
