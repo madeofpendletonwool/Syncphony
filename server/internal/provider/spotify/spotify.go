@@ -106,13 +106,18 @@ func New(opts Options) (*Provider, error) {
 
 // Info implements provider.Provider.
 func (p *Provider) Info() provider.Info {
+	search := []provider.EntityKind{provider.KindTrack, provider.KindAlbum, provider.KindArtist}
+	if p.library != nil {
+		// Everyone's public playlists, read through the library.
+		search = append(search, provider.KindPlaylist)
+	}
 	return provider.Info{
 		ID:   ID,
 		Name: "Spotify",
 		Icon: "spotify",
 		Capabilities: provider.Capabilities{
 			Playback: provider.PlaybackStream,
-			Search:   []provider.EntityKind{provider.KindTrack, provider.KindAlbum, provider.KindArtist},
+			Search:   search,
 			// Listed over the streaming protocol (library.go): the Web API
 			// only lists playlists to a user signed into the app.
 			Playlists: p.library != nil,

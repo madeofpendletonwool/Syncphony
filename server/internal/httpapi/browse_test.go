@@ -123,6 +123,51 @@ func TestSearchAndBrowse(t *testing.T) {
 	}
 }
 
+func TestSearchPlaylists(t *testing.T) {
+	e := newEnv(t)
+	alice := e.admin()
+	var l httpapi.ServiceLink
+	alice.want(http.StatusCreated, "POST", "/links", httpapi.CreateLinkRequest{Provider: "fake", Fields: demoFields}).decode(t, &l)
+
+	names := func(g httpapi.SearchGroup) []string {
+		var out []string
+		for _, p := range g.Playlists {
+			out = append(out, p.Name)
+		}
+		return out
+	}
+
+	// The link's own playlists, by name.
+	g := search(t, alice, "fav").Groups[0]
+	if got := names(g); len(got) != 1 || got[0] != "Fake Favourites" {
+		t.Fatalf("own playlists for fav: %v", got)
+	}
+	if p := g.Playlists[0]; p.Id != "p1" || p.TrackCount == nil || *p.TrackCount != 6 {
+		t.Fatalf("playlist: %+v", p)
+	}
+	if got := names(search(t, alice, "null").Groups[0]); len(got) != 0 {
+		t.Fatalf("public playlists without asking: %v", got)
+	}
+
+	// Public ones when asked, each playlist once.
+	var res httpapi.SearchResults
+	alice.want(http.StatusOK, "GET", "/search?publicPlaylists=true&q="+url.QueryEscape("null"), nil).decode(t, &res)
+	if got := names(res.Groups[0]); len(got) != 1 || got[0] != "Null Island Radio" {
+		t.Fatalf("public playlists for null: %v", got)
+	}
+	alice.want(http.StatusOK, "GET", "/search?publicPlaylists=true&q="+url.QueryEscape("fake"), nil).decode(t, &res)
+	if got := names(res.Groups[0]); len(got) != 1 || got[0] != "Fake Favourites" {
+		t.Fatalf("own and public playlists for fake: %v", got)
+	}
+
+	// A public playlist opens like your own.
+	var page httpapi.PlaylistTracks
+	alice.want(http.StatusOK, "GET", "/links/"+l.Id+"/playlists/p3/tracks", nil).decode(t, &page)
+	if len(page.Tracks) != 5 || page.Next == nil {
+		t.Fatalf("public playlist's first page: %d tracks, next %v", len(page.Tracks), page.Next)
+	}
+}
+
 func TestSearchReportsFailingLinks(t *testing.T) {
 	e := newEnv(t)
 	alice := e.admin()

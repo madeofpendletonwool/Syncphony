@@ -68,19 +68,35 @@ export function ArtistCard({ artist, linkId, providerIcon }: { artist: ArtistRes
   )
 }
 
-export function PlaylistCard({ playlist, linkId, className }: { playlist: PlaylistResult; linkId: string; className?: string }) {
+export function PlaylistCard({
+  playlist,
+  linkId,
+  providerIcon,
+  className,
+}: {
+  playlist: PlaylistResult
+  linkId: string
+  providerIcon?: string
+  className?: string
+}) {
   const count = playlist.trackCount
   return (
     <motion.div variants={fadeUp} className={cn('min-w-0', className)}>
       <Link
         to="/playlist/$linkId/$playlistId"
         params={{ linkId, playlistId: playlist.id }}
+        state={{ playlist }}
         className="group block rounded-2xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       >
-        <Artwork
-          src={artworkUrl(linkId, playlist.artwork, 400)}
-          className="w-full rounded-2xl transition-transform duration-300 ease-out-expo group-hover:scale-[1.02] group-active:scale-[0.98]"
-        />
+        <div className="relative">
+          <Artwork
+            src={artworkUrl(linkId, playlist.artwork, 400)}
+            className="w-full rounded-2xl transition-transform duration-300 ease-out-expo group-hover:scale-[1.02] group-active:scale-[0.98]"
+          />
+          {providerIcon && (
+            <ProviderIcon icon={providerIcon} className="glass-strong absolute right-2 bottom-2 size-6 rounded-lg [&_svg]:size-3.5" />
+          )}
+        </div>
         <p className="mt-2 truncate text-sm font-medium">{playlist.name}</p>
         <p className="truncate text-caption text-muted-foreground">
           {count ? `${count} song${count === 1 ? '' : 's'}` : 'Playlist'}

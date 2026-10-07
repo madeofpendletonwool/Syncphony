@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useRouterState } from '@tanstack/react-router'
 import { ListPlus, LoaderCircle, Shuffle } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect } from 'react'
@@ -31,6 +31,7 @@ const SHUFFLE_COUNT = 20
 
 function Playlist() {
   const { linkId, playlistId } = Route.useParams()
+  const opened = useRouterState({ select: (s) => s.location.state.playlist })
   const playlists = useQuery(playlistsQuery(linkId))
   const pages = useInfiniteQuery(playlistTracksQuery(linkId, playlistId))
   const providers = useQuery(providersQuery)
@@ -64,7 +65,9 @@ function Playlist() {
   }
 
   const tracks = pages.data.pages.flatMap((p) => p.tracks)
-  const info = playlists.data?.playlists.find((p) => p.id === playlistId)
+  // A public playlist found by searching isn't in the link's list; the
+  // search result came along.
+  const info = playlists.data?.playlists.find((p) => p.id === playlistId) ?? (opened?.id === playlistId ? opened : undefined)
   const provider = pages.data.pages[0]?.provider
   const p = providers.data?.find((p) => p.id === provider)
   const loading = hasNextPage || isFetchingNextPage

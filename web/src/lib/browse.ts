@@ -9,13 +9,28 @@ export type ArtistResult = components['schemas']['ArtistResult']
 export type SearchGroup = components['schemas']['SearchGroup']
 export type PlaylistResult = components['schemas']['PlaylistResult']
 export type LinkCollection = components['schemas']['LinkCollection']
+type Provider = components['schemas']['ProviderInfo']
 
-export const searchQuery = (q: string) =>
+declare module '@tanstack/react-router' {
+  interface HistoryState {
+    /** The playlist being opened, so a public one that isn't in the link's list still has a name. */
+    playlist?: PlaylistResult
+  }
+}
+
+/** Searches every link; with `publicPlaylists`, services that can also look through everyone's playlists. */
+export const searchQuery = (q: string, publicPlaylists = false) =>
   queryOptions({
-    queryKey: ['search', q],
-    queryFn: ({ signal }) => unwrap(api.GET('/search', { params: { query: { q } }, signal })),
+    queryKey: ['search', q, publicPlaylists],
+    queryFn: ({ signal }) =>
+      unwrap(api.GET('/search', { params: { query: publicPlaylists ? { q, publicPlaylists } : { q } }, signal })),
     staleTime: 5 * 60_000,
   })
+
+/** Whether any of the searched services can look through public playlists. */
+export function searchesPublicPlaylists(groups: SearchGroup[], providers: Provider[] | undefined) {
+  return groups.some((g) => !g.error && providers?.find((p) => p.id === g.provider)?.capabilities.search.includes('playlist'))
+}
 
 export const albumQuery = (linkId: string, albumId: string) =>
   queryOptions({

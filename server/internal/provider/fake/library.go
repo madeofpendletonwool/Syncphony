@@ -5,6 +5,7 @@ package fake
 import (
 	"fmt"
 	"math"
+	"slices"
 	"time"
 )
 
@@ -106,6 +107,14 @@ var playlists = []playlist{
 		return ts
 	}},
 	{"p2", "Everything", func() []*track { return library.tracks }},
+}
+
+// publicPlaylists are other people's, as Spotify's public playlists are:
+// searching finds them, but the account's own list doesn't hold them.
+var publicPlaylists = []playlist{
+	{"p3", "Null Island Radio", func() []*track {
+		return slices.DeleteFunc(slices.Clone(library.tracks), func(t *track) bool { return t.album.artist.name != "Null Island" })
+	}},
 }
 
 type playlist struct {

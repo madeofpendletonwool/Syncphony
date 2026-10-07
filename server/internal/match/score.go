@@ -85,7 +85,7 @@ func title(s string) (string, []string) {
 	s = feat.ReplaceAllString(s, "")
 	var found []string
 	for _, q := range quals {
-		q = " " + simplify(harmless.ReplaceAllString(q, " ")) + " "
+		q = " " + Simplify(harmless.ReplaceAllString(q, " ")) + " "
 		for _, v := range variants {
 			if strings.Contains(q, " "+v+" ") && !slices.Contains(found, v) {
 				found = append(found, v)
@@ -93,12 +93,12 @@ func title(s string) (string, []string) {
 		}
 	}
 	slices.Sort(found)
-	return simplify(s), found
+	return Simplify(s), found
 }
 
-// simplify lowercases, strips accents and punctuation, and collapses
+// Simplify lowercases, strips accents and punctuation, and collapses
 // spaces, so "Beyoncé – Halo!" and "beyonce halo" compare equal.
-func simplify(s string) string {
+func Simplify(s string) string {
 	var b strings.Builder
 	space := true
 	for _, r := range norm.NFD.String(strings.ToLower(s)) {
@@ -169,6 +169,6 @@ func artistsOverlap(a, b []provider.ArtistCredit) bool {
 }
 
 func artistKey(s string) string {
-	s = simplify(s)
+	s = Simplify(s)
 	return strings.TrimPrefix(s, "the ")
 }

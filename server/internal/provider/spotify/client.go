@@ -194,8 +194,25 @@ type paging[T any] struct {
 	Total int     `json:"total"`
 }
 
+// playlist is a simplified playlist object, as search returns them.
+type playlist struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Owner struct {
+		ID          string `json:"id"`
+		DisplayName string `json:"display_name"`
+	} `json:"owner"`
+	Images []Image `json:"images"`
+	// Its length is under "items" for development-mode apps since February
+	// 2026, and "tracks" before.
+	Items  *struct{ Total int } `json:"items"`
+	Tracks *struct{ Total int } `json:"tracks"`
+}
+
 type searchResponse struct {
 	Tracks  *paging[track]  `json:"tracks"`
 	Albums  *paging[album]  `json:"albums"`
 	Artists *paging[artist] `json:"artists"`
+	// Playlists can hold nulls, which decode as zero playlists.
+	Playlists *paging[playlist] `json:"playlists"`
 }

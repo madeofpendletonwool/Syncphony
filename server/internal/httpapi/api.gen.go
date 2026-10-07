@@ -1809,9 +1809,10 @@ type SearchGroup struct {
 	LinkId       string         `json:"linkId"`
 
 	// OwnerId Who linked it; someone else when it's a shared link.
-	OwnerId  string        `json:"ownerId"`
-	Provider string        `json:"provider"`
-	Tracks   []TrackResult `json:"tracks"`
+	OwnerId   string           `json:"ownerId"`
+	Playlists []PlaylistResult `json:"playlists"`
+	Provider  string           `json:"provider"`
+	Tracks    []TrackResult    `json:"tracks"`
 }
 
 // SearchResults defines model for SearchResults.
@@ -2266,6 +2267,9 @@ type SearchParams struct {
 
 	// Limit Most results per kind, per link.
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// PublicPlaylists Also search public playlists, where the service can.
+	PublicPlaylists *bool `form:"publicPlaylists,omitempty" json:"publicPlaylists,omitempty"`
 }
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
@@ -5533,6 +5537,19 @@ func (siw *ServerInterfaceWrapper) Search(w http.ResponseWriter, r *http.Request
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "publicPlaylists" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "publicPlaylists", r.URL.Query(), &params.PublicPlaylists, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "publicPlaylists"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "publicPlaylists", Err: err})
 		}
 		return
 	}

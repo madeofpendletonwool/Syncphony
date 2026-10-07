@@ -944,7 +944,10 @@ export interface paths {
         /**
          * Search every service you've linked, and shared ones
          * @description Searches each of your links, and every link someone has shared, at
-         *     once for tracks, albums and artists.
+         *     once for tracks, albums, artists and playlists.
+         *     Playlists are the link's own (the ones it lists) whose names hold
+         *     every word searched for. With `publicPlaylists`, services that can
+         *     search everyone's playlists (Spotify) add matching public ones too.
          *     Each link's results come back as a group, in link order. A link that
          *     fails (offline, needs re-linking, too slow) gets a group with
          *     `error` set instead of failing the whole search.
@@ -2428,6 +2431,7 @@ export interface components {
             tracks: components["schemas"]["TrackResult"][];
             albums: components["schemas"]["AlbumResult"][];
             artists: components["schemas"]["ArtistResult"][];
+            playlists: components["schemas"]["PlaylistResult"][];
             error?: components["schemas"]["Error"];
         };
         Suggestions: {
@@ -4412,6 +4416,8 @@ export interface operations {
                 q: string;
                 /** @description Most results per kind, per link. */
                 limit?: number;
+                /** @description Also search public playlists, where the service can. */
+                publicPlaylists?: boolean;
             };
             header?: never;
             path?: never;

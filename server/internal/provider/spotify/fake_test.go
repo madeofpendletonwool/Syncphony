@@ -394,6 +394,15 @@ func (f *fakeSpotify) search(w http.ResponseWriter, q url.Values) {
 				all = append(all, obj{"id": artistSines, "name": "The Sines", "images": f.images("artistSines")})
 			}
 			out["artists"] = page(all)
+		case "playlist":
+			if strings.Contains("sine radio", text) {
+				// Spotify's playlist results can hold nulls.
+				all = append(all, nil, obj{
+					"id": playlistRadio, "name": "Sine Radio", "owner": obj{"id": "bob1", "display_name": "Bob"},
+					"images": f.images("playlistRadio"), "items": obj{"total": 1},
+				})
+			}
+			out["playlists"] = page(all)
 		}
 	}
 	writeJSON(w, out)
@@ -475,6 +484,9 @@ func (f *fakeFile) Close() error {
 var (
 	playlistSines = sid("playlistSines")
 	playlistLong  = sid("playlistLong")
+	// playlistRadio is someone else's public playlist: search finds it,
+	// but it isn't in alice's library.
+	playlistRadio = sid("playlistRadio")
 )
 
 // playlistItems are the fake playlists' items. Episodes are left out of
@@ -485,6 +497,8 @@ func playlistItems(id string) ([]string, bool) {
 		return []string{trackSine2, trackSine}, true
 	case playlistSines:
 		return []string{trackSine, "episode", trackSine2}, true
+	case playlistRadio:
+		return []string{trackSquare}, true
 	case playlistLong:
 		// Longer than a page, with a track on each side of the break.
 		items := slices.Repeat([]string{"episode"}, 150)

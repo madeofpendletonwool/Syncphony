@@ -1121,7 +1121,10 @@ paths:
       summary: Search every service you've linked, and shared ones
       description: |
         Searches each of your links, and every link someone has shared, at
-        once for tracks, albums and artists.
+        once for tracks, albums, artists and playlists.
+        Playlists are the link's own (the ones it lists) whose names hold
+        every word searched for. With `publicPlaylists`, services that can
+        search everyone's playlists (Spotify) add matching public ones too.
         Each link's results come back as a group, in link order. A link that
         fails (offline, needs re-linking, too slow) gets a group with
         `error` set instead of failing the whole search.
@@ -1142,6 +1145,12 @@ paths:
             minimum: 1
             maximum: 50
             default: 20
+        - name: publicPlaylists
+          in: query
+          description: Also search public playlists, where the service can.
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
           description: Results, one group per link
@@ -3483,7 +3492,7 @@ components:
     SearchGroup:
       type: object
       description: One link's search results.
-      required: [linkId, ownerId, provider, accountLabel, tracks, albums, artists]
+      required: [linkId, ownerId, provider, accountLabel, tracks, albums, artists, playlists]
       properties:
         linkId:
           type: string
@@ -3506,6 +3515,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ArtistResult"
+        playlists:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlaylistResult"
         error:
           $ref: "#/components/schemas/Error"
 

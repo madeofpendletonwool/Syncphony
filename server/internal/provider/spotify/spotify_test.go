@@ -266,15 +266,47 @@ func TestSearchLimit(t *testing.T) {
 	if got := f.last("/v1/search").Get("limit"); got != "10" {
 		t.Errorf("limit %s, want Spotify's development-mode maximum of 10", got)
 	}
-	if got := f.last("/v1/search").Get("type"); got != "track,album,artist" {
+	if got := f.last("/v1/search").Get("type"); got != "track,album,artist,playlist" {
 		t.Errorf("type %s", got)
-	}
-	if _, err := s.Search(t.Context(), provider.SearchQuery{Text: "sine", Kinds: []provider.EntityKind{provider.KindPlaylist}}); !errors.Is(err, provider.ErrUnsupported) {
-		t.Errorf("playlist search: %v", err)
 	}
 	page, err := s.Search(t.Context(), provider.SearchQuery{Text: "  "})
 	if err != nil || len(page.Tracks) > 0 {
 		t.Errorf("blank search: %+v, %v", page, err)
+	}
+}
+
+func TestSearchPlaylists(t *testing.T) {
+	f := newFake(t)
+	p, _ := newProvider(t, f)
+	s := open(t, p, link(t, p, f))
+	page, err := s.Search(t.Context(), provider.SearchQuery{Text: "radio", Kinds: []provider.EntityKind{provider.KindPlaylist}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.last("/v1/search").Get("type"); got != "playlist" {
+		t.Errorf("type %s", got)
+	}
+	want := provider.Playlist{
+		ID: playlistRadio, Name: "Sine Radio", Owner: "Bob", TrackCount: 1,
+		Artwork: "640:playlistRadio640,300:playlistRadio300,64:playlistRadio64",
+	}
+	if len(page.Playlists) != 1 || page.Playlists[0] != want {
+		t.Fatalf("playlists (nulls left out):\n got %+v\nwant [%+v]", page.Playlists, want)
+	}
+	// It opens through the library, though it isn't in it.
+	tracks, err := s.(provider.PlaylistLister).PlaylistTracks(t.Context(), playlistRadio, "")
+	if err != nil || len(tracks.Items) != 1 || tracks.Items[0].Ref.ID != trackSquare {
+		t.Fatalf("found playlist's tracks: %+v, %v", tracks, err)
+	}
+
+	// Without the library, found playlists couldn't be opened.
+	bare, _ := newProvider(t, f, func(o *spotify.Options) { o.Library = nil })
+	if bare.Info().Capabilities.CanSearch(provider.KindPlaylist) {
+		t.Error("playlist search declared without a library")
+	}
+	_, err = open(t, bare, link(t, bare, f)).Search(t.Context(), provider.SearchQuery{Text: "radio", Kinds: []provider.EntityKind{provider.KindPlaylist}})
+	if !errors.Is(err, provider.ErrUnsupported) {
+		t.Errorf("playlist search without a library: %v", err)
 	}
 }
 

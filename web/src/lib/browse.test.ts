@@ -1,10 +1,24 @@
-import { describe, expect, it } from 'vitest'
-import { artworkUrl, interleave, pickRandom, totalDuration, trackKey, type SearchGroup } from './browse'
+import { QueryClient } from '@tanstack/react-query'
+import { describe, expect, it, vi } from 'vitest'
+import type { components } from '@/api/schema.gen'
+import {
+  artworkUrl,
+  interleave,
+  pickRandom,
+  searchesPublicPlaylists,
+  searchQuery,
+  totalDuration,
+  trackKey,
+  type SearchGroup,
+} from './browse'
 
-const group = (linkId: string, titles: string[]): SearchGroup => ({
+const GET = vi.hoisted(() => vi.fn())
+vi.mock('@/api/client', () => ({ api: { GET } }))
+
+const group = (linkId: string, titles: string[], provider = 'fake'): SearchGroup => ({
   linkId,
   ownerId: 'me',
-  provider: 'fake',
+  provider,
   accountLabel: linkId,
   tracks: titles.map((title) => ({
     linkId,
@@ -17,6 +31,32 @@ const group = (linkId: string, titles: string[]): SearchGroup => ({
   })),
   albums: [],
   artists: [],
+  playlists: [],
+})
+
+describe('searchQuery', () => {
+  it('asks for public playlists only when wanted', async () => {
+    GET.mockResolvedValue({ data: { query: 'chill', groups: [] }, response: new Response(null, { status: 200 }) })
+    const client = new QueryClient()
+    await client.fetchQuery(searchQuery('chill'))
+    await client.fetchQuery(searchQuery('chill', true))
+    expect(GET.mock.calls.map(([, init]) => init.params.query)).toEqual([{ q: 'chill' }, { q: 'chill', publicPlaylists: true }])
+  })
+})
+
+describe('searchesPublicPlaylists', () => {
+  const provider = (id: string, search: string[]) =>
+    ({ id, capabilities: { search } }) as unknown as components['schemas']['ProviderInfo']
+  const providers = [provider('navidrome', ['track', 'album', 'artist']), provider('spotify', ['track', 'playlist'])]
+
+  it('is true when a searched service can look through public playlists', () => {
+    expect(searchesPublicPlaylists([group('a', [], 'navidrome'), group('b', [], 'spotify')], providers)).toBe(true)
+    expect(searchesPublicPlaylists([group('a', [], 'navidrome')], providers)).toBe(false)
+  })
+  it('leaves out failed services, and is false before providers load', () => {
+    expect(searchesPublicPlaylists([{ ...group('b', [], 'spotify'), error: { code: 'service_unavailable', message: '' } }], providers)).toBe(false)
+    expect(searchesPublicPlaylists([group('b', [], 'spotify')], undefined)).toBe(false)
+  })
 })
 
 describe('interleave', () => {

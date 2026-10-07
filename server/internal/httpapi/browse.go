@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -25,8 +26,9 @@ import (
 // doesn't hold up everyone else's results.
 const searchTimeout = 8 * time.Second
 
-// searchKinds are what the search screen shows. Playlists are browsed, not
-// searched, for now.
+// searchKinds are what services are searched for. Playlists are found
+// among the link's own (see searchplaylists.go), and searched for only
+// when asked to include public ones.
 var searchKinds = []provider.EntityKind{provider.KindTrack, provider.KindAlbum, provider.KindArtist}
 
 // Search searches every one of the caller's links, and every shared one, at once.
@@ -39,6 +41,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequestObject) (SearchRes
 	if req.Params.Limit != nil {
 		limit = *req.Params.Limit
 	}
+	public := req.Params.PublicPlaylists != nil && *req.Params.PublicPlaylists
 	userID := sessionFrom(ctx).User.ID
 	ls, err := s.Links.Usable(ctx, userID)
 	if err != nil {
@@ -50,12 +53,12 @@ func (s *Server) Search(ctx context.Context, req SearchRequestObject) (SearchRes
 	for i, l := range ls {
 		groups[i] = SearchGroup{
 			LinkId: l.ID, OwnerId: l.UserID, Provider: l.Provider, AccountLabel: l.AccountLabel,
-			Tracks: []TrackResult{}, Albums: []AlbumResult{}, Artists: []ArtistResult{},
+			Tracks: []TrackResult{}, Albums: []AlbumResult{}, Artists: []ArtistResult{}, Playlists: []PlaylistResult{},
 		}
 		wg.Go(func() {
 			ctx, cancel := context.WithTimeout(ctx, searchTimeout)
 			defer cancel()
-			if err := s.searchLink(ctx, l.ID, text, limit, &groups[i]); err != nil {
+			if err := s.searchLink(ctx, l.ID, text, limit, public, &groups[i]); err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
 					err = provider.ErrUnavailable
 				}
@@ -67,7 +70,7 @@ func (s *Server) Search(ctx context.Context, req SearchRequestObject) (SearchRes
 	return Search200JSONResponse{Query: text, Groups: groups}, nil
 }
 
-func (s *Server) searchLink(ctx context.Context, linkID, text string, limit int, g *SearchGroup) error {
+func (s *Server) searchLink(ctx context.Context, linkID, text string, limit int, public bool, g *SearchGroup) error {
 	sess, err := s.Links.Open(ctx, linkID)
 	if err != nil {
 		return err
@@ -77,15 +80,41 @@ func (s *Server) searchLink(ctx context.Context, linkID, text string, limit int,
 	if err != nil {
 		return err
 	}
+	caps := p.Info().Capabilities
 	var kinds []provider.EntityKind
 	for _, k := range searchKinds {
-		if p.Info().Capabilities.CanSearch(k) {
+		if caps.CanSearch(k) {
 			kinds = append(kinds, k)
 		}
 	}
+	if public && caps.CanSearch(provider.KindPlaylist) {
+		kinds = append(kinds, provider.KindPlaylist)
+	}
+	// The link's own playlists are found while the service searches. If
+	// they can't be listed, the rest of the results still stand.
+	var own []provider.Playlist
+	var wg sync.WaitGroup
+	if pl, ok := sess.(provider.PlaylistLister); ok && caps.Playlists {
+		wg.Go(func() {
+			lists, err := s.playlists.list(ctx, linkID, pl)
+			if err != nil {
+				slog.Warn("listing playlists to search failed", "provider", g.Provider, "err", err)
+				return
+			}
+			own = matchPlaylists(lists, text, limit)
+		})
+	}
 	page, err := sess.Search(ctx, provider.SearchQuery{Text: text, Kinds: kinds, Limit: limit})
+	wg.Wait()
 	if err != nil {
 		return err
+	}
+	seen := map[string]bool{}
+	for _, pl := range slices.Concat(own, page.Playlists) {
+		if !seen[pl.ID] {
+			seen[pl.ID] = true
+			g.Playlists = append(g.Playlists, toPlaylistResult(pl))
+		}
 	}
 	for _, t := range page.Tracks {
 		g.Tracks = append(g.Tracks, toTrackResult(t))
