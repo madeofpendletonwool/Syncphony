@@ -57,7 +57,20 @@ type Album struct {
 	Year       int
 	TrackCount int
 	Artwork    ArtworkRef
+	// Kind is one of the AlbumKind constants, when the service says;
+	// empty when it doesn't.
+	Kind string `json:",omitempty"`
 }
+
+// Album kinds. Services that can't tell an EP from a single call both
+// singles.
+const (
+	AlbumKindAlbum       = "album"
+	AlbumKindSingle      = "single"
+	AlbumKindEP          = "ep"
+	AlbumKindCompilation = "compilation"
+	AlbumKindLive        = "live"
+)
 
 // Artist is normalized artist metadata.
 type Artist struct {

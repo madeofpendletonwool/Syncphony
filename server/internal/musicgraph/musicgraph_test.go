@@ -94,7 +94,7 @@ func route(r *http.Request) string {
 	q := r.URL.Query()
 	switch {
 	case strings.HasPrefix(r.URL.Path, "/lastfm/"):
-		k := r.URL.Path + "?" + q.Get("method") + "&" + q.Get("artist")
+		k := r.URL.Path + "?" + q.Get("method") + "&" + q.Get("artist") + q.Get("tag")
 		if q.Get("track") != "" {
 			k += "&" + q.Get("track")
 		}

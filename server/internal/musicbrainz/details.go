@@ -138,7 +138,11 @@ type relation struct {
 	Direction    string   `json:"direction"`
 	Attributes   []string `json:"attributes"`
 	TargetCredit string   `json:"target-credit"`
-	Artist       *struct {
+	// Begin and End bound a relationship in time: a band membership.
+	Begin  string `json:"begin"`
+	End    string `json:"end"`
+	Ended  bool   `json:"ended"`
+	Artist *struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"artist"`
@@ -260,20 +264,6 @@ func (a artistDetails) artist() *Artist {
 	if a.BeginArea != nil {
 		out.BeginArea = a.BeginArea.Name
 	}
-	for _, r := range a.Relations {
-		if r.URL == nil {
-			continue
-		}
-		switch r.Type {
-		case "wikidata":
-			if i := strings.LastIndex(r.URL.Resource, "/"); i >= 0 && out.WikidataID == "" {
-				out.WikidataID = r.URL.Resource[i+1:]
-			}
-		case "wikipedia":
-			if out.WikipediaURL == "" {
-				out.WikipediaURL = r.URL.Resource
-			}
-		}
-	}
+	out.WikidataID, out.WikipediaURL = links(a.Relations)
 	return out
 }

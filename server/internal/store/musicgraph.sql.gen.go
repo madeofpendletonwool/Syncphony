@@ -19,6 +19,15 @@ func (q *Queries) DeleteExpiredMusicGraphArtists(ctx context.Context, expiresAt 
 	return err
 }
 
+const deleteExpiredMusicGraphTags = `-- name: DeleteExpiredMusicGraphTags :exec
+DELETE FROM musicgraph_tags WHERE expires_at <= ?
+`
+
+func (q *Queries) DeleteExpiredMusicGraphTags(ctx context.Context, expiresAt time.Time) error {
+	_, err := q.db.ExecContext(ctx, deleteExpiredMusicGraphTags, expiresAt)
+	return err
+}
+
 const deleteExpiredMusicGraphTracks = `-- name: DeleteExpiredMusicGraphTracks :exec
 DELETE FROM musicgraph_tracks WHERE expires_at <= ?
 `
@@ -67,6 +76,28 @@ func (q *Queries) GetMusicGraphArtistByMBID(ctx context.Context, arg GetMusicGra
 	err := row.Scan(
 		&i.Key,
 		&i.Mbid,
+		&i.Found,
+		&i.Facts,
+		&i.FetchedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const getMusicGraphTag = `-- name: GetMusicGraphTag :one
+SELECT "key", found, facts, fetched_at, expires_at FROM musicgraph_tags WHERE key = ? AND expires_at > ?2
+`
+
+type GetMusicGraphTagParams struct {
+	Key string
+	Now time.Time
+}
+
+func (q *Queries) GetMusicGraphTag(ctx context.Context, arg GetMusicGraphTagParams) (MusicgraphTag, error) {
+	row := q.db.QueryRowContext(ctx, getMusicGraphTag, arg.Key, arg.Now)
+	var i MusicgraphTag
+	err := row.Scan(
+		&i.Key,
 		&i.Found,
 		&i.Facts,
 		&i.FetchedAt,
@@ -193,6 +224,33 @@ func (q *Queries) PutMusicGraphArtist(ctx context.Context, arg PutMusicGraphArti
 	return err
 }
 
+const putMusicGraphTag = `-- name: PutMusicGraphTag :exec
+INSERT INTO musicgraph_tags (key, found, facts, fetched_at, expires_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (key) DO UPDATE SET
+    found = excluded.found, facts = excluded.facts,
+    fetched_at = excluded.fetched_at, expires_at = excluded.expires_at
+`
+
+type PutMusicGraphTagParams struct {
+	Key       string
+	Found     bool
+	Facts     string
+	FetchedAt time.Time
+	ExpiresAt time.Time
+}
+
+func (q *Queries) PutMusicGraphTag(ctx context.Context, arg PutMusicGraphTagParams) error {
+	_, err := q.db.ExecContext(ctx, putMusicGraphTag,
+		arg.Key,
+		arg.Found,
+		arg.Facts,
+		arg.FetchedAt,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
 const putMusicGraphTrack = `-- name: PutMusicGraphTrack :exec
 INSERT INTO musicgraph_tracks (key, found, facts, fetched_at, expires_at)
 VALUES (?, ?, ?, ?, ?)
@@ -218,4 +276,50 @@ func (q *Queries) PutMusicGraphTrack(ctx context.Context, arg PutMusicGraphTrack
 		arg.ExpiresAt,
 	)
 	return err
+}
+
+const taggedArtists = `-- name: TaggedArtists :many
+SELECT CAST(json_extract(musicgraph_artists.facts, '$.ref.name') AS TEXT) AS name,
+  CAST(json_extract(tag.value, '$.weight') AS REAL) AS weight
+FROM musicgraph_artists, json_each(musicgraph_artists.facts, '$.tags') AS tag
+WHERE musicgraph_artists.found AND musicgraph_artists.expires_at > ?1
+  AND lower(json_extract(tag.value, '$.name')) = lower(?2)
+ORDER BY weight DESC
+LIMIT ?3
+`
+
+type TaggedArtistsParams struct {
+	Now   time.Time
+	Tag   string
+	Limit int64
+}
+
+type TaggedArtistsRow struct {
+	Name   string
+	Weight float64
+}
+
+// TaggedArtists are cached artists carrying a tag, most strongly first:
+// a genre's artists when no source can say.
+func (q *Queries) TaggedArtists(ctx context.Context, arg TaggedArtistsParams) ([]TaggedArtistsRow, error) {
+	rows, err := q.db.QueryContext(ctx, taggedArtists, arg.Now, arg.Tag, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TaggedArtistsRow{}
+	for rows.Next() {
+		var i TaggedArtistsRow
+		if err := rows.Scan(&i.Name, &i.Weight); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

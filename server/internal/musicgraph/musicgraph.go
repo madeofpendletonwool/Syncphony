@@ -651,6 +651,9 @@ func (s *Service) Sweep(ctx context.Context) error {
 	if err := s.db.DeleteExpiredMusicGraphArtists(ctx, now); err != nil {
 		return err
 	}
+	if err := s.db.DeleteExpiredMusicGraphTags(ctx, now); err != nil {
+		return err
+	}
 	return s.db.DeleteExpiredMusicGraphTracks(ctx, now)
 }
 

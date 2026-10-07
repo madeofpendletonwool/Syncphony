@@ -84,3 +84,41 @@ func TestSiteKey(t *testing.T) {
 		}
 	}
 }
+
+func TestWriteArtist(t *testing.T) {
+	p := musicbrainz.Profile{
+		Artist: musicbrainz.Artist{MBID: "a", Name: "Band", Type: "Group", Area: "UK", BeginArea: "Leeds", Begin: "1994-05", End: "2012", Ended: true},
+		Members: []musicbrainz.Member{
+			{Name: "Now", Begin: "1996"},
+			{Name: "Then", Begin: "1994", End: "1999-02", Ended: true, Roles: []string{"guitar"}},
+		},
+		Genres:        []string{"art rock"},
+		ReleaseGroups: []musicbrainz.ReleaseGroup{{Title: "Hits", PrimaryType: "Album", SecondaryTypes: []string{"Compilation"}, FirstReleased: "2010-01"}},
+	}
+	n := writeArtist(p)
+	if n.About != "Group from UK" || len(n.Genres) != 1 {
+		t.Errorf("notes: %+v", n)
+	}
+	var facts []string
+	for _, f := range n.Facts {
+		facts = append(facts, f.Kind+"="+f.Text)
+	}
+	if got, want := strings.Join(facts, "; "), "began=Formed in Leeds in 1994; ended=Split up in 2012"; got != want {
+		t.Errorf("facts = %q, want %q", got, want)
+	}
+	if m := n.Members; len(m) != 2 || !m[0].Current || m[0].From != 1996 || m[1].Current || m[1].To != 1999 || m[0].Roles == nil {
+		t.Errorf("members: %+v", m)
+	}
+	if r := n.Releases; len(r) != 1 || r[0].Kind != "compilation" || r[0].Year != 2010 {
+		t.Errorf("releases: %+v", r)
+	}
+
+	person := musicbrainz.Profile{Artist: musicbrainz.Artist{Name: "Solo", Type: "Person", Begin: "1950", End: "2016", Ended: true}}
+	n = writeArtist(person)
+	if len(n.Facts) != 2 || n.Facts[0].Text != "Born in 1950" || n.Facts[1].Text != "Died in 2016" {
+		t.Errorf("person facts: %+v", n.Facts)
+	}
+	if n := writeArtist(musicbrainz.Profile{Artist: musicbrainz.Artist{Name: "Who"}}); len(n.Facts) != 0 || n.Members == nil {
+		t.Errorf("unknown artist: %+v", n)
+	}
+}

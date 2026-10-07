@@ -288,6 +288,10 @@ type album struct {
 	SongCount int      `json:"songCount"`
 	CoverArt  string   `json:"coverArt"`
 	Song      []song   `json:"song"`
+	// OpenSubsonic: MusicBrainz-style release types ("Album", "EP",
+	// "Compilation", "Live"...), and whether it's a compilation.
+	ReleaseTypes  []string `json:"releaseTypes"`
+	IsCompilation bool     `json:"isCompilation"`
 }
 
 type artist struct {

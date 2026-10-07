@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -92,6 +93,13 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "audio/flac")
 		http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(audio))
+	case "getArtist":
+		ok(w, `"artist":{"id":"ar1","name":"The Square Roots","album":[`+
+			`{"id":"al1","name":"Low Pass","releaseTypes":["Album"]},`+
+			`{"id":"al2","name":"Rolloff","releaseTypes":["Single"]},`+
+			`{"id":"al3","name":"Live at Leeds","releaseTypes":["Album","Live"]},`+
+			`{"id":"al4","name":"Hits","releaseTypes":["Album"],"isCompilation":true},`+
+			`{"id":"al5","name":"Plain Subsonic"}]}`)
 	case "getCoverArt":
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write([]byte("png:" + q.Get("id") + ":" + q.Get("size"))) //nolint:gosec // test server
@@ -333,6 +341,23 @@ func TestTrackMetadata(t *testing.T) {
 	}
 	if fmt.Sprint(tr) != fmt.Sprint(want) {
 		t.Errorf("Track =\n %+v\nwant\n %+v", tr, want)
+	}
+}
+
+func TestAlbumKinds(t *testing.T) {
+	srv := newServer(t)
+	sess := open(t, navidrome.New(navidrome.Options{}), srv.URL)
+	_, albums, err := sess.Artist(t.Context(), "ar1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, a := range albums {
+		got = append(got, a.Title+"="+a.Kind)
+	}
+	want := []string{"Low Pass=album", "Rolloff=single", "Live at Leeds=live", "Hits=compilation", "Plain Subsonic="}
+	if !slices.Equal(got, want) {
+		t.Errorf("kinds = %v, want %v", got, want)
 	}
 }
 

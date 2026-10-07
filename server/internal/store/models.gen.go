@@ -137,6 +137,14 @@ type MusicgraphArtist struct {
 	ExpiresAt time.Time
 }
 
+type MusicgraphTag struct {
+	Key       string
+	Found     bool
+	Facts     string
+	FetchedAt time.Time
+	ExpiresAt time.Time
+}
+
 type MusicgraphTrack struct {
 	Key       string
 	Found     bool
@@ -154,6 +162,15 @@ type Night struct {
 	Plays       int64
 	QueueItemID sql.NullString
 	Hearts      int64
+}
+
+type PageNotesCache struct {
+	Kind      string
+	Key       string
+	Found     bool
+	Notes     string
+	FetchedAt time.Time
+	ExpiresAt time.Time
 }
 
 type PlayHistory struct {

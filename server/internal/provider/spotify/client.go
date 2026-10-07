@@ -173,6 +173,8 @@ type album struct {
 	ReleaseDate string         `json:"release_date"` // "2024", "2024-03" or "2024-03-01"
 	TotalTracks int            `json:"total_tracks"`
 	Images      []Image        `json:"images"`
+	// AlbumType is "album", "single" (EPs too) or "compilation".
+	AlbumType string `json:"album_type"`
 	// Tracks is only set by GET /albums/{id}, and its tracks have no album.
 	Tracks *paging[track] `json:"tracks"`
 }

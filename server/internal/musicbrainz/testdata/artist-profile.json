@@ -1,0 +1,17 @@
+{"id":"0b3a1c55-2f0c-4a35-9a3e-6a1f33a0e001","name":"The Square Roots","type":"Group","country":"GB",
+ "area":{"name":"United Kingdom"},"begin-area":{"name":"Leeds"},
+ "life-span":{"begin":"1994","end":"2012-06","ended":true},
+ "genres":[{"name":"alternative rock","count":4},{"name":"art rock","count":9},{"name":"never voted","count":0}],
+ "relations":[
+  {"type":"wikidata","target-type":"url","direction":"forward","url":{"resource":"https://www.wikidata.org/wiki/Q42"}},
+  {"type":"member of band","target-type":"artist","direction":"backward","attributes":["original","guitar"],"begin":"1994","end":"1999","ended":true,
+   "artist":{"id":"m1","name":"Ann Root"}},
+  {"type":"member of band","target-type":"artist","direction":"backward","attributes":["guitar","lead vocals"],"begin":"2003","end":"2012","ended":true,
+   "artist":{"id":"m1","name":"Ann Root"}},
+  {"type":"member of band","target-type":"artist","direction":"backward","attributes":["drums (drum set)"],"begin":"1996","end":"","ended":false,
+   "artist":{"id":"m2","name":"Bo Square"},"target-credit":"Bo"},
+  {"type":"member of band","target-type":"artist","direction":"backward","attributes":["bass guitar"],"begin":"1994","end":"1995","ended":true,
+   "artist":{"id":"m3","name":"Cy Former"}},
+  {"type":"member of band","target-type":"artist","direction":"forward","attributes":[],"artist":{"id":"x","name":"Supergroup"}},
+  {"type":"tribute","target-type":"artist","direction":"backward","attributes":[],"artist":{"id":"y","name":"Tribute Band"}}
+ ]}
