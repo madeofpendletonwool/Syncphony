@@ -1,14 +1,10 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { GripVertical, Trash2, X } from 'lucide-react'
 import { AnimatePresence, motion, Reorder, useDragControls, useMotionValue, useTransform } from 'motion/react'
 import { useState } from 'react'
-import { api } from '@/api/client'
-import { errorMessage, unwrap } from '@/api/errors'
+import { useQueueMove } from '@/hooks/use-queue-move'
 import { useQueueRemoval } from '@/hooks/use-queue-removal'
 import type { User } from '@/lib/now-playing'
 import type { QueueItem } from '@/lib/playback'
-import { queueQuery } from '@/lib/room'
-import { toast } from '@/lib/toast'
 import { QueueRow } from './queue-row'
 
 // How far left a row must be swiped to remove it.
@@ -16,8 +12,6 @@ const SWIPE_REMOVE = 110
 
 /** Your songs, in your lane's order: drag to reorder, swipe left to remove. */
 export function MyLane({ roomId, items, me }: { roomId: string; items: QueueItem[]; me: User }) {
-  const queryClient = useQueryClient()
-  const key = queueQuery(roomId).queryKey
   const serverOrder = items.map((i) => i.id)
   // While dragging, or until the server confirms a change, show our own order.
   const [draft, setDraft] = useState<string[]>()
@@ -25,13 +19,7 @@ export function MyLane({ roomId, items, me }: { roomId: string; items: QueueItem
 
   const byId = new Map(items.map((i) => [i.id, i]))
 
-  const move = useMutation({
-    mutationFn: ({ itemId, position }: { itemId: string; position: number }) =>
-      unwrap(api.PATCH('/rooms/{roomId}/queue/{itemId}', { params: { path: { roomId, itemId } }, body: { position } })),
-    onSuccess: (snap) => queryClient.setQueryData(key, snap),
-    onError: (err) => toast({ message: errorMessage(err), tone: 'error' }),
-    onSettled: () => setDraft(undefined),
-  })
+  const move = useQueueMove(roomId)
 
   const { remove } = useQueueRemoval(roomId)
   const removeItem = (item: QueueItem) => {
@@ -43,7 +31,7 @@ export function MyLane({ roomId, items, me }: { roomId: string; items: QueueItem
   const dropped = (id: string) => {
     const from = serverOrder.indexOf(id)
     const to = order.indexOf(id)
-    if (from !== to && to >= 0) move.mutate({ itemId: id, position: to })
+    if (from !== to && to >= 0) move.mutate({ itemId: id, position: to }, { onSettled: () => setDraft(undefined) })
     else setDraft(undefined)
   }
 
