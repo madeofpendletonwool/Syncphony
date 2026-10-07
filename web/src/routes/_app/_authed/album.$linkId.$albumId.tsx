@@ -3,6 +3,8 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { ListPlus } from 'lucide-react'
 import { motion } from 'motion/react'
 import { errorMessage } from '@/api/errors'
+import { AlbumCard } from '@/components/album-card'
+import { Bio, GenreChips, PageSection } from '@/components/artist-parts'
 import { Artwork } from '@/components/artwork'
 import { BackButton } from '@/components/back-button'
 import { Notice } from '@/components/notice'
@@ -11,7 +13,9 @@ import { TrackRow } from '@/components/track-row'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAddToLane } from '@/hooks/use-add-to-lane'
-import { albumQuery, artworkUrl, totalDuration } from '@/lib/browse'
+import { albumAboutQuery, kindLabel, type AlbumAbout } from '@/lib/artist'
+import { albumQuery, artistQuery, artworkUrl, totalDuration } from '@/lib/browse'
+import { Shelf } from '@/components/shelf'
 import { easeOutExpo, fadeUp, stagger } from '@/lib/motion'
 import { providersQuery } from '@/lib/services'
 
@@ -26,6 +30,7 @@ const MAX_ADD = 100
 function Album() {
   const { linkId, albumId } = Route.useParams()
   const album = useQuery(albumQuery(linkId, albumId))
+  const about = useQuery(albumAboutQuery(linkId, albumId))
   const providers = useQuery(providersQuery)
   const { add, status } = useAddToLane()
 
@@ -53,7 +58,14 @@ function Album() {
   const { album: a, tracks, provider } = album.data
   const p = providers.data?.find((p) => p.id === provider)
   const waiting = tracks.filter((t) => status(t) === 'idle')
-  const meta = [a.year, `${tracks.length} song${tracks.length === 1 ? '' : 's'}`, totalDuration(tracks)].filter(Boolean)
+  const kind = a.kind ?? about.data?.kind
+  const meta = [
+    kind && kind !== 'album' && kindLabel(kind),
+    a.year,
+    `${tracks.length} song${tracks.length === 1 ? '' : 's'}`,
+    totalDuration(tracks),
+  ].filter(Boolean)
+  const firstArtist = a.artists.find((ar) => ar.id)
 
   return (
     <>
@@ -96,6 +108,8 @@ function Album() {
           {p && <ProviderIcon icon={p.icon} className="size-4 rounded-[0.3rem] [&_svg]:size-2.5" />}
           {meta.join(' · ')}
         </motion.p>
+        {about.data && <ReleaseLine about={about.data} year={a.year} />}
+        {about.data && <GenreChips genres={about.data.genres} linkId={linkId} className="mt-3" />}
         <motion.div variants={fadeUp} className="mt-5">
           <Button
             size="lg"
@@ -117,6 +131,51 @@ function Album() {
           <TrackRow key={t.trackId} track={t} status={status(t)} onAdd={() => add([t])} number={i + 1} hideAlbum />
         ))}
       </motion.ul>
+
+      {about.data?.about && (
+        <PageSection title="About this album">
+          <Bio text={about.data.about} url={about.data.aboutUrl} />
+        </PageSection>
+      )}
+      {firstArtist?.id && <MoreBy linkId={linkId} artistId={firstArtist.id} name={firstArtist.name} albumId={albumId} />}
     </>
+  )
+}
+
+/** When it first came out, if that's not its year here, and on which labels. */
+function ReleaseLine({ about, year }: { about: AlbumAbout; year?: number }) {
+  const first = about.firstReleased?.slice(0, 4)
+  const parts = [
+    first && Number(first) !== year && `First released ${first}`,
+    about.labels.length > 0 && about.labels.join(', '),
+  ].filter(Boolean)
+  if (parts.length === 0) return null
+  return (
+    <motion.p variants={fadeUp} className="mt-1 text-caption text-muted-foreground">
+      {parts.join(' · ')}
+    </motion.p>
+  )
+}
+
+/** The artist's other albums, newest first. */
+function MoreBy({ linkId, artistId, name, albumId }: { linkId: string; artistId: string; name: string; albumId: string }) {
+  const artist = useQuery(artistQuery(linkId, artistId))
+  const albums = (artist.data?.albums ?? []).filter((a) => a.id !== albumId).sort((x, y) => (y.year ?? 0) - (x.year ?? 0))
+  if (albums.length === 0) return null
+  return (
+    <PageSection
+      title={`More by ${name}`}
+      action={
+        <Link to="/artist/$linkId/$artistId" params={{ linkId, artistId }} className="text-sm text-muted-foreground hover:text-foreground">
+          See artist
+        </Link>
+      }
+    >
+      <Shelf>
+        {albums.map((a) => (
+          <AlbumCard key={a.id} album={a} linkId={linkId} subtitle={a.year ? String(a.year) : undefined} className="w-36 shrink-0 snap-start" />
+        ))}
+      </Shelf>
+    </PageSection>
   )
 }
