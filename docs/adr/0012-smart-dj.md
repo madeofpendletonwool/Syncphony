@@ -251,7 +251,7 @@ If the graph has no sources, knows nothing near the room's taste, or none of its
 - The similar-artists dataset name is ListenBrainz's own and may change. If it does, ListenBrainz stops contributing similar artists until the constant is updated, and the other sources carry on.
 - An artist's name can belong to more than one artist. Deezer takes the one with the most fans, and MusicBrainz the best search result.
 - The first fill after a cold start knows only the artists it fetched in time. The warmer catches up from the songs being queued.
-- `AutopilotInfo.reason` is stored with each song; it isn't in the API until MAD-760.
+- `AutopilotInfo.reason` is stored with each song. The API carries a short summary of it and its sources (`AutopilotPick.reason` and `source`, MAD-760), shown on now playing, up next and the big screen. The summary names members as they were called when the song was picked.
 - A room's long-term taste is the room's: it's deleted with the room. It names members by ID, and keeps an artist only while its likes or skips are above 0.005, about 15 nights of silence for one play.
 - Suggestions (ADR 0010) come from the DJ too (MAD-759): the asker's taste for "your vibe", the room's for "group vibe", found only on the asker's links. Without a graph they fall back on the services' recommendations, turning artists away by the DJ's rule (`suggest.TurnedAway` reads `dj.Profile.Avoid`), so a skip fades there too (MAD-762).
 - Tempo is often unknown: Deezer has a BPM for some songs and 0 for many, and few libraries tag it. Set flow treats 0 as unknown, so a room with little known about its songs plays as it did before; it flows better as the cache warms.

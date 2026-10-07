@@ -5,6 +5,7 @@ package autopilot_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/musicgraph"
@@ -77,6 +78,10 @@ func TestDJPicksFromTheGraph(t *testing.T) {
 	r := info.Reason
 	if r == nil || r.Kind != "similar-artist" || r.Via != "The Test Patterns" || r.Popularity != 1 || r.Score <= 0 {
 		t.Fatalf("reason = %+v", r)
+	}
+	// It's explained in words (MAD-760).
+	if !strings.HasPrefix(info.Summary, "Because alice's The Test Patterns → Null Island (similar") || info.Source != "test" {
+		t.Errorf("summary = %q, source %q", info.Summary, info.Source)
 	}
 	// It planned what might follow, and the room's energy curve is on.
 	if r.Flow == nil || len(r.Flow.Ahead) == 0 || r.Flow.Target == nil {

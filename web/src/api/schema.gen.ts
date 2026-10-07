@@ -3076,6 +3076,16 @@ export interface components {
             seedItemId?: string;
             seedTitle?: string;
             seedArtist?: string;
+            /**
+             * @description Why the DJ chose it, in a few words: "Because Sam's Radiohead →
+             *     Portishead (similar 0.82)", "A top song by Radiohead, an artist
+             *     the room loves", "Bridging Sam's Radiohead and Jo's Massive
+             *     Attack". Absent for a song a service recommended, or one picked
+             *     at random; say "Like {seedTitle}" then.
+             */
+            reason?: string;
+            /** @description The music knowledge the reason came from, for a credit, e.g. "Last.fm, Deezer". */
+            source?: string;
         };
         /**
          * @description The colors of a song's artwork, worked out once on the server so

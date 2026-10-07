@@ -839,11 +839,20 @@ type ArtistResult struct {
 // Label it "Autopilot", not as anyone's. It plays after every
 // member's song, takes nobody's turn, and anyone may remove it.
 type AutopilotPick struct {
+	// Reason Why the DJ chose it, in a few words: "Because Sam's Radiohead →
+	// Portishead (similar 0.82)", "A top song by Radiohead, an artist
+	// the room loves", "Bridging Sam's Radiohead and Jo's Massive
+	// Attack". Absent for a song a service recommended, or one picked
+	// at random; say "Like {seedTitle}" then.
+	Reason     *string `json:"reason,omitempty"`
 	SeedArtist *string `json:"seedArtist,omitempty"`
 
 	// SeedItemId The item whose song it's like. Absent for a song picked at random.
 	SeedItemId *string `json:"seedItemId,omitempty"`
 	SeedTitle  *string `json:"seedTitle,omitempty"`
+
+	// Source The music knowledge the reason came from, for a credit, e.g. "Last.fm, Deezer".
+	Source *string `json:"source,omitempty"`
 }
 
 // Backup defines model for Backup.

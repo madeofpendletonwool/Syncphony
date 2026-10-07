@@ -383,7 +383,10 @@ func toQueueItem(it store.QueueItem) QueueItem {
 		out.Via = &PlaysVia{Provider: it.ViaProvider.String, LinkId: it.ViaLinkID.String, TrackId: it.ViaTrackID.String}
 	}
 	if info, ok := queue.ParseAutopilot(it); ok {
-		out.Autopilot = &AutopilotPick{SeedItemId: nonEmpty(info.SeedItemID), SeedTitle: nonEmpty(info.SeedTitle), SeedArtist: nonEmpty(info.SeedArtist)}
+		out.Autopilot = &AutopilotPick{
+			SeedItemId: nonEmpty(info.SeedItemID), SeedTitle: nonEmpty(info.SeedTitle), SeedArtist: nonEmpty(info.SeedArtist),
+			Reason: nonEmpty(info.Summary), Source: nonEmpty(info.Source),
+		}
 	}
 	if it.Palette.Valid {
 		var p palette.Palette

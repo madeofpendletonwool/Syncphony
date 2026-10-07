@@ -296,6 +296,11 @@ type AutopilotInfo struct {
 	// Reason is the DJ's reasoning (ADR 0012). It's nil for a song a
 	// service recommended, or one picked at random.
 	Reason *AutopilotReason `json:"reason,omitempty"`
+	// Summary is the DJ's reasoning in a few words, for people (MAD-760):
+	// "Because Sam's Radiohead → Portishead (similar 0.82)". Source is the
+	// music knowledge it came from: "Last.fm, Deezer".
+	Summary string `json:"summary,omitempty"`
+	Source  string `json:"source,omitempty"`
 }
 
 // AutopilotReason is why the DJ chose a song: how it relates to the room

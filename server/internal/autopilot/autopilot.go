@@ -539,9 +539,11 @@ func (f *fill) fromGraph(ctx context.Context, users []string) []pick {
 	if len(users) > 0 {
 		fallback = users[0]
 	}
+	name := f.s.names(ctx)
 	var out []pick
 	for _, p := range picks {
-		info := queue.AutopilotInfo{Reason: &queue.AutopilotReason{
+		summary, source := explain(p, name)
+		info := queue.AutopilotInfo{Summary: summary, Source: source, Reason: &queue.AutopilotReason{
 			Kind: p.Why.Kind, Via: p.Why.Via, Similarity: p.Why.Similarity, Popularity: p.Why.Popularity,
 			Novelty: p.Why.Novelty, Prior: p.Why.Prior, Score: p.Why.Score, DeepCut: p.Why.DeepCut, Sources: p.Why.Sources,
 		}}
