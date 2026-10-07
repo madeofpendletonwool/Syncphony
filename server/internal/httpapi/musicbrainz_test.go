@@ -51,6 +51,37 @@ func newMusicBrainz(t *testing.T) *httptest.Server {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"id":"` + refToneArtist + `","name":"The Test Patterns","type":"Group","area":{"name":"Bristol"},` +
 				`"life-span":{"begin":"2009"},"relations":[{"type":"wikidata","url":{"resource":"https://www.wikidata.org/wiki/Q42424242"}}]}`))
+		case "/ws/2/artist":
+			// Searching for an artist by name: only this one is known.
+			w.Header().Set("Content-Type", "application/json")
+			if !strings.Contains(r.URL.Query().Get("query"), "The Test Patterns") {
+				_, _ = w.Write([]byte(`{"artists":[]}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"artists":[{"id":"` + refToneArtist + `","name":"The Test Patterns","score":100}]}`))
+		case "/ws/2/release-group":
+			w.Header().Set("Content-Type", "application/json")
+			if q := r.URL.Query().Get("query"); q != "" {
+				// Searching for an album.
+				if !strings.Contains(q, "Calibration") {
+					_, _ = w.Write([]byte(`{"release-groups":[]}`))
+					return
+				}
+				_, _ = w.Write([]byte(`{"release-groups":[{"id":"bb000000-0000-4000-8000-0000000000f1","score":100,"title":"Calibration",` +
+					`"primary-type":"Album","artist-credit":[{"name":"The Test Patterns","artist":{"id":"` + refToneArtist + `","name":"The Test Patterns"}}]}]}`))
+				return
+			}
+			// An artist's release groups.
+			_, _ = w.Write([]byte(`{"release-groups":[` +
+				`{"id":"bb000000-0000-4000-8000-0000000000f1","title":"Calibration","primary-type":"Album","first-release-date":"2019"},` +
+				`{"id":"bb000000-0000-4000-8000-0000000000f2","title":"Colour Bars","primary-type":"EP","first-release-date":"2021"}]}`))
+		case "/ws/2/release-group/bb000000-0000-4000-8000-0000000000f1":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"bb000000-0000-4000-8000-0000000000f1","title":"Calibration","primary-type":"Album",` +
+				`"first-release-date":"2019-03-01","genres":[{"name":"test tones","count":3}],"relations":[]}`))
+		case "/ws/2/release":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"releases":[{"title":"Calibration","date":"2019","label-info":[{"label":{"name":"Test Card Records"}}]}]}`))
 		case "/w/api.php":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"entities":{"Q42424242":{"sitelinks":{"enwiki":{"title":"The Test Patterns"}}}}}`))

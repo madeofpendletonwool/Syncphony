@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/match"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
@@ -92,9 +93,9 @@ func Summarize(plays []rooms.Played) Summary {
 		}
 		t.add(p, track)
 	}
-	s.Totals = room.totals()
+	s.Totals = room.totals(TopN)
 	for user, t := range people {
-		s.People = append(s.People, Person{UserID: user, Totals: t.totals()})
+		s.People = append(s.People, Person{UserID: user, Totals: t.totals(TopN)})
 	}
 	slices.SortFunc(s.People, func(a, b Person) int {
 		return cmp.Or(cmp.Compare(b.Plays, a.Plays), cmp.Compare(b.Listening, a.Listening), cmp.Compare(a.UserID, b.UserID))
@@ -148,7 +149,7 @@ func (t *tally) add(p *rooms.Played, track provider.Track) {
 	}
 }
 
-func (t *tally) totals() Totals {
+func (t *tally) totals(n int) Totals {
 	out := Totals{Plays: t.plays, Skipped: t.skipped, Listening: t.listening, TopTracks: []TrackCount{}, TopArtists: []ArtistCount{}}
 	for _, tc := range t.tracks {
 		out.TopTracks = append(out.TopTracks, *tc)
@@ -164,8 +165,8 @@ func (t *tally) totals() Totals {
 	slices.SortFunc(out.TopArtists, func(a, b ArtistCount) int {
 		return cmp.Or(cmp.Compare(b.Plays, a.Plays), cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)))
 	})
-	out.TopTracks = out.TopTracks[:min(len(out.TopTracks), TopN)]
-	out.TopArtists = out.TopArtists[:min(len(out.TopArtists), TopN)]
+	out.TopTracks = out.TopTracks[:min(len(out.TopTracks), n)]
+	out.TopArtists = out.TopArtists[:min(len(out.TopArtists), n)]
 	return out
 }
 
@@ -215,4 +216,23 @@ func Sessions(spans []Span) []Session {
 	flush()
 	slices.Reverse(out)
 	return out
+}
+
+// ArtistTop returns the artist's songs that played to the end most often,
+// most first: at most n. A song counts for every artist credited on it.
+func ArtistTop(plays []rooms.Played, artist string, n int) []TrackCount {
+	want := match.Simplify(artist)
+	t := newTally()
+	for i := range plays {
+		p := &plays[i]
+		if want == "" || p.EndReason != store.EndFinished {
+			continue
+		}
+		var track provider.Track
+		_ = json.Unmarshal([]byte(p.Item.Metadata), &track)
+		if slices.ContainsFunc(track.Artists, func(a provider.ArtistCredit) bool { return match.Simplify(a.Name) == want }) {
+			t.add(p, track)
+		}
+	}
+	return t.totals(n).TopTracks
 }
