@@ -29,6 +29,9 @@ const (
 	MemberLeft   = "member.left"
 	// RoomUpdated carries a room whose name or settings changed.
 	RoomUpdated = "room.updated"
+	// RoomDeleted carries rooms.Deleted: the room is gone. It's the room's
+	// last event.
+	RoomDeleted = "room.deleted"
 	// LinkStatus carries one of the user's service links whose status
 	// changed. Sent on the user's topic, so it reaches every room they're in.
 	LinkStatus = "link.status"

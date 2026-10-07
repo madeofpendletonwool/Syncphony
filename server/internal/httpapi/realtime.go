@@ -32,6 +32,8 @@ const (
 	wsWriteTimeout   = 10 * time.Second
 	// closeSessionEnded tells the client to sign in again.
 	closeSessionEnded websocket.StatusCode = 4001
+	// closeRoomGone tells the client the room was deleted.
+	closeRoomGone websocket.StatusCode = 4004
 )
 
 // RoomSocket serves GET /ws/rooms/{id}: a server-push stream of a room's
@@ -165,6 +167,10 @@ func (rc *roomConn) serve(ctx context.Context) {
 				rc.fail(err)
 				return
 			}
+			if e.Type == realtime.RoomDeleted {
+				rc.c.Close(closeRoomGone, "room deleted")
+				return
+			}
 		case <-ping.C:
 			if err := rc.check(ctx); err != nil {
 				rc.c.Close(closeSessionEnded, "session ended")
@@ -260,6 +266,8 @@ func (rc *roomConn) send(ctx context.Context, e realtime.Event) error {
 		data = toServiceLink(d)
 	case store.Room:
 		data = toRoom(d)
+	case rooms.Deleted:
+		data = map[string]string{"roomId": d.RoomID}
 	case Reaction:
 		data = d
 	case nights.Hearts:

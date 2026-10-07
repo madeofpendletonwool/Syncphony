@@ -1,20 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Minus, Plus, X } from 'lucide-react'
+import { ArrowRightLeft, LoaderCircle, Minus, Plus, Trash2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Dialog } from 'radix-ui'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { api } from '@/api/client'
 import { errorMessage, unwrap } from '@/api/errors'
 import type { components } from '@/api/schema.gen'
+import { Notice } from '@/components/notice'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { UserAvatar } from '@/components/user-avatar'
+import { useMe } from '@/lib/auth'
 import { easeOutExpo } from '@/lib/motion'
 import { roomsQuery, type Room } from '@/lib/room'
 import { toast } from '@/lib/toast'
 import { usersQuery } from '@/lib/users'
-import { cn } from '@/lib/utils'
 
 type Change = components['schemas']['UpdateRoomRequest']
 type Fairness = Room['fairness']
@@ -42,8 +44,9 @@ const MAX_WEIGHT = 4
 const GUEST_SONGS = [5, 10, 20, 0]
 
 /**
- * Who can control playback in a room you own, and how turns work. Changes
- * save as you make them, and everyone in the room sees them at once.
+ * A room's name, who can control playback, and how turns work, for its
+ * owner and admins. Changes save as you make them, and everyone in the
+ * room sees them at once. Also where the room is handed over or deleted.
  */
 export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: boolean; onOpenChange: (open: boolean) => void }) {
   const queryClient = useQueryClient()
@@ -56,6 +59,7 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
           r.id === room.id
             ? {
                 ...r,
+                name: body.name ?? r.name,
                 permissions: { ...r.permissions, ...body.permissions },
                 skipVotePercent: body.skipVotePercent ?? r.skipVotePercent,
                 fairnessMode: body.fairnessMode ?? r.fairnessMode,
@@ -75,6 +79,9 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
     },
     onSuccess: (r) => queryClient.setQueryData(roomsQuery.queryKey, (rs) => rs?.map((x) => (x.id === r.id ? r : x))),
   })
+  const me = useMe()
+  // "Owner" permissions mean the room's owner, who may not be you.
+  const ownerLabel = room.ownerId === me.id ? 'Only you' : 'Only the owner'
   const p = room.permissions
   const set = (permissions: Change['permissions']) => update.mutate({ permissions })
   // fairness is replaced as a whole.
@@ -106,6 +113,7 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
                     <Dialog.Title className="text-headline">Room settings</Dialog.Title>
                     <Dialog.Description className="mt-1 text-sm text-muted-foreground">
                       Who controls playback, and how everyone takes turns.
+                      {room.ownerId !== me.id && ' You can change it because you’re an admin.'}
                     </Dialog.Description>
                   </div>
                   <Dialog.Close asChild>
@@ -115,12 +123,16 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
                   </Dialog.Close>
                 </div>
 
-                <SectionTitle first hint="You always can, and anyone can skip their own song">Controls</SectionTitle>
+                <RoomName name={room.name} onSave={(name) => update.mutate({ name })} />
+
+                <SectionTitle hint={room.ownerId === me.id ? 'You always can, and anyone can skip their own song' : 'The owner always can, and anyone can skip their own song'}>
+                  Controls
+                </SectionTitle>
                 <Setting label="Play and pause">
-                  <Levels value={p.playPause} onChange={(playPause) => set({ playPause })} label="Who can play and pause" />
+                  <Levels value={p.playPause} onChange={(playPause) => set({ playPause })} label="Who can play and pause" ownerLabel={ownerLabel} />
                 </Setting>
                 <Setting label="Seek" hint="Scrubbing, and restarting the song">
-                  <Levels value={p.seek} onChange={(seek) => set({ seek })} label="Who can seek" />
+                  <Levels value={p.seek} onChange={(seek) => set({ seek })} label="Who can seek" ownerLabel={ownerLabel} />
                 </Setting>
                 <Setting label="Skip" hint={p.skip === 'vote' ? 'Everyone else votes, and the song is skipped once enough have' : undefined}>
                   <ToggleGroup
@@ -131,7 +143,7 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
                   >
                     <ToggleGroupItem value="everyone">Everyone</ToggleGroupItem>
                     <ToggleGroupItem value="vote">Vote</ToggleGroupItem>
-                    <ToggleGroupItem value="owner">Only you</ToggleGroupItem>
+                    <ToggleGroupItem value="owner">{ownerLabel}</ToggleGroupItem>
                   </ToggleGroup>
                 </Setting>
                 <AnimatePresence initial={false}>
@@ -161,7 +173,7 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
                   )}
                 </AnimatePresence>
                 <Setting label="Become the speaker" hint="Play the room's audio on their device">
-                  <Levels value={p.speaker} onChange={(speaker) => set({ speaker })} label="Who can become the speaker" />
+                  <Levels value={p.speaker} onChange={(speaker) => set({ speaker })} label="Who can become the speaker" ownerLabel={ownerLabel} />
                 </Setting>
 
                 <SectionTitle hint="These only hold while someone else has songs waiting; the music never stops for them">
@@ -301,6 +313,9 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
                   checked={room.matching.borrow}
                   onChange={(borrow) => update.mutate({ matching: { ...room.matching, borrow } })}
                 />
+
+                <SectionTitle>This room</SectionTitle>
+                <ManageRoom room={room} onGone={() => onOpenChange(false)} />
               </motion.div>
             </Dialog.Content>
           </Dialog.Portal>
@@ -310,9 +325,9 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
   )
 }
 
-function SectionTitle({ children, hint, first }: { children: ReactNode; hint?: string; first?: boolean }) {
+function SectionTitle({ children, hint }: { children: ReactNode; hint?: string }) {
   return (
-    <div className={cn('-mb-2', !first && 'border-t border-border pt-4')}>
+    <div className="-mb-2 border-t border-border pt-4">
       <h3 className="text-caption font-semibold tracking-wide text-muted-foreground uppercase">{children}</h3>
       {hint && <p className="text-caption text-muted-foreground">{hint}</p>}
     </div>
@@ -361,7 +376,7 @@ function Weights({ weights, onChange }: { weights: Fairness['weights']; onChange
         <p className="text-caption text-muted-foreground">Give someone more of a say, like whoever&apos;s birthday it is</p>
       </div>
       <ul className="flex flex-col gap-1">
-        {(users.data ?? []).filter((u) => !u.guest).map((u) => {
+        {(users.data ?? []).filter((u) => !u.guest && !u.removed).map((u) => {
           const w = weights[u.id] ?? 1
           return (
             <li key={u.id} className="flex items-center gap-3 rounded-2xl px-1 py-1">
@@ -398,11 +413,179 @@ function Setting({ label, hint, children }: { label: string; hint?: string; chil
 
 type Level = components['schemas']['PermissionLevel']
 
-function Levels({ value, onChange, label }: { value: Level; onChange: (v: Level) => void; label: string }) {
+function Levels({ value, onChange, label, ownerLabel }: { value: Level; onChange: (v: Level) => void; label: string; ownerLabel: string }) {
   return (
     <ToggleGroup type="single" value={value} onValueChange={(v) => v && onChange(v as Level)} aria-label={label}>
       <ToggleGroupItem value="everyone">Everyone</ToggleGroupItem>
-      <ToggleGroupItem value="owner">Only you</ToggleGroupItem>
+      <ToggleGroupItem value="owner">{ownerLabel}</ToggleGroupItem>
     </ToggleGroup>
   )
+}
+
+/** The room's name, saved when you're done typing (Enter, or leaving the field). */
+function RoomName({ name, onSave }: { name: string; onSave: (name: string) => void }) {
+  const [draft, setDraft] = useState(name)
+  // Someone else renamed it while the sheet was open.
+  const [was, setWas] = useState(name)
+  if (name !== was) {
+    setWas(name)
+    setDraft(name)
+  }
+  const save = () => {
+    const next = draft.trim()
+    if (next && next !== name) onSave(next)
+    else setDraft(name)
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor="room-name" className="text-sm font-medium">
+        Name
+      </label>
+      <Input
+        id="room-name"
+        value={draft}
+        maxLength={64}
+        autoComplete="off"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+          if (e.key === 'Escape' && draft !== name) {
+            // Undo the edit rather than closing the sheet.
+            e.stopPropagation()
+            setDraft(name)
+          }
+        }}
+      />
+    </div>
+  )
+}
+
+/** Hand the room to someone else, or delete it. */
+function ManageRoom({ room, onGone }: { room: Room; onGone: () => void }) {
+  const me = useMe()
+  const queryClient = useQueryClient()
+  const users = useQuery(usersQuery)
+  const [open, setOpen] = useState<'transfer' | 'delete'>()
+  const owner = users.data?.find((u) => u.id === room.ownerId)
+  // Anyone who can sign in and look after it.
+  const heirs = (users.data ?? []).filter((u) => !u.guest && !u.removed && !u.disabled && u.id !== room.ownerId)
+  const path = { params: { path: { roomId: room.id } } }
+
+  const transfer = useMutation({
+    mutationFn: (userId: string) => unwrap(api.PUT('/rooms/{roomId}/owner', { ...path, body: { userId } })),
+    onSuccess: (r) => {
+      queryClient.setQueryData(roomsQuery.queryKey, (rs) => rs?.map((x) => (x.id === r.id ? r : x)))
+      const to = users.data?.find((u) => u.id === r.ownerId)
+      toast({ message: `${r.name} is ${to ? possessive(to.displayName) : 'theirs'} now.` })
+      setOpen(undefined)
+      // Without being an admin, it's no longer yours to change.
+      if (me.role !== 'admin') onGone()
+    },
+  })
+  const remove = useMutation({
+    mutationFn: () => unwrap(api.DELETE('/rooms/{roomId}', path)),
+    onSuccess: () => {
+      queryClient.setQueryData(roomsQuery.queryKey, (rs) => rs?.filter((r) => r.id !== room.id))
+      onGone()
+    },
+  })
+  const toggle = (which: 'transfer' | 'delete') => {
+    transfer.reset()
+    remove.reset()
+    setOpen((o) => (o === which ? undefined : which))
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-3">
+        {owner && <UserAvatar user={owner} className="size-8 text-[0.7rem]" />}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">Owner</p>
+          <p className="truncate text-caption text-muted-foreground">
+            {room.ownerId === me.id ? 'You' : (owner?.displayName ?? 'Someone')}
+          </p>
+        </div>
+        <Button size="sm" variant="ghost" aria-expanded={open === 'transfer'} onClick={() => toggle('transfer')} disabled={heirs.length === 0}>
+          <ArrowRightLeft data-icon="inline-start" />
+          Hand over
+        </Button>
+      </div>
+      <Collapse open={open === 'transfer'}>
+        <div className="flex flex-col gap-1 rounded-2xl bg-muted/60 p-2">
+          <p className="px-2 pt-1 pb-1.5 text-caption text-muted-foreground">
+            They&apos;ll own it, and the &ldquo;only the owner&rdquo; controls go with it.
+          </p>
+          <ul className="flex max-h-56 flex-col gap-0.5 overflow-y-auto">
+            {heirs.map((u) => (
+              <li key={u.id}>
+                <button
+                  type="button"
+                  disabled={transfer.isPending}
+                  onClick={() => transfer.mutate(u.id)}
+                  className="flex w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left text-sm transition-colors outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+                >
+                  <UserAvatar user={u} className="size-7 text-[0.65rem]" />
+                  <span className="min-w-0 flex-1 truncate">{u.id === me.id ? 'You' : u.displayName}</span>
+                  {transfer.isPending && transfer.variables === u.id && <LoaderCircle className="size-4 animate-spin" />}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <Notice className="px-2">{transfer.error && errorMessage(transfer.error)}</Notice>
+        </div>
+      </Collapse>
+
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">Delete room</p>
+          <p className="text-caption text-muted-foreground">Its queue, history and recaps go with it</p>
+        </div>
+        <Button size="sm" variant="ghost" aria-expanded={open === 'delete'} onClick={() => toggle('delete')} className="hover:text-destructive">
+          <Trash2 data-icon="inline-start" />
+          Delete
+        </Button>
+      </div>
+      <Collapse open={open === 'delete'}>
+        <div className="flex flex-col gap-3 rounded-2xl bg-destructive/10 p-3">
+          <p className="text-sm">
+            Delete <span className="font-medium">{room.name}</span> for everyone? Anyone in it now is sent back to the room list,
+            and its guests&apos; passes stop working. This can&apos;t be undone.
+          </p>
+          <Notice>{remove.error && errorMessage(remove.error)}</Notice>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="destructive" onClick={() => remove.mutate()} disabled={remove.isPending}>
+              {remove.isPending ? <LoaderCircle className="animate-spin" /> : <Trash2 data-icon="inline-start" />}
+              Delete for everyone
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setOpen(undefined)}>
+              Keep it
+            </Button>
+          </div>
+        </div>
+      </Collapse>
+    </div>
+  )
+}
+
+function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
+  return (
+    <AnimatePresence initial={false}>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.25, ease: easeOutExpo }}
+          className="-mt-1 overflow-hidden"
+        >
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+function possessive(name: string) {
+  return name.endsWith('s') ? `${name}’` : `${name}’s`
 }

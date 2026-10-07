@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { Check, Copy, LifeBuoy, LoaderCircle, Plus, Share, X } from 'lucide-react'
+import { Ban, Check, Copy, LifeBuoy, LoaderCircle, Plus, Share, Trash2, UserCog, UserRoundCheck, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
 import { api } from '@/api/client'
@@ -23,6 +23,7 @@ type Invite = components['schemas']['Invite']
 type Role = components['schemas']['Role']
 type ResetLink = components['schemas']['ResetLink']
 type User = components['schemas']['User']
+type AuditEntry = components['schemas']['UserAuditEntry']
 
 export const Route = createFileRoute('/_app/_authed/settings/people')({
   beforeLoad: async ({ context }) => {
@@ -37,10 +38,11 @@ const invitesQuery = { queryKey: ['invites'], queryFn: () => unwrap(api.GET('/in
 function People() {
   return (
     <>
-      <PageHeader title="People" subtitle="Invite friends and see who's on this server." />
+      <PageHeader title="People" subtitle="Invite friends, and look after who's on this server." />
       <motion.div variants={stagger} initial="hidden" animate="show" className="flex flex-col gap-4">
         <Invites />
         <Members />
+        <Activity />
       </motion.div>
     </>
   )
@@ -255,12 +257,16 @@ function Members() {
   const pendingReset = new Map(resets.data?.map((l) => [l.userId, l]))
   // The member whose reset panel is open.
   const [recovering, setRecovering] = useState<string>()
+  // The member whose account panel is open.
+  const [managing, setManaging] = useState<string>()
+  // Removed accounts stay only so rooms' history adds up.
+  const people = users.data?.filter((u) => !u.removed)
 
   return (
     <motion.section variants={fadeUp} className="glass flex flex-col rounded-3xl p-5">
       <h2 className="text-headline">
         Members
-        {users.data && <span className="ml-2 text-muted-foreground tabular-nums">{users.data.length}</span>}
+        {people && <span className="ml-2 text-muted-foreground tabular-nums">{people.length}</span>}
       </h2>
       {users.isPending ? (
         <div className="mt-4 flex flex-col gap-3">
@@ -271,10 +277,10 @@ function Members() {
         <Notice className="mt-4">{errorMessage(users.error)}</Notice>
       ) : (
         <ul className="mt-3 flex flex-col">
-          {users.data.map((u) => (
+          {people?.map((u) => (
             <li key={u.id} className="flex flex-col py-2">
               <div className="flex items-center gap-3">
-                <UserAvatar user={u} className="size-10" />
+                <UserAvatar user={u} className={cn('size-10', u.disabled && 'opacity-50 grayscale')} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">
                     {u.displayName}
@@ -284,20 +290,42 @@ function Members() {
                     {u.guest ? 'Guest' : `@${u.username}`} · joined {relativeTime(u.createdAt)}
                   </p>
                 </div>
+                {u.disabled && <Badge variant="outline">Disabled</Badge>}
                 {u.role === 'admin' && <Badge>Admin</Badge>}
                 {u.id !== me.id && !u.guest && (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`Reset link for ${u.displayName}`}
-                    title="Locked out? Make a reset link"
-                    aria-expanded={recovering === u.id}
-                    onClick={() => setRecovering((id) => (id === u.id ? undefined : u.id))}
-                  >
-                    <LifeBuoy />
-                  </Button>
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Reset link for ${u.displayName}`}
+                      title="Locked out? Make a reset link"
+                      aria-expanded={recovering === u.id}
+                      onClick={() => {
+                        setManaging(undefined)
+                        setRecovering((id) => (id === u.id ? undefined : u.id))
+                      }}
+                    >
+                      <LifeBuoy />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Manage ${u.displayName}'s account`}
+                      title="Role, disable, remove"
+                      aria-expanded={managing === u.id}
+                      onClick={() => {
+                        setRecovering(undefined)
+                        setManaging((id) => (id === u.id ? undefined : u.id))
+                      }}
+                    >
+                      <UserCog />
+                    </Button>
+                  </>
                 )}
               </div>
+              <AnimatePresence initial={false}>
+                {managing === u.id && <ManagePanel user={u} onClose={() => setManaging(undefined)} />}
+              </AnimatePresence>
               <AnimatePresence initial={false}>
                 {(recovering === u.id || pendingReset.has(u.id)) && !u.guest && u.id !== me.id && (
                   <ResetPanel
@@ -451,5 +479,149 @@ function ResetPanel({ user, pending, onClose }: { user: User; pending?: ResetLin
         </div>
       </div>
     </motion.div>
+  )
+}
+
+// --- Managing accounts ------------------------------------------------------------
+
+const auditQuery = { queryKey: ['user-audit'], queryFn: () => unwrap(api.GET('/user-audit')) }
+
+/** Someone's role, and disabling or removing their account. */
+function ManagePanel({ user, onClose }: { user: User; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [confirming, setConfirming] = useState(false)
+  const first = user.displayName.split(/\s+/)[0]
+  const path = { params: { path: { id: user.id } } }
+  const changed = () => void queryClient.invalidateQueries({ queryKey: auditQuery.queryKey })
+
+  const update = useMutation({
+    mutationFn: (body: components['schemas']['UpdateUserRequest']) => unwrap(api.PATCH('/users/{id}', { ...path, body })),
+    onSuccess: (u) => {
+      queryClient.setQueryData<User[]>(usersQuery.queryKey, (list) => list?.map((x) => (x.id === u.id ? u : x)))
+      changed()
+    },
+  })
+  const remove = useMutation({
+    mutationFn: () => unwrap(api.DELETE('/users/{id}', path)),
+    onSuccess: () => {
+      // Their rooms are yours now, and the list shows them as removed.
+      void queryClient.invalidateQueries({ queryKey: usersQuery.queryKey })
+      void queryClient.invalidateQueries({ queryKey: ['rooms'] })
+      changed()
+      onClose()
+    },
+  })
+  const error = update.error ?? remove.error
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.3, ease: easeOutExpo }}
+      className="overflow-hidden"
+    >
+      <div className="mt-2 ml-13 flex flex-col gap-3 rounded-2xl bg-muted/60 p-3">
+        <OptionRow label="Role">
+          <ToggleGroup
+            type="single"
+            value={user.role}
+            onValueChange={(v) => v && v !== user.role && update.mutate({ role: v as Role })}
+            aria-label={`${user.displayName}'s role`}
+            disabled={update.isPending}
+          >
+            <ToggleGroupItem value="member">Member</ToggleGroupItem>
+            <ToggleGroupItem value="admin">Admin</ToggleGroupItem>
+          </ToggleGroup>
+        </OptionRow>
+        <p className="-mt-1 text-caption text-muted-foreground">
+          {user.role === 'admin'
+            ? 'Admins invite people, manage accounts, and can change any room.'
+            : 'Members add songs, and look after the rooms they own.'}
+        </p>
+
+        {confirming ? (
+          <div className="flex flex-col gap-3 rounded-xl bg-destructive/10 p-3">
+            <p className="text-sm">
+              Remove {user.displayName}? Their sign-in, linked services and saved credentials are deleted, and their waiting
+              songs leave the queue. Rooms they own become yours. Songs they played stay in the history as &ldquo;Former
+              member&rdquo;. This can&apos;t be undone.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="destructive" onClick={() => remove.mutate()} disabled={remove.isPending}>
+                {remove.isPending ? <LoaderCircle className="animate-spin" /> : <Trash2 data-icon="inline-start" />}
+                Remove {first}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+                Keep
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="secondary" onClick={() => update.mutate({ disabled: !user.disabled })} disabled={update.isPending}>
+              {update.isPending && update.variables.disabled !== undefined ? (
+                <LoaderCircle className="animate-spin" />
+              ) : user.disabled ? (
+                <UserRoundCheck data-icon="inline-start" />
+              ) : (
+                <Ban data-icon="inline-start" />
+              )}
+              {user.disabled ? 'Turn back on' : 'Disable'}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirming(true)} className="hover:text-destructive">
+              <Trash2 data-icon="inline-start" />
+              Remove…
+            </Button>
+          </div>
+        )}
+        {!confirming && (
+          <p className="-mt-1 text-caption text-muted-foreground">
+            {user.disabled
+              ? `${first} can't sign in. Everything else of theirs is kept.`
+              : `Disabling signs ${first} out everywhere and keeps them out, but keeps their services, rooms and history.`}
+          </p>
+        )}
+        <Notice>{error && errorMessage(error)}</Notice>
+      </div>
+    </motion.div>
+  )
+}
+
+const auditVerbs: Record<AuditEntry['action'], (e: AuditEntry) => string> = {
+  role_changed: (e) => `made ${e.targetName} ${e.role === 'admin' ? 'an admin' : 'a member'}`,
+  disabled: (e) => `disabled ${e.targetName}'s account`,
+  enabled: (e) => `turned ${e.targetName}'s account back on`,
+  removed: (e) => `removed ${e.targetName}`,
+  deleted_self: () => 'deleted their account',
+}
+
+/** Who changed whose account, and when. */
+function Activity() {
+  const me = useMe()
+  const log = useQuery(auditQuery)
+  const [all, setAll] = useState(false)
+  if (!log.data?.length) return null
+  const shown = all ? log.data : log.data.slice(0, 8)
+  return (
+    <motion.section variants={fadeUp} className="glass flex flex-col rounded-3xl p-5">
+      <h2 className="text-headline">Account activity</h2>
+      <p className="mt-1 text-sm text-muted-foreground">Role changes, and accounts disabled or removed.</p>
+      <ul className="mt-3 flex flex-col">
+        {shown.map((e) => (
+          <li key={e.id} className="flex items-baseline justify-between gap-3 py-1.5 text-sm">
+            <span className="min-w-0">
+              <span className="font-medium">{e.actorId === me.id ? 'You' : e.actorName}</span> {auditVerbs[e.action](e)}
+            </span>
+            <span className="shrink-0 text-caption text-muted-foreground">{relativeTime(e.createdAt)}</span>
+          </li>
+        ))}
+      </ul>
+      {log.data.length > shown.length && (
+        <Button variant="ghost" size="sm" className="mt-2 self-start" onClick={() => setAll(true)}>
+          Show all {log.data.length}
+        </Button>
+      )}
+    </motion.section>
   )
 }

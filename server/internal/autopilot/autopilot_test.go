@@ -123,7 +123,7 @@ func (e *env) member(ls *links.Service, name string) member {
 
 func (e *env) settings(a rooms.Autopilot) {
 	e.t.Helper()
-	if _, err := e.rooms.Update(e.t.Context(), e.alice.ID, e.room.ID, rooms.Update{Autopilot: &a}); err != nil {
+	if _, err := e.rooms.Update(e.t.Context(), rooms.Actor{UserID: e.alice.ID}, e.room.ID, rooms.Update{Autopilot: &a}); err != nil {
 		e.t.Fatal(err)
 	}
 }

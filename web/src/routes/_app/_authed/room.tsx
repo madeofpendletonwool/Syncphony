@@ -233,7 +233,7 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
               <span className="flex-1">End the night</span>
             </DropdownMenu.Item>
           )}
-          {room.ownerId === me.id && (
+          {host && !guest && (
             <DropdownMenu.Item onSelect={() => setSettings(true)} className={menuItem}>
               <Settings2 className="size-4 text-muted-foreground" />
               <span className="flex-1">Room settings</span>

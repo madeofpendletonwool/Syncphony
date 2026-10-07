@@ -344,6 +344,8 @@ var errorCodes = []struct {
 	{auth.ErrForbidden, http.StatusForbidden, "forbidden"},
 	{auth.ErrWrongPassword, http.StatusForbidden, "wrong_password"},
 	{auth.ErrNotFound, http.StatusNotFound, "not_found"},
+	{auth.ErrAccountDisabled, http.StatusForbidden, "account_disabled"},
+	{auth.ErrLastAdmin, http.StatusConflict, "last_admin"},
 	{auth.ErrInviteInvalid, http.StatusNotFound, "invite_invalid"},
 	{auth.ErrResetLinkInvalid, http.StatusNotFound, "reset_link_invalid"},
 	{auth.ErrUsernameTaken, http.StatusConflict, "username_taken"},

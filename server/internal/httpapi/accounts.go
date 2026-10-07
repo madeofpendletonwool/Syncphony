@@ -26,6 +26,11 @@ func toUser(u store.User, g *store.Guest) User {
 	if g != nil {
 		out.Guest = &UserGuest{RoomId: g.RoomID, ExpiresAt: g.ExpiresAt, Ended: g.EndedAt.Valid}
 	}
+	if u.RemovedAt.Valid {
+		out.Removed = ptr(true)
+	} else if u.DisabledAt.Valid {
+		out.Disabled = ptr(true)
+	}
 	return out
 }
 

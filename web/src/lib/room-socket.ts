@@ -27,6 +27,7 @@ export type Live = {
 export const live = createStore<Live>({ status: 'connecting', members: [] })
 
 const SESSION_ENDED = 4001
+const ROOM_GONE = 4004
 const FELL_BEHIND = 1013
 
 type SocketOptions = {
@@ -78,6 +79,7 @@ export function useRoomSocket(roomId: string | undefined, { display = false, onS
           else queryClient.setQueryData(meQuery.queryKey, null)
           return
         }
+        if (e.code === ROOM_GONE) return
         live.set((l) => ({ ...l, status: 'reconnecting' }))
         // Falling behind is our cue to resume right away; anything else backs off.
         const delay = e.code === FELL_BEHIND ? 0 : Math.min(15_000, 500 * 2 ** attempt++)
@@ -142,6 +144,12 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
     case 'room.updated': {
       const room = ev.data as Room
       queryClient.setQueryData(roomsQuery.queryKey, (rs) => rs?.map((r) => (r.id === room.id ? room : r)))
+      break
+    }
+    case 'room.deleted': {
+      const { roomId: gone } = ev.data as { roomId: string }
+      queryClient.setQueryData(roomsQuery.queryKey, (rs) => rs?.filter((r) => r.id !== gone))
+      toast({ message: 'This room was deleted.' })
       break
     }
     case 'reaction.sent':

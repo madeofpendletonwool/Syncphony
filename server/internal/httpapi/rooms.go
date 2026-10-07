@@ -62,7 +62,7 @@ func (s *Server) GetRoom(ctx context.Context, req GetRoomRequestObject) (GetRoom
 	return GetRoom200JSONResponse(toRoom(r)), nil
 }
 
-// UpdateRoom changes a room the caller owns.
+// UpdateRoom changes a room the caller owns, or any room for an admin.
 func (s *Server) UpdateRoom(ctx context.Context, req UpdateRoomRequestObject) (UpdateRoomResponseObject, error) {
 	u := rooms.Update{
 		Name: req.Body.Name, Permissions: fromPermissionsChange(req.Body.Permissions), SkipVotePercent: req.Body.SkipVotePercent,
@@ -82,7 +82,7 @@ func (s *Server) UpdateRoom(ctx context.Context, req UpdateRoomRequestObject) (U
 	if g := req.Body.Guests; g != nil {
 		u.Guests = ptr(fromGuests(*g))
 	}
-	r, err := s.Rooms.Update(ctx, sessionFrom(ctx).User.ID, req.RoomId, u)
+	r, err := s.Rooms.Update(ctx, actor(ctx), req.RoomId, u)
 	if err != nil {
 		return nil, err
 	}

@@ -126,6 +126,32 @@ func (q *Queries) ListRooms(ctx context.Context) ([]Room, error) {
 	return items, nil
 }
 
+const setRoomOwner = `-- name: SetRoomOwner :one
+UPDATE rooms SET owner_id = ? WHERE id = ?
+RETURNING id, name, owner_id, player_device_id, fairness_mode, settings, created_at, queue_version
+`
+
+type SetRoomOwnerParams struct {
+	OwnerID string
+	ID      string
+}
+
+func (q *Queries) SetRoomOwner(ctx context.Context, arg SetRoomOwnerParams) (Room, error) {
+	row := q.db.QueryRowContext(ctx, setRoomOwner, arg.OwnerID, arg.ID)
+	var i Room
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.OwnerID,
+		&i.PlayerDeviceID,
+		&i.FairnessMode,
+		&i.Settings,
+		&i.CreatedAt,
+		&i.QueueVersion,
+	)
+	return i, err
+}
+
 const setRoomPlayer = `-- name: SetRoomPlayer :exec
 UPDATE rooms SET player_device_id = ? WHERE id = ?
 `
@@ -138,6 +164,49 @@ type SetRoomPlayerParams struct {
 func (q *Queries) SetRoomPlayer(ctx context.Context, arg SetRoomPlayerParams) error {
 	_, err := q.db.ExecContext(ctx, setRoomPlayer, arg.PlayerDeviceID, arg.ID)
 	return err
+}
+
+const transferRooms = `-- name: TransferRooms :many
+UPDATE rooms SET owner_id = ?1 WHERE owner_id = ?2
+RETURNING id, name, owner_id, player_device_id, fairness_mode, settings, created_at, queue_version
+`
+
+type TransferRoomsParams struct {
+	ToID   string
+	FromID string
+}
+
+// TransferRooms hands every room one user owns to another, and returns them.
+func (q *Queries) TransferRooms(ctx context.Context, arg TransferRoomsParams) ([]Room, error) {
+	rows, err := q.db.QueryContext(ctx, transferRooms, arg.ToID, arg.FromID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Room{}
+	for rows.Next() {
+		var i Room
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.OwnerID,
+			&i.PlayerDeviceID,
+			&i.FairnessMode,
+			&i.Settings,
+			&i.CreatedAt,
+			&i.QueueVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateRoom = `-- name: UpdateRoom :one

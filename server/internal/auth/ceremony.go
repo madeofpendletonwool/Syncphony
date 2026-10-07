@@ -20,6 +20,8 @@ const (
 	ceremonyLogin
 	ceremonyAddPasskey
 	ceremonyReset
+	// ceremonyReauth checks it's really the signed-in user.
+	ceremonyReauth
 )
 
 // ceremony is server-side state between a WebAuthn begin and finish call.

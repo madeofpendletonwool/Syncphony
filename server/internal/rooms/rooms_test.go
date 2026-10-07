@@ -5,6 +5,7 @@ package rooms_test
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
@@ -106,7 +107,7 @@ func TestUpdateSettings(t *testing.T) {
 	var hooked store.Room
 	s.OnUpdate = func(r store.Room) { hooked = r }
 
-	r, err = s.Update(ctx, owner.ID, r.ID, rooms.Update{Permissions: rooms.Permissions{Skip: rooms.Vote}})
+	r, err = s.Update(ctx, rooms.Actor{UserID: owner.ID}, r.ID, rooms.Update{Permissions: rooms.Permissions{Skip: rooms.Vote}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +122,7 @@ func TestUpdateSettings(t *testing.T) {
 		t.Errorf("published %s", e.Type)
 	}
 	// New fairness options reorder the queue, so a snapshot goes out.
-	r, err = s.Update(ctx, owner.ID, r.ID, rooms.Update{Fairness: &rooms.Fairness{MaxInARow: 2, Weights: map[string]int{"x": 1, "y": 3}}})
+	r, err = s.Update(ctx, rooms.Actor{UserID: owner.ID}, r.ID, rooms.Update{Fairness: &rooms.Fairness{MaxInARow: 2, Weights: map[string]int{"x": 1, "y": 3}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +140,7 @@ func TestUpdateSettings(t *testing.T) {
 	if a := rooms.ParseSettings(r.Settings).Autopilot; a.On || a.Adventure != rooms.AdventureSimilar {
 		t.Errorf("default autopilot: %+v", a)
 	}
-	r, err = s.Update(ctx, owner.ID, r.ID, rooms.Update{Autopilot: &rooms.Autopilot{On: true, Adventure: rooms.AdventureDiscovery}})
+	r, err = s.Update(ctx, rooms.Actor{UserID: owner.ID}, r.ID, rooms.Update{Autopilot: &rooms.Autopilot{On: true, Adventure: rooms.AdventureDiscovery}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,8 +159,38 @@ func TestUpdateSettings(t *testing.T) {
 		{Fairness: &rooms.Fairness{Weights: map[string]int{"x": 5}}},
 		{Fairness: &rooms.Fairness{RepeatWindowMinutes: 24*60 + 1}},
 	} {
-		if _, err := s.Update(ctx, owner.ID, r.ID, u); !errors.As(err, &invalid) {
+		if _, err := s.Update(ctx, rooms.Actor{UserID: owner.ID}, r.ID, u); !errors.As(err, &invalid) {
 			t.Errorf("%+v: %v", u, err)
 		}
+	}
+}
+
+func TestSettingsVersion(t *testing.T) {
+	// Version 0 had only controls; from version 1 it means nothing.
+	if p := rooms.ParseSettings(`{"controls":"owner"}`).Permissions; p.Seek != rooms.Owner {
+		t.Errorf("v0 controls: %+v", p)
+	}
+	if p := rooms.ParseSettings(`{"version":1,"controls":"owner"}`).Permissions; p.Seek != rooms.Everyone {
+		t.Errorf("v1 with controls: %+v", p)
+	}
+	if v := rooms.ParseSettings(`{}`).Version; v != rooms.SettingsVersion {
+		t.Errorf("parsed version %d", v)
+	}
+
+	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	owner, err := db.CreateUser(t.Context(), store.CreateUserParams{ID: store.NewID(), Username: "o", DisplayName: "O", Color: "#000000", Role: store.RoleMember, CreatedAt: store.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := rooms.New(db, realtime.NewLocal()).Create(t.Context(), owner.ID, "Room", "", rooms.Settings{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(r.Settings, `"version":1`) {
+		t.Errorf("saved settings %s", r.Settings)
 	}
 }

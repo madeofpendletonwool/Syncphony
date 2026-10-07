@@ -61,3 +61,7 @@ SELECT key FROM server_keys WHERE name = ?;
 
 -- name: CreateServerKey :exec
 INSERT INTO server_keys (name, key, created_at) VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING;
+
+-- ListRoomGuestIDs returns the user IDs of every guest a room ever had.
+-- name: ListRoomGuestIDs :many
+SELECT user_id FROM guests WHERE room_id = ?;

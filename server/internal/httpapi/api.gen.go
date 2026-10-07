@@ -475,6 +475,7 @@ const (
 	RoomEventTypePlaybackNotice    RoomEventType = "playback.notice"
 	RoomEventTypeQueueUpdated      RoomEventType = "queue.updated"
 	RoomEventTypeReactionSent      RoomEventType = "reaction.sent"
+	RoomEventTypeRoomDeleted       RoomEventType = "room.deleted"
 	RoomEventTypeRoomUpdated       RoomEventType = "room.updated"
 )
 
@@ -502,6 +503,8 @@ func (e RoomEventType) Valid() bool {
 	case RoomEventTypeQueueUpdated:
 		return true
 	case RoomEventTypeReactionSent:
+		return true
+	case RoomEventTypeRoomDeleted:
 		return true
 	case RoomEventTypeRoomUpdated:
 		return true
@@ -564,6 +567,33 @@ func (e SuggestionsScope) Valid() bool {
 	case SuggestionsScopeGroup:
 		return true
 	case SuggestionsScopeMine:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UserAuditEntryAction.
+const (
+	UserAuditEntryActionDeletedSelf UserAuditEntryAction = "deleted_self"
+	UserAuditEntryActionDisabled    UserAuditEntryAction = "disabled"
+	UserAuditEntryActionEnabled     UserAuditEntryAction = "enabled"
+	UserAuditEntryActionRemoved     UserAuditEntryAction = "removed"
+	UserAuditEntryActionRoleChanged UserAuditEntryAction = "role_changed"
+)
+
+// Valid indicates whether the value is a known member of the UserAuditEntryAction enum.
+func (e UserAuditEntryAction) Valid() bool {
+	switch e {
+	case UserAuditEntryActionDeletedSelf:
+		return true
+	case UserAuditEntryActionDisabled:
+		return true
+	case UserAuditEntryActionEnabled:
+		return true
+	case UserAuditEntryActionRemoved:
+		return true
+	case UserAuditEntryActionRoleChanged:
 		return true
 	default:
 		return false
@@ -769,6 +799,15 @@ type CreateRoomRequest struct {
 	// SkipVotePercent A skip vote passes once more than this percent of the room has
 	// voted (not counting whoever queued the song): 50 is a majority.
 	SkipVotePercent *SkipVotePercent `json:"skipVotePercent,omitempty"`
+}
+
+// DeleteMeRequest defines model for DeleteMeRequest.
+type DeleteMeRequest struct {
+	CeremonyId *string `json:"ceremonyId,omitempty"`
+
+	// Credential The browser's `PublicKeyCredential.toJSON()`.
+	Credential *map[string]interface{} `json:"credential,omitempty"`
+	Password   *string                 `json:"password,omitempty"`
 }
 
 // Display defines model for Display.
@@ -1057,17 +1096,24 @@ type Me struct {
 	// Color Lane color, `#rrggbb`.
 	//
 	// Example: #7c3aed
-	Color       string    `json:"color"`
-	CreatedAt   time.Time `json:"createdAt"`
-	DisplayName string    `json:"displayName"`
+	Color     string    `json:"color"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Disabled An admin disabled the account; it can't sign in. Absent means false.
+	Disabled    *bool  `json:"disabled,omitempty"`
+	DisplayName string `json:"displayName"`
 
 	// Guest Set on guests, who joined one room with a QR code instead of an invite.
 	Guest        *UserGuest `json:"guest,omitempty"`
 	HasPassword  bool       `json:"hasPassword"`
 	Id           string     `json:"id"`
 	PasskeyCount int        `json:"passkeyCount"`
-	Role         Role       `json:"role"`
-	Username     string     `json:"username"`
+
+	// Removed The account was removed, and is kept anonymized only so rooms'
+	// history adds up. Absent means false.
+	Removed  *bool  `json:"removed,omitempty"`
+	Role     Role   `json:"role"`
+	Username string `json:"username"`
 }
 
 // MoveQueueItemRequest defines model for MoveQueueItemRequest.
@@ -1576,7 +1622,9 @@ type RoomAutopilotAdventure string
 //   - `member.joined`, `member.left`: User. Someone's first connection to
 //     the room opened, or their last one closed.
 //   - `link.status`: ServiceLink. One of your links changed status.
-//   - `room.updated`: Room. The room's name or settings changed.
+//   - `room.updated`: Room. The room's name, settings or owner changed.
+//   - `room.deleted`: `{"roomId": ...}`. The room was deleted. It's the
+//     last event; the server then closes the socket with 4004.
 //   - `reaction.sent`: Reaction. Someone sent an emoji to the big screen.
 //   - `hearts.updated`: Hearts. Someone hearted a song, or took it back.
 //   - `night.ended`: Night. The night is over; crown its song of the night.
@@ -1589,7 +1637,8 @@ type RoomAutopilotAdventure string
 //
 // Close code 1013 (try again later) means the client fell behind and
 // missed events: reconnect with `since` set to the last version seen.
-// Close code 4001 means the session ended; sign in again.
+// Close code 4001 means the session ended; sign in again. Close code
+// 4004 means the room is gone; don't reconnect.
 type RoomEvent struct {
 	Data map[string]interface{} `json:"data"`
 	Type RoomEventType          `json:"type"`
@@ -1885,6 +1934,11 @@ type TrackToQueue struct {
 	TrackId *string `json:"trackId,omitempty"`
 }
 
+// TransferRoomRequest defines model for TransferRoomRequest.
+type TransferRoomRequest struct {
+	UserId string `json:"userId"`
+}
+
 // UpdateDisplayRequest defines model for UpdateDisplayRequest.
 type UpdateDisplayRequest struct {
 	Audio bool `json:"audio"`
@@ -1926,6 +1980,12 @@ type UpdateRoomRequest struct {
 	SkipVotePercent *SkipVotePercent `json:"skipVotePercent,omitempty"`
 }
 
+// UpdateUserRequest defines model for UpdateUserRequest.
+type UpdateUserRequest struct {
+	Disabled *bool `json:"disabled,omitempty"`
+	Role     *Role `json:"role,omitempty"`
+}
+
 // User defines model for User.
 type User struct {
 	// Avatar Image URL. Absent means show initials on `color`.
@@ -1934,16 +1994,44 @@ type User struct {
 	// Color Lane color, `#rrggbb`.
 	//
 	// Example: #7c3aed
-	Color       string    `json:"color"`
-	CreatedAt   time.Time `json:"createdAt"`
-	DisplayName string    `json:"displayName"`
+	Color     string    `json:"color"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Disabled An admin disabled the account; it can't sign in. Absent means false.
+	Disabled    *bool  `json:"disabled,omitempty"`
+	DisplayName string `json:"displayName"`
 
 	// Guest Set on guests, who joined one room with a QR code instead of an invite.
-	Guest    *UserGuest `json:"guest,omitempty"`
-	Id       string     `json:"id"`
-	Role     Role       `json:"role"`
-	Username string     `json:"username"`
+	Guest *UserGuest `json:"guest,omitempty"`
+	Id    string     `json:"id"`
+
+	// Removed The account was removed, and is kept anonymized only so rooms'
+	// history adds up. Absent means false.
+	Removed  *bool  `json:"removed,omitempty"`
+	Role     Role   `json:"role"`
+	Username string `json:"username"`
 }
+
+// UserAuditEntry defines model for UserAuditEntry.
+type UserAuditEntry struct {
+	Action UserAuditEntryAction `json:"action"`
+
+	// ActorId Absent when the server's operator did it, from the command line.
+	ActorId *string `json:"actorId,omitempty"`
+
+	// ActorName Their name at the time.
+	ActorName string    `json:"actorName"`
+	CreatedAt time.Time `json:"createdAt"`
+	Id        string    `json:"id"`
+	Role      *Role     `json:"role,omitempty"`
+	TargetId  *string   `json:"targetId,omitempty"`
+
+	// TargetName Their name at the time, even if the account was removed since.
+	TargetName string `json:"targetName"`
+}
+
+// UserAuditEntryAction defines model for UserAuditEntry.Action.
+type UserAuditEntryAction string
 
 // UserGuest Set on guests, who joined one room with a QR code instead of an invite.
 type UserGuest struct {
@@ -2132,6 +2220,9 @@ type RelinkJSONRequestBody = RelinkRequest
 // UpdateMeJSONRequestBody defines body for UpdateMe for application/json ContentType.
 type UpdateMeJSONRequestBody = ProfileUpdate
 
+// DeleteMeJSONRequestBody defines body for DeleteMe for application/json ContentType.
+type DeleteMeJSONRequestBody = DeleteMeRequest
+
 // FinishAddPasskeyJSONRequestBody defines body for FinishAddPasskey for application/json ContentType.
 type FinishAddPasskeyJSONRequestBody = FinishCeremony
 
@@ -2165,6 +2256,9 @@ type UpdateDisplayJSONRequestBody = UpdateDisplayRequest
 // CreateGuestPassJSONRequestBody defines body for CreateGuestPass for application/json ContentType.
 type CreateGuestPassJSONRequestBody = CreateGuestPassRequest
 
+// TransferRoomJSONRequestBody defines body for TransferRoom for application/json ContentType.
+type TransferRoomJSONRequestBody = TransferRoomRequest
+
 // ControlPlaybackJSONRequestBody defines body for ControlPlayback for application/json ContentType.
 type ControlPlaybackJSONRequestBody = PlaybackCommand
 
@@ -2182,6 +2276,9 @@ type MoveQueueItemJSONRequestBody = MoveQueueItemRequest
 
 // SendReactionJSONRequestBody defines body for SendReaction for application/json ContentType.
 type SendReactionJSONRequestBody = ReactionRequest
+
+// UpdateUserJSONRequestBody defines body for UpdateUser for application/json ContentType.
+type UpdateUserJSONRequestBody = UpdateUserRequest
 
 // CreateResetLinkJSONRequestBody defines body for CreateResetLink for application/json ContentType.
 type CreateResetLinkJSONRequestBody = CreateResetLinkRequest
@@ -2293,6 +2390,9 @@ type ServerInterface interface {
 	// UploadAvatar Upload a profile picture
 	// (PUT /me/avatar)
 	UploadAvatar(w http.ResponseWriter, r *http.Request)
+	// DeleteMe Delete your account
+	// (POST /me/delete)
+	DeleteMe(w http.ResponseWriter, r *http.Request)
 	// ListPasskeys Your passkeys
 	// (GET /me/passkeys)
 	ListPasskeys(w http.ResponseWriter, r *http.Request)
@@ -2314,6 +2414,9 @@ type ServerInterface interface {
 	// SetPassword Set or change your password
 	// (PUT /me/password)
 	SetPassword(w http.ResponseWriter, r *http.Request)
+	// BeginReauth Start confirming it's you with a passkey
+	// (POST /me/reauth/begin)
+	BeginReauth(w http.ResponseWriter, r *http.Request)
 	// RevokeOtherSessions Sign out everywhere else
 	// (DELETE /me/sessions)
 	RevokeOtherSessions(w http.ResponseWriter, r *http.Request)
@@ -2356,10 +2459,13 @@ type ServerInterface interface {
 	// CreateRoom Create a room you own
 	// (POST /rooms)
 	CreateRoom(w http.ResponseWriter, r *http.Request)
+	// DeleteRoom Delete a room (owner or admin)
+	// (DELETE /rooms/{roomId})
+	DeleteRoom(w http.ResponseWriter, r *http.Request, roomId RoomId)
 	// GetRoom A room
 	// (GET /rooms/{roomId})
 	GetRoom(w http.ResponseWriter, r *http.Request, roomId RoomId)
-	// UpdateRoom Change a room you own
+	// UpdateRoom Change a room (owner or admin)
 	// (PATCH /rooms/{roomId})
 	UpdateRoom(w http.ResponseWriter, r *http.Request, roomId RoomId)
 	// ListDisplays The room's paired displays
@@ -2398,6 +2504,9 @@ type ServerInterface interface {
 	// EndNight End the night, and crown its song
 	// (POST /rooms/{roomId}/nights)
 	EndNight(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// TransferRoom Give a room to someone else (owner or admin)
+	// (PUT /rooms/{roomId}/owner)
+	TransferRoom(w http.ResponseWriter, r *http.Request, roomId RoomId)
 	// GetPlayback What the room is playing
 	// (GET /rooms/{roomId}/playback)
 	GetPlayback(w http.ResponseWriter, r *http.Request, roomId RoomId)
@@ -2467,9 +2576,18 @@ type ServerInterface interface {
 	// Search Search every service you've linked, and shared ones
 	// (GET /search)
 	Search(w http.ResponseWriter, r *http.Request, params SearchParams)
+	// ListUserAudit Who changed whose account, and when (admin)
+	// (GET /user-audit)
+	ListUserAudit(w http.ResponseWriter, r *http.Request)
 	// ListUsers Everyone on this server
 	// (GET /users)
 	ListUsers(w http.ResponseWriter, r *http.Request)
+	// RemoveUser Remove someone's account (admin)
+	// (DELETE /users/{id})
+	RemoveUser(w http.ResponseWriter, r *http.Request, id string)
+	// UpdateUser Change someone's role, or disable their account (admin)
+	// (PATCH /users/{id})
+	UpdateUser(w http.ResponseWriter, r *http.Request, id string)
 	// GetUserAvatar Someone's uploaded profile picture
 	// (GET /users/{id}/avatar)
 	GetUserAvatar(w http.ResponseWriter, r *http.Request, id string)
@@ -3309,6 +3427,20 @@ func (siw *ServerInterfaceWrapper) UploadAvatar(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteMe operation middleware
+func (siw *ServerInterfaceWrapper) DeleteMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListPasskeys operation middleware
 func (siw *ServerInterfaceWrapper) ListPasskeys(w http.ResponseWriter, r *http.Request) {
 
@@ -3422,6 +3554,20 @@ func (siw *ServerInterfaceWrapper) SetPassword(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetPassword(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BeginReauth operation middleware
+func (siw *ServerInterfaceWrapper) BeginReauth(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BeginReauth(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3709,6 +3855,32 @@ func (siw *ServerInterfaceWrapper) CreateRoom(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateRoom(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteRoom operation middleware
+func (siw *ServerInterfaceWrapper) DeleteRoom(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteRoom(w, r, roomId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4158,6 +4330,32 @@ func (siw *ServerInterfaceWrapper) EndNight(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.EndNight(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransferRoom operation middleware
+func (siw *ServerInterfaceWrapper) TransferRoom(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransferRoom(w, r, roomId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5082,11 +5280,77 @@ func (siw *ServerInterfaceWrapper) Search(w http.ResponseWriter, r *http.Request
 	handler.ServeHTTP(w, r)
 }
 
+// ListUserAudit operation middleware
+func (siw *ServerInterfaceWrapper) ListUserAudit(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListUserAudit(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListUsers operation middleware
 func (siw *ServerInterfaceWrapper) ListUsers(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListUsers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveUser operation middleware
+func (siw *ServerInterfaceWrapper) RemoveUser(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveUser(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateUser operation middleware
+func (siw *ServerInterfaceWrapper) UpdateUser(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateUser(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5318,10 +5582,15 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/me/passkeys/{id}", wrapper.DeletePasskey)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/me/passkeys/{id}", wrapper.RenamePasskey)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/me/avatar", wrapper.UploadAvatar)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/me/reauth/begin", wrapper.BeginReauth)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/me/delete", wrapper.DeleteMe)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/me/sessions", wrapper.RevokeOtherSessions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/sessions", wrapper.ListMySessions)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/me/sessions/{id}", wrapper.RevokeMySession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/users", wrapper.ListUsers)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/users/{id}", wrapper.RemoveUser)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/users/{id}", wrapper.UpdateUser)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/user-audit", wrapper.ListUserAudit)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/users/{id}/avatar", wrapper.GetUserAvatar)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/users/{id}/reset-link", wrapper.RevokeResetLink)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/users/{id}/reset-link", wrapper.CreateResetLink)
@@ -5383,8 +5652,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/guest/{token}", wrapper.JoinAsGuest)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms", wrapper.ListRooms)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms", wrapper.CreateRoom)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}", wrapper.DeleteRoom)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}", wrapper.GetRoom)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/rooms/{roomId}", wrapper.UpdateRoom)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/rooms/{roomId}/owner", wrapper.TransferRoom)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/playback", wrapper.GetPlayback)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/playback", wrapper.ControlPlayback)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/player", wrapper.ReleasePlayer)
@@ -6751,6 +7022,47 @@ func (response UploadAvatardefaultJSONResponse) VisitUploadAvatarResponse(w http
 	return err
 }
 
+type DeleteMeRequestObject struct {
+	Body *DeleteMeJSONRequestBody
+}
+
+type DeleteMeResponseObject interface {
+	VisitDeleteMeResponse(w http.ResponseWriter) error
+}
+
+type DeleteMe204ResponseHeaders struct {
+	SetCookie *string
+}
+
+type DeleteMe204Response struct {
+	Headers DeleteMe204ResponseHeaders
+}
+
+func (response DeleteMe204Response) VisitDeleteMeResponse(w http.ResponseWriter) error {
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteMedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteMedefaultJSONResponse) VisitDeleteMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListPasskeysRequestObject struct {
 }
 
@@ -6987,6 +7299,44 @@ type SetPassworddefaultJSONResponse struct {
 }
 
 func (response SetPassworddefaultJSONResponse) VisitSetPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginReauthRequestObject struct {
+}
+
+type BeginReauthResponseObject interface {
+	VisitBeginReauthResponse(w http.ResponseWriter) error
+}
+
+type BeginReauth200JSONResponse struct{ CeremonyJSONResponse }
+
+func (response BeginReauth200JSONResponse) VisitBeginReauthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginReauthdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BeginReauthdefaultJSONResponse) VisitBeginReauthResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -7535,6 +7885,39 @@ func (response CreateRoomdefaultJSONResponse) VisitCreateRoomResponse(w http.Res
 	return err
 }
 
+type DeleteRoomRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type DeleteRoomResponseObject interface {
+	VisitDeleteRoomResponse(w http.ResponseWriter) error
+}
+
+type DeleteRoom204Response struct {
+}
+
+func (response DeleteRoom204Response) VisitDeleteRoomResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteRoomdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteRoomdefaultJSONResponse) VisitDeleteRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetRoomRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 }
@@ -8061,6 +8444,46 @@ type EndNightdefaultJSONResponse struct {
 }
 
 func (response EndNightdefaultJSONResponse) VisitEndNightResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransferRoomRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Body   *TransferRoomJSONRequestBody
+}
+
+type TransferRoomResponseObject interface {
+	VisitTransferRoomResponse(w http.ResponseWriter) error
+}
+
+type TransferRoom200JSONResponse Room
+
+func (response TransferRoom200JSONResponse) VisitTransferRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransferRoomdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response TransferRoomdefaultJSONResponse) VisitTransferRoomResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -9028,6 +9451,44 @@ func (response SearchdefaultJSONResponse) VisitSearchResponse(w http.ResponseWri
 	return err
 }
 
+type ListUserAuditRequestObject struct {
+}
+
+type ListUserAuditResponseObject interface {
+	VisitListUserAuditResponse(w http.ResponseWriter) error
+}
+
+type ListUserAudit200JSONResponse []UserAuditEntry
+
+func (response ListUserAudit200JSONResponse) VisitListUserAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListUserAuditdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListUserAuditdefaultJSONResponse) VisitListUserAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListUsersRequestObject struct {
 }
 
@@ -9055,6 +9516,79 @@ type ListUsersdefaultJSONResponse struct {
 }
 
 func (response ListUsersdefaultJSONResponse) VisitListUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveUserRequestObject struct {
+	Id string `json:"id"`
+}
+
+type RemoveUserResponseObject interface {
+	VisitRemoveUserResponse(w http.ResponseWriter) error
+}
+
+type RemoveUser204Response struct {
+}
+
+func (response RemoveUser204Response) VisitRemoveUserResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveUserdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RemoveUserdefaultJSONResponse) VisitRemoveUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateUserRequestObject struct {
+	Id   string `json:"id"`
+	Body *UpdateUserJSONRequestBody
+}
+
+type UpdateUserResponseObject interface {
+	VisitUpdateUserResponse(w http.ResponseWriter) error
+}
+
+type UpdateUser200JSONResponse User
+
+func (response UpdateUser200JSONResponse) VisitUpdateUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateUserdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateUserdefaultJSONResponse) VisitUpdateUserResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -9292,6 +9826,9 @@ type StrictServerInterface interface {
 	// UploadAvatar Upload a profile picture
 	// (PUT /me/avatar)
 	UploadAvatar(ctx context.Context, request UploadAvatarRequestObject) (UploadAvatarResponseObject, error)
+	// DeleteMe Delete your account
+	// (POST /me/delete)
+	DeleteMe(ctx context.Context, request DeleteMeRequestObject) (DeleteMeResponseObject, error)
 	// ListPasskeys Your passkeys
 	// (GET /me/passkeys)
 	ListPasskeys(ctx context.Context, request ListPasskeysRequestObject) (ListPasskeysResponseObject, error)
@@ -9313,6 +9850,9 @@ type StrictServerInterface interface {
 	// SetPassword Set or change your password
 	// (PUT /me/password)
 	SetPassword(ctx context.Context, request SetPasswordRequestObject) (SetPasswordResponseObject, error)
+	// BeginReauth Start confirming it's you with a passkey
+	// (POST /me/reauth/begin)
+	BeginReauth(ctx context.Context, request BeginReauthRequestObject) (BeginReauthResponseObject, error)
 	// RevokeOtherSessions Sign out everywhere else
 	// (DELETE /me/sessions)
 	RevokeOtherSessions(ctx context.Context, request RevokeOtherSessionsRequestObject) (RevokeOtherSessionsResponseObject, error)
@@ -9355,10 +9895,13 @@ type StrictServerInterface interface {
 	// CreateRoom Create a room you own
 	// (POST /rooms)
 	CreateRoom(ctx context.Context, request CreateRoomRequestObject) (CreateRoomResponseObject, error)
+	// DeleteRoom Delete a room (owner or admin)
+	// (DELETE /rooms/{roomId})
+	DeleteRoom(ctx context.Context, request DeleteRoomRequestObject) (DeleteRoomResponseObject, error)
 	// GetRoom A room
 	// (GET /rooms/{roomId})
 	GetRoom(ctx context.Context, request GetRoomRequestObject) (GetRoomResponseObject, error)
-	// UpdateRoom Change a room you own
+	// UpdateRoom Change a room (owner or admin)
 	// (PATCH /rooms/{roomId})
 	UpdateRoom(ctx context.Context, request UpdateRoomRequestObject) (UpdateRoomResponseObject, error)
 	// ListDisplays The room's paired displays
@@ -9397,6 +9940,9 @@ type StrictServerInterface interface {
 	// EndNight End the night, and crown its song
 	// (POST /rooms/{roomId}/nights)
 	EndNight(ctx context.Context, request EndNightRequestObject) (EndNightResponseObject, error)
+	// TransferRoom Give a room to someone else (owner or admin)
+	// (PUT /rooms/{roomId}/owner)
+	TransferRoom(ctx context.Context, request TransferRoomRequestObject) (TransferRoomResponseObject, error)
 	// GetPlayback What the room is playing
 	// (GET /rooms/{roomId}/playback)
 	GetPlayback(ctx context.Context, request GetPlaybackRequestObject) (GetPlaybackResponseObject, error)
@@ -9466,9 +10012,18 @@ type StrictServerInterface interface {
 	// Search Search every service you've linked, and shared ones
 	// (GET /search)
 	Search(ctx context.Context, request SearchRequestObject) (SearchResponseObject, error)
+	// ListUserAudit Who changed whose account, and when (admin)
+	// (GET /user-audit)
+	ListUserAudit(ctx context.Context, request ListUserAuditRequestObject) (ListUserAuditResponseObject, error)
 	// ListUsers Everyone on this server
 	// (GET /users)
 	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
+	// RemoveUser Remove someone's account (admin)
+	// (DELETE /users/{id})
+	RemoveUser(ctx context.Context, request RemoveUserRequestObject) (RemoveUserResponseObject, error)
+	// UpdateUser Change someone's role, or disable their account (admin)
+	// (PATCH /users/{id})
+	UpdateUser(ctx context.Context, request UpdateUserRequestObject) (UpdateUserResponseObject, error)
 	// GetUserAvatar Someone's uploaded profile picture
 	// (GET /users/{id}/avatar)
 	GetUserAvatar(ctx context.Context, request GetUserAvatarRequestObject) (GetUserAvatarResponseObject, error)
@@ -10486,6 +11041,37 @@ func (sh *strictHandler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DeleteMe operation middleware
+func (sh *strictHandler) DeleteMe(w http.ResponseWriter, r *http.Request) {
+	var request DeleteMeRequestObject
+
+	var body DeleteMeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteMe(ctx, request.(DeleteMeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteMe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteMeResponseObject); ok {
+		if err := validResponse.VisitDeleteMeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListPasskeys operation middleware
 func (sh *strictHandler) ListPasskeys(w http.ResponseWriter, r *http.Request) {
 	var request ListPasskeysRequestObject
@@ -10672,6 +11258,30 @@ func (sh *strictHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetPasswordResponseObject); ok {
 		if err := validResponse.VisitSetPasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BeginReauth operation middleware
+func (sh *strictHandler) BeginReauth(w http.ResponseWriter, r *http.Request) {
+	var request BeginReauthRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BeginReauth(ctx, request.(BeginReauthRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BeginReauth")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BeginReauthResponseObject); ok {
+		if err := validResponse.VisitBeginReauthResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -11050,6 +11660,32 @@ func (sh *strictHandler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateRoomResponseObject); ok {
 		if err := validResponse.VisitCreateRoomResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteRoom operation middleware
+func (sh *strictHandler) DeleteRoom(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request DeleteRoomRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteRoom(ctx, request.(DeleteRoomRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteRoom")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteRoomResponseObject); ok {
+		if err := validResponse.VisitDeleteRoomResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -11447,6 +12083,39 @@ func (sh *strictHandler) EndNight(w http.ResponseWriter, r *http.Request, roomId
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(EndNightResponseObject); ok {
 		if err := validResponse.VisitEndNightResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransferRoom operation middleware
+func (sh *strictHandler) TransferRoom(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request TransferRoomRequestObject
+
+	request.RoomId = roomId
+
+	var body TransferRoomJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransferRoom(ctx, request.(TransferRoomRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransferRoom")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransferRoomResponseObject); ok {
+		if err := validResponse.VisitTransferRoomResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -12112,6 +12781,30 @@ func (sh *strictHandler) Search(w http.ResponseWriter, r *http.Request, params S
 	}
 }
 
+// ListUserAudit operation middleware
+func (sh *strictHandler) ListUserAudit(w http.ResponseWriter, r *http.Request) {
+	var request ListUserAuditRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListUserAudit(ctx, request.(ListUserAuditRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListUserAudit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListUserAuditResponseObject); ok {
+		if err := validResponse.VisitListUserAuditResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListUsers operation middleware
 func (sh *strictHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	var request ListUsersRequestObject
@@ -12129,6 +12822,65 @@ func (sh *strictHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListUsersResponseObject); ok {
 		if err := validResponse.VisitListUsersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveUser operation middleware
+func (sh *strictHandler) RemoveUser(w http.ResponseWriter, r *http.Request, id string) {
+	var request RemoveUserRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveUser(ctx, request.(RemoveUserRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveUser")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveUserResponseObject); ok {
+		if err := validResponse.VisitRemoveUserResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateUser operation middleware
+func (sh *strictHandler) UpdateUser(w http.ResponseWriter, r *http.Request, id string) {
+	var request UpdateUserRequestObject
+
+	request.Id = id
+
+	var body UpdateUserJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateUser(ctx, request.(UpdateUserRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateUser")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateUserResponseObject); ok {
+		if err := validResponse.VisitUpdateUserResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

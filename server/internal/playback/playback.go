@@ -158,6 +158,7 @@ func New(db *store.Store, rs *rooms.Service, qs *queue.Service, sessions Session
 	e := &Engine{cfg: cfg, db: db, rooms: rs, queue: qs, sessions: sessions, ctx: ctx, cancel: cancel, byID: map[string]*room{}}
 	qs.OnChange = e.queueChanged
 	rs.OnUpdate = e.roomUpdated
+	rs.OnDelete = e.roomDeleted
 	return e
 }
 
@@ -958,6 +959,25 @@ func (e *Engine) roomUpdated(row store.Room) {
 		}
 		return nil
 	})
+}
+
+// roomDeleted forgets a deleted room, letting go of its remote player.
+func (e *Engine) roomDeleted(roomID string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	r, ok := e.byID[roomID]
+	delete(e.byID, roomID)
+	if !ok || e.closed {
+		return
+	}
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		r.closeRemote()
+		r.loaded, r.np = false, rooms.NowPlaying{}
+	}()
 }
 
 // MembersChanged follows someone joining or leaving a room: a skip vote

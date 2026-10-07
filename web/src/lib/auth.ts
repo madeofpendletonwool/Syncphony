@@ -77,18 +77,29 @@ export function safeRedirect(to: unknown, fallback = '/room') {
 
 /** Signs out, drops every cached query, and goes to the sign-in page. */
 export function useSignOut() {
-  const queryClient = useQueryClient()
-  const navigate = useNavigate()
+  const signedOut = useSignedOut()
   return async () => {
     try {
       await unwrap(api.POST('/auth/logout'))
     } finally {
-      // The signed-in layout leaves as soon as `me` is null; drop the rest of
-      // the cache once its screens are gone.
-      rememberMe(null)
-      queryClient.setQueryData(meQuery.queryKey, null)
-      await navigate({ to: '/login', replace: true })
-      queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== meQuery.queryKey[0] })
+      await signedOut()
     }
+  }
+}
+
+/**
+ * Forgets the session the server already ended (signed out, or the account
+ * deleted): drops every cached query, and goes to the sign-in page.
+ */
+export function useSignedOut() {
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  return async () => {
+    // The signed-in layout leaves as soon as `me` is null; drop the rest of
+    // the cache once its screens are gone.
+    rememberMe(null)
+    queryClient.setQueryData(meQuery.queryKey, null)
+    await navigate({ to: '/login', replace: true })
+    queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== meQuery.queryKey[0] })
   }
 }

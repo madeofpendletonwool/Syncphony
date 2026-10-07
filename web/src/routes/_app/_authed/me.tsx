@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, type LinkProps } from '@tanstack/react-router'
 import {
   ChevronRight,
@@ -9,26 +9,34 @@ import {
   Moon,
   Palette,
   Share,
+  KeyRound,
   ShieldCheck,
   SquarePlus,
   Sun,
+  Trash2,
   Users,
   Waypoints,
 } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { api } from '@/api/client'
+import { errorMessage, unwrap } from '@/api/errors'
+import { Field } from '@/components/field'
+import { Notice } from '@/components/notice'
 import { PageHeader } from '@/components/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { UserAvatar } from '@/components/user-avatar'
-import { useMe, useSignOut, type Me } from '@/lib/auth'
+import { useMe, useSignedOut, useSignOut, type Me } from '@/lib/auth'
 import { laneStyle } from '@/lib/lane'
+import { easeOutExpo } from '@/lib/motion'
 import { useInstall } from '@/lib/pwa'
 import { linksQuery } from '@/lib/services'
 import { setPreference, useThemePreference, type ThemePreference } from '@/lib/theme'
 import { relativeTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
+import { getPasskey, PasskeyCancelled, passkeysSupported } from '@/lib/webauthn'
 
 export const Route = createFileRoute('/_app/_authed/me')({
   component: Me,
@@ -109,6 +117,7 @@ function Me() {
         </nav>
 
         <SignOutButton guest={!!me.guest} />
+        {!me.guest && <DeleteAccount me={me} />}
         <ServerStatus />
       </div>
     </>
@@ -255,5 +264,100 @@ function ServerStatus() {
           ? 'Server unreachable'
           : 'Connecting…'}
     </p>
+  )
+}
+
+/**
+ * Deletes your account, once you confirm it's you with your password or a
+ * passkey. It's tucked away behind a quiet link: it can't be undone.
+ */
+function DeleteAccount({ me }: { me: Me }) {
+  const signedOut = useSignedOut()
+  const [open, setOpen] = useState(false)
+  const [password, setPassword] = useState('')
+  const withPasskey = me.passkeyCount > 0 && passkeysSupported()
+
+  const remove = useMutation({
+    mutationFn: async (how: 'password' | 'passkey') => {
+      if (how === 'password') {
+        return unwrap(api.POST('/me/delete', { body: { password } }))
+      }
+      const ceremony = await unwrap(api.POST('/me/reauth/begin'))
+      const credential = await getPasskey(ceremony.options)
+      return unwrap(api.POST('/me/delete', { body: { ceremonyId: ceremony.ceremonyId, credential } }))
+    },
+    onSuccess: () => void signedOut(),
+  })
+  const error = remove.error instanceof PasskeyCancelled ? null : remove.error
+
+  return (
+    <section className="flex flex-col items-center">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="rounded-lg px-2 py-1 text-caption text-muted-foreground transition-colors outline-none hover:text-destructive focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        Delete my account
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.3, ease: easeOutExpo }}
+            className="w-full overflow-hidden"
+          >
+            <form
+              className="glass mt-2 flex flex-col gap-4 rounded-3xl p-5"
+              onSubmit={(e) => {
+                e.preventDefault()
+                remove.mutate('password')
+              }}
+            >
+              <div>
+                <h2 className="text-headline">Delete your account?</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  You&apos;ll be signed out everywhere. Your sign-in, linked services and their saved credentials, and your
+                  picture are deleted, and your waiting songs leave the queue. Rooms you own go to an admin. Songs you played
+                  stay in rooms&apos; history as &ldquo;Former member&rdquo;. This can&apos;t be undone.
+                </p>
+              </div>
+              {me.hasPassword && (
+                <Field
+                  label="Your password"
+                  secret
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              )}
+              {!me.hasPassword && !withPasskey && (
+                <p className="text-sm text-muted-foreground">Open Syncphony on a device with your passkey to confirm it&apos;s you.</p>
+              )}
+              <Notice>{error && errorMessage(error)}</Notice>
+              <div className="flex flex-wrap gap-2">
+                {me.hasPassword && (
+                  <Button type="submit" variant="destructive" disabled={remove.isPending || !password}>
+                    {remove.isPending && remove.variables === 'password' ? <LoaderCircle className="animate-spin" /> : <Trash2 data-icon="inline-start" />}
+                    Delete my account
+                  </Button>
+                )}
+                {withPasskey && (
+                  <Button type="button" variant={me.hasPassword ? 'ghost' : 'destructive'} disabled={remove.isPending} onClick={() => remove.mutate('passkey')}>
+                    {remove.isPending && remove.variables === 'passkey' ? <LoaderCircle className="animate-spin" /> : <KeyRound data-icon="inline-start" />}
+                    {me.hasPassword ? 'Use a passkey instead' : 'Confirm with a passkey'}
+                  </Button>
+                )}
+                <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+                  Keep it
+                </Button>
+              </div>
+            </form>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </section>
   )
 }

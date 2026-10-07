@@ -41,7 +41,7 @@ func (s *Service) CreateResetLink(ctx context.Context, by *store.User, userID st
 		return ResetLink{}, invalid("expiresInHours", "must be between 1 and 168")
 	}
 	u, err := s.db.GetUser(ctx, userID)
-	if store.IsNotFound(err) {
+	if store.IsNotFound(err) || (err == nil && u.RemovedAt.Valid) {
 		return ResetLink{}, ErrNotFound
 	}
 	if err != nil {

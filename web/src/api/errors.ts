@@ -48,6 +48,8 @@ const messages: Record<string, string> = {
   ceremony_expired: 'That took too long. Try again.',
   last_credential: "You can't remove your only way to sign in.",
   wrong_password: "That isn't your current password.",
+  account_disabled: 'An admin has disabled your account. Ask them to turn it back on.',
+  last_admin: 'Someone else has to be an admin first: there always has to be one who can sign in.',
   service_rejected_credentials: "The service didn't accept those details.",
   service_unavailable: "Couldn't reach the service. Check the address and try again.",
   service_rate_limited: 'The service is busy. Try again in a minute.',
