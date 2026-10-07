@@ -141,8 +141,9 @@
 @theme {
   --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 
-  /* Type scale: big, tight headlines like a music app; calm body text. */
-  --text-display: 2.75rem;
+  /* Type scale: big, tight headlines like a music app; calm body text.
+     Display shrinks on narrow screens so room names keep room to breathe. */
+  --text-display: clamp(2.0625rem, 1.35rem + 3.4vw, 2.75rem);
   --text-display--line-height: 1.05;
   --text-display--letter-spacing: -0.035em;
   --text-display--font-weight: 650;

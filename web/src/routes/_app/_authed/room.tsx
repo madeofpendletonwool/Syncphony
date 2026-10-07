@@ -207,7 +207,7 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
   const title = (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger className="-ml-1 flex max-w-full items-center gap-1.5 rounded-xl px-1 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
-        <span className="truncate">{room.name}</span>
+        <span className="truncate" title={room.name}>{room.name}</span>
         <ChevronDown className="size-6 shrink-0 text-muted-foreground" />
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
@@ -217,7 +217,7 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
           className="glass-strong z-50 min-w-60 rounded-2xl p-1.5 shadow-float data-[state=open]:animate-in data-[state=open]:fade-in data-[state=open]:zoom-in-95"
         >
           <DropdownMenu.Item className={menuItem} disabled>
-            <span className="flex-1 truncate font-medium">{room.name}</span>
+            <span className="flex-1 truncate font-medium" title={room.name}>{room.name}</span>
             <Check className="size-4 text-primary" />
           </DropdownMenu.Item>
           {others.length > 0 && (
@@ -225,7 +225,7 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
           )}
           {others.map((r) => (
             <DropdownMenu.Item key={r.id} onSelect={() => chooseRoom(r.id)} className={menuItem}>
-              <span className="flex-1 truncate">{r.name}</span>
+              <span className="flex-1 truncate" title={r.name}>{r.name}</span>
             </DropdownMenu.Item>
           ))}
           <DropdownMenu.Separator className="mx-2 my-1.5 h-px bg-border" />
@@ -274,7 +274,7 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
   )
 
   return (
-    <header className="flex items-end justify-between gap-4 pt-10 pb-6">
+    <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 pt-10 pb-6">
       <RoomSettings room={room} open={settings} onOpenChange={setSettings} />
       <BigScreenDialog room={room} open={bigScreen} onOpenChange={setBigScreen} />
       <GuestsDialog room={room} open={guests} onOpenChange={setGuests} />
@@ -294,7 +294,7 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
               : 'Reconnecting…'}
         </p>
       </div>
-      <div className="flex -space-x-2" aria-label="Here now">
+      <div className="flex shrink-0 -space-x-2" aria-label="Here now">
         <AnimatePresence initial={false}>
           {members.slice(0, 5).map((m) => (
             <motion.div
