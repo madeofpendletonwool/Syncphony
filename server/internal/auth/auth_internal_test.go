@@ -74,12 +74,12 @@ func TestValidation(t *testing.T) {
 			t.Errorf("username %q accepted", u)
 		}
 	}
-	for _, a := range []string{"", "https://example.com/a.png", "/api/avatars/1"} {
+	for _, a := range []string{"", "https://example.com/a.png", "/api/avatars/1", "icon:headphones", "icon:disc-3"} {
 		if err := validateAvatar(a); err != nil {
 			t.Errorf("avatar %q rejected: %v", a, err)
 		}
 	}
-	for _, a := range []string{"javascript:alert(1)", "data:image/png;base64,AA", "//evil.com/a.png", "a.png"} {
+	for _, a := range []string{"javascript:alert(1)", "data:image/png;base64,AA", "//evil.com/a.png", "a.png", "icon:", "icon:Bad Name", "icon:../x"} {
 		if validateAvatar(a) == nil {
 			t.Errorf("avatar %q accepted", a)
 		}

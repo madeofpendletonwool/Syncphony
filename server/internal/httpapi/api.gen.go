@@ -1107,7 +1107,7 @@ type Lyrics struct {
 
 // Me defines model for Me.
 type Me struct {
-	// Avatar Image URL. Absent means show initials on `color`.
+	// Avatar Image URL, or `icon:<name>` for a built-in icon drawn on `color`. Absent means show initials on `color`.
 	Avatar *string `json:"avatar,omitempty"`
 
 	// Color Lane color, `#rrggbb`.
@@ -1402,7 +1402,7 @@ type PlaysVia struct {
 	TrackId  string `json:"trackId"`
 }
 
-// ProfileUpdate Fields to change. Send `avatar` as "" to remove it.
+// ProfileUpdate Fields to change. `avatar` is an image URL or `icon:<name>`; send it as "" to remove it.
 type ProfileUpdate struct {
 	Avatar      *string `json:"avatar,omitempty"`
 	Color       *string `json:"color,omitempty"`
@@ -2055,7 +2055,7 @@ type UpdateUserRequest struct {
 
 // User defines model for User.
 type User struct {
-	// Avatar Image URL. Absent means show initials on `color`.
+	// Avatar Image URL, or `icon:<name>` for a built-in icon drawn on `color`. Absent means show initials on `color`.
 	Avatar *string `json:"avatar,omitempty"`
 
 	// Color Lane color, `#rrggbb`.
