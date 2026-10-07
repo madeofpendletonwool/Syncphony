@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"slices"
 	"time"
 
@@ -72,6 +73,13 @@ type node struct {
 	via     string
 	viaPull float64
 	sources []string
+	// byMember is how much of the affinity is each member's, and
+	// memberVia the artist of theirs that leads here most strongly; reach
+	// is byMember against each member's nearest artist, 0 to 1.
+	byMember  map[string]float64
+	memberVia map[string]string
+	viaPulls  map[string]float64
+	reach     map[string]float64
 }
 
 // candidate is a song that might play next.
@@ -94,6 +102,14 @@ type candidate struct {
 	deepCut                           bool
 	// flow is how it fits the set, by flowing.
 	flow Flow
+	// reach is how near the artist is to each member's taste, 0 to 1, and
+	// reachVia the artist of theirs (ArtistKey) that leads to it.
+	reach    map[string]float64
+	reachVia map[string]string
+	// bridge is the members' tastes it's between, by mixed, if it's a
+	// bridge; turn, the member whose turn the fill was, if it wasn't.
+	bridge *Bridge
+	turn   string
 }
 
 // walk follows the music graph out from the room's favorite artists and
@@ -103,17 +119,25 @@ type candidate struct {
 // past nights, are candidates too.
 func (e *Engine) walk(ctx context.Context, p Profile, lt LongTerm, explore float64, throwbacks []string) []candidate {
 	nodes := map[string]*node{}
-	reach := func(ref musicgraph.ArtistRef, pull float64, hop int, via string, sources []string) {
+	// reach notes an artist reached with pull, shares of which are each
+	// member's, by vias (each member's artist that leads there).
+	reach := func(ref musicgraph.ArtistRef, pull float64, hop int, via string, sources []string, shares map[string]float64, vias map[string]string) {
 		k := ArtistKey(ref.Name)
 		if k == "" || p.Avoid[k] {
 			return
 		}
 		n, ok := nodes[k]
 		if !ok {
-			n = &node{ref: ref, hop: hop}
+			n = &node{ref: ref, hop: hop, byMember: map[string]float64{}, memberVia: map[string]string{}, viaPulls: map[string]float64{}}
 			nodes[k] = n
 		}
 		n.affinity += pull
+		for u, sh := range shares {
+			n.byMember[u] += pull * sh
+			if pull*sh > n.viaPulls[u] {
+				n.viaPulls[u], n.memberVia[u] = pull*sh, cmp.Or(vias[u], via)
+			}
+		}
 		n.hop = min(n.hop, hop)
 		n.ref.MBID = cmp.Or(n.ref.MBID, ref.MBID)
 		if pull > n.viaPull {
@@ -155,9 +179,10 @@ func (e *Engine) walk(ctx context.Context, p Profile, lt LongTerm, explore float
 		return musicgraph.Artist{}, false
 	}
 
-	for i, t := range p.Top(seedArtists) {
+	for i, t := range p.seeds() {
 		k := ArtistKey(t.Artist.Name)
-		reach(t.Artist, t.Weight, 0, k, nil)
+		shares := t.shares()
+		reach(t.Artist, t.Weight, 0, k, nil, shares, nil)
 		a, ok := lookup(t.Artist, i < fetchArtists)
 		if !ok {
 			continue
@@ -170,7 +195,7 @@ func (e *Engine) walk(ctx context.Context, p Profile, lt LongTerm, explore float
 			if _, mine := p.Artists[ArtistKey(s.Artist.Name)]; mine {
 				hop = 0
 			}
-			reach(s.Artist, t.Weight*s.Score, hop, k, s.Sources)
+			reach(s.Artist, t.Weight*s.Score, hop, k, s.Sources, shares, nil)
 		}
 	}
 	// A second step, for a room that wants to explore: from the nearest
@@ -188,11 +213,18 @@ func (e *Engine) walk(ctx context.Context, p Profile, lt LongTerm, explore float
 			if !ok {
 				continue
 			}
+			shares := map[string]float64{}
+			for u, v := range n.byMember {
+				shares[u] = v / n.affinity
+			}
+			vias := maps.Clone(n.memberVia)
 			for _, s := range a.Similar[:min(len(a.Similar), similarPerHop2)] {
-				reach(s.Artist, n.affinity*s.Score*hop2Damping, 2, n.via, s.Sources)
+				reach(s.Artist, n.affinity*s.Score*hop2Damping, 2, n.via, s.Sources, shares, vias)
 			}
 		}
 	}
+
+	memberReach(nodes)
 
 	// Songs: the nearest artists' top songs.
 	ranked := make([]*node, 0, len(nodes))
@@ -249,7 +281,7 @@ func (e *Engine) walk(ctx context.Context, p Profile, lt LongTerm, explore float
 			add(candidate{
 				song: so.SongRef, artist: ArtistKey(n.ref.Name), kind: kindOf(n.hop),
 				affinity: n.affinity, hop: n.hop, via: n.via, popularity: so.Score,
-				sources: union(n.sources, so.Sources), tags: a.Tags,
+				sources: union(n.sources, so.Sources), tags: a.Tags, reach: n.reach, reachVia: n.memberVia,
 			})
 		}
 	}
@@ -274,8 +306,10 @@ func (e *Engine) walk(ctx context.Context, p Profile, lt LongTerm, explore float
 				hop = 0
 			}
 			var tags []musicgraph.Tag
+			var near map[string]float64
+			var nearVia map[string]string
 			if n, ok := nodes[sk]; ok {
-				hop = min(hop, n.hop)
+				hop, near, nearVia = min(hop, n.hop), n.reach, n.memberVia
 				if a, ok := known[sk]; ok {
 					pop, tags = popularityIn(a, so.Title), a.Tags
 				}
@@ -283,6 +317,7 @@ func (e *Engine) walk(ctx context.Context, p Profile, lt LongTerm, explore float
 			add(candidate{
 				song: so.SongRef, artist: sk, kind: KindSimilarSong,
 				affinity: taste.Weight * so.Score, hop: hop, via: k, popularity: pop, sources: so.Sources, tags: tags,
+				reach: near, reachVia: nearVia,
 			})
 		}
 	}

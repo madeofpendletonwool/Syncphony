@@ -549,6 +549,12 @@ func (f *fill) fromGraph(ctx context.Context, users []string) []pick {
 			info.Reason.LovedAt = &p.Why.LovedAt
 		}
 		info.Reason.Flow = flowOf(p.Why.Flow)
+		info.Reason.Turn = p.Why.Turn
+		if b := p.Why.Bridge; b != nil {
+			info.Reason.Bridge = &queue.AutopilotBridge{Apart: b.Apart, Between: []queue.BridgeEnd{
+				{UserID: b.Users[0], Artist: b.Artists[0]}, {UserID: b.Users[1], Artist: b.Artists[1]},
+			}}
+		}
 		if p.Seed.ID != "" {
 			seed := suggest.TrackOf(p.Seed)
 			info.SeedItemID, info.SeedTitle = p.Seed.ID, seed.Title

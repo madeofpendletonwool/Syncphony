@@ -326,6 +326,26 @@ type AutopilotReason struct {
 	// Flow is how it fit the set (MAD-757), when the DJ knew anything to
 	// tell.
 	Flow *AutopilotFlow `json:"flow,omitempty"`
+	// Bridge is, for a song picked between two members' tastes (MAD-758),
+	// whose and which artists of theirs.
+	Bridge *AutopilotBridge `json:"bridge,omitempty"`
+	// Turn is, for a pick that wasn't a bridge in a room of members whose
+	// tastes it mixes, the member whose turn it was.
+	Turn string `json:"turn,omitempty"`
+}
+
+// AutopilotBridge is a song between two members' tastes: "between Sam's
+// Radiohead and Jo's Massive Attack".
+type AutopilotBridge struct {
+	Between []BridgeEnd `json:"between"`
+	// Apart is how far apart their tastes are, from 0 to 1.
+	Apart float64 `json:"apart"`
+}
+
+// BridgeEnd is one side of a bridge: a member and their artist.
+type BridgeEnd struct {
+	UserID string `json:"userId"`
+	Artist string `json:"artist"`
 }
 
 // AutopilotFlow is how a DJ's pick fit the set: what was known about it,

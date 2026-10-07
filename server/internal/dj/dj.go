@@ -113,6 +113,10 @@ type Why struct {
 	Sources []string
 	// Flow is how it fits the set (MAD-757).
 	Flow Flow
+	// Bridge is the members' tastes it's between, if it was picked as a
+	// bridge; Turn, the member whose turn it was, if it wasn't (MAD-758).
+	Bridge *Bridge
+	Turn   string
 }
 
 // Choose returns songs for the room to hear next, best first, found on
@@ -146,12 +150,23 @@ func (e *Engine) Choose(ctx context.Context, r Request) []Pick {
 		pick := Pick{Track: t, Why: Why{
 			Kind: c.kind, Similarity: c.similarity, Popularity: c.popularity, Novelty: c.novelty,
 			Prior: c.prior, Score: c.score, DeepCut: c.deepCut, Sources: c.sources, LovedAt: c.lovedAt, Flow: c.flow,
+			Bridge: c.bridge, Turn: c.turn,
 		}}
 		switch {
 		case c.kind == KindThrowback:
 			pick.Why.Via = r.LongTerm.Artists[c.via].Name
 		case taste != nil:
 			pick.ForUser, pick.Seed, pick.Why.Via = taste.Fan(), taste.Seed, taste.Artist.Name
+		}
+		// A bridge is for the one of its members served longer ago; a turn,
+		// for its member, if the song is near their taste.
+		switch {
+		case c.bridge != nil:
+			pick.ForUser = p.servedLongestAgo(c.bridge.Users[:])
+			pick.Seed = p.memberSeed(pick.ForUser, c.reachVia[pick.ForUser])
+		case c.turn != "" && c.reach[c.turn] >= bridgeReach:
+			pick.ForUser = c.turn
+			pick.Seed = p.memberSeed(c.turn, c.reachVia[c.turn])
 		}
 		out = append(out, pick)
 		if len(out) >= want {
@@ -173,7 +188,11 @@ func (e *Engine) shortlist(ctx context.Context, p Profile, r Request, tags map[s
 	cands := e.walk(wctx, p, r.LongTerm, x, back)
 	cancel()
 	deepCut := e.Rand(100) < deepCutPercent
-	pool := e.flowing(ctx, p, tags, diverse(score(cands, p, r.LongTerm, x, deepCut)), r.EnergyCurve, r.Now)
+	mx := mixFor(p)
+	pool := e.flowing(ctx, p, tags, diverse(mixed(score(cands, p, r.LongTerm, x, deepCut), p, mx)), r.EnergyCurve, r.Now)
+	for i := range pool {
+		pool[i].turn = mx.turn
+	}
 	return draw(pool, drawn, lerp(tempFamiliar, tempExplore, x), e.Rand)
 }
 

@@ -1,8 +1,8 @@
 # ADR 0012: Smart DJ: music knowledge apart from the services
 
-- **Status:** accepted (stages 1 and 2 of Phase 7, and learning and set flow from stage 3)
+- **Status:** accepted (stages 1 and 2 of Phase 7, and learning, set flow and common ground from stage 3)
 - **Date:** 2026-10-07
-- **Issues:** MAD-750 (Phase 7); stage 1: MAD-751, MAD-752; stage 2: MAD-753, MAD-754, MAD-755; stage 3: MAD-756, MAD-757, MAD-762
+- **Issues:** MAD-750 (Phase 7); stage 1: MAD-751, MAD-752; stage 2: MAD-753, MAD-754, MAD-755; stage 3: MAD-756, MAD-757, MAD-758, MAD-762
 
 ## Context
 
@@ -212,6 +212,30 @@ Together they move a score by at most ±0.22, and the plan ahead (below) by ±0.
 **Reasons.** `AutopilotInfo.reason.flow` has the pick's tempo, year, energy, the curve's target, its fit, and `ahead`, the songs planned after it.
 
 **Harmonic key** (Camelot) is left for later: none of the sources gives a song's key.
+
+### Common ground for mixed rooms (MAD-758)
+
+When members' tastes differ, taking turns between them swings the room between extremes. The DJ looks for music in between, and still gives each member their turn (`dj/bridge.go`).
+
+**Each member's reach.**
+- The walk splits each path's pull by the members whose liking of the room artist it starts from (`Taste.ByMember`, autopilot's own songs left out). Every artist it reaches knows how much of its affinity is each member's, and which of their artists leads there most strongly. Two steps out carry the shares on.
+- A member's reach to an artist is against their nearest one, so it's 0 to 1 for everyone, however much they've queued.
+- The walk also starts from each member's own 2 favorite artists, when the room's 8 leave them out.
+
+**How far apart.** Two members' tastes are compared by the cosine similarity of their artists and tags (as for a change of vibe), and `apart = 1 − similarity`. Only members in the room count, when two or more are; otherwise everyone with a taste in the room.
+
+**Bridges.**
+- A song is a bridge between two members when it's near both (a reach of 0.25 or more each) by a different artist of each. An artist both of them play is shared taste, not a bridge.
+- It gains `0.4 × apart × min(reach)`. The further apart the members, the more finding something between them is worth. Members under 0.3 apart need no bridge.
+- Its reason has `bridge`: the two members, their artists, and how far apart they are. MAD-760 can then say "between Sam's Radiohead and Jo's Massive Attack → Portishead".
+- It's credited to whichever of the two autopilot served longer ago.
+
+**Turns.** Bridges alternate with members' own lanes:
+- A fill after one of autopilot's bridges is a turn: of the members, the one autopilot credited a song to longest ago, or never.
+- On a turn, a song gains `0.2 × its reach` to that member's taste, and is credited to them if it's near it. Its reason has `turn`.
+- A fill is a bridge again once the last pick wasn't one. If no two members are apart enough, every fill is a turn.
+
+A room of one member has neither, and picks as before.
 
 ### Fallback
 
