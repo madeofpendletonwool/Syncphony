@@ -554,6 +554,87 @@ func (s *Service) run(ctx context.Context, j job) {
 	}
 }
 
+// Repaired says what Repair did.
+type Repaired struct {
+	// Artists and Tracks are how many were fetched again; Complete, how
+	// many of them every source answered this time.
+	Artists, Tracks, Complete int
+}
+
+// Repair fetches again every cached answer kept only until MissTTL: ones
+// some source failed to give (it was down, or throttled us), and misses.
+// The server runs it once at startup, so a fix to a source fills in what
+// it missed instead of waiting a day for those answers to expire. It goes
+// one at a time, oldest first, at the sources' rate limits, and stops when
+// ctx is done.
+func (s *Service) Repair(ctx context.Context) (Repaired, error) {
+	var out Repaired
+	if len(s.opts.Sources) == 0 {
+		return out, nil
+	}
+	now := s.opts.Now()
+	artists, err := s.db.ListMusicGraphArtists(ctx, now)
+	if err != nil {
+		return out, err
+	}
+	tracks, err := s.db.ListMusicGraphTracks(ctx, now)
+	if err != nil {
+		return out, err
+	}
+	for _, row := range artists {
+		if row.ExpiresAt.Sub(row.FetchedAt) >= s.opts.TTL || ctx.Err() != nil {
+			continue
+		}
+		var a Artist
+		if err := json.Unmarshal([]byte(row.Facts), &a); err != nil || artistKey(a.Ref) == "" {
+			continue
+		}
+		key := "a\x00" + artistKey(a.Ref)
+		if !s.lead(ctx, key) {
+			continue // someone just fetched it
+		}
+		_, err := s.fetchArtist(ctx, a.Ref)
+		s.land(key)
+		out.Artists++
+		if err == nil && s.complete(ctx, a.Ref) {
+			out.Complete++
+		}
+	}
+	for _, row := range tracks {
+		if row.ExpiresAt.Sub(row.FetchedAt) >= s.opts.TTL || ctx.Err() != nil {
+			continue
+		}
+		var t Track
+		if err := json.Unmarshal([]byte(row.Facts), &t); err != nil || t.Ref.Title == "" {
+			continue
+		}
+		key := "t\x00" + songKey(t.Ref)
+		if !s.lead(ctx, key) {
+			continue
+		}
+		_, err := s.fetchTrack(ctx, t.Ref)
+		s.land(key)
+		out.Tracks++
+		if err == nil && s.completeTrack(ctx, t.Ref) {
+			out.Complete++
+		}
+	}
+	return out, ctx.Err()
+}
+
+// complete reports whether an artist's cached answer is kept the full TTL:
+// every source that might know answered.
+func (s *Service) complete(ctx context.Context, a ArtistRef) bool {
+	row, err := s.db.GetMusicGraphArtist(ctx, store.GetMusicGraphArtistParams{Key: artistKey(a), Now: s.opts.Now()})
+	return err == nil && row.ExpiresAt.Sub(row.FetchedAt) >= s.opts.TTL
+}
+
+// completeTrack is complete, for a song.
+func (s *Service) completeTrack(ctx context.Context, sr SongRef) bool {
+	row, err := s.db.GetMusicGraphTrack(ctx, store.GetMusicGraphTrackParams{Key: songKey(sr), Now: s.opts.Now()})
+	return err == nil && row.ExpiresAt.Sub(row.FetchedAt) >= s.opts.TTL
+}
+
 // Sweep deletes expired cache entries.
 func (s *Service) Sweep(ctx context.Context) error {
 	now := s.opts.Now()

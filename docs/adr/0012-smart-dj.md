@@ -32,7 +32,7 @@ Each source is optional and implements `musicgraph.Source`. A source answers wha
 | Source | Artist | Song | Needs | Rate |
 |---|---|---|---|---|
 | **Last.fm** | `artist.getSimilar` (match score), `artist.getTopTracks` (plays), `artist.getTopTags` | `track.getSimilar` | `SYNCPHONY_LASTFM_KEY` | 5/s |
-| **ListenBrainz** | labs similar-artists (the session-based dataset LB Radio uses), `popularity/top-recordings-for-artist` (listens) | — | the artist's MBID; a token optional | 4/s |
+| **ListenBrainz** | labs similar-artists (the session-based dataset LB Radio uses), `popularity/top-recordings-for-artist` (listens) | — | the artist's MBID; a token optional | about 3/s, and its `X-RateLimit-*` headers (30 per 10s) |
 | **Deezer** | `search/artist` → `related`, `top` (rank) | by ISRC, else search + `match.Score`: BPM, rank, release date | nothing | about 8/s, under its 50 per 5s |
 | **MusicBrainz** | genres and tags | `first-release-date` | MBIDs; shares the server's 1/s | 1/s |
 
@@ -60,6 +60,9 @@ The merged score is the weighted average over the sources that answered. A sourc
 - An answer some source failed to give, including a failed MBID lookup that kept ListenBrainz and MusicBrainz out, is also kept only 1 day.
 - An outage of every source isn't cached.
 - Simultaneous fetches of the same artist or song are combined into one.
+- **Throttling.** A throttled request (429 or 503, Last.fm's error 29, Deezer's quota error) is waited out and tried once more. A source that sends `X-RateLimit-Remaining` and `X-RateLimit-Reset-In`, as ListenBrainz does, is left alone until its window resets once it's down to its last request. In the first production run, the warmer went past ListenBrainz's 30 requests per 10 seconds.
+- **ListenBrainz without a token** sometimes refuses popularity with a 401, saying it gates anonymous use against scrapers. ListenBrainz's similar artists still count, and the answer isn't treated as a failure. The server logs once that a token would help.
+- **Repair at startup.** The server fetches again every entry kept only for the 1-day miss TTL, oldest first, in the background. Those are entries some source failed to give, and misses. A fix to a source, or an outage that's over, then fills in the cache on the next start instead of a day later.
 
 ### Warming
 
