@@ -397,6 +397,7 @@ var errorCodes = []struct {
 	{queue.ErrNotQueued, http.StatusConflict, "not_queued"},
 	{queue.ErrUndoExpired, http.StatusConflict, "undo_expired"},
 	{suggest.ErrScope, http.StatusBadRequest, "invalid_input"},
+	{suggest.ErrOrigin, http.StatusBadRequest, "invalid_input"},
 	// Errors from a service, while linking or using a link.
 	{provider.ErrInvalidCredentials, http.StatusBadRequest, "service_rejected_credentials"},
 	{provider.ErrAuthExpired, http.StatusConflict, "needs_relink"},

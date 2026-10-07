@@ -151,9 +151,9 @@ func (e *env) play(itemID, reason string) {
 	}
 }
 
-func (e *env) suggest(m member, scope suggest.Scope, limit int, refresh bool) []suggest.Suggestion {
+func (e *env) suggest(m member, scope suggest.Scope, origin suggest.Origin, limit int, refresh bool) []suggest.Suggestion {
 	e.t.Helper()
-	out, err := e.sg.Suggest(e.t.Context(), suggest.Query{RoomID: e.room.ID, UserID: m.ID, Scope: scope, Limit: limit, Refresh: refresh})
+	out, err := e.sg.Suggest(e.t.Context(), suggest.Query{RoomID: e.room.ID, UserID: m.ID, Scope: scope, Origin: origin, Limit: limit, Refresh: refresh})
 	if err != nil {
 		e.t.Fatalf("Suggest: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestYourVibe(t *testing.T) {
 	e.play(mine.ID, store.EndFinished)
 	e.play(e.add(e.bob, "t13").ID, store.EndFinished)
 
-	got := e.suggest(e.alice, suggest.ScopeMine, 5, false)
+	got := e.suggest(e.alice, suggest.ScopeMine, suggest.OriginHistory, 5, false)
 	// The rest of The Test Patterns are most like t01. Bob's song doesn't
 	// seed alice's vibe, and played songs aren't suggested.
 	if want := []string{"t02", "t03", "t04", "t05", "t06"}; !slices.Equal(ids(got), want) {
@@ -196,7 +196,7 @@ func TestGroupVibe(t *testing.T) {
 	e.play(e.add(e.alice, "t01").ID, store.EndFinished)
 	waiting := e.add(e.bob, "t13")
 
-	got := e.suggest(e.alice, suggest.ScopeGroup, 4, false)
+	got := e.suggest(e.alice, suggest.ScopeGroup, suggest.OriginHistory, 4, false)
 	// What's waiting seeds first, then what played; seeds take turns.
 	if want := []string{"t14", "t02", "t15", "t03"}; !slices.Equal(ids(got), want) {
 		t.Fatalf("suggested %v, want %v", ids(got), want)
@@ -209,21 +209,46 @@ func TestGroupVibe(t *testing.T) {
 		t.Errorf("suggested from link %s, want alice's", got[0].Track.Ref.LinkID)
 	}
 	// Bob's vibe is only his.
-	for _, s := range e.suggest(e.bob, suggest.ScopeMine, 10, false) {
+	for _, s := range e.suggest(e.bob, suggest.ScopeMine, suggest.OriginHistory, 10, false) {
 		if s.Seed.AddedBy != e.bob.ID || s.Track.Ref.ID == "t13" {
 			t.Errorf("bob's vibe has %s, like %s", s.Track.Ref.ID, s.Seed.TrackID)
 		}
 	}
 }
 
+func TestQueueVibe(t *testing.T) {
+	e := newEnv(t, fake.Options{})
+	e.play(e.add(e.alice, "t01").ID, store.EndFinished)
+	waiting := e.add(e.bob, "t07")
+
+	// The queue origin reads what's queued, not what played: a queued
+	// change of vibe is the vibe.
+	got := e.suggest(e.alice, suggest.ScopeGroup, suggest.OriginQueue, 4, false)
+	if want := []string{"t08", "t09", "t10", "t11"}; !slices.Equal(ids(got), want) {
+		t.Fatalf("suggested %v, want the rest of Null Island %v", ids(got), want)
+	}
+	for _, s := range got {
+		if s.Seed.ID != waiting.ID {
+			t.Errorf("%s is like %s, want bob's waiting t07", s.Track.Ref.ID, s.Seed.TrackID)
+		}
+	}
+
+	// With nothing queued to go on, what played through stands in.
+	e.play(waiting.ID, store.EndFinished)
+	fallback := ids(e.suggest(e.alice, suggest.ScopeMine, suggest.OriginQueue, 2, false))
+	if want := []string{"t02", "t03"}; !slices.Equal(fallback, want) {
+		t.Fatalf("nothing waiting: suggested %v, want %v", fallback, want)
+	}
+}
+
 func TestNothingToGoOn(t *testing.T) {
 	e := newEnv(t, fake.Options{})
-	if got := e.suggest(e.alice, suggest.ScopeGroup, 10, false); len(got) != 0 {
+	if got := e.suggest(e.alice, suggest.ScopeGroup, suggest.OriginHistory, 10, false); len(got) != 0 {
 		t.Errorf("an empty room suggested %v", ids(got))
 	}
 	// A skipped song says the room didn't want it: it doesn't seed.
 	e.play(e.add(e.alice, "t01").ID, store.EndSkipped)
-	if got := e.suggest(e.alice, suggest.ScopeMine, 10, false); len(got) != 0 {
+	if got := e.suggest(e.alice, suggest.ScopeMine, suggest.OriginHistory, 10, false); len(got) != 0 {
 		t.Errorf("a skipped song seeded %v", ids(got))
 	}
 }
@@ -233,7 +258,7 @@ func TestSearchOnlyService(t *testing.T) {
 	e := newEnv(t, fake.Options{ID: "spotty", Name: "Spotty", NoRecommendations: true})
 	e.play(e.add(e.alice, "t07").ID, store.EndFinished)
 
-	got := e.suggest(e.alice, suggest.ScopeMine, 10, false)
+	got := e.suggest(e.alice, suggest.ScopeMine, suggest.OriginHistory, 10, false)
 	if want := []string{"t08", "t09", "t10", "t11", "t12"}; !slices.Equal(ids(got), want) {
 		t.Fatalf("suggested %v, want the rest of Null Island %v", ids(got), want)
 	}
@@ -242,19 +267,19 @@ func TestSearchOnlyService(t *testing.T) {
 func TestCachedUntilRefresh(t *testing.T) {
 	e := newEnv(t, fake.Options{})
 	e.play(e.add(e.alice, "t01").ID, store.EndFinished)
-	first := ids(e.suggest(e.alice, suggest.ScopeMine, 3, false))
+	first := ids(e.suggest(e.alice, suggest.ScopeMine, suggest.OriginHistory, 3, false))
 
 	e.pick = 5
-	if again := ids(e.suggest(e.alice, suggest.ScopeMine, 3, false)); !slices.Equal(again, first) {
+	if again := ids(e.suggest(e.alice, suggest.ScopeMine, suggest.OriginHistory, 3, false)); !slices.Equal(again, first) {
 		t.Errorf("the same queue suggested %v, then %v", first, again)
 	}
-	if fresh := ids(e.suggest(e.alice, suggest.ScopeMine, 3, true)); slices.Equal(fresh, first) {
+	if fresh := ids(e.suggest(e.alice, suggest.ScopeMine, suggest.OriginHistory, 3, true)); slices.Equal(fresh, first) {
 		t.Errorf("refresh suggested the same %v", fresh)
 	}
 	// A queue change makes a new list: the song just queued isn't in it.
 	e.pick = 0
 	e.add(e.alice, "t02")
-	if got := ids(e.suggest(e.alice, suggest.ScopeMine, 3, false)); slices.Contains(got, "t02") {
+	if got := ids(e.suggest(e.alice, suggest.ScopeMine, suggest.OriginHistory, 3, false)); slices.Contains(got, "t02") {
 		t.Errorf("suggested %v, with t02 already waiting", got)
 	}
 }
@@ -264,6 +289,14 @@ func TestBadScope(t *testing.T) {
 	_, err := e.sg.Suggest(t.Context(), suggest.Query{RoomID: e.room.ID, UserID: e.alice.ID, Scope: "theirs"})
 	if !errors.Is(err, suggest.ErrScope) {
 		t.Errorf("err = %v, want ErrScope", err)
+	}
+	_, err = e.sg.Suggest(t.Context(), suggest.Query{RoomID: e.room.ID, UserID: e.alice.ID, Scope: suggest.ScopeMine, Origin: "now"})
+	if !errors.Is(err, suggest.ErrOrigin) {
+		t.Errorf("err = %v, want ErrOrigin", err)
+	}
+	// An unset origin reads as history.
+	if _, err = e.sg.Suggest(t.Context(), suggest.Query{RoomID: e.room.ID, UserID: e.alice.ID, Scope: suggest.ScopeMine}); err != nil {
+		t.Errorf("unset origin: err = %v", err)
 	}
 	_, err = e.sg.Suggest(t.Context(), suggest.Query{RoomID: "nope", UserID: e.alice.ID, Scope: suggest.ScopeMine})
 	if !errors.Is(err, rooms.ErrNotFound) {

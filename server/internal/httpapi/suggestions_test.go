@@ -53,8 +53,17 @@ func TestSuggestionsAPI(t *testing.T) {
 		t.Errorf("group vibe for bob: %+v", sg)
 	}
 
+	// The vibe can follow what's queued instead of what's played through.
+	alice.want(http.StatusOK, "GET", base+"/suggestions?source=queue", nil).decode(t, &sg)
+	if sg.Scope != httpapi.SuggestionsScopeMine || len(sg.Items) == 0 {
+		t.Errorf("vibe from the queue: %+v", sg)
+	}
+
 	if r := alice.do("GET", base+"/suggestions?scope=theirs", nil); r.status != http.StatusBadRequest {
 		t.Errorf("unknown scope: %d %s", r.status, r.body)
+	}
+	if r := alice.do("GET", base+"/suggestions?source=now", nil); r.status != http.StatusBadRequest {
+		t.Errorf("unknown source: %d %s", r.status, r.body)
 	}
 	if r := alice.do("GET", "/rooms/nope/suggestions", nil); r.status != http.StatusNotFound {
 		t.Errorf("missing room: %d", r.status)

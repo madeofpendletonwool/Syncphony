@@ -14,7 +14,7 @@ import { trackKey } from '@/lib/browse'
 import { stagger } from '@/lib/motion'
 import { queueQuery, useCurrentRoom } from '@/lib/room'
 import { providersQuery } from '@/lib/services'
-import { becauseLabel, suggestionsQuery, VIBE_LIMIT, type VibeScope } from '@/lib/suggestions'
+import { becauseLabel, suggestionsQuery, VIBE_LIMIT, type VibeScope, type VibeSource } from '@/lib/suggestions'
 import { usersQuery } from '@/lib/users'
 import { cn } from '@/lib/utils'
 
@@ -25,22 +25,26 @@ const empty: Record<VibeScope, string> = {
 
 /**
  * "Keep the vibe going": songs like the room's, to add with a tap. Your vibe
- * is like your own songs; the group's is like everyone's. The list follows
- * the room from song to song, and shuffles on demand.
+ * is like your own songs; the group's is like everyone's. History reads what
+ * has played and is playing; queue reads what's queued, so a queued vibe
+ * change is reflected. The list follows the room from song to song, and
+ * shuffles on demand.
  */
 export function VibeSuggestions({ className }: { className?: string }) {
   const me = useMe()
   const { room } = useCurrentRoom()
   const [scope, setScope] = useState<VibeScope>('mine')
+  const [source, setSource] = useState<VibeSource>('history')
   const [shuffle, setShuffle] = useState(0)
   const queue = useQuery({ ...queueQuery(room?.id ?? ''), enabled: !!room })
   const playing = queue.data?.items.find((i) => i.state === 'playing')?.id
   const list = useQuery({
-    ...suggestionsQuery(room?.id ?? '', scope, playing, shuffle),
+    ...suggestionsQuery(room?.id ?? '', scope, source, playing, shuffle),
     enabled: !!room && queue.isSuccess,
     // Keep showing the last list while the next song's loads, but not
     // another vibe's.
-    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[2] === scope ? prev : undefined),
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey[2] === scope && prevQuery?.queryKey[3] === source ? prev : undefined,
   })
   const { add, status } = useAddToLane()
   const users = useQuery(usersQuery)
@@ -70,16 +74,28 @@ export function VibeSuggestions({ className }: { className?: string }) {
           <RefreshCw className={cn(list.isFetching && 'animate-spin')} />
         </Button>
       </div>
-      <ToggleGroup
-        type="single"
-        value={scope}
-        onValueChange={(v) => v && setScope(v as VibeScope)}
-        aria-label="Whose vibe"
-        className="glass mb-2"
-      >
-        <ToggleGroupItem value="mine">Your vibe</ToggleGroupItem>
-        <ToggleGroupItem value="group">Group vibe</ToggleGroupItem>
-      </ToggleGroup>
+      <div className="mb-2 flex flex-wrap gap-2">
+        <ToggleGroup
+          type="single"
+          value={scope}
+          onValueChange={(v) => v && setScope(v as VibeScope)}
+          aria-label="Whose vibe"
+          className="glass"
+        >
+          <ToggleGroupItem value="mine">Your vibe</ToggleGroupItem>
+          <ToggleGroupItem value="group">Group vibe</ToggleGroupItem>
+        </ToggleGroup>
+        <ToggleGroup
+          type="single"
+          value={source}
+          onValueChange={(v) => v && setSource(v as VibeSource)}
+          aria-label="Vibe source"
+          className="glass"
+        >
+          <ToggleGroupItem value="history">History</ToggleGroupItem>
+          <ToggleGroupItem value="queue">Queue</ToggleGroupItem>
+        </ToggleGroup>
+      </div>
       {list.isPending ? (
         <SuggestionsSkeleton />
       ) : list.isError ? (
@@ -88,7 +104,7 @@ export function VibeSuggestions({ className }: { className?: string }) {
         <p className="py-6 text-center text-sm text-muted-foreground">{empty[scope]}</p>
       ) : (
         <motion.ul
-          key={`${scope}:${shuffle}:${playing ?? ''}`}
+          key={`${scope}:${source}:${shuffle}:${playing ?? ''}`}
           variants={stagger}
           initial="hidden"
           animate="show"

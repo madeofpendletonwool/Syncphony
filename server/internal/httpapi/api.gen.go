@@ -633,6 +633,24 @@ func (e GetSuggestionsParamsScope) Valid() bool {
 	}
 }
 
+// Defines values for GetSuggestionsParamsSource.
+const (
+	History GetSuggestionsParamsSource = "history"
+	Queue   GetSuggestionsParamsSource = "queue"
+)
+
+// Valid indicates whether the value is a known member of the GetSuggestionsParamsSource enum.
+func (e GetSuggestionsParamsSource) Valid() bool {
+	switch e {
+	case History:
+		return true
+	case Queue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Accent defines model for Accent.
 type Accent struct {
 	// C Chroma, clamped to read well in both themes.
@@ -2252,7 +2270,10 @@ type StreamQueueItemParams struct {
 // GetSuggestionsParams defines parameters for GetSuggestions.
 type GetSuggestionsParams struct {
 	Scope *GetSuggestionsParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
-	Limit *int                       `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Source Where the vibe is read from, what's played through and playing, or what's queued.
+	Source *GetSuggestionsParamsSource `form:"source,omitempty" json:"source,omitempty"`
+	Limit  *int                        `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Refresh Build a new list instead of reusing the last one.
 	Refresh *bool `form:"refresh,omitempty" json:"refresh,omitempty"`
@@ -2260,6 +2281,9 @@ type GetSuggestionsParams struct {
 
 // GetSuggestionsParamsScope defines parameters for GetSuggestions.
 type GetSuggestionsParamsScope string
+
+// GetSuggestionsParamsSource defines parameters for GetSuggestions.
+type GetSuggestionsParamsSource string
 
 // SearchParams defines parameters for Search.
 type SearchParams struct {
@@ -5465,6 +5489,19 @@ func (siw *ServerInterfaceWrapper) GetSuggestions(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "scope"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scope", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "source" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "source", r.URL.Query(), &params.Source, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "source"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "source", Err: err})
 		}
 		return
 	}

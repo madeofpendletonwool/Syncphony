@@ -16,12 +16,14 @@ const song = (id: string, title: string, seedTitle: string, userId: string): Sug
   because: { itemId: `item-${seedTitle}`, title: seedTitle, userId },
 })
 
-// lists maps a scope to the songs the server suggests for it.
+// lists maps a scope and source, "mine:queue" say, to the songs the
+// server suggests for them.
 function serve(lists: Record<string, Suggestion[]>) {
-  GET.mockImplementation((path: string, init?: { params?: { query?: { scope: string } } }) => {
+  GET.mockImplementation((path: string, init?: { params?: { query?: { scope?: string; source?: string } } }) => {
     if (path !== '/rooms/{roomId}/suggestions') return new Promise(() => {})
-    const scope = init?.params?.query?.scope ?? 'mine'
-    return Promise.resolve({ data: { scope, items: lists[scope] ?? [] }, response: new Response(null, { status: 200 }) })
+    const { scope = 'mine', source = 'history' } = init?.params?.query ?? {}
+    const items = lists[`${scope}:${source}`] ?? []
+    return Promise.resolve({ data: { scope, items }, response: new Response(null, { status: 200 }) })
   })
 }
 
@@ -49,15 +51,15 @@ afterEach(cleanup)
 
 describe('VibeSuggestions', () => {
   it('shows your vibe first, with why each song is suggested', async () => {
-    serve({ mine: [song('t08', 'Longitude', 'Latitude', 'alice')] })
+    serve({ 'mine:history': [song('t08', 'Longitude', 'Latitude', 'alice')] })
     renderVibe()
     expect(await screen.findByText('Longitude')).toBeTruthy()
     expect(screen.getByText(/Like Latitude/)).toBeTruthy()
-    expect(calls()[0]).toMatchObject({ scope: 'mine', refresh: false })
+    expect(calls()[0]).toMatchObject({ scope: 'mine', source: 'history', refresh: false })
   })
 
   it("switches to the group's vibe", async () => {
-    serve({ mine: [], group: [song('t14', 'Tuning Fork', 'Concert Pitch', 'bob')] })
+    serve({ 'mine:history': [], 'group:history': [song('t14', 'Tuning Fork', 'Concert Pitch', 'bob')] })
     renderVibe()
     expect(await screen.findByText(/Queue a few songs/)).toBeTruthy()
     fireEvent.click(screen.getByRole('radio', { name: 'Group vibe' }))
@@ -65,8 +67,17 @@ describe('VibeSuggestions', () => {
     expect(screen.getByText(/Like Concert Pitch, Bob's pick/)).toBeTruthy()
   })
 
+  it("reads the vibe from what's queued", async () => {
+    serve({ 'mine:history': [], 'mine:queue': [song('t21', 'Harmonic', 'Chord Shift', 'alice')] })
+    renderVibe()
+    expect(await screen.findByText(/Queue a few songs/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: 'Queue' }))
+    expect(await screen.findByText('Harmonic')).toBeTruthy()
+    expect(calls().at(-1)).toMatchObject({ scope: 'mine', source: 'queue' })
+  })
+
   it('asks for a new list on shuffle', async () => {
-    serve({ mine: [song('t08', 'Longitude', 'Latitude', 'alice')] })
+    serve({ 'mine:history': [song('t08', 'Longitude', 'Latitude', 'alice')] })
     renderVibe()
     await screen.findByText('Longitude')
     fireEvent.click(screen.getByRole('button', { name: 'Shuffle suggestions' }))
