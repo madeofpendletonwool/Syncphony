@@ -2714,7 +2714,9 @@ components:
           type: string
         avatar:
           type: string
-          description: Image URL. Absent means show initials on `color`.
+          description: >-
+            Image URL, or `icon:<name>` for a built-in icon drawn on `color`.
+            Absent means show initials on `color`.
         color:
           type: string
           description: Lane color, `#rrggbb`.
@@ -2955,7 +2957,9 @@ components:
 
     ProfileUpdate:
       type: object
-      description: Fields to change. Send `avatar` as "" to remove it.
+      description: >-
+        Fields to change. `avatar` is an image URL or `icon:<name>`; send it
+        as "" to remove it.
       properties:
         displayName:
           type: string

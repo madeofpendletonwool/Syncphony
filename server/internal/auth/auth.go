@@ -593,7 +593,9 @@ func (s *Service) DeleteInvite(ctx context.Context, by store.User, code string) 
 
 var (
 	usernamePattern = regexp.MustCompile(`^[a-z0-9._-]{2,32}$`)
-	colorPattern    = regexp.MustCompile(`^#[0-9a-f]{6}$`)
+	// iconAvatarPattern is a built-in icon, drawn by the client on the lane color.
+	iconAvatarPattern = regexp.MustCompile(`^icon:[a-z0-9-]{1,32}$`)
+	colorPattern      = regexp.MustCompile(`^#[0-9a-f]{6}$`)
 )
 
 func normalizeUsername(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
@@ -620,8 +622,11 @@ func validatePassword(field, pw string) error {
 }
 
 func validateAvatar(a string) error {
-	if a == "" {
+	if a == "" || iconAvatarPattern.MatchString(a) {
 		return nil
+	}
+	if strings.HasPrefix(a, "icon:") {
+		return invalid("avatar", "unknown icon")
 	}
 	u, err := url.Parse(a)
 	if err != nil || len(a) > 2048 {
@@ -630,7 +635,7 @@ func validateAvatar(a string) error {
 	web := u.Scheme == "https" || u.Scheme == "http"
 	local := u.Scheme == "" && u.Host == "" && strings.HasPrefix(a, "/")
 	if !web && !local {
-		return invalid("avatar", "must be an http(s) URL or a path on this server")
+		return invalid("avatar", "must be an http(s) URL, a path on this server or an icon")
 	}
 	return nil
 }

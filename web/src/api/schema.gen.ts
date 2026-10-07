@@ -1993,7 +1993,7 @@ export interface components {
             id: string;
             username: string;
             displayName: string;
-            /** @description Image URL. Absent means show initials on `color`. */
+            /** @description Image URL, or `icon:<name>` for a built-in icon drawn on `color`. Absent means show initials on `color`. */
             avatar?: string;
             /**
              * @description Lane color, `#rrggbb`.
@@ -2139,7 +2139,7 @@ export interface components {
             item: components["schemas"]["QueueItem"];
             hearts: number;
         };
-        /** @description Fields to change. Send `avatar` as "" to remove it. */
+        /** @description Fields to change. `avatar` is an image URL or `icon:<name>`; send it as "" to remove it. */
         ProfileUpdate: {
             displayName?: string;
             avatar?: string;
