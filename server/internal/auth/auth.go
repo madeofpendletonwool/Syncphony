@@ -152,6 +152,9 @@ type Session struct {
 
 // newSession signs u in. The caller must reset rate limits as needed.
 func (s *Service) newSession(ctx context.Context, q *store.Queries, u store.User, userAgent string) (*Session, error) {
+	if u.DisabledAt.Valid {
+		return nil, ErrAccountDisabled
+	}
 	token, hash := newToken()
 	now := s.now()
 	sess, err := q.CreateSession(ctx, store.CreateSessionParams{
@@ -181,6 +184,11 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Session, err
 	u, err := s.db.GetUser(ctx, sess.UserID)
 	if err != nil {
 		return nil, err
+	}
+	// Disabling an account ends its sessions; this is for any that slip by.
+	if u.DisabledAt.Valid {
+		_ = s.db.DeleteSession(ctx, hash)
+		return nil, ErrUnauthenticated
 	}
 	out := &Session{User: u, Expires: sess.ExpiresAt, hash: hash}
 	until := now.Add(sessionTTL)

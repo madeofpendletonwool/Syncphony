@@ -403,6 +403,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/reauth/begin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start confirming it's you with a passkey
+         * @description For something that can't be undone, like deleting your account.
+         *     Finish by sending the ceremony with that request.
+         */
+        post: operations["beginReauth"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete your account
+         * @description Confirm it's you with `password`, or with `ceremonyId` and
+         *     `credential` from `/me/reauth/begin`. Signs you out everywhere and
+         *     deletes your sign-in methods, linked services (and their
+         *     credentials), and picture; your queued songs are dropped. The rooms
+         *     you own go to the longest-standing admin. Rooms' history keeps your
+         *     songs, under "Former member". The last admin who can sign in can't
+         *     leave (409 `last_admin`).
+         */
+        post: operations["deleteMe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/sessions": {
         parameters: {
             query?: never;
@@ -452,6 +499,55 @@ export interface paths {
         };
         /** Everyone on this server */
         get: operations["listUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove someone's account (admin)
+         * @description Like deleting your own account (`/me/delete`), for someone else:
+         *     their rooms become yours. Not for yourself, or the last admin who
+         *     can sign in.
+         */
+        delete: operations["removeUser"];
+        options?: never;
+        head?: never;
+        /**
+         * Change someone's role, or disable their account (admin)
+         * @description A disabled account is signed out everywhere and can't sign in, but
+         *     keeps its history, services and rooms. There's always at least one
+         *     admin who can sign in: demoting or disabling the last fails with
+         *     409 `last_admin`. You can't disable yourself. Guests can't be
+         *     managed here; remove them from their room.
+         */
+        patch: operations["updateUser"];
+        trace?: never;
+    };
+    "/user-audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who changed whose account, and when (admin) */
+        get: operations["listUserAudit"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1538,16 +1634,43 @@ export interface paths {
         get: operations["getRoom"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete a room (owner or admin)
+         * @description Its queue, history, nights, displays and guests go with it. Everyone
+         *     in the room gets `room.deleted`.
+         */
+        delete: operations["deleteRoom"];
         options?: never;
         head?: never;
         /**
-         * Change a room you own
+         * Change a room (owner or admin)
          * @description Everyone in the room gets `room.updated`. A new fairness mode or
          *     `fairness` reorders the queue at once; `fairness` replaces the
          *     room's as a whole.
          */
         patch: operations["updateRoom"];
+        trace?: never;
+    };
+    "/rooms/{roomId}/owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Give a room to someone else (owner or admin)
+         * @description The new owner must be a member who can sign in. Everyone in the room gets `room.updated`.
+         */
+        put: operations["transferRoom"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/rooms/{roomId}/playback": {
@@ -1700,8 +1823,45 @@ export interface components {
             color: string;
             role: components["schemas"]["Role"];
             guest?: components["schemas"]["UserGuest"];
+            /** @description An admin disabled the account; it can't sign in. Absent means false. */
+            disabled?: boolean;
+            /**
+             * @description The account was removed, and is kept anonymized only so rooms'
+             *     history adds up. Absent means false.
+             */
+            removed?: boolean;
             /** Format: date-time */
             createdAt: string;
+        };
+        UpdateUserRequest: {
+            role?: components["schemas"]["Role"];
+            disabled?: boolean;
+        };
+        UserAuditEntry: {
+            id: string;
+            /** @description Absent when the server's operator did it, from the command line. */
+            actorId?: string;
+            /** @description Their name at the time. */
+            actorName: string;
+            targetId?: string;
+            /** @description Their name at the time, even if the account was removed since. */
+            targetName: string;
+            /** @enum {string} */
+            action: "role_changed" | "disabled" | "enabled" | "removed" | "deleted_self";
+            role?: components["schemas"]["Role"];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        DeleteMeRequest: {
+            password?: string;
+            ceremonyId?: string;
+            /** @description The browser's `PublicKeyCredential.toJSON()`. */
+            credential?: {
+                [key: string]: unknown;
+            };
+        };
+        TransferRoomRequest: {
+            userId: string;
         };
         Me: components["schemas"]["User"] & {
             hasPassword: boolean;
@@ -2320,7 +2480,9 @@ export interface components {
          *     - `member.joined`, `member.left`: User. Someone's first connection to
          *       the room opened, or their last one closed.
          *     - `link.status`: ServiceLink. One of your links changed status.
-         *     - `room.updated`: Room. The room's name or settings changed.
+         *     - `room.updated`: Room. The room's name, settings or owner changed.
+         *     - `room.deleted`: `{"roomId": ...}`. The room was deleted. It's the
+         *       last event; the server then closes the socket with 4004.
          *     - `reaction.sent`: Reaction. Someone sent an emoji to the big screen.
          *     - `hearts.updated`: Hearts. Someone hearted a song, or took it back.
          *     - `night.ended`: Night. The night is over; crown its song of the night.
@@ -2333,11 +2495,12 @@ export interface components {
          *
          *     Close code 1013 (try again later) means the client fell behind and
          *     missed events: reconnect with `since` set to the last version seen.
-         *     Close code 4001 means the session ended; sign in again.
+         *     Close code 4001 means the session ended; sign in again. Close code
+         *     4004 means the room is gone; don't reconnect.
          */
         RoomEvent: {
             /** @enum {string} */
-            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "reaction.sent" | "hearts.updated" | "night.ended" | "guests.updated";
+            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "room.deleted" | "reaction.sent" | "hearts.updated" | "night.ended" | "guests.updated";
             /**
              * Format: int64
              * @description Queue version, on `queue.updated` only.
@@ -3272,6 +3435,43 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    beginReauth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["Ceremony"];
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteMeRequest"];
+            };
+        };
+        responses: {
+            /** @description Deleted; the session cookie is cleared */
+            204: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     listMySessions: {
         parameters: {
             query?: never;
@@ -3349,6 +3549,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["User"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    removeUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description The user after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listUserAudit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The newest 100 changes, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserAuditEntry"][];
                 };
             };
             default: components["responses"]["Error"];
@@ -4850,6 +5119,27 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    deleteRoom: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     updateRoom: {
         parameters: {
             query?: never;
@@ -4866,6 +5156,33 @@ export interface operations {
         };
         responses: {
             /** @description The room after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Room"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    transferRoom: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferRoomRequest"];
+            };
+        };
+        responses: {
+            /** @description The room, with its new owner */
             200: {
                 headers: {
                     [name: string]: unknown;

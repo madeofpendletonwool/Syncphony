@@ -23,3 +23,12 @@ DELETE FROM rooms WHERE id = ?;
 -- BumpQueueVersion records a queue change and returns the new version.
 -- name: BumpQueueVersion :one
 UPDATE rooms SET queue_version = queue_version + 1 WHERE id = ? RETURNING queue_version;
+
+-- name: SetRoomOwner :one
+UPDATE rooms SET owner_id = ? WHERE id = ?
+RETURNING *;
+
+-- TransferRooms hands every room one user owns to another, and returns them.
+-- name: TransferRooms :many
+UPDATE rooms SET owner_id = sqlc.arg(to_id) WHERE owner_id = sqlc.arg(from_id)
+RETURNING *;

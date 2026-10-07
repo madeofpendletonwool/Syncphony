@@ -11,6 +11,74 @@ import (
 	"time"
 )
 
+const addUserAudit = `-- name: AddUserAudit :exec
+INSERT INTO user_audit (id, actor_id, actor_name, target_id, target_name, action, detail, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+type AddUserAuditParams struct {
+	ID         string
+	ActorID    sql.NullString
+	ActorName  string
+	TargetID   sql.NullString
+	TargetName string
+	Action     string
+	Detail     string
+	CreatedAt  time.Time
+}
+
+func (q *Queries) AddUserAudit(ctx context.Context, arg AddUserAuditParams) error {
+	_, err := q.db.ExecContext(ctx, addUserAudit,
+		arg.ID,
+		arg.ActorID,
+		arg.ActorName,
+		arg.TargetID,
+		arg.TargetName,
+		arg.Action,
+		arg.Detail,
+		arg.CreatedAt,
+	)
+	return err
+}
+
+const anonymizeUser = `-- name: AnonymizeUser :exec
+UPDATE users SET
+    username = ?1, display_name = ?2, avatar = NULL, role = 'member',
+    disabled_at = ?3, removed_at = ?3
+WHERE id = ?4
+`
+
+type AnonymizeUserParams struct {
+	Username    string
+	DisplayName string
+	Now         sql.NullTime
+	ID          string
+}
+
+// AnonymizeUser blanks a removed account: it keeps only its ID and color,
+// so the history it's in still shows a lane.
+func (q *Queries) AnonymizeUser(ctx context.Context, arg AnonymizeUserParams) error {
+	_, err := q.db.ExecContext(ctx, anonymizeUser,
+		arg.Username,
+		arg.DisplayName,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
+const countActiveAdmins = `-- name: CountActiveAdmins :one
+SELECT count(*) FROM users WHERE role = 'admin' AND disabled_at IS NULL AND removed_at IS NULL
+`
+
+// CountActiveAdmins counts admins who can still sign in.
+func (q *Queries) CountActiveAdmins(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countActiveAdmins)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countUsers = `-- name: CountUsers :one
 SELECT count(*) FROM users
 `
@@ -25,7 +93,7 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, username, display_name, avatar, color, role, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, username, display_name, avatar, color, role, created_at
+RETURNING id, username, display_name, avatar, color, role, created_at, disabled_at, removed_at
 `
 
 type CreateUserParams struct {
@@ -57,12 +125,53 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Color,
 		&i.Role,
 		&i.CreatedAt,
+		&i.DisabledAt,
+		&i.RemovedAt,
 	)
 	return i, err
 }
 
+const deleteUnusedInvitesBy = `-- name: DeleteUnusedInvitesBy :exec
+DELETE FROM invites WHERE created_by = ? AND used_by IS NULL
+`
+
+// DeleteUnusedInvitesBy revokes the invites someone made that nobody used.
+func (q *Queries) DeleteUnusedInvitesBy(ctx context.Context, createdBy sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, deleteUnusedInvitesBy, createdBy)
+	return err
+}
+
+const deleteUser = `-- name: DeleteUser :exec
+DELETE FROM users WHERE id = ?
+`
+
+// DeleteUser deletes an account outright. Only for guests, whose songs
+// went with their room.
+func (q *Queries) DeleteUser(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteUser, id)
+	return err
+}
+
+const deleteUserPasskeys = `-- name: DeleteUserPasskeys :exec
+DELETE FROM credentials_passkey WHERE user_id = ?
+`
+
+func (q *Queries) DeleteUserPasskeys(ctx context.Context, userID string) error {
+	_, err := q.db.ExecContext(ctx, deleteUserPasskeys, userID)
+	return err
+}
+
+const deleteUserServiceLinks = `-- name: DeleteUserServiceLinks :exec
+DELETE FROM service_links WHERE user_id = ?
+`
+
+func (q *Queries) DeleteUserServiceLinks(ctx context.Context, userID string) error {
+	_, err := q.db.ExecContext(ctx, deleteUserServiceLinks, userID)
+	return err
+}
+
 const getUser = `-- name: GetUser :one
-SELECT id, username, display_name, avatar, color, role, created_at FROM users WHERE id = ?
+SELECT id, username, display_name, avatar, color, role, created_at, disabled_at, removed_at FROM users WHERE id = ?
 `
 
 func (q *Queries) GetUser(ctx context.Context, id string) (User, error) {
@@ -76,12 +185,14 @@ func (q *Queries) GetUser(ctx context.Context, id string) (User, error) {
 		&i.Color,
 		&i.Role,
 		&i.CreatedAt,
+		&i.DisabledAt,
+		&i.RemovedAt,
 	)
 	return i, err
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-SELECT id, username, display_name, avatar, color, role, created_at FROM users WHERE username = ?
+SELECT id, username, display_name, avatar, color, role, created_at, disabled_at, removed_at FROM users WHERE username = ?
 `
 
 func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User, error) {
@@ -95,12 +206,50 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 		&i.Color,
 		&i.Role,
 		&i.CreatedAt,
+		&i.DisabledAt,
+		&i.RemovedAt,
 	)
 	return i, err
 }
 
+const listUserAudit = `-- name: ListUserAudit :many
+SELECT id, actor_id, actor_name, target_id, target_name, "action", detail, created_at FROM user_audit ORDER BY created_at DESC, id DESC LIMIT ?
+`
+
+func (q *Queries) ListUserAudit(ctx context.Context, limit int64) ([]UserAudit, error) {
+	rows, err := q.db.QueryContext(ctx, listUserAudit, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserAudit{}
+	for rows.Next() {
+		var i UserAudit
+		if err := rows.Scan(
+			&i.ID,
+			&i.ActorID,
+			&i.ActorName,
+			&i.TargetID,
+			&i.TargetName,
+			&i.Action,
+			&i.Detail,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
-SELECT id, username, display_name, avatar, color, role, created_at FROM users ORDER BY created_at
+SELECT id, username, display_name, avatar, color, role, created_at, disabled_at, removed_at FROM users ORDER BY created_at
 `
 
 func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
@@ -120,6 +269,8 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.Color,
 			&i.Role,
 			&i.CreatedAt,
+			&i.DisabledAt,
+			&i.RemovedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -132,6 +283,46 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const oldestActiveAdmin = `-- name: OldestActiveAdmin :one
+SELECT id, username, display_name, avatar, color, role, created_at, disabled_at, removed_at FROM users
+WHERE role = 'admin' AND disabled_at IS NULL AND removed_at IS NULL AND id <> ?1
+ORDER BY created_at, id
+LIMIT 1
+`
+
+// OldestActiveAdmin is the longest-standing admin who can sign in, other
+// than the given user.
+func (q *Queries) OldestActiveAdmin(ctx context.Context, exceptID string) (User, error) {
+	row := q.db.QueryRowContext(ctx, oldestActiveAdmin, exceptID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.DisplayName,
+		&i.Avatar,
+		&i.Color,
+		&i.Role,
+		&i.CreatedAt,
+		&i.DisabledAt,
+		&i.RemovedAt,
+	)
+	return i, err
+}
+
+const setUserDisabled = `-- name: SetUserDisabled :exec
+UPDATE users SET disabled_at = ? WHERE id = ?
+`
+
+type SetUserDisabledParams struct {
+	DisabledAt sql.NullTime
+	ID         string
+}
+
+func (q *Queries) SetUserDisabled(ctx context.Context, arg SetUserDisabledParams) error {
+	_, err := q.db.ExecContext(ctx, setUserDisabled, arg.DisabledAt, arg.ID)
+	return err
 }
 
 const setUserRole = `-- name: SetUserRole :exec
@@ -151,7 +342,7 @@ func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) error 
 const updateUserProfile = `-- name: UpdateUserProfile :one
 UPDATE users SET display_name = ?, avatar = ?, color = ?
 WHERE id = ?
-RETURNING id, username, display_name, avatar, color, role, created_at
+RETURNING id, username, display_name, avatar, color, role, created_at, disabled_at, removed_at
 `
 
 type UpdateUserProfileParams struct {
@@ -177,6 +368,8 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.Color,
 		&i.Role,
 		&i.CreatedAt,
+		&i.DisabledAt,
+		&i.RemovedAt,
 	)
 	return i, err
 }

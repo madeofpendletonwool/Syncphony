@@ -206,4 +206,17 @@ type User struct {
 	Color       string
 	Role        string
 	CreatedAt   time.Time
+	DisabledAt  sql.NullTime
+	RemovedAt   sql.NullTime
+}
+
+type UserAudit struct {
+	ID         string
+	ActorID    sql.NullString
+	ActorName  string
+	TargetID   sql.NullString
+	TargetName string
+	Action     string
+	Detail     string
+	CreatedAt  time.Time
 }

@@ -24,7 +24,7 @@ import (
 // Errors returned by Service.
 var (
 	ErrNotFound  = errors.New("room not found")
-	ErrForbidden = errors.New("only the room's owner can change it")
+	ErrForbidden = errors.New("only the room's owner or an admin can change it")
 )
 
 // InvalidInputError is a bad room field.
@@ -38,9 +38,19 @@ type Service struct {
 	bus realtime.Bus
 	// Now is the clock. Default store.Now.
 	Now func() time.Time
-	// OnUpdate, if set, is called after a room's settings change.
+	// OnUpdate, if set, is called after a room's settings or owner change.
 	OnUpdate func(store.Room)
+	// OnDelete, if set, is called after a room is deleted.
+	OnDelete func(roomID string)
 }
+
+// Actor is who's changing a room. The room's owner and admins may.
+type Actor struct {
+	UserID string
+	Admin  bool
+}
+
+func (a Actor) manages(r store.Room) bool { return a.Admin || a.UserID == r.OwnerID }
 
 // New returns a Service.
 func New(db *store.Store, bus realtime.Bus) *Service {
@@ -72,8 +82,18 @@ type Permissions struct {
 // DefaultSkipVotePercent makes a skip vote need a majority.
 const DefaultSkipVotePercent = 50
 
-// Settings are a room's options, stored as JSON in rooms.settings.
+// SettingsVersion is the version of Settings this server writes. Bump it
+// when a change needs old settings migrated, and migrate in ParseSettings.
+//
+//   - 0: before versions. Controls was the only permission.
+//   - 1: Permissions, fairness, matching, autopilot and guests.
+const SettingsVersion = 1
+
+// Settings are a room's options, stored as JSON in rooms.settings. Add new
+// options here, with defaults that keep how rooms behaved before.
 type Settings struct {
+	// Version is the version of Settings these were written as.
+	Version int `json:"version"`
 	// Controls is the single setting rooms had before Permissions (who may
 	// do everything, Everyone or Owner). It's only read, as the default
 	// for each permission, and never written.
@@ -216,11 +236,12 @@ func (f Fairness) validate() error {
 func ParseSettings(raw string) Settings {
 	var st Settings
 	_ = json.Unmarshal([]byte(raw), &st)
+	// Version 0 had Controls only; it's the default for each permission.
 	fallback := Everyone
-	if st.Controls == Owner {
+	if st.Version < 1 && st.Controls == Owner {
 		fallback = Owner
 	}
-	st.Controls = ""
+	st.Version, st.Controls = SettingsVersion, ""
 	p := &st.Permissions
 	for _, level := range []*string{&p.PlayPause, &p.Seek, &p.Speaker} {
 		if *level != Everyone && *level != Owner {
@@ -292,14 +313,14 @@ type Update struct {
 	Guests *Guests
 }
 
-// Update changes a room. Only its owner may. Everyone in the room hears
-// about it, and a new fairness mode reorders the queue at once.
-func (s *Service) Update(ctx context.Context, userID, id string, u Update) (store.Room, error) {
+// Update changes a room. Only its owner or an admin may. Everyone in the
+// room hears about it, and a new fairness mode reorders the queue at once.
+func (s *Service) Update(ctx context.Context, by Actor, id string, u Update) (store.Room, error) {
 	r, err := s.Get(ctx, id)
 	if err != nil {
 		return r, err
 	}
-	if r.OwnerID != userID {
+	if !by.manages(r) {
 		return r, ErrForbidden
 	}
 	name, mode, st := r.Name, r.FairnessMode, ParseSettings(r.Settings)
@@ -346,10 +367,7 @@ func (s *Service) Update(ctx context.Context, userID, id string, u Update) (stor
 	if err != nil {
 		return updated, err
 	}
-	s.bus.Publish(realtime.RoomTopic(id), realtime.Event{Type: realtime.RoomUpdated, Data: updated})
-	if s.OnUpdate != nil {
-		s.OnUpdate(updated)
-	}
+	s.Updated(updated)
 	if mode != r.FairnessMode || !before.Equal(ParseSettings(raw).Fairness) {
 		if _, err := s.QueueChanged(ctx, id); err != nil {
 			return updated, err
@@ -357,6 +375,76 @@ func (s *Service) Update(ctx context.Context, userID, id string, u Update) (stor
 	}
 	return updated, nil
 }
+
+// Updated tells everyone in a room that its settings or owner changed.
+// Call it after changing a room other than through Service.
+func (s *Service) Updated(r store.Room) {
+	s.bus.Publish(realtime.RoomTopic(r.ID), realtime.Event{Type: realtime.RoomUpdated, Data: r})
+	if s.OnUpdate != nil {
+		s.OnUpdate(r)
+	}
+}
+
+// Transfer makes userID the room's owner. Only its owner or an admin may.
+// The caller checks userID may own rooms (a member who can sign in).
+func (s *Service) Transfer(ctx context.Context, by Actor, id, userID string) (store.Room, error) {
+	r, err := s.Get(ctx, id)
+	if err != nil {
+		return r, err
+	}
+	if !by.manages(r) {
+		return r, ErrForbidden
+	}
+	if r.OwnerID == userID {
+		return r, nil
+	}
+	r, err = s.db.SetRoomOwner(ctx, store.SetRoomOwnerParams{OwnerID: userID, ID: id})
+	if err != nil {
+		return r, err
+	}
+	s.Updated(r)
+	return r, nil
+}
+
+// Delete deletes a room: its queue, history, nights, displays and guest
+// passes go with it. Only its owner or an admin may. Everyone in the room
+// hears about it first. guests are the room's guests, whose accounts go
+// too: they can't be anywhere else.
+func (s *Service) Delete(ctx context.Context, by Actor, id string) error {
+	r, err := s.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !by.manages(r) {
+		return ErrForbidden
+	}
+	err = s.db.Tx(ctx, func(q *store.Queries) error {
+		guests, err := q.ListRoomGuestIDs(ctx, id)
+		if err != nil {
+			return err
+		}
+		if err := q.DeleteRoom(ctx, id); err != nil {
+			return err
+		}
+		for _, g := range guests {
+			if err := q.DeleteUser(ctx, g); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	s.bus.Publish(realtime.RoomTopic(id), realtime.Event{Type: realtime.RoomDeleted, Data: Deleted{RoomID: id}})
+	if s.OnDelete != nil {
+		s.OnDelete(id)
+	}
+	return nil
+}
+
+// Deleted is the event for a deleted room.
+type Deleted struct{ RoomID string }
 
 func validate(name, mode string, st Settings) (string, string, error) {
 	name = strings.TrimSpace(name)
@@ -400,7 +488,7 @@ func validate(name, mode string, st Settings) (string, string, error) {
 		return "", "", &InvalidInputError{fmt.Sprintf("a guest may add 0 (no limit) to %d songs", MaxGuestSongs)}
 	}
 	st.Fairness.clean()
-	st.Controls = ""
+	st.Version, st.Controls = SettingsVersion, ""
 	raw, err := json.Marshal(st)
 	return name, string(raw), err
 }

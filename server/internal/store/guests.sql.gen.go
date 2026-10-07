@@ -293,8 +293,36 @@ func (q *Queries) ListExpiredGuests(ctx context.Context, now time.Time) ([]Guest
 	return items, nil
 }
 
+const listRoomGuestIDs = `-- name: ListRoomGuestIDs :many
+SELECT user_id FROM guests WHERE room_id = ?
+`
+
+// ListRoomGuestIDs returns the user IDs of every guest a room ever had.
+func (q *Queries) ListRoomGuestIDs(ctx context.Context, roomID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listRoomGuestIDs, roomID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var user_id string
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRoomGuests = `-- name: ListRoomGuests :many
-SELECT guests.user_id, guests.room_id, guests.pass_id, guests.created_at, guests.expires_at, guests.ended_at, users.id, users.username, users.display_name, users.avatar, users.color, users.role, users.created_at
+SELECT guests.user_id, guests.room_id, guests.pass_id, guests.created_at, guests.expires_at, guests.ended_at, users.id, users.username, users.display_name, users.avatar, users.color, users.role, users.created_at, users.disabled_at, users.removed_at
 FROM guests JOIN users ON users.id = guests.user_id
 WHERE guests.room_id = ? AND guests.ended_at IS NULL AND guests.expires_at > ?2
 ORDER BY guests.created_at DESC
@@ -334,6 +362,8 @@ func (q *Queries) ListRoomGuests(ctx context.Context, arg ListRoomGuestsParams) 
 			&i.User.Color,
 			&i.User.Role,
 			&i.User.CreatedAt,
+			&i.User.DisabledAt,
+			&i.User.RemovedAt,
 		); err != nil {
 			return nil, err
 		}

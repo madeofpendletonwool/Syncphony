@@ -369,10 +369,10 @@ func TestPermissions(t *testing.T) {
 	e := newEnv(t)
 	ctx := t.Context()
 	owner := rooms.Update{Permissions: rooms.Permissions{PlayPause: rooms.Owner, Skip: rooms.Owner, Speaker: rooms.Owner}}
-	if _, err := e.rooms.Update(ctx, e.alice.ID, e.room.ID, owner); err != nil {
+	if _, err := e.rooms.Update(ctx, rooms.Actor{UserID: e.alice.ID}, e.room.ID, owner); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.rooms.Update(ctx, e.bob.ID, e.room.ID, owner); !errors.Is(err, rooms.ErrForbidden) {
+	if _, err := e.rooms.Update(ctx, rooms.Actor{UserID: e.bob.ID}, e.room.ID, owner); !errors.Is(err, rooms.ErrForbidden) {
 		t.Errorf("bob changing alice's room: %v", err)
 	}
 	if _, err := e.p.Claim(ctx, e.room.ID, e.bob.ID, "tablet", ""); !errors.Is(err, playback.ErrForbidden) {
@@ -418,7 +418,7 @@ func TestFailuresSkip(t *testing.T) {
 	e := newEnv(t)
 	// Every fake link has the same songs: without this, failures would
 	// play from someone else's (see TestFallback).
-	if _, err := e.rooms.Update(t.Context(), e.alice.ID, e.room.ID, rooms.Update{Matching: &rooms.Matching{Fallback: new(false)}}); err != nil {
+	if _, err := e.rooms.Update(t.Context(), rooms.Actor{UserID: e.alice.ID}, e.room.ID, rooms.Update{Matching: &rooms.Matching{Fallback: new(false)}}); err != nil {
 		t.Fatal(err)
 	}
 	notices := e.notices()
@@ -620,7 +620,7 @@ func TestVoteSkip(t *testing.T) {
 	ctx := t.Context()
 	dave, erin := e.member("dave"), e.member("erin")
 	vote := rooms.Update{Permissions: rooms.Permissions{Skip: rooms.Vote}}
-	if _, err := e.rooms.Update(ctx, e.alice.ID, e.room.ID, vote); err != nil {
+	if _, err := e.rooms.Update(ctx, rooms.Actor{UserID: e.alice.ID}, e.room.ID, vote); err != nil {
 		t.Fatal(err)
 	}
 	for _, m := range []member{e.alice, e.bob, e.carol, dave, erin} {
@@ -693,7 +693,7 @@ func TestVoteSkip(t *testing.T) {
 
 	// Raising the bar to everyone, then voting with everyone.
 	all := 99
-	if _, err := e.rooms.Update(ctx, e.alice.ID, e.room.ID, rooms.Update{SkipVotePercent: &all}); err != nil {
+	if _, err := e.rooms.Update(ctx, rooms.Actor{UserID: e.alice.ID}, e.room.ID, rooms.Update{SkipVotePercent: &all}); err != nil {
 		t.Fatal(err)
 	}
 	e.waitFor("the new bar", func(np rooms.NowPlaying) bool { return np.SkipVotes != nil && np.SkipVotes.Needed == 3 })
@@ -706,11 +706,11 @@ func TestVoteSkip(t *testing.T) {
 		t.Fatalf("two of three votes: %s %+v", describe(np), np.SkipVotes)
 	}
 	// Turning votes off drops the tally; turning them back on starts fresh.
-	if _, err := e.rooms.Update(ctx, e.alice.ID, e.room.ID, rooms.Update{Permissions: rooms.Permissions{Skip: rooms.Everyone}}); err != nil {
+	if _, err := e.rooms.Update(ctx, rooms.Actor{UserID: e.alice.ID}, e.room.ID, rooms.Update{Permissions: rooms.Permissions{Skip: rooms.Everyone}}); err != nil {
 		t.Fatal(err)
 	}
 	e.waitFor("votes off", func(np rooms.NowPlaying) bool { return np.SkipVotes == nil })
-	if _, err := e.rooms.Update(ctx, e.alice.ID, e.room.ID, vote); err != nil {
+	if _, err := e.rooms.Update(ctx, rooms.Actor{UserID: e.alice.ID}, e.room.ID, vote); err != nil {
 		t.Fatal(err)
 	}
 	e.waitFor("votes on", func(np rooms.NowPlaying) bool { return np.SkipVotes != nil && len(np.SkipVotes.Voters) == 0 })
@@ -783,7 +783,7 @@ func TestFallback(t *testing.T) {
 	}
 
 	// The room can turn it off.
-	if _, err := e.rooms.Update(ctx, e.alice.ID, e.room.ID, rooms.Update{Matching: &rooms.Matching{Fallback: new(false)}}); err != nil {
+	if _, err := e.rooms.Update(ctx, rooms.Actor{UserID: e.alice.ID}, e.room.ID, rooms.Update{Matching: &rooms.Matching{Fallback: new(false)}}); err != nil {
 		t.Fatal(err)
 	}
 	e.add(e.bob, "t06")

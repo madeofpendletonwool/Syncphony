@@ -154,4 +154,10 @@ const (
 	EndSkipped  = "skipped"
 	EndRemoved  = "removed"
 	EndError    = "error"
+
+	AuditRoleChanged = "role_changed"
+	AuditDisabled    = "disabled"
+	AuditEnabled     = "enabled"
+	AuditRemoved     = "removed"
+	AuditDeletedSelf = "deleted_self"
 )

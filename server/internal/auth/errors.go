@@ -33,6 +33,10 @@ var (
 	ErrWrongPassword = errors.New("current password is wrong")
 	// ErrNotFound: the thing doesn't exist (or isn't yours).
 	ErrNotFound = errors.New("not found")
+	// ErrAccountDisabled: an admin disabled the account.
+	ErrAccountDisabled = errors.New("this account is disabled; ask an admin")
+	// ErrLastAdmin: the change would leave no admin who can sign in.
+	ErrLastAdmin = errors.New("there has to be at least one admin who can sign in")
 )
 
 // InvalidInputError is a validation failure, with a message for the user.

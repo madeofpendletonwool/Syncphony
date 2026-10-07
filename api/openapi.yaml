@@ -444,6 +444,49 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /me/reauth/begin:
+    post:
+      operationId: beginReauth
+      summary: Start confirming it's you with a passkey
+      description: |
+        For something that can't be undone, like deleting your account.
+        Finish by sending the ceremony with that request.
+      tags: [account]
+      responses:
+        "200":
+          $ref: "#/components/responses/Ceremony"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/delete:
+    post:
+      operationId: deleteMe
+      summary: Delete your account
+      description: |
+        Confirm it's you with `password`, or with `ceremonyId` and
+        `credential` from `/me/reauth/begin`. Signs you out everywhere and
+        deletes your sign-in methods, linked services (and their
+        credentials), and picture; your queued songs are dropped. The rooms
+        you own go to the longest-standing admin. Rooms' history keeps your
+        songs, under "Former member". The last admin who can sign in can't
+        leave (409 `last_admin`).
+      tags: [account]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteMeRequest"
+      responses:
+        "204":
+          description: Deleted; the session cookie is cleared
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        default:
+          $ref: "#/components/responses/Error"
+
   /me/sessions:
     get:
       operationId: listMySessions
@@ -507,6 +550,69 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /users/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      operationId: updateUser
+      summary: Change someone's role, or disable their account (admin)
+      description: |
+        A disabled account is signed out everywhere and can't sign in, but
+        keeps its history, services and rooms. There's always at least one
+        admin who can sign in: demoting or disabling the last fails with
+        409 `last_admin`. You can't disable yourself. Guests can't be
+        managed here; remove them from their room.
+      tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: The user after the change
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: removeUser
+      summary: Remove someone's account (admin)
+      description: |
+        Like deleting your own account (`/me/delete`), for someone else:
+        their rooms become yours. Not for yourself, or the last admin who
+        can sign in.
+      tags: [admin]
+      responses:
+        "204":
+          description: Removed
+        default:
+          $ref: "#/components/responses/Error"
+
+  /user-audit:
+    get:
+      operationId: listUserAudit
+      summary: Who changed whose account, and when (admin)
+      tags: [admin]
+      responses:
+        "200":
+          description: The newest 100 changes, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserAuditEntry"
         default:
           $ref: "#/components/responses/Error"
 
@@ -2051,7 +2157,7 @@ paths:
           $ref: "#/components/responses/Error"
     patch:
       operationId: updateRoom
-      summary: Change a room you own
+      summary: Change a room (owner or admin)
       description: |
         Everyone in the room gets `room.updated`. A new fairness mode or
         `fairness` reorders the queue at once; `fairness` replaces the
@@ -2066,6 +2172,42 @@ paths:
       responses:
         "200":
           description: The room after the change
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deleteRoom
+      summary: Delete a room (owner or admin)
+      description: |
+        Its queue, history, nights, displays and guests go with it. Everyone
+        in the room gets `room.deleted`.
+      tags: [rooms]
+      responses:
+        "204":
+          description: Deleted
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/owner:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    put:
+      operationId: transferRoom
+      summary: Give a room to someone else (owner or admin)
+      description: The new owner must be a member who can sign in. Everyone in the room gets `room.updated`.
+      tags: [rooms]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferRoomRequest"
+      responses:
+        "200":
+          description: The room, with its new owner
           content:
             application/json:
               schema:
@@ -2393,9 +2535,70 @@ components:
           $ref: "#/components/schemas/Role"
         guest:
           $ref: "#/components/schemas/UserGuest"
+        disabled:
+          type: boolean
+          description: An admin disabled the account; it can't sign in. Absent means false.
+        removed:
+          type: boolean
+          description: |
+            The account was removed, and is kept anonymized only so rooms'
+            history adds up. Absent means false.
         createdAt:
           type: string
           format: date-time
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        role:
+          $ref: "#/components/schemas/Role"
+        disabled:
+          type: boolean
+
+    UserAuditEntry:
+      type: object
+      required: [id, actorName, targetName, action, createdAt]
+      properties:
+        id:
+          type: string
+        actorId:
+          type: string
+          description: Absent when the server's operator did it, from the command line.
+        actorName:
+          type: string
+          description: Their name at the time.
+        targetId:
+          type: string
+        targetName:
+          type: string
+          description: Their name at the time, even if the account was removed since.
+        action:
+          type: string
+          enum: [role_changed, disabled, enabled, removed, deleted_self]
+        role:
+          $ref: "#/components/schemas/Role"
+        createdAt:
+          type: string
+          format: date-time
+
+    DeleteMeRequest:
+      type: object
+      properties:
+        password:
+          type: string
+        ceremonyId:
+          type: string
+        credential:
+          type: object
+          additionalProperties: true
+          description: The browser's `PublicKeyCredential.toJSON()`.
+
+    TransferRoomRequest:
+      type: object
+      required: [userId]
+      properties:
+        userId:
+          type: string
 
     Me:
       allOf:
@@ -3553,7 +3756,9 @@ components:
         - `member.joined`, `member.left`: User. Someone's first connection to
           the room opened, or their last one closed.
         - `link.status`: ServiceLink. One of your links changed status.
-        - `room.updated`: Room. The room's name or settings changed.
+        - `room.updated`: Room. The room's name, settings or owner changed.
+        - `room.deleted`: `{"roomId": ...}`. The room was deleted. It's the
+          last event; the server then closes the socket with 4004.
         - `reaction.sent`: Reaction. Someone sent an emoji to the big screen.
         - `hearts.updated`: Hearts. Someone hearted a song, or took it back.
         - `night.ended`: Night. The night is over; crown its song of the night.
@@ -3566,12 +3771,13 @@ components:
 
         Close code 1013 (try again later) means the client fell behind and
         missed events: reconnect with `since` set to the last version seen.
-        Close code 4001 means the session ended; sign in again.
+        Close code 4001 means the session ended; sign in again. Close code
+        4004 means the room is gone; don't reconnect.
       required: [type, data]
       properties:
         type:
           type: string
-          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated, reaction.sent, hearts.updated, night.ended, guests.updated]
+          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated, room.deleted, reaction.sent, hearts.updated, night.ended, guests.updated]
         version:
           type: integer
           format: int64
