@@ -159,6 +159,13 @@ const (
 	FairnessRoundRobin = "round_robin"
 	FairnessFIFO       = "fifo"
 
+	VisibilityOpen     = "open"
+	VisibilityUnlisted = "unlisted"
+	VisibilityPrivate  = "private"
+
+	MemberJoined  = "member"
+	MemberPending = "pending"
+
 	ItemQueued  = "queued"
 	ItemPlaying = "playing"
 	ItemPlayed  = "played"

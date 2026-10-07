@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { DatabaseBackup, LoaderCircle, LogOut, Speaker } from 'lucide-react'
+import { DatabaseBackup, DoorOpen, LoaderCircle, LogOut, Speaker } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { api } from '@/api/client'
@@ -15,8 +15,10 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { UserAvatar } from '@/components/user-avatar'
+import { joinAsAdmin, visibility } from '@/lib/access'
 import { describeDevice } from '@/lib/account'
 import { meQuery } from '@/lib/auth'
+import { roomsQuery as myRoomsQuery } from '@/lib/room'
 import { fadeUp, stagger } from '@/lib/motion'
 import { formatBytes, serverSettingsQuery } from '@/lib/server'
 import { providersQuery } from '@/lib/services'
@@ -302,9 +304,22 @@ function Rooms() {
   const rooms = useQuery(roomsQuery)
   const users = useQuery(usersQuery)
   const userById = (id: string) => users.data?.find((u) => u.id === id)
+  const queryClient = useQueryClient()
+  const join = useMutation({
+    mutationFn: (roomId: string) => joinAsAdmin(roomId),
+    onSuccess: (room) => {
+      void queryClient.invalidateQueries({ queryKey: roomsQuery.queryKey })
+      void queryClient.invalidateQueries({ queryKey: myRoomsQuery.queryKey })
+      toast({ message: `You're in ${room.name}. Everyone there was told.` })
+    },
+    onError: (e) => toast({ message: errorMessage(e), tone: 'error' }),
+  })
 
   return (
-    <Card title="Rooms" hint="Who has each room open, and the speaker it plays through.">
+    <Card
+      title="Rooms"
+      hint="Who has each room open, and the speaker it plays through. You can change or delete any room; to see inside one that isn't open to you, join it as an admin, and its members are told."
+    >
       {rooms.isPending ? (
         <Loading />
       ) : rooms.isError ? (
@@ -315,11 +330,24 @@ function Rooms() {
         <ul className="mt-3 flex flex-col divide-y divide-border">
           {rooms.data.map((r) => {
             const members = r.members.map(userById).filter((u): u is User => !!u)
+            const v = visibility(r.visibility)
             return (
               <li key={r.roomId} className="flex flex-col gap-1.5 py-3">
                 <div className="flex items-center gap-2">
                   <p className="min-w-0 flex-1 truncate font-medium">{r.roomName}</p>
+                  {r.visibility !== 'open' && (
+                    <Badge variant="outline" className="gap-1" title={v.hint}>
+                      <v.icon className="size-3" />
+                      {v.label}
+                    </Badge>
+                  )}
                   <Badge variant={r.state === 'playing' ? 'default' : 'outline'}>{stateLabels[r.state]}</Badge>
+                  {!r.canEnter && (
+                    <Button size="xs" variant="ghost" disabled={join.isPending} onClick={() => join.mutate(r.roomId)}>
+                      {join.isPending && join.variables === r.roomId ? <LoaderCircle className="animate-spin" /> : <DoorOpen data-icon="inline-start" />}
+                      Join as admin
+                    </Button>
+                  )}
                 </div>
                 {r.title && <p className="truncate text-sm text-muted-foreground">{r.title}</p>}
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-caption text-muted-foreground">

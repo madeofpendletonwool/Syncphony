@@ -45,6 +45,9 @@ const (
 	// GuestsUpdated says a room's guests or guest pass changed. It
 	// carries the room's ID.
 	GuestsUpdated = "guests.updated"
+	// MembersUpdated carries rooms.MembersChanged: someone joined a room
+	// that isn't open, asked to, or left or was removed.
+	MembersUpdated = "members.updated"
 )
 
 // Event is something that happened. Data holds domain values (store rows,

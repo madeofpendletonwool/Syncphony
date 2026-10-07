@@ -158,19 +158,19 @@ func (e NowPlayingDriver) Valid() bool {
 
 // Defines values for PairingStatusStatus.
 const (
-	Approved PairingStatusStatus = "approved"
-	Linked   PairingStatusStatus = "linked"
-	Pending  PairingStatusStatus = "pending"
+	PairingStatusStatusApproved PairingStatusStatus = "approved"
+	PairingStatusStatusLinked   PairingStatusStatus = "linked"
+	PairingStatusStatusPending  PairingStatusStatus = "pending"
 )
 
 // Valid indicates whether the value is a known member of the PairingStatusStatus enum.
 func (e PairingStatusStatus) Valid() bool {
 	switch e {
-	case Approved:
+	case PairingStatusStatusApproved:
 		return true
-	case Linked:
+	case PairingStatusStatusLinked:
 		return true
-	case Pending:
+	case PairingStatusStatusPending:
 		return true
 	default:
 		return false
@@ -428,16 +428,16 @@ func (e ReactionEmoji) Valid() bool {
 
 // Defines values for Role.
 const (
-	Admin  Role = "admin"
-	Member Role = "member"
+	RoleAdmin  Role = "admin"
+	RoleMember Role = "member"
 )
 
 // Valid indicates whether the value is a known member of the Role enum.
 func (e Role) Valid() bool {
 	switch e {
-	case Admin:
+	case RoleAdmin:
 		return true
-	case Member:
+	case RoleMember:
 		return true
 	default:
 		return false
@@ -470,6 +470,7 @@ const (
 	RoomEventTypeLinkStatus        RoomEventType = "link.status"
 	RoomEventTypeMemberJoined      RoomEventType = "member.joined"
 	RoomEventTypeMemberLeft        RoomEventType = "member.left"
+	RoomEventTypeMembersUpdated    RoomEventType = "members.updated"
 	RoomEventTypeNightEnded        RoomEventType = "night.ended"
 	RoomEventTypeNowplayingUpdated RoomEventType = "nowplaying.updated"
 	RoomEventTypePlaybackNotice    RoomEventType = "playback.notice"
@@ -494,6 +495,8 @@ func (e RoomEventType) Valid() bool {
 		return true
 	case RoomEventTypeMemberLeft:
 		return true
+	case RoomEventTypeMembersUpdated:
+		return true
 	case RoomEventTypeNightEnded:
 		return true
 	case RoomEventTypeNowplayingUpdated:
@@ -507,6 +510,105 @@ func (e RoomEventType) Valid() bool {
 	case RoomEventTypeRoomDeleted:
 		return true
 	case RoomEventTypeRoomUpdated:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoomInvitePreviewStatus.
+const (
+	RoomInvitePreviewStatusMember  RoomInvitePreviewStatus = "member"
+	RoomInvitePreviewStatusNone    RoomInvitePreviewStatus = "none"
+	RoomInvitePreviewStatusPending RoomInvitePreviewStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the RoomInvitePreviewStatus enum.
+func (e RoomInvitePreviewStatus) Valid() bool {
+	switch e {
+	case RoomInvitePreviewStatusMember:
+		return true
+	case RoomInvitePreviewStatusNone:
+		return true
+	case RoomInvitePreviewStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoomInviteResultStatus.
+const (
+	RoomInviteResultStatusMember  RoomInviteResultStatus = "member"
+	RoomInviteResultStatusPending RoomInviteResultStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the RoomInviteResultStatus enum.
+func (e RoomInviteResultStatus) Valid() bool {
+	switch e {
+	case RoomInviteResultStatusMember:
+		return true
+	case RoomInviteResultStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoomMemberStatus.
+const (
+	RoomMemberStatusMember  RoomMemberStatus = "member"
+	RoomMemberStatusPending RoomMemberStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the RoomMemberStatus enum.
+func (e RoomMemberStatus) Valid() bool {
+	switch e {
+	case RoomMemberStatusMember:
+		return true
+	case RoomMemberStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoomMembersChangedChange.
+const (
+	RoomMembersChangedChangeJoined    RoomMembersChangedChange = "joined"
+	RoomMembersChangedChangeRemoved   RoomMembersChangedChange = "removed"
+	RoomMembersChangedChangeRequested RoomMembersChangedChange = "requested"
+)
+
+// Valid indicates whether the value is a known member of the RoomMembersChangedChange enum.
+func (e RoomMembersChangedChange) Valid() bool {
+	switch e {
+	case RoomMembersChangedChangeJoined:
+		return true
+	case RoomMembersChangedChangeRemoved:
+		return true
+	case RoomMembersChangedChangeRequested:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoomVisibility.
+const (
+	Open     RoomVisibility = "open"
+	Private  RoomVisibility = "private"
+	Unlisted RoomVisibility = "unlisted"
+)
+
+// Valid indicates whether the value is a known member of the RoomVisibility enum.
+func (e RoomVisibility) Valid() bool {
+	switch e {
+	case Open:
+		return true
+	case Private:
+		return true
+	case Unlisted:
 		return true
 	default:
 		return false
@@ -805,8 +907,19 @@ type CreateResetLinkRequest struct {
 	ExpiresInHours *int `json:"expiresInHours,omitempty"`
 }
 
+// CreateRoomInviteRequest defines model for CreateRoomInviteRequest.
+type CreateRoomInviteRequest struct {
+	// ExpiresAt Up to 90 days from now. Absent works until revoked.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+
+	// MaxUses How many people it lets in. 0 or absent for any number.
+	MaxUses *int `json:"maxUses,omitempty"`
+}
+
 // CreateRoomRequest defines model for CreateRoomRequest.
 type CreateRoomRequest struct {
+	ApproveJoins *bool `json:"approveJoins,omitempty"`
+
 	// Autopilot When the queue runs dry, autopilot adds songs like the ones the
 	// room has been playing, taking seeds from each member's songs in
 	// turn. It only plays while the room has a speaker.
@@ -834,6 +947,12 @@ type CreateRoomRequest struct {
 	// SkipVotePercent A skip vote passes once more than this percent of the room has
 	// voted (not counting whoever queued the song): 50 is a majority.
 	SkipVotePercent *SkipVotePercent `json:"skipVotePercent,omitempty"`
+
+	// Visibility Who can see and join the room. `open`: everyone on the server.
+	// `unlisted`: its members, and anyone with one of its invite links,
+	// which any member can share. `private`: the members its owner lets
+	// in. The owner is always in.
+	Visibility *RoomVisibility `json:"visibility,omitempty"`
 }
 
 // DeleteMeRequest defines model for DeleteMeRequest.
@@ -1604,6 +1723,9 @@ type Role string
 
 // Room defines model for Room.
 type Room struct {
+	// ApproveJoins While private, someone using an invite asks to join, and the owner lets them in.
+	ApproveJoins bool `json:"approveJoins"`
+
 	// Autopilot When the queue runs dry, autopilot adds songs like the ones the
 	// room has been playing, taking seeds from each member's songs in
 	// turn. It only plays while the room has a speaker.
@@ -1632,10 +1754,19 @@ type Room struct {
 	// SkipVotePercent A skip vote passes once more than this percent of the room has
 	// voted (not counting whoever queued the song): 50 is a majority.
 	SkipVotePercent SkipVotePercent `json:"skipVotePercent"`
+
+	// Visibility Who can see and join the room. `open`: everyone on the server.
+	// `unlisted`: its members, and anyone with one of its invite links,
+	// which any member can share. `private`: the members its owner lets
+	// in. The owner is always in.
+	Visibility RoomVisibility `json:"visibility"`
 }
 
 // RoomActivity defines model for RoomActivity.
 type RoomActivity struct {
+	// CanEnter You can open the room. If not, join it as an admin first.
+	CanEnter bool `json:"canEnter"`
+
 	// Members IDs of who has the room open right now.
 	Members []string `json:"members"`
 	OwnerId string   `json:"ownerId"`
@@ -1651,6 +1782,12 @@ type RoomActivity struct {
 
 	// Title The song playing or paused, if any.
 	Title *string `json:"title,omitempty"`
+
+	// Visibility Who can see and join the room. `open`: everyone on the server.
+	// `unlisted`: its members, and anyone with one of its invite links,
+	// which any member can share. `private`: the members its owner lets
+	// in. The owner is always in.
+	Visibility RoomVisibility `json:"visibility"`
 }
 
 // RoomAutopilot When the queue runs dry, autopilot adds songs like the ones the
@@ -1689,6 +1826,8 @@ type RoomAutopilotAdventure string
 //   - `night.ended`: Night. The night is over; crown its song of the night.
 //   - `guests.updated`: `{"roomId": ...}`. A guest joined or was removed,
 //     or the guest pass changed: fetch them again.
+//   - `members.updated`: RoomMembersChanged. Someone joined a room that
+//     isn't open, asked to, or left or was removed.
 //
 // A paired display connects with its display cookie instead, to its
 // own room only. So does a signed-in user with `display=1`: either way
@@ -1697,7 +1836,10 @@ type RoomAutopilotAdventure string
 // Close code 1013 (try again later) means the client fell behind and
 // missed events: reconnect with `since` set to the last version seen.
 // Close code 4001 means the session ended; sign in again. Close code
-// 4004 means the room is gone; don't reconnect.
+// 4003 means you can't open the room any more (you were removed, or
+// it stopped being open to you); don't reconnect. Close code 4004
+// means the room is gone; don't reconnect. A room you can't open is
+// 404, as if it weren't there.
 type RoomEvent struct {
 	Data map[string]interface{} `json:"data"`
 	Type RoomEventType          `json:"type"`
@@ -1757,6 +1899,54 @@ type RoomHello struct {
 	You string `json:"you"`
 }
 
+// RoomInvite defines model for RoomInvite.
+type RoomInvite struct {
+	Code      string    `json:"code"`
+	CreatedAt time.Time `json:"createdAt"`
+	CreatedBy *string   `json:"createdBy,omitempty"`
+
+	// ExpiresAt Absent if it works until revoked.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+
+	// MaxUses How many people it lets in. Absent for any number.
+	MaxUses *int   `json:"maxUses,omitempty"`
+	RoomId  string `json:"roomId"`
+
+	// Url The link to share.
+	Url  string `json:"url"`
+	Uses int    `json:"uses"`
+}
+
+// RoomInvitePreview defines model for RoomInvitePreview.
+type RoomInvitePreview struct {
+	// Approval Using it asks the owner to let you in.
+	Approval bool   `json:"approval"`
+	OwnerId  string `json:"ownerId"`
+	RoomId   string `json:"roomId"`
+	RoomName string `json:"roomName"`
+
+	// Status `member` includes owning the room.
+	Status RoomInvitePreviewStatus `json:"status"`
+
+	// Visibility Who can see and join the room. `open`: everyone on the server.
+	// `unlisted`: its members, and anyone with one of its invite links,
+	// which any member can share. `private`: the members its owner lets
+	// in. The owner is always in.
+	Visibility RoomVisibility `json:"visibility"`
+}
+
+// RoomInvitePreviewStatus `member` includes owning the room.
+type RoomInvitePreviewStatus string
+
+// RoomInviteResult defines model for RoomInviteResult.
+type RoomInviteResult struct {
+	Room   RoomInvitePreview      `json:"room"`
+	Status RoomInviteResultStatus `json:"status"`
+}
+
+// RoomInviteResultStatus defines model for RoomInviteResult.Status.
+type RoomInviteResultStatus string
+
 // RoomMatching How the room uses the same song on other services.
 type RoomMatching struct {
 	// Borrow Anyone may queue a song the room played again, even if it's only
@@ -1769,6 +1959,32 @@ type RoomMatching struct {
 	// artist and length.
 	Fallback bool `json:"fallback"`
 }
+
+// RoomMember defines model for RoomMember.
+type RoomMember struct {
+	// AddedBy Who let them in, if someone did (not an invite).
+	AddedBy *string `json:"addedBy,omitempty"`
+
+	// JoinedAt When they joined, or asked to.
+	JoinedAt time.Time `json:"joinedAt"`
+
+	// Status `pending`: asked to join, and not let in yet.
+	Status RoomMemberStatus `json:"status"`
+	User   User             `json:"user"`
+}
+
+// RoomMemberStatus `pending`: asked to join, and not let in yet.
+type RoomMemberStatus string
+
+// RoomMembersChanged defines model for RoomMembersChanged.
+type RoomMembersChanged struct {
+	Change RoomMembersChangedChange `json:"change"`
+	RoomId string                   `json:"roomId"`
+	UserId string                   `json:"userId"`
+}
+
+// RoomMembersChangedChange defines model for RoomMembersChanged.Change.
+type RoomMembersChangedChange string
 
 // RoomPermissions defines model for RoomPermissions.
 type RoomPermissions struct {
@@ -1817,6 +2033,12 @@ type RoomStats struct {
 	TopArtists []ArtistCount `json:"topArtists"`
 	TopTracks  []TrackCount  `json:"topTracks"`
 }
+
+// RoomVisibility Who can see and join the room. `open`: everyone on the server.
+// `unlisted`: its members, and anyone with one of its invite links,
+// which any member can share. `private`: the members its owner lets
+// in. The owner is always in.
+type RoomVisibility string
 
 // SearchGroup One link's search results.
 type SearchGroup struct {
@@ -2037,6 +2259,8 @@ type UpdateLinkRequest struct {
 
 // UpdateRoomRequest defines model for UpdateRoomRequest.
 type UpdateRoomRequest struct {
+	ApproveJoins *bool `json:"approveJoins,omitempty"`
+
 	// Autopilot When the queue runs dry, autopilot adds songs like the ones the
 	// room has been playing, taking seeds from each member's songs in
 	// turn. It only plays while the room has a speaker.
@@ -2064,6 +2288,10 @@ type UpdateRoomRequest struct {
 	// SkipVotePercent A skip vote passes once more than this percent of the room has
 	// voted (not counting whoever queued the song): 50 is a majority.
 	SkipVotePercent *SkipVotePercent `json:"skipVotePercent,omitempty"`
+
+	// Visibility Changing it revokes the room's invite links. Closing an open
+	// room makes whoever's in it, or has songs waiting, a member.
+	Visibility *RoomVisibility `json:"visibility,omitempty"`
 }
 
 // UpdateUserRequest defines model for UpdateUserRequest.
@@ -2368,6 +2596,9 @@ type UpdateDisplayJSONRequestBody = UpdateDisplayRequest
 // CreateGuestPassJSONRequestBody defines body for CreateGuestPass for application/json ContentType.
 type CreateGuestPassJSONRequestBody = CreateGuestPassRequest
 
+// CreateRoomInviteJSONRequestBody defines body for CreateRoomInvite for application/json ContentType.
+type CreateRoomInviteJSONRequestBody = CreateRoomInviteRequest
+
 // TransferRoomJSONRequestBody defines body for TransferRoom for application/json ContentType.
 type TransferRoomJSONRequestBody = TransferRoomRequest
 
@@ -2589,7 +2820,13 @@ type ServerInterface interface {
 	// ResetPassword Set a new password with a reset link
 	// (POST /reset-links/{code}/password)
 	ResetPassword(w http.ResponseWriter, r *http.Request, code ResetCode)
-	// ListRooms Every room
+	// GetRoomInvite Check a room invite before using it
+	// (GET /room-invites/{code})
+	GetRoomInvite(w http.ResponseWriter, r *http.Request, code string)
+	// UseRoomInvite Join a room with an invite
+	// (POST /room-invites/{code})
+	UseRoomInvite(w http.ResponseWriter, r *http.Request, code string)
+	// ListRooms The rooms you can open
 	// (GET /rooms)
 	ListRooms(w http.ResponseWriter, r *http.Request)
 	// CreateRoom Create a room you own
@@ -2604,6 +2841,9 @@ type ServerInterface interface {
 	// UpdateRoom Change a room (owner or admin)
 	// (PATCH /rooms/{roomId})
 	UpdateRoom(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// JoinRoomAsAdmin Join a room you can't otherwise open (admins)
+	// (POST /rooms/{roomId}/admin-join)
+	JoinRoomAsAdmin(w http.ResponseWriter, r *http.Request, roomId RoomId)
 	// ListDisplays The room's paired displays
 	// (GET /rooms/{roomId}/displays)
 	ListDisplays(w http.ResponseWriter, r *http.Request, roomId RoomId)
@@ -2634,9 +2874,27 @@ type ServerInterface interface {
 	// GetHistory Songs the room played, newest first
 	// (GET /rooms/{roomId}/history)
 	GetHistory(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetHistoryParams)
+	// ListRoomInvites The room's invite links
+	// (GET /rooms/{roomId}/invites)
+	ListRoomInvites(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// CreateRoomInvite Make an invite link
+	// (POST /rooms/{roomId}/invites)
+	CreateRoomInvite(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// RevokeRoomInvite Revoke an invite link
+	// (DELETE /rooms/{roomId}/invites/{code})
+	RevokeRoomInvite(w http.ResponseWriter, r *http.Request, roomId RoomId, code string)
 	// ClearLane Remove all your waiting songs
 	// (DELETE /rooms/{roomId}/lane)
 	ClearLane(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// ListRoomMembers Who's a member of the room
+	// (GET /rooms/{roomId}/members)
+	ListRoomMembers(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// RemoveRoomMember Remove someone from the room, or leave it
+	// (DELETE /rooms/{roomId}/members/{userId})
+	RemoveRoomMember(w http.ResponseWriter, r *http.Request, roomId RoomId, userId string)
+	// AddRoomMember Let someone into the room (owner or admin)
+	// (PUT /rooms/{roomId}/members/{userId})
+	AddRoomMember(w http.ResponseWriter, r *http.Request, roomId RoomId, userId string)
 	// ListNights The room's past nights, and their songs of the night
 	// (GET /rooms/{roomId}/nights)
 	ListNights(w http.ResponseWriter, r *http.Request, roomId RoomId, params ListNightsParams)
@@ -4080,6 +4338,58 @@ func (siw *ServerInterfaceWrapper) ResetPassword(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetRoomInvite operation middleware
+func (siw *ServerInterfaceWrapper) GetRoomInvite(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRoomInvite(w, r, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UseRoomInvite operation middleware
+func (siw *ServerInterfaceWrapper) UseRoomInvite(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "code" -------------
+	var code string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UseRoomInvite(w, r, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListRooms operation middleware
 func (siw *ServerInterfaceWrapper) ListRooms(w http.ResponseWriter, r *http.Request) {
 
@@ -4177,6 +4487,32 @@ func (siw *ServerInterfaceWrapper) UpdateRoom(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateRoom(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// JoinRoomAsAdmin operation middleware
+func (siw *ServerInterfaceWrapper) JoinRoomAsAdmin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.JoinRoomAsAdmin(w, r, roomId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4515,6 +4851,93 @@ func (siw *ServerInterfaceWrapper) GetHistory(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// ListRoomInvites operation middleware
+func (siw *ServerInterfaceWrapper) ListRoomInvites(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRoomInvites(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateRoomInvite operation middleware
+func (siw *ServerInterfaceWrapper) CreateRoomInvite(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateRoomInvite(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeRoomInvite operation middleware
+func (siw *ServerInterfaceWrapper) RevokeRoomInvite(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "code" -------------
+	var code string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeRoomInvite(w, r, roomId, code)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ClearLane operation middleware
 func (siw *ServerInterfaceWrapper) ClearLane(w http.ResponseWriter, r *http.Request) {
 
@@ -4532,6 +4955,102 @@ func (siw *ServerInterfaceWrapper) ClearLane(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ClearLane(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRoomMembers operation middleware
+func (siw *ServerInterfaceWrapper) ListRoomMembers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRoomMembers(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveRoomMember operation middleware
+func (siw *ServerInterfaceWrapper) RemoveRoomMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveRoomMember(w, r, roomId, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddRoomMember operation middleware
+func (siw *ServerInterfaceWrapper) AddRoomMember(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddRoomMember(w, r, roomId, userId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6016,6 +6535,15 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}", wrapper.GetRoom)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/rooms/{roomId}", wrapper.UpdateRoom)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/rooms/{roomId}/owner", wrapper.TransferRoom)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/members", wrapper.ListRoomMembers)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/members/{userId}", wrapper.RemoveRoomMember)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/rooms/{roomId}/members/{userId}", wrapper.AddRoomMember)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/admin-join", wrapper.JoinRoomAsAdmin)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/invites", wrapper.ListRoomInvites)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/invites", wrapper.CreateRoomInvite)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/invites/{code}", wrapper.RevokeRoomInvite)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/room-invites/{code}", wrapper.GetRoomInvite)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/room-invites/{code}", wrapper.UseRoomInvite)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/playback", wrapper.GetPlayback)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/playback", wrapper.ControlPlayback)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/player", wrapper.ReleasePlayer)
@@ -8391,6 +8919,84 @@ func (response ResetPassworddefaultJSONResponse) VisitResetPasswordResponse(w ht
 	return err
 }
 
+type GetRoomInviteRequestObject struct {
+	Code string `json:"code"`
+}
+
+type GetRoomInviteResponseObject interface {
+	VisitGetRoomInviteResponse(w http.ResponseWriter) error
+}
+
+type GetRoomInvite200JSONResponse RoomInvitePreview
+
+func (response GetRoomInvite200JSONResponse) VisitGetRoomInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoomInvitedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetRoomInvitedefaultJSONResponse) VisitGetRoomInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UseRoomInviteRequestObject struct {
+	Code string `json:"code"`
+}
+
+type UseRoomInviteResponseObject interface {
+	VisitUseRoomInviteResponse(w http.ResponseWriter) error
+}
+
+type UseRoomInvite200JSONResponse RoomInviteResult
+
+func (response UseRoomInvite200JSONResponse) VisitUseRoomInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UseRoomInvitedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UseRoomInvitedefaultJSONResponse) VisitUseRoomInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListRoomsRequestObject struct {
 }
 
@@ -8569,6 +9175,45 @@ type UpdateRoomdefaultJSONResponse struct {
 }
 
 func (response UpdateRoomdefaultJSONResponse) VisitUpdateRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type JoinRoomAsAdminRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type JoinRoomAsAdminResponseObject interface {
+	VisitJoinRoomAsAdminResponse(w http.ResponseWriter) error
+}
+
+type JoinRoomAsAdmin200JSONResponse Room
+
+func (response JoinRoomAsAdmin200JSONResponse) VisitJoinRoomAsAdminResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type JoinRoomAsAdmindefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response JoinRoomAsAdmindefaultJSONResponse) VisitJoinRoomAsAdminResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -8959,6 +9604,119 @@ func (response GetHistorydefaultJSONResponse) VisitGetHistoryResponse(w http.Res
 	return err
 }
 
+type ListRoomInvitesRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type ListRoomInvitesResponseObject interface {
+	VisitListRoomInvitesResponse(w http.ResponseWriter) error
+}
+
+type ListRoomInvites200JSONResponse []RoomInvite
+
+func (response ListRoomInvites200JSONResponse) VisitListRoomInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRoomInvitesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListRoomInvitesdefaultJSONResponse) VisitListRoomInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRoomInviteRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Body   *CreateRoomInviteJSONRequestBody
+}
+
+type CreateRoomInviteResponseObject interface {
+	VisitCreateRoomInviteResponse(w http.ResponseWriter) error
+}
+
+type CreateRoomInvite201JSONResponse RoomInvite
+
+func (response CreateRoomInvite201JSONResponse) VisitCreateRoomInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRoomInvitedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateRoomInvitedefaultJSONResponse) VisitCreateRoomInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRoomInviteRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Code   string `json:"code"`
+}
+
+type RevokeRoomInviteResponseObject interface {
+	VisitRevokeRoomInviteResponse(w http.ResponseWriter) error
+}
+
+type RevokeRoomInvite204Response struct {
+}
+
+func (response RevokeRoomInvite204Response) VisitRevokeRoomInviteResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeRoomInvitedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RevokeRoomInvitedefaultJSONResponse) VisitRevokeRoomInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ClearLaneRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 }
@@ -8987,6 +9745,113 @@ type ClearLanedefaultJSONResponse struct {
 }
 
 func (response ClearLanedefaultJSONResponse) VisitClearLaneResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRoomMembersRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type ListRoomMembersResponseObject interface {
+	VisitListRoomMembersResponse(w http.ResponseWriter) error
+}
+
+type ListRoomMembers200JSONResponse []RoomMember
+
+func (response ListRoomMembers200JSONResponse) VisitListRoomMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRoomMembersdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListRoomMembersdefaultJSONResponse) VisitListRoomMembersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveRoomMemberRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	UserId string `json:"userId"`
+}
+
+type RemoveRoomMemberResponseObject interface {
+	VisitRemoveRoomMemberResponse(w http.ResponseWriter) error
+}
+
+type RemoveRoomMember204Response struct {
+}
+
+func (response RemoveRoomMember204Response) VisitRemoveRoomMemberResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveRoomMemberdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RemoveRoomMemberdefaultJSONResponse) VisitRemoveRoomMemberResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddRoomMemberRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	UserId string `json:"userId"`
+}
+
+type AddRoomMemberResponseObject interface {
+	VisitAddRoomMemberResponse(w http.ResponseWriter) error
+}
+
+type AddRoomMember204Response struct {
+}
+
+func (response AddRoomMember204Response) VisitAddRoomMemberResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type AddRoomMemberdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response AddRoomMemberdefaultJSONResponse) VisitAddRoomMemberResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -10646,7 +11511,13 @@ type StrictServerInterface interface {
 	// ResetPassword Set a new password with a reset link
 	// (POST /reset-links/{code}/password)
 	ResetPassword(ctx context.Context, request ResetPasswordRequestObject) (ResetPasswordResponseObject, error)
-	// ListRooms Every room
+	// GetRoomInvite Check a room invite before using it
+	// (GET /room-invites/{code})
+	GetRoomInvite(ctx context.Context, request GetRoomInviteRequestObject) (GetRoomInviteResponseObject, error)
+	// UseRoomInvite Join a room with an invite
+	// (POST /room-invites/{code})
+	UseRoomInvite(ctx context.Context, request UseRoomInviteRequestObject) (UseRoomInviteResponseObject, error)
+	// ListRooms The rooms you can open
 	// (GET /rooms)
 	ListRooms(ctx context.Context, request ListRoomsRequestObject) (ListRoomsResponseObject, error)
 	// CreateRoom Create a room you own
@@ -10661,6 +11532,9 @@ type StrictServerInterface interface {
 	// UpdateRoom Change a room (owner or admin)
 	// (PATCH /rooms/{roomId})
 	UpdateRoom(ctx context.Context, request UpdateRoomRequestObject) (UpdateRoomResponseObject, error)
+	// JoinRoomAsAdmin Join a room you can't otherwise open (admins)
+	// (POST /rooms/{roomId}/admin-join)
+	JoinRoomAsAdmin(ctx context.Context, request JoinRoomAsAdminRequestObject) (JoinRoomAsAdminResponseObject, error)
 	// ListDisplays The room's paired displays
 	// (GET /rooms/{roomId}/displays)
 	ListDisplays(ctx context.Context, request ListDisplaysRequestObject) (ListDisplaysResponseObject, error)
@@ -10691,9 +11565,27 @@ type StrictServerInterface interface {
 	// GetHistory Songs the room played, newest first
 	// (GET /rooms/{roomId}/history)
 	GetHistory(ctx context.Context, request GetHistoryRequestObject) (GetHistoryResponseObject, error)
+	// ListRoomInvites The room's invite links
+	// (GET /rooms/{roomId}/invites)
+	ListRoomInvites(ctx context.Context, request ListRoomInvitesRequestObject) (ListRoomInvitesResponseObject, error)
+	// CreateRoomInvite Make an invite link
+	// (POST /rooms/{roomId}/invites)
+	CreateRoomInvite(ctx context.Context, request CreateRoomInviteRequestObject) (CreateRoomInviteResponseObject, error)
+	// RevokeRoomInvite Revoke an invite link
+	// (DELETE /rooms/{roomId}/invites/{code})
+	RevokeRoomInvite(ctx context.Context, request RevokeRoomInviteRequestObject) (RevokeRoomInviteResponseObject, error)
 	// ClearLane Remove all your waiting songs
 	// (DELETE /rooms/{roomId}/lane)
 	ClearLane(ctx context.Context, request ClearLaneRequestObject) (ClearLaneResponseObject, error)
+	// ListRoomMembers Who's a member of the room
+	// (GET /rooms/{roomId}/members)
+	ListRoomMembers(ctx context.Context, request ListRoomMembersRequestObject) (ListRoomMembersResponseObject, error)
+	// RemoveRoomMember Remove someone from the room, or leave it
+	// (DELETE /rooms/{roomId}/members/{userId})
+	RemoveRoomMember(ctx context.Context, request RemoveRoomMemberRequestObject) (RemoveRoomMemberResponseObject, error)
+	// AddRoomMember Let someone into the room (owner or admin)
+	// (PUT /rooms/{roomId}/members/{userId})
+	AddRoomMember(ctx context.Context, request AddRoomMemberRequestObject) (AddRoomMemberResponseObject, error)
 	// ListNights The room's past nights, and their songs of the night
 	// (GET /rooms/{roomId}/nights)
 	ListNights(ctx context.Context, request ListNightsRequestObject) (ListNightsResponseObject, error)
@@ -12527,6 +13419,58 @@ func (sh *strictHandler) ResetPassword(w http.ResponseWriter, r *http.Request, c
 	}
 }
 
+// GetRoomInvite operation middleware
+func (sh *strictHandler) GetRoomInvite(w http.ResponseWriter, r *http.Request, code string) {
+	var request GetRoomInviteRequestObject
+
+	request.Code = code
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRoomInvite(ctx, request.(GetRoomInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRoomInvite")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRoomInviteResponseObject); ok {
+		if err := validResponse.VisitGetRoomInviteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UseRoomInvite operation middleware
+func (sh *strictHandler) UseRoomInvite(w http.ResponseWriter, r *http.Request, code string) {
+	var request UseRoomInviteRequestObject
+
+	request.Code = code
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UseRoomInvite(ctx, request.(UseRoomInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UseRoomInvite")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UseRoomInviteResponseObject); ok {
+		if err := validResponse.VisitUseRoomInviteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListRooms operation middleware
 func (sh *strictHandler) ListRooms(w http.ResponseWriter, r *http.Request) {
 	var request ListRoomsRequestObject
@@ -12660,6 +13604,32 @@ func (sh *strictHandler) UpdateRoom(w http.ResponseWriter, r *http.Request, room
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateRoomResponseObject); ok {
 		if err := validResponse.VisitUpdateRoomResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// JoinRoomAsAdmin operation middleware
+func (sh *strictHandler) JoinRoomAsAdmin(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request JoinRoomAsAdminRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.JoinRoomAsAdmin(ctx, request.(JoinRoomAsAdminRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "JoinRoomAsAdmin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(JoinRoomAsAdminResponseObject); ok {
+		if err := validResponse.VisitJoinRoomAsAdminResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -12952,6 +13922,92 @@ func (sh *strictHandler) GetHistory(w http.ResponseWriter, r *http.Request, room
 	}
 }
 
+// ListRoomInvites operation middleware
+func (sh *strictHandler) ListRoomInvites(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request ListRoomInvitesRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRoomInvites(ctx, request.(ListRoomInvitesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRoomInvites")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRoomInvitesResponseObject); ok {
+		if err := validResponse.VisitListRoomInvitesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateRoomInvite operation middleware
+func (sh *strictHandler) CreateRoomInvite(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request CreateRoomInviteRequestObject
+
+	request.RoomId = roomId
+
+	var body CreateRoomInviteJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateRoomInvite(ctx, request.(CreateRoomInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateRoomInvite")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateRoomInviteResponseObject); ok {
+		if err := validResponse.VisitCreateRoomInviteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeRoomInvite operation middleware
+func (sh *strictHandler) RevokeRoomInvite(w http.ResponseWriter, r *http.Request, roomId RoomId, code string) {
+	var request RevokeRoomInviteRequestObject
+
+	request.RoomId = roomId
+	request.Code = code
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeRoomInvite(ctx, request.(RevokeRoomInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeRoomInvite")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeRoomInviteResponseObject); ok {
+		if err := validResponse.VisitRevokeRoomInviteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ClearLane operation middleware
 func (sh *strictHandler) ClearLane(w http.ResponseWriter, r *http.Request, roomId RoomId) {
 	var request ClearLaneRequestObject
@@ -12971,6 +14027,86 @@ func (sh *strictHandler) ClearLane(w http.ResponseWriter, r *http.Request, roomI
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ClearLaneResponseObject); ok {
 		if err := validResponse.VisitClearLaneResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListRoomMembers operation middleware
+func (sh *strictHandler) ListRoomMembers(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request ListRoomMembersRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRoomMembers(ctx, request.(ListRoomMembersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRoomMembers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRoomMembersResponseObject); ok {
+		if err := validResponse.VisitListRoomMembersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveRoomMember operation middleware
+func (sh *strictHandler) RemoveRoomMember(w http.ResponseWriter, r *http.Request, roomId RoomId, userId string) {
+	var request RemoveRoomMemberRequestObject
+
+	request.RoomId = roomId
+	request.UserId = userId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveRoomMember(ctx, request.(RemoveRoomMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveRoomMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveRoomMemberResponseObject); ok {
+		if err := validResponse.VisitRemoveRoomMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddRoomMember operation middleware
+func (sh *strictHandler) AddRoomMember(w http.ResponseWriter, r *http.Request, roomId RoomId, userId string) {
+	var request AddRoomMemberRequestObject
+
+	request.RoomId = roomId
+	request.UserId = userId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddRoomMember(ctx, request.(AddRoomMemberRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddRoomMember")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddRoomMemberResponseObject); ok {
+		if err := validResponse.VisitAddRoomMemberResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

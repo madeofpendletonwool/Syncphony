@@ -1794,8 +1794,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Every room
-         * @description A guest sees only their own room.
+         * The rooms you can open
+         * @description Open rooms, rooms you own, and rooms you're a member of. Admins see
+         *     the rest on the server page (`/admin/rooms`). A guest sees only
+         *     their own room.
          */
         get: operations["listRooms"];
         put?: never;
@@ -1849,10 +1851,174 @@ export interface paths {
         get?: never;
         /**
          * Give a room to someone else (owner or admin)
-         * @description The new owner must be a member who can sign in. Everyone in the room gets `room.updated`.
+         * @description The new owner must be a member who can sign in. The old owner
+         *     stays in the room as a member. Everyone in the room gets
+         *     `room.updated`.
          */
         put: operations["transferRoom"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Who's a member of the room
+         * @description For a room that isn't open: its members, oldest first, not counting
+         *     the owner (always in). The owner and admins also see who's asked to
+         *     join (`status: pending`). An open room has no members list; anyone
+         *     on the server can join it.
+         */
+        get: operations["listRoomMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/members/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                userId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Let someone into the room (owner or admin)
+         * @description Adds a member of the server to a room that isn't open, or lets in
+         *     someone who asked to join. Everyone in the room gets
+         *     `members.updated`.
+         */
+        put: operations["addRoomMember"];
+        post?: never;
+        /**
+         * Remove someone from the room, or leave it
+         * @description The owner or an admin may remove anyone but the owner, or turn down
+         *     a request to join. Anyone may leave, or take back their own
+         *     request. Their waiting songs leave the queue, and their connections
+         *     to the room close with 4003. Everyone in the room gets
+         *     `members.updated`.
+         */
+        delete: operations["removeRoomMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/admin-join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join a room you can't otherwise open (admins)
+         * @description Makes the admin a member. Everyone in the room is told, with a
+         *     `playback.notice` and `members.updated`.
+         */
+        post: operations["joinRoomAsAdmin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The room's invite links
+         * @description Invites that still work, newest first. Anyone in an unlisted room;
+         *     only the owner or an admin in a private one. Open rooms have none.
+         */
+        get: operations["listRoomInvites"];
+        put?: never;
+        /**
+         * Make an invite link
+         * @description A link that lets members of the server into a room that isn't open.
+         *     Anyone in an unlisted room may make one; only the owner or an admin
+         *     in a private one. Changing the room's visibility revokes them all.
+         */
+        post: operations["createRoomInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/invites/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                code: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke an invite link
+         * @description Whoever made it, the room's owner, or an admin.
+         */
+        delete: operations["revokeRoomInvite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/room-invites/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Check a room invite before using it
+         * @description `room_invite_invalid` (404) if it's wrong, expired, used up or
+         *     revoked. Members of the server only.
+         */
+        get: operations["getRoomInvite"];
+        put?: never;
+        /**
+         * Join a room with an invite
+         * @description Makes you a member, or in a private room that approves who joins,
+         *     asks the owner to let you in (`status: pending`). If you're already
+         *     in, it uses nothing up. Everyone in the room gets `members.updated`.
+         */
+        post: operations["useRoomInvite"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2232,6 +2398,9 @@ export interface components {
             roomId: string;
             roomName: string;
             ownerId: string;
+            visibility: components["schemas"]["RoomVisibility"];
+            /** @description You can open the room. If not, join it as an admin first. */
+            canEnter: boolean;
             /** @description IDs of who has the room open right now. */
             members: string[];
             state: components["schemas"]["PlaybackState"];
@@ -2725,6 +2894,8 @@ export interface components {
          *     - `night.ended`: Night. The night is over; crown its song of the night.
          *     - `guests.updated`: `{"roomId": ...}`. A guest joined or was removed,
          *       or the guest pass changed: fetch them again.
+         *     - `members.updated`: RoomMembersChanged. Someone joined a room that
+         *       isn't open, asked to, or left or was removed.
          *
          *     A paired display connects with its display cookie instead, to its
          *     own room only. So does a signed-in user with `display=1`: either way
@@ -2733,11 +2904,14 @@ export interface components {
          *     Close code 1013 (try again later) means the client fell behind and
          *     missed events: reconnect with `since` set to the last version seen.
          *     Close code 4001 means the session ended; sign in again. Close code
-         *     4004 means the room is gone; don't reconnect.
+         *     4003 means you can't open the room any more (you were removed, or
+         *     it stopped being open to you); don't reconnect. Close code 4004
+         *     means the room is gone; don't reconnect. A room you can't open is
+         *     404, as if it weren't there.
          */
         RoomEvent: {
             /** @enum {string} */
-            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "room.deleted" | "reaction.sent" | "hearts.updated" | "night.ended" | "guests.updated";
+            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "room.deleted" | "reaction.sent" | "hearts.updated" | "night.ended" | "guests.updated" | "members.updated";
             /**
              * Format: int64
              * @description Queue version, on `queue.updated` only.
@@ -3112,10 +3286,86 @@ export interface components {
              */
             adventure: "similar" | "discovery";
         };
+        /**
+         * @description Who can see and join the room. `open`: everyone on the server.
+         *     `unlisted`: its members, and anyone with one of its invite links,
+         *     which any member can share. `private`: the members its owner lets
+         *     in. The owner is always in.
+         * @enum {string}
+         */
+        RoomVisibility: "open" | "unlisted" | "private";
+        RoomMember: {
+            user: components["schemas"]["User"];
+            /**
+             * @description `pending`: asked to join, and not let in yet.
+             * @enum {string}
+             */
+            status: "member" | "pending";
+            /** @description Who let them in, if someone did (not an invite). */
+            addedBy?: string;
+            /**
+             * Format: date-time
+             * @description When they joined, or asked to.
+             */
+            joinedAt: string;
+        };
+        RoomInvite: {
+            code: string;
+            roomId: string;
+            /** @description The link to share. */
+            url: string;
+            createdBy?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Absent if it works until revoked.
+             */
+            expiresAt?: string;
+            /** @description How many people it lets in. Absent for any number. */
+            maxUses?: number;
+            uses: number;
+        };
+        CreateRoomInviteRequest: {
+            /**
+             * Format: date-time
+             * @description Up to 90 days from now. Absent works until revoked.
+             */
+            expiresAt?: string;
+            /** @description How many people it lets in. 0 or absent for any number. */
+            maxUses?: number;
+        };
+        RoomInvitePreview: {
+            roomId: string;
+            roomName: string;
+            ownerId: string;
+            visibility: components["schemas"]["RoomVisibility"];
+            /** @description Using it asks the owner to let you in. */
+            approval: boolean;
+            /**
+             * @description `member` includes owning the room.
+             * @enum {string}
+             */
+            status: "none" | "pending" | "member";
+        };
+        RoomInviteResult: {
+            /** @enum {string} */
+            status: "member" | "pending";
+            room: components["schemas"]["RoomInvitePreview"];
+        };
+        RoomMembersChanged: {
+            roomId: string;
+            userId: string;
+            /** @enum {string} */
+            change: "joined" | "requested" | "removed";
+        };
         Room: {
             id: string;
             name: string;
             ownerId: string;
+            visibility: components["schemas"]["RoomVisibility"];
+            /** @description While private, someone using an invite asks to join, and the owner lets them in. */
+            approveJoins: boolean;
             fairnessMode: components["schemas"]["FairnessMode"];
             fairness: components["schemas"]["RoomFairness"];
             matching: components["schemas"]["RoomMatching"];
@@ -3128,6 +3378,8 @@ export interface components {
         };
         CreateRoomRequest: {
             name: string;
+            visibility?: components["schemas"]["RoomVisibility"];
+            approveJoins?: boolean;
             fairnessMode?: components["schemas"]["FairnessMode"];
             fairness?: components["schemas"]["RoomFairness"];
             matching?: components["schemas"]["RoomMatching"];
@@ -3138,6 +3390,12 @@ export interface components {
         };
         UpdateRoomRequest: {
             name?: string;
+            /**
+             * @description Changing it revokes the room's invite links. Closing an open
+             *     room makes whoever's in it, or has songs waiting, a member.
+             */
+            visibility?: components["schemas"]["RoomVisibility"];
+            approveJoins?: boolean;
             fairnessMode?: components["schemas"]["FairnessMode"];
             fairness?: components["schemas"]["RoomFairness"];
             matching?: components["schemas"]["RoomMatching"];
@@ -5652,6 +5910,214 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Room"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listRoomMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Members, and requests to join */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomMember"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    addRoomMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description They're a member */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    removeRoomMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    joinRoomAsAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The room */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Room"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listRoomInvites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invites */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomInvite"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createRoomInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRoomInviteRequest"];
+            };
+        };
+        responses: {
+            /** @description The new invite */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomInvite"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeRoomInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getRoomInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The room the invite is for, and where you stand */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomInvitePreview"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    useRoomInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description In, or asked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomInviteResult"];
                 };
             };
             default: components["responses"]["Error"];

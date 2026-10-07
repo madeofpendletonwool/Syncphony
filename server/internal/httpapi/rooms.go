@@ -4,21 +4,29 @@ package httpapi
 
 import (
 	"context"
-	"slices"
+	"errors"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 )
 
-// ListRooms returns every room.
+// ListRooms returns the rooms the caller can open.
 func (s *Server) ListRooms(ctx context.Context, _ ListRoomsRequestObject) (ListRoomsResponseObject, error) {
-	rs, err := s.Rooms.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	// A guest sees their own room only.
-	if g := sessionFrom(ctx).Guest; g != nil {
-		rs = slices.DeleteFunc(rs, func(r store.Room) bool { return r.ID != g.RoomID })
+	sess := sessionFrom(ctx)
+	var rs []store.Room
+	if g := sess.Guest; g != nil {
+		// A guest sees their own room only, whoever else can see it.
+		r, err := s.Rooms.Get(ctx, g.RoomID)
+		if err != nil && !errors.Is(err, rooms.ErrNotFound) {
+			return nil, err
+		} else if err == nil {
+			rs = append(rs, r)
+		}
+	} else {
+		var err error
+		if rs, err = s.Rooms.Visible(ctx, sess.User.ID); err != nil {
+			return nil, err
+		}
 	}
 	out := make(ListRooms200JSONResponse, len(rs))
 	for i, r := range rs {
@@ -46,7 +54,14 @@ func (s *Server) CreateRoom(ctx context.Context, req CreateRoomRequestObject) (C
 	if req.Body.FairnessMode != nil {
 		mode = string(*req.Body.FairnessMode)
 	}
-	r, err := s.Rooms.Create(ctx, sessionFrom(ctx).User.ID, req.Body.Name, mode, st)
+	if req.Body.ApproveJoins != nil {
+		st.ApproveJoins = *req.Body.ApproveJoins
+	}
+	var visibility string
+	if req.Body.Visibility != nil {
+		visibility = string(*req.Body.Visibility)
+	}
+	r, err := s.Rooms.CreateWith(ctx, sessionFrom(ctx).User.ID, req.Body.Name, mode, visibility, st)
 	if err != nil {
 		return nil, err
 	}
@@ -82,6 +97,12 @@ func (s *Server) UpdateRoom(ctx context.Context, req UpdateRoomRequestObject) (U
 	if g := req.Body.Guests; g != nil {
 		u.Guests = ptr(fromGuests(*g))
 	}
+	u.ApproveJoins = req.Body.ApproveJoins
+	if v := req.Body.Visibility; v != nil {
+		u.Visibility = ptr(string(*v))
+		// Closing the room keeps whoever's in it now (guests are in anyway).
+		u.Present = s.Presence.Members(req.RoomId)
+	}
 	r, err := s.Rooms.Update(ctx, actor(ctx), req.RoomId, u)
 	if err != nil {
 		return nil, err
@@ -94,6 +115,7 @@ func toRoom(r store.Room) Room {
 	p := st.Permissions
 	out := Room{
 		Id: r.ID, Name: r.Name, OwnerId: r.OwnerID, FairnessMode: FairnessMode(r.FairnessMode),
+		Visibility: RoomVisibility(r.Visibility), ApproveJoins: st.ApproveJoins,
 		Permissions: RoomPermissions{
 			PlayPause: PermissionLevel(p.PlayPause), Seek: PermissionLevel(p.Seek),
 			Skip: SkipPermission(p.Skip), Speaker: PermissionLevel(p.Speaker),

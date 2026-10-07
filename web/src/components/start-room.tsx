@@ -7,7 +7,9 @@ import { api } from '@/api/client'
 import { errorMessage, unwrap } from '@/api/errors'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { UserAvatar } from '@/components/user-avatar'
+import { VISIBILITIES, visibility, type Visibility } from '@/lib/access'
 import { useMe } from '@/lib/auth'
 import { fadeUp, stagger } from '@/lib/motion'
 import { chooseRoom, roomsQuery, useCurrentRoom } from '@/lib/room'
@@ -26,6 +28,7 @@ export function RoomLobby() {
         <motion.ul variants={fadeUp} className="glass flex flex-col rounded-3xl p-1.5">
           {list.map((r) => {
             const owner = users.data?.find((u) => u.id === r.ownerId)
+            const v = visibility(r.visibility)
             return (
               <li key={r.id}>
                 <button
@@ -42,6 +45,12 @@ export function RoomLobby() {
                     <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
                       {owner && <UserAvatar user={owner} className="size-4 text-[0.5rem]" />}
                       {owner ? `Started by ${owner.displayName}` : 'Room'}
+                      {r.visibility !== 'open' && (
+                        <span className="flex items-center gap-1" title={v.hint}>
+                          · <v.icon className="size-3.5" aria-hidden />
+                          {v.label}
+                        </span>
+                      )}
                     </span>
                   </span>
                   <span className="flex items-center gap-0.5 text-sm font-medium text-primary">
@@ -65,9 +74,10 @@ function NewRoomForm({ first }: { first: boolean }) {
   const me = useMe()
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
+  const [who, setWho] = useState<Visibility>('open')
   const fallback = `${me.displayName.split(' ')[0]}'s room`
   const create = useMutation({
-    mutationFn: () => unwrap(api.POST('/rooms', { body: { name: name.trim() || fallback } })),
+    mutationFn: () => unwrap(api.POST('/rooms', { body: { name: name.trim() || fallback, visibility: who } })),
     onSuccess: (r) => {
       queryClient.setQueryData(roomsQuery.queryKey, (rs = []) => [...rs, r])
       chooseRoom(r.id)
@@ -85,7 +95,7 @@ function NewRoomForm({ first }: { first: boolean }) {
       <div>
         <p className="font-medium">{first ? 'Start the first room' : 'Start a new room'}</p>
         <p className={cn('text-caption', create.error ? 'text-destructive' : 'text-muted-foreground')}>
-          {create.error ? errorMessage(create.error) : 'Everyone on this server can join it.'}
+          {create.error ? errorMessage(create.error) : `${visibility(who).hint}.`}
         </p>
       </div>
       <div className="flex gap-2">
@@ -101,6 +111,14 @@ function NewRoomForm({ first }: { first: boolean }) {
           Start
         </Button>
       </div>
+      <ToggleGroup type="single" value={who} onValueChange={(v) => v && setWho(v as Visibility)} aria-label="Who can join">
+        {VISIBILITIES.map((v) => (
+          <ToggleGroupItem key={v.id} value={v.id} className="gap-1.5">
+            <v.icon className="size-3.5" />
+            {v.label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
     </form>
   )
 }

@@ -32,6 +32,8 @@ const (
 	wsWriteTimeout   = 10 * time.Second
 	// closeSessionEnded tells the client to sign in again.
 	closeSessionEnded websocket.StatusCode = 4001
+	// closeNoAccess tells the client it can't open the room any more.
+	closeNoAccess websocket.StatusCode = 4003
 	// closeRoomGone tells the client the room was deleted.
 	closeRoomGone websocket.StatusCode = 4004
 )
@@ -52,7 +54,7 @@ func (s *Server) RoomSocket() http.Handler {
 				writeError(w, r, auth.ErrForbidden)
 				return
 			}
-			rc.user = sess.User
+			rc.user, rc.guest = sess.User, sess.Guest != nil
 		} else if c, derr := r.Cookie(DisplayCookie); derr == nil && errors.Is(err, auth.ErrUnauthenticated) {
 			// A paired display, which may watch its own room only.
 			d, derr := s.Auth.AuthenticateDisplay(ctx, c.Value)
@@ -70,6 +72,14 @@ func (s *Server) RoomSocket() http.Handler {
 			return
 		}
 		room, err := s.Rooms.Get(ctx, r.PathValue("id"))
+		if err == nil && !rc.paired && !rc.guest {
+			// A room you can't open isn't there.
+			if ok, aerr := s.Rooms.CanEnter(ctx, rc.user.ID, room); aerr != nil {
+				err = aerr
+			} else if !ok {
+				err = rooms.ErrNotFound
+			}
+		}
 		if errors.Is(err, rooms.ErrNotFound) {
 			writeJSONError(w, http.StatusNotFound, "not_found", "room not found")
 			return
@@ -105,9 +115,10 @@ type roomConn struct {
 	token string
 	// display: the connection is a big screen, which isn't in the room
 	// (no presence). paired: it's a paired display, with no user at all;
-	// token is then the display's.
-	display, paired bool
-	room            store.Room
+	// token is then the display's. guest: the user is a guest, in the
+	// room by their pass.
+	display, paired, guest bool
+	room                   store.Room
 	// sent is the last queue version the client has.
 	sent int64
 }
@@ -171,9 +182,17 @@ func (rc *roomConn) serve(ctx context.Context) {
 				rc.c.Close(closeRoomGone, "room deleted")
 				return
 			}
+			if m, ok := e.Data.(rooms.MembersChanged); ok && m.Change == rooms.Removed && m.UserID == userID && !rc.paired {
+				rc.c.Close(closeNoAccess, "removed from the room")
+				return
+			}
 		case <-ping.C:
 			if err := rc.check(ctx); err != nil {
 				rc.c.Close(closeSessionEnded, "session ended")
+				return
+			}
+			if ok, err := rc.canEnter(ctx); err == nil && !ok {
+				rc.c.Close(closeNoAccess, "the room isn't open to you")
 				return
 			}
 			pctx, cancel := context.WithTimeout(ctx, wsWriteTimeout)
@@ -192,6 +211,20 @@ func (rc *roomConn) check(ctx context.Context) error {
 		return rc.s.Auth.CheckDisplay(ctx, rc.token)
 	}
 	return rc.s.Auth.Check(ctx, rc.token)
+}
+
+// canEnter reports whether the connection's user may still open the room,
+// should it have stopped being open to them. Displays and guests are in
+// the room by their pairing or pass.
+func (rc *roomConn) canEnter(ctx context.Context) (bool, error) {
+	if rc.paired || rc.guest {
+		return true, nil
+	}
+	r, err := rc.s.Rooms.Get(ctx, rc.room.ID)
+	if err != nil {
+		return false, err
+	}
+	return rc.s.Rooms.CanEnter(ctx, rc.user.ID, r)
 }
 
 // hello sends who's here, then the queue (unless the client is current)
@@ -276,6 +309,8 @@ func (rc *roomConn) send(ctx context.Context, e realtime.Event) error {
 		data = toNight(d)
 	case guestsChanged:
 		data = d
+	case rooms.MembersChanged:
+		data = RoomMembersChanged{RoomId: d.RoomID, UserId: d.UserID, Change: RoomMembersChangedChange(d.Change)}
 	default:
 		slog.Error("realtime: no API form for event", "type", e.Type, "data", e.Data)
 		return nil

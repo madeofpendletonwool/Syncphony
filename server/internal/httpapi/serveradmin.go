@@ -117,9 +117,16 @@ func (s *Server) ListActiveRooms(ctx context.Context, _ ListActiveRoomsRequestOb
 	if err != nil {
 		return nil, err
 	}
+	me := sessionFrom(ctx).User.ID
 	out := make(ListActiveRooms200JSONResponse, len(rs))
 	for i, r := range rs {
-		a := RoomActivity{RoomId: r.ID, RoomName: r.Name, OwnerId: r.OwnerID, Members: s.Presence.Members(r.ID), State: PlaybackStateIdle}
+		a := RoomActivity{
+			RoomId: r.ID, RoomName: r.Name, OwnerId: r.OwnerID, Visibility: RoomVisibility(r.Visibility),
+			Members: s.Presence.Members(r.ID), State: PlaybackStateIdle,
+		}
+		if a.CanEnter, err = s.Rooms.CanEnter(ctx, me, r); err != nil {
+			return nil, err
+		}
 		if a.Members == nil {
 			a.Members = []string{}
 		}
@@ -129,7 +136,8 @@ func (s *Server) ListActiveRooms(ctx context.Context, _ ListActiveRoomsRequestOb
 		}
 		pn := toNowPlaying(np)
 		a.State, a.Player = pn.State, pn.Player
-		if pn.Item != nil && pn.Item.Track.Title != "" {
+		// What a room is playing is its own business, until the admin joins.
+		if pn.Item != nil && pn.Item.Track.Title != "" && a.CanEnter {
 			a.Title = &pn.Item.Track.Title
 		}
 		out[i] = a

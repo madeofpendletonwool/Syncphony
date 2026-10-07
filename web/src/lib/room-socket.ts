@@ -1,13 +1,14 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import type { components } from '@/api/schema.gen'
+import { invitesQuery, membersQuery } from './access'
 import { meQuery } from './auth'
 import { syncServerClock } from './clock'
 import { guestPassQuery, guestsQuery } from './guests'
 import { crown, heartsQuery, nightsQuery, type Hearts, type Night } from './nights'
 import { newer, playbackQuery, type Playback } from './playback'
 import { addReaction, type Reaction } from './reactions'
-import { queueQuery, roomsQuery, type QueueSnapshot, type Room } from './room'
+import { leaveRoom, queueQuery, roomsQuery, type QueueSnapshot, type Room } from './room'
 import { linksQuery, usableLinksQuery } from './services'
 import { createStore } from './store'
 import { toast } from './toast'
@@ -27,6 +28,7 @@ export type Live = {
 export const live = createStore<Live>({ status: 'connecting', members: [] })
 
 const SESSION_ENDED = 4001
+const NO_ACCESS = 4003
 const ROOM_GONE = 4004
 const FELL_BEHIND = 1013
 
@@ -80,6 +82,14 @@ export function useRoomSocket(roomId: string | undefined, { display = false, onS
           return
         }
         if (e.code === ROOM_GONE) return
+        if (e.code === NO_ACCESS) {
+          // Removed, or the room closed to us: it's not ours to see any more.
+          const name = queryClient.getQueryData(roomsQuery.queryKey)?.find((r) => r.id === roomId)?.name
+          queryClient.setQueryData(roomsQuery.queryKey, (rs) => rs?.filter((r) => r.id !== roomId))
+          leaveRoom()
+          toast({ message: name ? `You're no longer in ${name}` : "You're no longer in that room" })
+          return
+        }
         live.set((l) => ({ ...l, status: 'reconnecting' }))
         // Falling behind is our cue to resume right away; anything else backs off.
         const delay = e.code === FELL_BEHIND ? 0 : Math.min(15_000, 500 * 2 ** attempt++)
@@ -171,6 +181,18 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
       void queryClient.invalidateQueries({ queryKey: guestsQuery(roomId).queryKey })
       void queryClient.invalidateQueries({ queryKey: ['users'] })
       break
+    case 'members.updated': {
+      const m = ev.data as components['schemas']['RoomMembersChanged']
+      void queryClient.invalidateQueries({ queryKey: membersQuery(roomId).queryKey })
+      void queryClient.invalidateQueries({ queryKey: invitesQuery(roomId).queryKey })
+      const me = queryClient.getQueryData(meQuery.queryKey)
+      const room = queryClient.getQueryData(roomsQuery.queryKey)?.find((r) => r.id === roomId)
+      if (m.change === 'requested' && me && room && (room.ownerId === me.id || me.role === 'admin')) {
+        const who = queryClient.getQueryData(usersQuery.queryKey)?.find((u) => u.id === m.userId)
+        toast({ message: `${who?.displayName ?? 'Someone'} asked to join ${room.name}. Let them in from Members.` }, 6000)
+      }
+      break
+    }
     case 'link.status': {
       const link = ev.data as ServiceLink
       queryClient.setQueryData(linksQuery.queryKey, (ls) => ls?.map((l) => (l.id === link.id ? link : l)))
