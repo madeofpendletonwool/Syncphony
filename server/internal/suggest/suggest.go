@@ -248,13 +248,13 @@ func (s *Service) build(ctx context.Context, q Query, snap rooms.QueueSnapshot, 
 			} else if sess, ok := f.Open(ctx, l.ID); ok {
 				cands = f.ByArtist(ctx, sess, l, sd)
 			}
-		var fresh []provider.Track
-		for _, t := range cands {
-			if !seen.Has(t) && !taken.Has(t) && !turned[ArtistKey(t)] {
-				taken.Track(t)
-				fresh = append(fresh, t)
+			var fresh []provider.Track
+			for _, t := range cands {
+				if !seen.Has(t) && !taken.Has(t) && !turned[ArtistKey(t)] {
+					taken.Track(t)
+					fresh = append(fresh, t)
+				}
 			}
-		}
 			for _, t := range s.sample(fresh, perSeed-len(lists[i])) {
 				lists[i] = append(lists[i], Suggestion{Track: t, Seed: sd.Item})
 			}
