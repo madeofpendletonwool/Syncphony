@@ -34,8 +34,6 @@ const (
 	// bootstrapTTL is how long the first-run admin invite lasts. A restart
 	// while there are still no users makes a new one.
 	bootstrapTTL = 24 * time.Hour
-	// DefaultInviteTTL is used when an admin doesn't pick an expiry.
-	DefaultInviteTTL = 7 * 24 * time.Hour
 )
 
 // Config configures a Service.

@@ -404,7 +404,11 @@ func (s *Server) ListInvites(ctx context.Context, _ ListInvitesRequestObject) (L
 
 // CreateInvite makes an invite (admins).
 func (s *Server) CreateInvite(ctx context.Context, req CreateInviteRequestObject) (CreateInviteResponseObject, error) {
-	role, ttl := store.RoleMember, auth.DefaultInviteTTL
+	st, err := s.Admin.Settings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	role, ttl := store.RoleMember, st.InviteExpiry()
 	if req.Body.Role != nil {
 		role = string(*req.Body.Role)
 	}

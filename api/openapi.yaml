@@ -531,6 +531,145 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  # --- The server -----------------------------------------------------------
+
+  /server-settings:
+    get:
+      operationId: getServerSettings
+      summary: The server's own settings
+      tags: [server]
+      responses:
+        "200":
+          description: The settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerSettings"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      operationId: updateServerSettings
+      summary: Change the server's settings (admin)
+      tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServerSettingsUpdate"
+      responses:
+        "200":
+          description: The settings after the change
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerSettings"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /admin/server:
+    get:
+      operationId: getServerInfo
+      summary: The server's version, uptime, database and backups (admin)
+      tags: [admin]
+      responses:
+        "200":
+          description: The server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerInfo"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /admin/backups:
+    post:
+      operationId: createBackup
+      summary: Back up the database now (admin)
+      description: |
+        Writes a copy of the database to the server's backup directory and
+        keeps the newest 7. Linked services' credentials stay sealed in it:
+        restoring needs the same vault key.
+      tags: [admin]
+      responses:
+        "201":
+          description: The new backup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Backup"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /admin/links:
+    get:
+      operationId: listAllLinks
+      summary: Every linked service on the server, and its health (admin)
+      tags: [admin]
+      responses:
+        "200":
+          description: Links, failing ones first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ServiceLink"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /admin/rooms:
+    get:
+      operationId: listActiveRooms
+      summary: Every room, who's in it, and what it's playing through (admin)
+      tags: [admin]
+      responses:
+        "200":
+          description: Rooms, busiest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RoomActivity"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /admin/sessions:
+    get:
+      operationId: listAllSessions
+      summary: Everyone's signed-in devices (admin)
+      description: Guests' sessions aren't included.
+      tags: [admin]
+      responses:
+        "200":
+          description: Sessions, most recently used first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserSession"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /admin/sessions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: revokeSession
+      summary: Sign out anyone's device (admin)
+      tags: [admin]
+      responses:
+        "204":
+          description: Signed out
+        default:
+          $ref: "#/components/responses/Error"
+
   # --- People and invites ---------------------------------------------------
 
   /users:
@@ -2861,6 +3000,93 @@ components:
         current:
           type: boolean
           description: This is the session making the request.
+
+    UserSession:
+      allOf:
+        - $ref: "#/components/schemas/SignedInSession"
+        - type: object
+          required: [userId]
+          properties:
+            userId:
+              type: string
+
+    ServerSettings:
+      type: object
+      required: [instanceName, inviteExpiryHours]
+      properties:
+        instanceName:
+          type: string
+          description: What the app calls this server. Empty means just "Syncphony".
+        inviteExpiryHours:
+          type: integer
+          description: How long a new invite lasts unless whoever makes it says otherwise.
+
+    ServerSettingsUpdate:
+      type: object
+      properties:
+        instanceName:
+          type: string
+          maxLength: 40
+        inviteExpiryHours:
+          type: integer
+          minimum: 1
+          maximum: 720
+
+    ServerInfo:
+      type: object
+      required: [version, startedAt, databaseBytes, backups]
+      properties:
+        version:
+          type: string
+          description: The build, from `git describe`, e.g. `v0.3.0-4-g1a2b3c4`.
+        startedAt:
+          type: string
+          format: date-time
+        databaseBytes:
+          type: integer
+          format: int64
+        backups:
+          type: array
+          description: Backups on the server, newest first.
+          items:
+            $ref: "#/components/schemas/Backup"
+
+    Backup:
+      type: object
+      required: [name, createdAt, bytes]
+      properties:
+        name:
+          type: string
+          example: syncphony-20261006-193000.db
+        createdAt:
+          type: string
+          format: date-time
+        bytes:
+          type: integer
+          format: int64
+
+    RoomActivity:
+      type: object
+      required: [roomId, roomName, ownerId, members, state]
+      properties:
+        roomId:
+          type: string
+        roomName:
+          type: string
+        ownerId:
+          type: string
+        members:
+          type: array
+          description: IDs of who has the room open right now.
+          items:
+            type: string
+        state:
+          $ref: "#/components/schemas/PlaybackState"
+        title:
+          type: string
+          description: The song playing or paused, if any.
+        player:
+          $ref: "#/components/schemas/Player"
 
     Ceremony:
       type: object

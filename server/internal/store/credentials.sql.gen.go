@@ -229,6 +229,45 @@ func (q *Queries) GetSession(ctx context.Context, arg GetSessionParams) (Session
 	return i, err
 }
 
+const listAllSessions = `-- name: ListAllSessions :many
+SELECT sessions.token_hash, sessions.user_id, sessions.user_agent, sessions.created_at, sessions.last_seen_at, sessions.expires_at FROM sessions
+WHERE sessions.expires_at > ?1
+  AND NOT EXISTS (SELECT 1 FROM guests WHERE guests.user_id = sessions.user_id)
+ORDER BY sessions.last_seen_at DESC, sessions.created_at DESC
+`
+
+// ListAllSessions returns everyone's unexpired sessions, most recently used
+// first. Guests' are left out: they come and go with their pass.
+func (q *Queries) ListAllSessions(ctx context.Context, now time.Time) ([]Session, error) {
+	rows, err := q.db.QueryContext(ctx, listAllSessions, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Session{}
+	for rows.Next() {
+		var i Session
+		if err := rows.Scan(
+			&i.TokenHash,
+			&i.UserID,
+			&i.UserAgent,
+			&i.CreatedAt,
+			&i.LastSeenAt,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPasskeys = `-- name: ListPasskeys :many
 SELECT id, user_id, name, data, created_at, last_used_at FROM credentials_passkey WHERE user_id = ? ORDER BY created_at
 `

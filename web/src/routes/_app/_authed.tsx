@@ -5,6 +5,7 @@ import { RoomLive } from '@/components/room-live'
 import { CrownMoment } from '@/components/room/crown-moment'
 import { PageTransition } from '@/components/shell/app-shell'
 import { meQuery } from '@/lib/auth'
+import { useServerTitle } from '@/lib/server'
 
 export const Route = createFileRoute('/_app/_authed')({
   beforeLoad: async ({ context, location }) => {
@@ -17,6 +18,7 @@ export const Route = createFileRoute('/_app/_authed')({
 function Authed() {
   const me = useQuery(meQuery).data
   const router = useRouter()
+  useServerTitle()
   // Signed out while here (session expired, or signed out elsewhere): run
   // beforeLoad again, which sends us to /login.
   useEffect(() => {

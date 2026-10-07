@@ -490,6 +490,136 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/server-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The server's own settings */
+        get: operations["getServerSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change the server's settings (admin) */
+        patch: operations["updateServerSettings"];
+        trace?: never;
+    };
+    "/admin/server": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The server's version, uptime, database and backups (admin) */
+        get: operations["getServerInfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Back up the database now (admin)
+         * @description Writes a copy of the database to the server's backup directory and
+         *     keeps the newest 7. Linked services' credentials stay sealed in it:
+         *     restoring needs the same vault key.
+         */
+        post: operations["createBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every linked service on the server, and its health (admin) */
+        get: operations["listAllLinks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/rooms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every room, who's in it, and what it's playing through (admin) */
+        get: operations["listActiveRooms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Everyone's signed-in devices (admin)
+         * @description Guests' sessions aren't included.
+         */
+        get: operations["listAllSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Sign out anyone's device (admin) */
+        delete: operations["revokeSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -2011,6 +2141,48 @@ export interface components {
             /** @description This is the session making the request. */
             current: boolean;
         };
+        UserSession: components["schemas"]["SignedInSession"] & {
+            userId: string;
+        };
+        ServerSettings: {
+            /** @description What the app calls this server. Empty means just "Syncphony". */
+            instanceName: string;
+            /** @description How long a new invite lasts unless whoever makes it says otherwise. */
+            inviteExpiryHours: number;
+        };
+        ServerSettingsUpdate: {
+            instanceName?: string;
+            inviteExpiryHours?: number;
+        };
+        ServerInfo: {
+            /** @description The build, from `git describe`, e.g. `v0.3.0-4-g1a2b3c4`. */
+            version: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: int64 */
+            databaseBytes: number;
+            /** @description Backups on the server, newest first. */
+            backups: components["schemas"]["Backup"][];
+        };
+        Backup: {
+            /** @example syncphony-20261006-193000.db */
+            name: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            bytes: number;
+        };
+        RoomActivity: {
+            roomId: string;
+            roomName: string;
+            ownerId: string;
+            /** @description IDs of who has the room open right now. */
+            members: string[];
+            state: components["schemas"]["PlaybackState"];
+            /** @description The song playing or paused, if any. */
+            title?: string;
+            player?: components["schemas"]["Player"];
+        };
         Ceremony: {
             /** @description Pass back to the matching finish endpoint within 5 minutes. */
             ceremonyId: string;
@@ -3513,6 +3685,178 @@ export interface operations {
         };
     };
     revokeMySession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getServerSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerSettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateServerSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description The settings after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerSettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getServerInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The server */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerInfo"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new backup */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Backup"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAllLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Links, failing ones first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceLink"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listActiveRooms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rooms, busiest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomActivity"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAllSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sessions, most recently used first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserSession"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeSession: {
         parameters: {
             query?: never;
             header?: never;

@@ -25,6 +25,7 @@ import { Route as AppAuthedSearchRouteImport } from './routes/_app/_authed/searc
 import { Route as AppAuthedSettingsPeopleRouteImport } from './routes/_app/_authed/settings.people'
 import { Route as AppAuthedSettingsProfileRouteImport } from './routes/_app/_authed/settings.profile'
 import { Route as AppAuthedSettingsSecurityRouteImport } from './routes/_app/_authed/settings.security'
+import { Route as AppAuthedSettingsServerRouteImport } from './routes/_app/_authed/settings.server'
 import { Route as AppAuthedSettingsServicesRouteImport } from './routes/_app/_authed/settings.services'
 import { Route as AppAuthedAlbumLinkIdAlbumIdRouteImport } from './routes/_app/_authed/album.$linkId.$albumId'
 import { Route as AppAuthedArtistLinkIdArtistIdRouteImport } from './routes/_app/_authed/artist.$linkId.$artistId'
@@ -110,6 +111,11 @@ const AppAuthedSettingsSecurityRoute =
     path: '/settings/security',
     getParentRoute: () => AppAuthedRoute,
   } as any)
+const AppAuthedSettingsServerRoute = AppAuthedSettingsServerRouteImport.update({
+  id: '/settings/server',
+  path: '/settings/server',
+  getParentRoute: () => AppAuthedRoute,
+} as any)
 const AppAuthedSettingsServicesRoute =
   AppAuthedSettingsServicesRouteImport.update({
     id: '/settings/services',
@@ -150,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/settings/people': typeof AppAuthedSettingsPeopleRoute
   '/settings/profile': typeof AppAuthedSettingsProfileRoute
   '/settings/security': typeof AppAuthedSettingsSecurityRoute
+  '/settings/server': typeof AppAuthedSettingsServerRoute
   '/settings/services': typeof AppAuthedSettingsServicesRoute
   '/album/$linkId/$albumId': typeof AppAuthedAlbumLinkIdAlbumIdRoute
   '/artist/$linkId/$artistId': typeof AppAuthedArtistLinkIdArtistIdRoute
@@ -170,6 +177,7 @@ export interface FileRoutesByTo {
   '/settings/people': typeof AppAuthedSettingsPeopleRoute
   '/settings/profile': typeof AppAuthedSettingsProfileRoute
   '/settings/security': typeof AppAuthedSettingsSecurityRoute
+  '/settings/server': typeof AppAuthedSettingsServerRoute
   '/settings/services': typeof AppAuthedSettingsServicesRoute
   '/album/$linkId/$albumId': typeof AppAuthedAlbumLinkIdAlbumIdRoute
   '/artist/$linkId/$artistId': typeof AppAuthedArtistLinkIdArtistIdRoute
@@ -193,6 +201,7 @@ export interface FileRoutesById {
   '/_app/_authed/settings/people': typeof AppAuthedSettingsPeopleRoute
   '/_app/_authed/settings/profile': typeof AppAuthedSettingsProfileRoute
   '/_app/_authed/settings/security': typeof AppAuthedSettingsSecurityRoute
+  '/_app/_authed/settings/server': typeof AppAuthedSettingsServerRoute
   '/_app/_authed/settings/services': typeof AppAuthedSettingsServicesRoute
   '/_app/_authed/album/$linkId/$albumId': typeof AppAuthedAlbumLinkIdAlbumIdRoute
   '/_app/_authed/artist/$linkId/$artistId': typeof AppAuthedArtistLinkIdArtistIdRoute
@@ -215,6 +224,7 @@ export interface FileRouteTypes {
     | '/settings/people'
     | '/settings/profile'
     | '/settings/security'
+    | '/settings/server'
     | '/settings/services'
     | '/album/$linkId/$albumId'
     | '/artist/$linkId/$artistId'
@@ -235,6 +245,7 @@ export interface FileRouteTypes {
     | '/settings/people'
     | '/settings/profile'
     | '/settings/security'
+    | '/settings/server'
     | '/settings/services'
     | '/album/$linkId/$albumId'
     | '/artist/$linkId/$artistId'
@@ -257,6 +268,7 @@ export interface FileRouteTypes {
     | '/_app/_authed/settings/people'
     | '/_app/_authed/settings/profile'
     | '/_app/_authed/settings/security'
+    | '/_app/_authed/settings/server'
     | '/_app/_authed/settings/services'
     | '/_app/_authed/album/$linkId/$albumId'
     | '/_app/_authed/artist/$linkId/$artistId'
@@ -386,6 +398,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAuthedSettingsSecurityRouteImport
       parentRoute: typeof AppAuthedRoute
     }
+    '/_app/_authed/settings/server': {
+      id: '/_app/_authed/settings/server'
+      path: '/settings/server'
+      fullPath: '/settings/server'
+      preLoaderRoute: typeof AppAuthedSettingsServerRouteImport
+      parentRoute: typeof AppAuthedRoute
+    }
     '/_app/_authed/settings/services': {
       id: '/_app/_authed/settings/services'
       path: '/settings/services'
@@ -426,6 +445,7 @@ interface AppAuthedRouteChildren {
   AppAuthedSettingsPeopleRoute: typeof AppAuthedSettingsPeopleRoute
   AppAuthedSettingsProfileRoute: typeof AppAuthedSettingsProfileRoute
   AppAuthedSettingsSecurityRoute: typeof AppAuthedSettingsSecurityRoute
+  AppAuthedSettingsServerRoute: typeof AppAuthedSettingsServerRoute
   AppAuthedSettingsServicesRoute: typeof AppAuthedSettingsServicesRoute
   AppAuthedAlbumLinkIdAlbumIdRoute: typeof AppAuthedAlbumLinkIdAlbumIdRoute
   AppAuthedArtistLinkIdArtistIdRoute: typeof AppAuthedArtistLinkIdArtistIdRoute
@@ -441,6 +461,7 @@ const AppAuthedRouteChildren: AppAuthedRouteChildren = {
   AppAuthedSettingsPeopleRoute: AppAuthedSettingsPeopleRoute,
   AppAuthedSettingsProfileRoute: AppAuthedSettingsProfileRoute,
   AppAuthedSettingsSecurityRoute: AppAuthedSettingsSecurityRoute,
+  AppAuthedSettingsServerRoute: AppAuthedSettingsServerRoute,
   AppAuthedSettingsServicesRoute: AppAuthedSettingsServicesRoute,
   AppAuthedAlbumLinkIdAlbumIdRoute: AppAuthedAlbumLinkIdAlbumIdRoute,
   AppAuthedArtistLinkIdArtistIdRoute: AppAuthedArtistLinkIdArtistIdRoute,

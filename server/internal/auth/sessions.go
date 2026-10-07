@@ -41,3 +41,30 @@ func (s *Service) RevokeSession(ctx context.Context, u store.User, id string) er
 func (s *Service) RevokeOtherSessions(ctx context.Context, keep *Session) error {
 	return s.db.DeleteOtherSessions(ctx, store.DeleteOtherSessionsParams{UserID: keep.User.ID, TokenHash: keep.hash})
 }
+
+// AllSessions lists everyone's signed-in sessions but guests', most
+// recently used first (admins only).
+func (s *Service) AllSessions(ctx context.Context, by store.User) ([]store.Session, error) {
+	if by.Role != store.RoleAdmin {
+		return nil, ErrForbidden
+	}
+	return s.db.ListAllSessions(ctx, s.now())
+}
+
+// RevokeAnySession signs out anyone's session (admins only).
+func (s *Service) RevokeAnySession(ctx context.Context, by store.User, id string) error {
+	if by.Role != store.RoleAdmin {
+		return ErrForbidden
+	}
+	hash, err := base64.RawURLEncoding.DecodeString(id)
+	if err != nil {
+		return ErrNotFound
+	}
+	sess, err := s.db.GetSession(ctx, store.GetSessionParams{TokenHash: hash, Now: s.now()})
+	if store.IsNotFound(err) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	return s.RevokeSession(ctx, store.User{ID: sess.UserID}, id)
+}

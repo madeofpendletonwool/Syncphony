@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/admin"
 	"github.com/madeofpendletonwool/syncphony/server/internal/artwork"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
@@ -40,9 +41,13 @@ const SessionCookie = "syncphony_session"
 // Server implements StrictServerInterface.
 type Server struct {
 	Version string
-	Auth    *auth.Service
-	Links   *links.Service
-	Lyrics  *lyrics.Service
+	// StartedAt is when the server started, for its uptime.
+	StartedAt time.Time
+	// Admin holds the server's own settings, and backs it up.
+	Admin  *admin.Service
+	Auth   *auth.Service
+	Links  *links.Service
+	Lyrics *lyrics.Service
 	// LinerNotes writes songs' liner notes. Nil when MusicBrainz is off.
 	LinerNotes *linernotes.Service
 	// Artwork picks queued songs' covers.
@@ -298,7 +303,10 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var repeat *queue.RepeatError
 	var guestLimit *queue.GuestLimitError
 	var invalidHeart *nights.InvalidInputError
+	var invalidAdmin *admin.InvalidInputError
 	switch {
+	case errors.As(err, &invalidAdmin):
+		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidAdmin.Error())
 	case errors.As(err, &guestLimit):
 		writeJSONError(w, http.StatusConflict, "guest_limit", guestLimit.Error())
 	case errors.As(err, &invalidHeart):

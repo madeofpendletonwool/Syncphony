@@ -3,6 +3,7 @@ import { createFileRoute, Link, type LinkProps } from '@tanstack/react-router'
 import {
   ChevronRight,
   Download,
+  HardDrive,
   LoaderCircle,
   LogOut,
   Monitor,
@@ -32,6 +33,7 @@ import { useMe, useSignedOut, useSignOut, type Me } from '@/lib/auth'
 import { laneStyle } from '@/lib/lane'
 import { easeOutExpo } from '@/lib/motion'
 import { useInstall } from '@/lib/pwa'
+import { appTitle, serverSettingsQuery } from '@/lib/server'
 import { linksQuery } from '@/lib/services'
 import { setPreference, useThemePreference, type ThemePreference } from '@/lib/theme'
 import { relativeTime } from '@/lib/time'
@@ -82,6 +84,11 @@ function Me() {
               {me.role === 'admin' && (
                 <SettingsRow to="/settings/people" icon={<Users />}>
                   People and invites
+                </SettingsRow>
+              )}
+              {me.role === 'admin' && (
+                <SettingsRow to="/settings/server" icon={<HardDrive />}>
+                  Server
                 </SettingsRow>
               )}
             </nav>
@@ -240,6 +247,7 @@ function SignOutButton({ guest }: { guest: boolean }) {
 }
 
 function ServerStatus() {
+  const name = useQuery(serverSettingsQuery).data?.instanceName
   const health = useQuery({
     queryKey: ['health'],
     queryFn: async () => {
@@ -259,7 +267,7 @@ function ServerStatus() {
         )}
       />
       {health.isSuccess
-        ? `Syncphony ${health.data.version}`
+        ? `${appTitle(name)} ${health.data.version}`
         : health.isError
           ? 'Server unreachable'
           : 'Connecting…'}

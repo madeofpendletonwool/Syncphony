@@ -574,6 +574,11 @@ func (s *Service) userLink(ctx context.Context, userID, linkID string) (store.Se
 	return row, err
 }
 
+// All lists every link on the server, for admins checking their health.
+func (s *Service) All(ctx context.Context) ([]store.ServiceLink, error) {
+	return s.db.ListAllServiceLinks(ctx)
+}
+
 // Unlink deletes one of userID's links, ciphertext included. Queue items
 // from it stay, but can no longer play.
 func (s *Service) Unlink(ctx context.Context, userID, linkID string) error {
