@@ -109,6 +109,23 @@ type MusicbrainzTrack struct {
 	ExpiresAt        time.Time
 }
 
+type MusicgraphArtist struct {
+	Key       string
+	Mbid      string
+	Found     bool
+	Facts     string
+	FetchedAt time.Time
+	ExpiresAt time.Time
+}
+
+type MusicgraphTrack struct {
+	Key       string
+	Found     bool
+	Facts     string
+	FetchedAt time.Time
+	ExpiresAt time.Time
+}
+
 type Night struct {
 	ID          string
 	RoomID      string

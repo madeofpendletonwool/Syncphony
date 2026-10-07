@@ -47,6 +47,16 @@ type Config struct {
 	// WikipediaURL is the Wikipedia artist bios in liner notes come from;
 	// its language is theirs. Empty turns bios off.
 	WikipediaURL string
+	// LastFMKey is a Last.fm API key, for similar artists, top songs and
+	// tags (ADR 0012). Empty turns Last.fm off.
+	LastFMKey string
+	// ListenBrainzURL is the ListenBrainz API asked about similar artists
+	// and popular songs. Empty turns it off. ListenBrainzToken is sent to
+	// it if set.
+	ListenBrainzURL, ListenBrainzToken string
+	// DeezerURL is Deezer's public API, asked about related artists, top
+	// songs and tempo. Empty turns it off.
+	DeezerURL string
 }
 
 // defaultTrustedProxies are loopback and private networks, where a
@@ -108,6 +118,22 @@ func Load() (Config, error) {
 		c.WikipediaURL = u
 	default:
 		return Config{}, fmt.Errorf("SYNCPHONY_WIKIPEDIA_URL %q: want an http(s) URL, or off", u)
+	}
+	c.LastFMKey = strings.TrimSpace(os.Getenv("SYNCPHONY_LASTFM_KEY"))
+	c.ListenBrainzToken = strings.TrimSpace(os.Getenv("SYNCPHONY_LISTENBRAINZ_TOKEN"))
+	switch u := strings.TrimRight(strings.TrimSpace(env("SYNCPHONY_LISTENBRAINZ_URL", "https://api.listenbrainz.org")), "/"); {
+	case u == "off" || u == "none":
+	case strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://"):
+		c.ListenBrainzURL = u
+	default:
+		return Config{}, fmt.Errorf("SYNCPHONY_LISTENBRAINZ_URL %q: want an http(s) URL, or off", u)
+	}
+	switch u := strings.TrimRight(strings.TrimSpace(env("SYNCPHONY_DEEZER_URL", "https://api.deezer.com")), "/"); {
+	case u == "off" || u == "none":
+	case strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://"):
+		c.DeezerURL = u
+	default:
+		return Config{}, fmt.Errorf("SYNCPHONY_DEEZER_URL %q: want an http(s) URL, or off", u)
 	}
 	proxies := env("SYNCPHONY_TRUSTED_PROXIES", defaultTrustedProxies)
 	if proxies != "none" {
