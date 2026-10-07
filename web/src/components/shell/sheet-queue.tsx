@@ -1,11 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import type { Ref } from 'react'
-import { NotThisOne } from '@/components/room/autopilot-badge'
-import { QueueRow } from '@/components/room/queue-row'
 import { RecentlyPlayed } from '@/components/room/recently-played'
-import { RemoveTheirs } from '@/components/room/remove-theirs'
+import { UpNext } from '@/components/room/up-next'
 import { useMe } from '@/lib/auth'
-import { isMine } from '@/lib/autopilot'
 import type { QueueItem } from '@/lib/playback'
 import { queueQuery, roomsQuery } from '@/lib/room'
 import { usersQuery } from '@/lib/users'
@@ -43,30 +40,7 @@ export function SheetQueue({
         {upNext.length === 0 ? (
           <p className="px-1 text-sm text-muted-foreground">Nothing waiting. Add a song to your lane.</p>
         ) : (
-          <ol className="glass flex flex-col rounded-3xl p-1.5">
-            {upNext.slice(0, SHOWN).map((item, i) => (
-              <li key={item.id}>
-                <QueueRow
-                  roomId={roomId}
-                  item={item}
-                  user={userById(item.addedBy)}
-                  mine={isMine(item, me.id)}
-                  byline
-                  leading={<span className="w-5 shrink-0 text-center text-sm text-muted-foreground tabular-nums">{i + 1}</span>}
-                  trailing={
-                    item.autopilot ? (
-                      <NotThisOne roomId={roomId} item={item} />
-                    ) : (
-                      owner && item.addedBy !== me.id && <RemoveTheirs roomId={roomId} item={item} owner={userById(item.addedBy)} />
-                    )
-                  }
-                />
-              </li>
-            ))}
-            {upNext.length > SHOWN && (
-              <li className="px-4 py-2.5 text-sm text-muted-foreground">and {upNext.length - SHOWN} more</li>
-            )}
-          </ol>
+          <UpNext roomId={roomId} items={upNext} limit={SHOWN} me={me.id} owner={owner} userById={userById} byline />
         )}
       </div>
 

@@ -7,18 +7,17 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { errorMessage } from '@/api/errors'
 import { Artwork } from '@/components/artwork'
 import { PageHeader } from '@/components/page-header'
-import { AutopilotBadge, NotThisOne } from '@/components/room/autopilot-badge'
+import { AutopilotBadge } from '@/components/room/autopilot-badge'
 import { BigScreenDialog } from '@/components/room/big-screen-dialog'
 import { GuestsDialog } from '@/components/room/guests-dialog'
 import { HeartButton } from '@/components/room/heart-button'
 import { MyLane } from '@/components/room/my-lane'
-import { QueueRow } from '@/components/room/queue-row'
 import { ReactionBar } from '@/components/room/reaction-bar'
 import { RecentlyPlayed } from '@/components/room/recently-played'
-import { RemoveTheirs } from '@/components/room/remove-theirs'
 import { RoomSettings } from '@/components/room/room-settings'
 import { SongDetails } from '@/components/room/song-details'
 import { SpeakerPanel } from '@/components/room/speaker-panel'
+import { UpNext } from '@/components/room/up-next'
 import { TransportControls } from '@/components/shell/player-controls'
 import { SourceTag } from '@/components/service-tag'
 import { RoomLobby } from '@/components/start-room'
@@ -129,49 +128,11 @@ function Room() {
         {me.guest && <GuestNote room={room} added={items.filter((i) => i.addedBy === me.id && !i.autopilot).length} />}
 
         <motion.section variants={fadeUp}>
-          <SectionTitle title="Up next" count={upNext.length} />
+          <SectionTitle title="Up next" count={upNext.length} hint={mine.length > 1 ? 'Drag to reorder' : undefined} />
           {upNext.length === 0 ? (
             <EmptyQueue />
           ) : (
-            <ol className="glass flex flex-col rounded-3xl p-1.5">
-              <AnimatePresence initial={false}>
-                {upNext.slice(0, UP_NEXT_SHOWN).map((item, i) => (
-                  <motion.li
-                    key={item.id}
-                    layout
-                    initial={{ opacity: 0, scale: 0.97 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.97 }}
-                    transition={spring}
-                  >
-                    <QueueRow
-                      roomId={room.id}
-                      item={item}
-                      user={userById(item.addedBy)}
-                      mine={isMine(item, me.id)}
-                      byline={!!item.autopilot}
-                      leading={
-                        <span className="w-5 shrink-0 text-center text-sm text-muted-foreground tabular-nums">{i + 1}</span>
-                      }
-                      trailing={
-                        item.autopilot ? (
-                          <NotThisOne roomId={room.id} item={item} />
-                        ) : (
-                          owner &&
-                          item.addedBy !== me.id &&
-                          item.state === 'queued' && <RemoveTheirs roomId={room.id} item={item} owner={userById(item.addedBy)} />
-                        )
-                      }
-                    />
-                  </motion.li>
-                ))}
-              </AnimatePresence>
-              {upNext.length > UP_NEXT_SHOWN && (
-                <li className="px-4 py-2.5 text-sm text-muted-foreground">
-                  and {upNext.length - UP_NEXT_SHOWN} more
-                </li>
-              )}
-            </ol>
+            <UpNext roomId={room.id} items={upNext} limit={UP_NEXT_SHOWN} me={me.id} owner={owner} userById={userById} />
           )}
         </motion.section>
 

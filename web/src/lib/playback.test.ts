@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { currentPosition } from '@/hooks/use-room-controls'
-import { can, queueArtworkUrl, skipMode, songsBeforeYours, toNowPlaying, type Playback, type QueueItem } from './playback'
+import { can, lanePositionAt, queueArtworkUrl, skipMode, songsBeforeYours, toNowPlaying, type Playback, type QueueItem } from './playback'
 
 const item = (id: string, addedBy: string, extra: Partial<QueueItem['track']> = {}): QueueItem => ({
   id,
@@ -23,6 +23,19 @@ describe('songsBeforeYours', () => {
   it("doesn't count autopilot's songs as yours", () => {
     const auto = { ...item('e', 'zed'), autopilot: { seedTitle: 'Heroes' } }
     expect(songsBeforeYours(['e'], [...items, auto], 'zed')).toBeUndefined()
+  })
+})
+
+describe('lanePositionAt', () => {
+  const mine = new Set(['c', 'd', 'e'])
+  it("counts your songs above the drop, skipping everyone else's", () => {
+    expect(lanePositionAt(['a', 'c', 'b', 'd'], 'd', mine)).toBe(1)
+    expect(lanePositionAt(['c', 'a', 'b', 'd'], 'c', mine)).toBe(0)
+    expect(lanePositionAt(['d', 'c', 'a', 'b'], 'c', mine)).toBe(1)
+  })
+  it('parks a song missing from the order past the last of yours in it', () => {
+    expect(lanePositionAt(['a', 'c', 'b'], 'd', mine)).toBe(1)
+    expect(lanePositionAt(['a', 'b'], 'd', mine)).toBe(0)
   })
 })
 

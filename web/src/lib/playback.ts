@@ -71,6 +71,21 @@ export function songsBeforeYours(upNext: string[], items: QueueItem[], userId: s
   return i < 0 ? undefined : i
 }
 
+/**
+ * Where in your lane a song sits, given an up-next order: after however
+ * many of your other songs are above it. Other people's songs don't move
+ * you within your lane; a song missing from the order lands past the
+ * last of yours that's in it.
+ */
+export function lanePositionAt(upNext: string[], itemId: string, mine: Set<string>) {
+  let position = 0
+  for (const id of upNext) {
+    if (id === itemId) return position
+    if (mine.has(id)) position++
+  }
+  return position
+}
+
 /** The shell player's view of the room's playback. */
 export function toNowPlaying(roomId: string, p: Playback, users: NowPlaying['requester'][] | undefined): NowPlaying | null {
   if (!p.item) return null
