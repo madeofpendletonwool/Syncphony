@@ -491,6 +491,16 @@ func (s *Service) Warm(ts ...provider.Track) {
 	}
 }
 
+// WarmArtist asks for artists to be fetched in the background, with
+// their nearest neighbors: ones a fill wanted and found nothing cached for.
+func (s *Service) WarmArtist(as ...ArtistRef) {
+	for _, a := range as {
+		if artistKey(a) != "" {
+			s.enqueue(job{artist: a})
+		}
+	}
+}
+
 func (s *Service) enqueue(j job) {
 	k := j.key()
 	s.mu.Lock()

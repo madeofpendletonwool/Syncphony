@@ -1,8 +1,8 @@
 # ADR 0012: Smart DJ: music knowledge apart from the services
 
-- **Status:** accepted (stage 1 of Phase 7)
+- **Status:** accepted (stages 1 and 2 of Phase 7)
 - **Date:** 2026-10-07
-- **Issues:** MAD-750 (Phase 7), MAD-751, MAD-752
+- **Issues:** MAD-750 (Phase 7); stage 1: MAD-751, MAD-752; stage 2: MAD-753, MAD-754, MAD-755
 
 ## Context
 
@@ -23,7 +23,7 @@ A new package, `internal/musicgraph`, knows about artists and songs by name, Mus
 - **About an artist** (`Artist`): similar artists with a 0–1 score, their top songs with a 0–1 popularity *among their own songs*, and tags.
 - **About a song** (`Track`): similar songs, BPM, the year it first came out, and how popular it is across all music.
 
-Stage 2 (MAD-753..755) turns those into picks and finds them on the room's services with `match.On`, as suggestions already do for a seed. When autopilot moves onto it, this ADR replaces ADR 0008's "Songs come from libraries in the room". Until then nothing reads it but the cache warmer, so autopilot's behavior doesn't change yet.
+Stage 2 (`internal/dj`, below) turns those into picks and finds them on the room's services with `match.On`. This replaces ADR 0008's "Songs come from libraries in the room", "Seeds take turns" and "Adventure". ADR 0008's rules on when autopilot fills, and on autopilot songs being nobody's, still hold.
 
 ### Sources
 
@@ -76,6 +76,61 @@ The merged score is the weighted average over the sources that answered. A sourc
 
 MusicBrainz joins when `SYNCPHONY_MUSICBRAINZ_URL` isn't off. `TestLive` in `internal/musicgraph` asks the real services when `SYNCPHONY_TEST_MUSICGRAPH_LIVE=1` is set.
 
+## The DJ (stage 2)
+
+`internal/dj` picks songs, and `autopilot` asks it first. It knows nothing about queues or turns: it's given what the room did, and returns songs to try, best first. It doesn't import `suggest`, so suggestions can move onto it later (MAD-759).
+
+### The room's taste (MAD-753)
+
+`dj.Profile` is read from the room's last 100 plays, the songs playing and waiting, and autopilot's own recent songs.
+
+- **Signals:**
+
+  | The room… | Counts |
+  |---|---|
+  | let a member's song play through | +1 |
+  | has a member's song playing or waiting | +0.8 |
+  | let one of autopilot's songs play through | +0.5 |
+  | skipped a song (anyone's) | −1 |
+  | removed one of autopilot's songs | −0.5 |
+
+  Each signal halves every 2 hours.
+- **Fair across members.** Each member's likes are scaled to the same total, however many songs they've queued. Members in the room count 1.5, members who left 1, and autopilot's songs 0.5. Weights are relative to the room's favorite artist, which scores 1.
+- **Turned away.** An artist the room skipped more than it liked is left out entirely, both as a seed and as a pick.
+- **Heard.** Songs the room heard or has waiting are compared by artist and title without qualifiers, so a remaster or live take of a song the room just heard doesn't play.
+
+### Candidates and finding them (MAD-754)
+
+- **The walk** starts from the room's 8 favorite artists and follows up to 30 similar artists from each. Each artist it reaches collects `taste × similarity` from every path, and remembers the room artist that leads there most strongly ("via").
+- **Two steps.** At explore 35 or more, it also goes two steps out from the 10 nearest new artists, with the second step counting 0.6.
+- **Songs.** Candidates are the top 15 songs of the 40 nearest artists, plus up to 20 songs like each of the room's 3 latest songs that played through (Last.fm `track.getSimilar`). Live takes, remixes, demos and other variants are left out.
+- **The cache first.** The walk reads the cache. It may fetch up to 6 uncached artists over the network within 12 seconds: the room's top 3 favorites first, then the nearest ones it reaches. The rest are warmed for the next fill.
+- **Finding a pick.** Each drawn candidate is looked for with `match.On` on up to 2 of the room's services that can search tracks, Spotify and nugs.net included. The service its "via" song played from goes first, then services of people in the room. A song is skipped if it isn't found, isn't fresh, or is on an album the room heard in its last 5 songs; the DJ moves to the next candidate. A room with no Navidrome now gets autopilot.
+
+### Scoring and picking (MAD-755)
+
+- **Explore.** `explore` (0–100) replaces similar/discovery. Rooms set up before it read 25 for similar and 75 for discovery. The server keeps `adventure` in step for older clients and the fallback (`discovery` from 50). The web app shows it as a slider.
+- **Score:**
+
+  ```
+  score = wSim·similarity + wPop·popularity + wNov·novelty − spacing
+  ```
+
+  - **Similarity** is the candidate's affinity relative to the nearest artist's.
+  - **Popularity** is the song's popularity among its artist's own songs.
+  - **Novelty** is 0 for the room's artists, 0.6 one step out, 1 two steps out.
+  - **The weights** move from (0.55, 0.40, 0.05) at explore 0 to (0.30, 0.20, 0.50) at 100.
+  - **Spacing:** an artist heard in the last 3 songs loses 0.6, and one heard in the last 8 loses 0.25.
+- **Deep cuts.** On 15% of fills, songs by artists the room has played 3 or more times have their popularity inverted, so a loved artist's lesser-known song can come up.
+- **Picking.** The 25 best candidates, with at most 2 songs per artist, are drawn without replacement by softmax. The temperature runs from 0.05 at explore 0 to 0.15 at 100. The per-artist cap came from a live run: without it, one artist's catalog filled the whole shortlist.
+- **Reasons.** Each pick stores its reasoning in `AutopilotInfo.reason`: the kind of relation, the via artist, similarity, popularity, novelty, score, whether it's a deep cut, and the sources. Explaining picks (MAD-760) reads it.
+
+### Fallback
+
+If the graph has no sources, knows nothing near the room's taste, or none of its picks can be found, autopilot falls back to ADR 0008's chain, unchanged: the services' recommendations, then autopilot's own trail, then random songs.
+
+`TestLive` in `internal/dj` (with `SYNCPHONY_TEST_MUSICGRAPH_LIVE=1`) walks the real graph for a sample room and logs the shortlist at explore 0, 50 and 100.
+
 ## Consequences
 
 - The artists and titles of queued songs go to Last.fm, ListenBrainz and Deezer, as they already go to MusicBrainz and LRCLIB. ListenBrainz and Deezer are on by default; each can be turned off.
@@ -83,4 +138,6 @@ MusicBrainz joins when `SYNCPHONY_MUSICBRAINZ_URL` isn't off. `TestLive` in `int
 - ListenBrainz's labs API is slow and sometimes times out. That costs only its part of an answer, for a day.
 - The similar-artists dataset name is ListenBrainz's own and may change. If it does, ListenBrainz stops contributing similar artists until the constant is updated, and the other sources carry on.
 - An artist's name can belong to more than one artist. Deezer takes the one with the most fans, and MusicBrainz the best search result.
+- The first fill after a cold start knows only the artists it fetched in time. The warmer catches up from the songs being queued.
+- `AutopilotInfo.reason` is stored with each song; it isn't in the API until MAD-760.
 - Tempo is often unknown: Deezer has a BPM for some songs and 0 for many. Set flow (MAD-757) must treat 0 as unknown, not slow.

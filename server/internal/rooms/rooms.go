@@ -146,8 +146,39 @@ func (g Guests) CanVote() bool { return !g.NoVote }
 type Autopilot struct {
 	On bool `json:"on,omitempty"`
 	// Adventure is how far autopilot strays from the room's songs:
-	// AdventureSimilar (the default) or AdventureDiscovery.
+	// AdventureSimilar (the default) or AdventureDiscovery. Explore
+	// replaces it; it's kept in step, as the half Explore falls in.
 	Adventure string `json:"adventure,omitempty"`
+	// Explore is how far autopilot strays, from 0 (the room's own artists
+	// and their hits) to 100 (artists further afield, deeper cuts). Nil
+	// reads Adventure: ExploreSimilar or ExploreDiscovery.
+	Explore *int `json:"explore,omitempty"`
+}
+
+// What Explore reads as for a room set up before it, by Adventure.
+const (
+	ExploreSimilar   = 25
+	ExploreDiscovery = 75
+	MaxExplore       = 100
+)
+
+// ExploreLevel is Explore, or what Adventure stands for.
+func (a Autopilot) ExploreLevel() int {
+	switch {
+	case a.Explore != nil:
+		return *a.Explore
+	case a.Adventure == AdventureDiscovery:
+		return ExploreDiscovery
+	}
+	return ExploreSimilar
+}
+
+// adventureFor is the adventure an explore level falls in.
+func adventureFor(explore int) string {
+	if explore >= MaxExplore/2 {
+		return AdventureDiscovery
+	}
+	return AdventureSimilar
 }
 
 // Autopilot adventure levels.
@@ -265,6 +296,10 @@ func ParseSettings(raw string) Settings {
 	if st.Autopilot.Adventure != AdventureDiscovery {
 		st.Autopilot.Adventure = AdventureSimilar
 	}
+	if e := st.Autopilot.Explore; e != nil && (*e < 0 || *e > MaxExplore) {
+		st.Autopilot.Explore = nil
+	}
+	st.Autopilot.Explore = ptr(st.Autopilot.ExploreLevel())
 	if m := st.Guests.MaxSongs; m != nil && (*m < 0 || *m > MaxGuestSongs) {
 		st.Guests.MaxSongs = nil
 	}
@@ -545,6 +580,13 @@ func validate(name, mode string, st Settings) (string, string, error) {
 	default:
 		return "", "", &InvalidInputError{"autopilot's adventure is similar or discovery"}
 	}
+	if e := st.Autopilot.Explore; e != nil && (*e < 0 || *e > MaxExplore) {
+		return "", "", &InvalidInputError{fmt.Sprintf("autopilot's explore is 0 to %d", MaxExplore)}
+	}
+	// Explore, when given, decides; an older client's adventure stands for
+	// its half.
+	st.Autopilot.Explore = ptr(st.Autopilot.ExploreLevel())
+	st.Autopilot.Adventure = adventureFor(*st.Autopilot.Explore)
 	if m := st.Guests.MaxSongs; m != nil && (*m < 0 || *m > MaxGuestSongs) {
 		return "", "", &InvalidInputError{fmt.Sprintf("a guest may add 0 (no limit) to %d songs", MaxGuestSongs)}
 	}

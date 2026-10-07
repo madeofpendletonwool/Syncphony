@@ -3310,10 +3310,19 @@ export interface components {
             /**
              * @description `similar` stays close to the room's songs, their artists
              *     included. `discovery` plays other artists, further afield.
+             *     `explore` replaces it: the server keeps it in step, as the
+             *     half `explore` falls in (`discovery` from 50).
              * @default similar
              * @enum {string}
              */
             adventure: "similar" | "discovery";
+            /**
+             * @description How far the DJ strays, from 0 (the room's own artists and their
+             *     hits) to 100 (new artists further afield, deeper cuts). Always
+             *     set in responses. In a request it decides; left out, it's 25
+             *     for `similar` and 75 for `discovery`.
+             */
+            explore?: number;
         };
         /**
          * @description Who can see and join the room. `open`: everyone on the server.

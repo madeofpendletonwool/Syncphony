@@ -67,12 +67,18 @@ func (p *player) NowPlaying(_ context.Context, roomID string) (rooms.NowPlaying,
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
+	return newEnvWith(t, fake.Options{})
+}
+
+// newEnvWith is newEnv with the fake service set up as opts says.
+func newEnvWith(t *testing.T, opts fake.Options) *env {
+	t.Helper()
 	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	reg, err := provider.NewRegistry(fake.New(fake.Options{}))
+	reg, err := provider.NewRegistry(fake.New(opts))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,6 +93,7 @@ func newEnv(t *testing.T) *env {
 	e.pilot = autopilot.New(db, e.rooms, e.q, ls, e.presence)
 	e.pilot.Player = e.player
 	e.pilot.Rand = func(int) int { return 0 }
+	e.pilot.Now = e.clock
 	t.Cleanup(e.pilot.Close)
 	e.alice = e.member(ls, "alice")
 	e.bob = e.member(ls, "bob")

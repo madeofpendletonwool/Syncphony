@@ -1,6 +1,6 @@
 # ADR 0008: Autopilot DJ
 
-- **Status:** accepted
+- **Status:** accepted; how songs are found, seeded and how adventurous they are is superseded by ADR 0012
 - **Date:** 2026-10-06
 - **Issue:** MAD-718
 

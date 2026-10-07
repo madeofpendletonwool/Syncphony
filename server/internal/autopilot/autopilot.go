@@ -16,6 +16,7 @@
 package autopilot
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
@@ -24,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/dj"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
@@ -77,6 +79,11 @@ type Service struct {
 	// Player, if set, limits autopilot to rooms with a speaker: nobody
 	// hears songs added to a room with none.
 	Player Player
+	// Graph, if set, is the music knowledge the DJ picks from (ADR 0012),
+	// before falling back on the services' own recommendations.
+	Graph dj.Graph
+	// Now is the clock. Default store.Now.
+	Now func() time.Time
 	// Timeout bounds one fill. Default 30s.
 	Timeout time.Duration
 	// Rand returns a number in [0, n). Default math/rand/v2's IntN.
@@ -105,7 +112,7 @@ func New(db *store.Store, rs *rooms.Service, qs *queue.Service, links Links, pre
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Service{
 		db: db, rooms: rs, queue: qs, links: links, presence: presence,
-		Timeout: 30 * time.Second, Rand: rand.IntN,
+		Timeout: 30 * time.Second, Rand: rand.IntN, Now: store.Now,
 		ctx: ctx, cancel: cancel, byID: map[string]*roomState{},
 	}
 }
@@ -207,8 +214,8 @@ func (s *Service) Fill(ctx context.Context, roomID string) error {
 		return err
 	}
 	f := &fill{
-		s: s, roomID: roomID, room: room, adventure: settings.Adventure,
-		history: history, mine: mine, finder: suggest.NewFinder(s.links, s.Rand),
+		s: s, roomID: roomID, room: room, adventure: settings.Adventure, explore: settings.ExploreLevel(),
+		history: history, upcoming: snap.Items, mine: mine, finder: suggest.NewFinder(s.links, s.Rand),
 	}
 	defer f.close()
 	f.remember(snap.Items)
@@ -266,7 +273,9 @@ type fill struct {
 	roomID    string
 	room      store.Room
 	adventure string
+	explore   int
 	history   []store.ListHistoryRow
+	upcoming  []store.QueueItem
 	mine      []store.QueueItem
 
 	// seen holds the songs not to play: recent, waiting, or removed.
@@ -276,8 +285,10 @@ type fill struct {
 	// recentArtists are the artists of the room's last few songs.
 	recentArtists map[string]bool
 
-	links  []store.ServiceLink
-	finder *suggest.Finder
+	// links can recommend; searchable, search for tracks. Both start
+	// with the links of the people in the room.
+	links, searchable []store.ServiceLink
+	finder            *suggest.Finder
 }
 
 func (f *fill) close() { f.finder.Close() }
@@ -326,13 +337,17 @@ func (f *fill) fresh(t provider.Track) bool {
 	return !f.seen.Has(t) && !f.skipped[suggest.ArtistKey(t)]
 }
 
-// choose returns songs to try adding, best first: ones like a member's
+// choose returns songs to try adding, best first: the DJ's picks from the
+// music graph; failing that, ones a service recommends like a member's
 // recent song, members taking turns; failing that, like autopilot's own
 // recent songs; failing that, random ones.
 func (f *fill) choose(ctx context.Context) ([]pick, error) {
 	users, seeds := f.seeds()
 	if err := f.loadLinks(ctx, users); err != nil {
 		return nil, err
+	}
+	if out := f.fromGraph(ctx, users); len(out) > 0 {
+		return out, nil
 	}
 	if len(f.links) == 0 {
 		return nil, nil
@@ -428,10 +443,11 @@ func (f *fill) seeds() ([]string, map[string][]suggest.Seed) {
 }
 
 // loadLinks finds the services autopilot can draw on: those of the people
-// in the room and of the seeds' members, and shared ones, that can
-// recommend.
+// in the room and of the seeds' members, and shared ones. The DJ finds its
+// picks on any that search; the fallback asks those that recommend.
 func (f *fill) loadLinks(ctx context.Context, users []string) error {
-	who := append(f.s.presence.Members(f.roomID), users...)
+	present := f.s.presence.Members(f.roomID)
+	who := append(slices.Clone(present), users...)
 	if len(who) == 0 {
 		who = []string{f.room.OwnerID}
 	}
@@ -439,12 +455,66 @@ func (f *fill) loadLinks(ctx context.Context, users []string) error {
 	if err != nil {
 		return err
 	}
+	slices.SortStableFunc(rows, func(a, b store.ServiceLink) int {
+		return b2i(slices.Contains(present, b.UserID)) - b2i(slices.Contains(present, a.UserID))
+	})
 	for _, l := range rows {
-		if p, err := f.s.links.Provider(l.Provider); err == nil && p.Info().Capabilities.Recommendations {
+		p, err := f.s.links.Provider(l.Provider)
+		if err != nil {
+			continue
+		}
+		caps := p.Info().Capabilities
+		if caps.Recommendations {
 			f.links = append(f.links, l)
+		}
+		if caps.CanSearch(provider.KindTrack) {
+			f.searchable = append(f.searchable, l)
 		}
 	}
 	return nil
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// fromGraph asks the DJ for songs from the music graph, found on any
+// service in the room that searches.
+func (f *fill) fromGraph(ctx context.Context, users []string) []pick {
+	if f.s.Graph == nil || len(f.searchable) == 0 {
+		return nil
+	}
+	engine := &dj.Engine{Graph: f.s.Graph, Rand: f.s.Rand}
+	picks := engine.Choose(ctx, dj.Request{
+		Input: dj.Input{
+			History: f.history, Upcoming: f.upcoming, Mine: f.mine,
+			Present: f.s.presence.Members(f.roomID), Now: f.s.Now(),
+		},
+		Explore: f.explore, Links: f.searchable, Sessions: f.finder, Fresh: f.fresh,
+	})
+	fallback := f.room.OwnerID
+	if len(users) > 0 {
+		fallback = users[0]
+	}
+	var out []pick
+	for _, p := range picks {
+		info := queue.AutopilotInfo{Reason: &queue.AutopilotReason{
+			Kind: p.Why.Kind, Via: p.Why.Via, Similarity: p.Why.Similarity, Popularity: p.Why.Popularity,
+			Novelty: p.Why.Novelty, Score: p.Why.Score, DeepCut: p.Why.DeepCut, Sources: p.Why.Sources,
+		}}
+		if p.Seed.ID != "" {
+			seed := suggest.TrackOf(p.Seed)
+			info.SeedItemID, info.SeedTitle = p.Seed.ID, seed.Title
+			if len(seed.Artists) > 0 {
+				info.SeedArtist = seed.Artists[0].Name
+			}
+		}
+		out = append(out, pick{track: p.Track, forUser: cmp.Or(p.ForUser, fallback), info: info})
+	}
+	return out
 }
 
 // linksFor orders the links to try for a seed: the one it played from,
