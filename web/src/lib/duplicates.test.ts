@@ -1,31 +1,31 @@
 import { describe, expect, it } from 'vitest'
-import { queuedCopy, sameSong } from './duplicates'
-import type { QueueItem } from './playback'
+import { duplicateMessage, whereIs, type QueueDuplicate } from './duplicates'
 
-const track = (provider: string, trackId: string, title: string, artist: string) => ({ provider, trackId, title, artists: [artist] })
-const item = (id: string, state: string, t: ReturnType<typeof track>) => ({ id, state, track: t }) as QueueItem
+const now = Date.parse('2026-10-07T20:00:00Z')
+const names: Record<string, string> = { sam: 'Sam' }
+const nameOf = (id: string) => names[id]
+const dup = (item: Partial<QueueDuplicate['item']>, playedAt?: string) =>
+  ({ title: 'Heroes', item: { state: 'queued', addedBy: 'sam', ...item }, playedAt }) as QueueDuplicate
 
-describe('sameSong', () => {
-  it('matches the same track', () => {
-    expect(sameSong(track('spotify', '1', 'Heroes', 'David Bowie'), track('spotify', '1', 'x', 'y'))).toBe(true)
+describe('whereIs', () => {
+  it('says whose lane it waits in', () => {
+    expect(whereIs(dup({}), 'me', nameOf, now)).toBe('already in Sam’s lane')
+    expect(whereIs(dup({ addedBy: 'me' }), 'me', nameOf, now)).toBe('already in your lane')
+    expect(whereIs(dup({ addedBy: 'gone' }), 'me', nameOf, now)).toBe('already in someone’s lane')
   })
-  it('matches a song across services, loosely', () => {
-    expect(sameSong(track('spotify', '1', '“Heroes” - 2017 Remaster', 'David Bowie'), track('navidrome', 'a', 'Heroes', 'david bowie'))).toBe(true)
-    expect(sameSong(track('spotify', '1', 'Café (Live)', 'Ana'), track('navidrome', 'a', 'Cafe', 'Ana'))).toBe(true)
-  })
-  it("doesn't match different songs", () => {
-    expect(sameSong(track('spotify', '1', 'Heroes', 'David Bowie'), track('navidrome', 'a', 'Heroes', 'Peter Gabriel'))).toBe(false)
-    expect(sameSong(track('spotify', '1', 'Heroes', 'David Bowie'), track('spotify', '2', 'Changes', 'David Bowie'))).toBe(false)
+  it('knows playing, autopilot and played songs', () => {
+    expect(whereIs(dup({ state: 'playing' }), 'me', nameOf, now)).toBe('playing now')
+    expect(whereIs(dup({ autopilot: {} as never }), 'me', nameOf, now)).toBe('already up next')
+    expect(whereIs(dup({ state: 'played' }, '2026-10-07T19:40:00Z'), 'me', nameOf, now)).toBe('played 20 minutes ago')
   })
 })
 
-describe('queuedCopy', () => {
-  const heroes = track('spotify', '1', 'Heroes', 'David Bowie')
-  it('finds a waiting or playing copy', () => {
-    expect(queuedCopy([item('a', 'played', heroes), item('b', 'queued', heroes)], heroes)?.id).toBe('b')
-    expect(queuedCopy([item('a', 'playing', heroes)], heroes)?.id).toBe('a')
+describe('duplicateMessage', () => {
+  it('names one song', () => {
+    expect(duplicateMessage([dup({})], 'me', nameOf, now)).toBe('“Heroes” is already in Sam’s lane')
+    expect(duplicateMessage([dup({ state: 'played' }, '2026-10-07T19:40:00Z')], 'me', nameOf, now)).toBe('“Heroes” played 20 minutes ago')
   })
-  it('ignores songs that already played or were removed', () => {
-    expect(queuedCopy([item('a', 'played', heroes), item('b', 'removed', heroes)], heroes)).toBeUndefined()
+  it('counts several', () => {
+    expect(duplicateMessage([dup({}), dup({})], 'me', nameOf, now)).toBe('2 of these songs are already queued or played recently')
   })
 })
