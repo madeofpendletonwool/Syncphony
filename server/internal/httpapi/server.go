@@ -215,6 +215,10 @@ func (s *Server) authenticate(f StrictHandlerFunc, operationID string) StrictHan
 			if err := guestAllowed(sess.Guest, operationID, req); err != nil {
 				return nil, err
 			}
+		} else if room, ok := requestRoom(req); ok {
+			if err := s.enterRoom(ctx, sess.User, room, operationID); err != nil {
+				return nil, err
+			}
 		}
 		return f(context.WithValue(ctx, ctxSession, sess), w, r, req)
 	}
@@ -385,6 +389,8 @@ var errorCodes = []struct {
 	{links.ErrNotPaired, http.StatusConflict, "not_paired"},
 	{rooms.ErrNotFound, http.StatusNotFound, "not_found"},
 	{rooms.ErrForbidden, http.StatusForbidden, "forbidden"},
+	{rooms.ErrInviteInvalid, http.StatusNotFound, "room_invite_invalid"},
+	{rooms.ErrNotMember, http.StatusNotFound, "not_member"},
 	{playback.ErrForbidden, http.StatusForbidden, "forbidden"},
 	{playback.ErrNoPlayer, http.StatusConflict, "no_player"},
 	{playback.ErrNotPlayer, http.StatusConflict, "not_player"},

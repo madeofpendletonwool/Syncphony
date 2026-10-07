@@ -44,7 +44,7 @@ func TestManageUsers(t *testing.T) {
 	bob := e.member(alice, "bob")
 	carol := e.member(alice, "carol")
 	aliceID, bobID, carolID := me(t, alice).Id, me(t, bob).Id, me(t, carol).Id
-	admin, member := httpapi.Admin, httpapi.Member
+	admin, member := httpapi.RoleAdmin, httpapi.RoleMember
 
 	for _, tc := range []struct {
 		name   string
@@ -74,7 +74,7 @@ func TestManageUsers(t *testing.T) {
 	// Promote carol and back. With two admins, either may step down.
 	var u httpapi.User
 	alice.want(http.StatusOK, "PATCH", "/users/"+carolID, httpapi.UpdateUserRequest{Role: &admin}).decode(t, &u)
-	if u.Role != httpapi.Admin {
+	if u.Role != httpapi.RoleAdmin {
 		t.Fatalf("promoted: %+v", u)
 	}
 	alice.want(http.StatusOK, "PATCH", "/users/"+carolID, httpapi.UpdateUserRequest{Role: &member})
@@ -129,7 +129,7 @@ func TestManageUsers(t *testing.T) {
 		t.Errorf("bob's links: %v, %v", links, err)
 	}
 	gone := userByID(t, alice, bobID)
-	if gone.Removed == nil || !*gone.Removed || gone.DisplayName != "Former member" || gone.Role != httpapi.Member || strings.Contains(gone.Username, "bob") {
+	if gone.Removed == nil || !*gone.Removed || gone.DisplayName != "Former member" || gone.Role != httpapi.RoleMember || strings.Contains(gone.Username, "bob") {
 		t.Errorf("removed bob: %+v", gone)
 	}
 	alice.want(http.StatusNotFound, "DELETE", "/users/"+bobID, nil)
@@ -173,7 +173,7 @@ func TestDeleteMe(t *testing.T) {
 	if r := alice.do("POST", "/me/delete", httpapi.DeleteMeRequest{Password: ptr("password-admin")}); r.code() != "last_admin" {
 		t.Fatalf("last admin: %d %s", r.status, r.body)
 	}
-	admin := httpapi.Admin
+	admin := httpapi.RoleAdmin
 	alice.want(http.StatusOK, "PATCH", "/users/"+carolID, httpapi.UpdateUserRequest{Role: &admin})
 	alice.want(http.StatusNoContent, "POST", "/me/delete", httpapi.DeleteMeRequest{Password: ptr("password-admin")})
 	carol.want(http.StatusOK, "GET", "/rooms/"+room.Id, nil).decode(t, &room)

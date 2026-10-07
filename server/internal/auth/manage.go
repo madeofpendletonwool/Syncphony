@@ -337,3 +337,17 @@ func (s *Service) MayOwnRooms(ctx context.Context, u store.User) error {
 	}
 	return nil
 }
+
+// MayJoinRooms fails unless u is a member who can sign in, and so can be
+// let into a room: guests are in their own room by their pass.
+func (s *Service) MayJoinRooms(ctx context.Context, u store.User) error {
+	if !active(u) {
+		return invalid("userId", "%s can't sign in", u.DisplayName)
+	}
+	if _, guest, err := s.GuestOf(ctx, u.ID); err != nil {
+		return err
+	} else if guest {
+		return invalid("userId", "guests join one room, with its guest pass")
+	}
+	return nil
+}

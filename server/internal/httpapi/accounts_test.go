@@ -272,7 +272,7 @@ func TestSetupAndInvites(t *testing.T) {
 	anon := e.client()
 	var info httpapi.InviteInfo
 	anon.want(http.StatusOK, "GET", "/invites/"+code, nil).decode(t, &info)
-	if info.Role != httpapi.Admin {
+	if info.Role != httpapi.RoleAdmin {
 		t.Fatalf("setup invite role %q", info.Role)
 	}
 
@@ -282,7 +282,7 @@ func TestSetupAndInvites(t *testing.T) {
 	})
 	var me httpapi.Me
 	r.decode(t, &me)
-	if me.Role != httpapi.Admin || me.Username != "admin" || !me.HasPassword || me.PasskeyCount != 0 || me.Color == "" {
+	if me.Role != httpapi.RoleAdmin || me.Username != "admin" || !me.HasPassword || me.PasskeyCount != 0 || me.Color == "" {
 		t.Fatalf("admin: %+v", me)
 	}
 	cookie := r.header.Get("Set-Cookie")
@@ -309,7 +309,7 @@ func TestSetupAndInvites(t *testing.T) {
 	// Admin invites a member.
 	var inv httpapi.Invite
 	admin.want(http.StatusCreated, "POST", "/invites", httpapi.CreateInviteRequest{}).decode(t, &inv)
-	if inv.Role != httpapi.Member || inv.Url != e.base+"/invite/"+inv.Code || !inv.ExpiresAt.Equal(e.clock().Add(7*24*time.Hour)) {
+	if inv.Role != httpapi.RoleMember || inv.Url != e.base+"/invite/"+inv.Code || !inv.ExpiresAt.Equal(e.clock().Add(7*24*time.Hour)) {
 		t.Fatalf("invite: %+v", inv)
 	}
 	bob := e.client()
@@ -320,7 +320,7 @@ func TestSetupAndInvites(t *testing.T) {
 		t.Fatalf("short username: %d %s", r.status, r.body)
 	}
 	bobMe := bob.signup(inv.Code, "bob")
-	if bobMe.Role != httpapi.Member || bobMe.Color == me.Color {
+	if bobMe.Role != httpapi.RoleMember || bobMe.Color == me.Color {
 		t.Fatalf("bob: %+v (admin color %s)", bobMe, me.Color)
 	}
 
@@ -345,7 +345,7 @@ func TestSetupAndInvites(t *testing.T) {
 	}
 
 	// Revoking.
-	admin.want(http.StatusCreated, "POST", "/invites", httpapi.CreateInviteRequest{Role: ptr(httpapi.Admin), ExpiresInHours: ptr(1)}).decode(t, &inv)
+	admin.want(http.StatusCreated, "POST", "/invites", httpapi.CreateInviteRequest{Role: ptr(httpapi.RoleAdmin), ExpiresInHours: ptr(1)}).decode(t, &inv)
 	admin.want(http.StatusNoContent, "DELETE", "/invites/"+inv.Code, nil)
 	if r := anon.do("GET", "/invites/"+inv.Code, nil); r.status != http.StatusNotFound {
 		t.Fatalf("revoked invite: %d", r.status)
@@ -507,7 +507,7 @@ func TestPasskeys(t *testing.T) {
 	finish := httpapi.FinishCeremony{CeremonyId: cer.CeremonyId, Credential: phone.create(t, cer.Options), Name: ptr("Phone")}
 	var me httpapi.Me
 	c.want(http.StatusCreated, "POST", "/auth/signup/passkey/finish", finish).decode(t, &me)
-	if me.Username != "alice" || me.Role != httpapi.Admin || me.HasPassword || me.PasskeyCount != 1 {
+	if me.Username != "alice" || me.Role != httpapi.RoleAdmin || me.HasPassword || me.PasskeyCount != 1 {
 		t.Fatalf("passkey signup: %+v", me)
 	}
 	if r := c.do("POST", "/auth/signup/passkey/finish", finish); r.code() != "ceremony_expired" {

@@ -8,6 +8,7 @@ package rooms
 import (
 	"cmp"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -106,6 +107,9 @@ type Settings struct {
 	Matching        Matching  `json:"matching"`
 	Autopilot       Autopilot `json:"autopilot"`
 	Guests          Guests    `json:"guests"`
+	// ApproveJoins: while the room is private, someone using one of its
+	// invites asks to join, and the owner lets them in.
+	ApproveJoins bool `json:"approveJoins,omitempty"`
 }
 
 // Guests says whether people without an account may join the room with a
@@ -282,19 +286,40 @@ func VotesNeeded(voters, percent int) int {
 // List returns every room, oldest first.
 func (s *Service) List(ctx context.Context) ([]store.Room, error) { return s.db.ListRooms(ctx) }
 
-// Create makes a room owned by ownerID. mode "" means round robin, and
-// empty settings are defaults.
+// Create makes an open room owned by ownerID. mode "" means round robin,
+// and empty settings are defaults.
 func (s *Service) Create(ctx context.Context, ownerID, name, mode string, st Settings) (store.Room, error) {
+	return s.CreateWith(ctx, ownerID, name, mode, Open, st)
+}
+
+// CreateWith is Create with a visibility: Open, Unlisted or Private ("" is
+// Open).
+func (s *Service) CreateWith(ctx context.Context, ownerID, name, mode, visibility string, st Settings) (store.Room, error) {
 	if mode == "" {
 		mode = store.FairnessRoundRobin
+	}
+	if visibility == "" {
+		visibility = Open
+	}
+	if err := validateVisibility(visibility); err != nil {
+		return store.Room{}, err
 	}
 	name, raw, err := validate(name, mode, st)
 	if err != nil {
 		return store.Room{}, err
 	}
-	return s.db.CreateRoom(ctx, store.CreateRoomParams{
-		ID: store.NewID(), Name: name, OwnerID: ownerID, FairnessMode: mode, Settings: raw, CreatedAt: s.Now(),
+	var r store.Room
+	err = s.db.Tx(ctx, func(q *store.Queries) error {
+		r, err = q.CreateRoom(ctx, store.CreateRoomParams{
+			ID: store.NewID(), Name: name, OwnerID: ownerID, FairnessMode: mode, Settings: raw, CreatedAt: s.Now(),
+		})
+		if err != nil || visibility == Open {
+			return err
+		}
+		r, err = q.SetRoomVisibility(ctx, store.SetRoomVisibilityParams{Visibility: visibility, ID: r.ID})
+		return err
 	})
+	return r, err
 }
 
 // Update is a change to a room. Nil fields, and empty permissions, are
@@ -311,6 +336,14 @@ type Update struct {
 	Autopilot *Autopilot
 	// Guests, if set, replaces the room's guest options.
 	Guests *Guests
+	// Visibility, if set, is who can see and join the room. Changing it
+	// revokes the room's invites. Closing an open room makes Present, and
+	// everyone with songs waiting, members, so no one is shut out mid-song.
+	Visibility *string
+	Present    []string
+	// ApproveJoins, if set, is whether the owner lets in each person who
+	// uses an invite to the room while it's private.
+	ApproveJoins *bool
 }
 
 // Update changes a room. Only its owner or an admin may. Everyone in the
@@ -359,11 +392,28 @@ func (s *Service) Update(ctx context.Context, by Actor, id string, u Update) (st
 	if u.Guests != nil {
 		st.Guests = *u.Guests
 	}
+	if u.ApproveJoins != nil {
+		st.ApproveJoins = *u.ApproveJoins
+	}
 	name, raw, err := validate(name, mode, st)
 	if err != nil {
 		return r, err
 	}
-	updated, err := s.db.UpdateRoom(ctx, store.UpdateRoomParams{Name: name, FairnessMode: mode, Settings: raw, ID: id})
+	visibility := r.Visibility
+	if u.Visibility != nil {
+		if err := validateVisibility(*u.Visibility); err != nil {
+			return r, err
+		}
+		visibility = *u.Visibility
+	}
+	var updated store.Room
+	err = s.db.Tx(ctx, func(q *store.Queries) error {
+		updated, err = q.UpdateRoom(ctx, store.UpdateRoomParams{Name: name, FairnessMode: mode, Settings: raw, ID: id})
+		if err != nil || visibility == r.Visibility {
+			return err
+		}
+		return s.changeVisibility(ctx, q, &updated, visibility, u.Present)
+	})
 	if err != nil {
 		return updated, err
 	}
@@ -386,7 +436,9 @@ func (s *Service) Updated(r store.Room) {
 }
 
 // Transfer makes userID the room's owner. Only its owner or an admin may.
-// The caller checks userID may own rooms (a member who can sign in).
+// The caller checks userID may own rooms (a member who can sign in). The
+// old owner stays a member, so handing over a private room doesn't lock
+// them out of it.
 func (s *Service) Transfer(ctx context.Context, by Actor, id, userID string) (store.Room, error) {
 	r, err := s.Get(ctx, id)
 	if err != nil {
@@ -398,7 +450,16 @@ func (s *Service) Transfer(ctx context.Context, by Actor, id, userID string) (st
 	if r.OwnerID == userID {
 		return r, nil
 	}
-	r, err = s.db.SetRoomOwner(ctx, store.SetRoomOwnerParams{OwnerID: userID, ID: id})
+	old := r.OwnerID
+	err = s.db.Tx(ctx, func(q *store.Queries) error {
+		r, err = q.SetRoomOwner(ctx, store.SetRoomOwnerParams{OwnerID: userID, ID: id})
+		if err != nil {
+			return err
+		}
+		return q.AddRoomMember(ctx, store.AddRoomMemberParams{
+			RoomID: id, UserID: old, AddedBy: sql.NullString{String: by.UserID, Valid: true}, CreatedAt: s.Now(),
+		})
+	})
 	if err != nil {
 		return r, err
 	}

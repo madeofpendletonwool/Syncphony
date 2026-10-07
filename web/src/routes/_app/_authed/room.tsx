@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Check, ChevronDown, Crown, History, LogOut, MonitorPlay, Plus, QrCode, Settings2, Sparkles, Speaker } from 'lucide-react'
+import { Check, ChevronDown, Crown, History, LogOut, MonitorPlay, Plus, QrCode, Settings2, Sparkles, Speaker, Users } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { DropdownMenu } from 'radix-ui'
 import { useEffect, useState, type ReactNode } from 'react'
@@ -11,6 +11,7 @@ import { AutopilotBadge } from '@/components/room/autopilot-badge'
 import { BigScreenDialog } from '@/components/room/big-screen-dialog'
 import { GuestsDialog } from '@/components/room/guests-dialog'
 import { HeartButton } from '@/components/room/heart-button'
+import { MembersDialog } from '@/components/room/members-dialog'
 import { MyLane } from '@/components/room/my-lane'
 import { ReactionBar } from '@/components/room/reaction-bar'
 import { RecentlyPlayed } from '@/components/room/recently-played'
@@ -29,6 +30,7 @@ import { Slider } from '@/components/ui/slider'
 import { UserAvatar } from '@/components/user-avatar'
 import { usePosition } from '@/hooks/use-position'
 import { useQueueRemoval } from '@/hooks/use-queue-removal'
+import { visibility } from '@/lib/access'
 import { useMe } from '@/lib/auth'
 import { isMine } from '@/lib/autopilot'
 import { laneStyle } from '@/lib/lane'
@@ -162,7 +164,9 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
   const [settings, setSettings] = useState(false)
   const [bigScreen, setBigScreen] = useState(false)
   const [guests, setGuests] = useState(false)
+  const [membersOpen, setMembersOpen] = useState(false)
   const guest = !!me.guest
+  const v = visibility(room.visibility)
   const host = me.role === 'admin' || room.ownerId === me.id
   const others = guest ? [] : rooms.filter((r) => r.id !== room.id)
   const title = (
@@ -202,6 +206,12 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
               <span className="flex-1">Big screen</span>
             </DropdownMenu.Item>
           )}
+          {!guest && room.visibility !== 'open' && (
+            <DropdownMenu.Item onSelect={() => setMembersOpen(true)} className={menuItem}>
+              <Users className="size-4 text-muted-foreground" />
+              <span className="flex-1">Members</span>
+            </DropdownMenu.Item>
+          )}
           {!guest && (room.guests.allowed || room.ownerId === me.id) && (
             <DropdownMenu.Item onSelect={() => setGuests(true)} className={menuItem}>
               <QrCode className="size-4 text-muted-foreground" />
@@ -236,7 +246,16 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
 
   return (
     <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 pt-10 pb-6">
-      <RoomSettings room={room} open={settings} onOpenChange={setSettings} />
+      <RoomSettings
+        room={room}
+        open={settings}
+        onOpenChange={setSettings}
+        onMembers={() => {
+          setSettings(false)
+          setMembersOpen(true)
+        }}
+      />
+      <MembersDialog room={room} open={membersOpen} onOpenChange={setMembersOpen} />
       <BigScreenDialog room={room} open={bigScreen} onOpenChange={setBigScreen} />
       <GuestsDialog room={room} open={guests} onOpenChange={setGuests} />
       <div className="min-w-0">
@@ -253,6 +272,17 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
             : status === 'connecting'
               ? 'Connecting…'
               : 'Reconnecting…'}
+          {room.visibility !== 'open' && !guest && (
+            <button
+              type="button"
+              onClick={() => setMembersOpen(true)}
+              title={v.hint}
+              className="flex items-center gap-1 rounded-full outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              · <v.icon className="size-3.5" />
+              {v.label}
+            </button>
+          )}
         </p>
       </div>
       <div className="flex shrink-0 -space-x-2" aria-label="Here now">

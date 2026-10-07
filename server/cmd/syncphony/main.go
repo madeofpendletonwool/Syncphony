@@ -186,9 +186,8 @@ func run() error {
 	} else {
 		slog.Info("MusicBrainz is off: artwork comes only from linked services, and there are no liner notes")
 	}
-	go sweep(ctx, db, accounts, lyricsSvc, mb, notes)
-
 	roomSvc := rooms.New(db, a.bus)
+	go sweep(ctx, db, accounts, roomSvc, lyricsSvc, mb, notes)
 	queueSvc := queue.New(db, roomSvc, a.links)
 	art := artwork.New(a.links, mb)
 	palettes := palette.New(db, art)
@@ -288,9 +287,9 @@ func tick(ctx context.Context, api *httpapi.Server, ns *nights.Service) {
 	}
 }
 
-// sweep deletes expired sessions and displays, cached lyrics, MusicBrainz
-// matches and liner notes every hour until ctx is done.
-func sweep(ctx context.Context, db *store.Store, accounts *auth.Service, ly *lyrics.Service, mb *musicbrainz.Service, notes *linernotes.Service) {
+// sweep deletes expired sessions, displays and room invites, cached lyrics,
+// MusicBrainz matches and liner notes every hour until ctx is done.
+func sweep(ctx context.Context, db *store.Store, accounts *auth.Service, rs *rooms.Service, ly *lyrics.Service, mb *musicbrainz.Service, notes *linernotes.Service) {
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()
 	for {
@@ -304,6 +303,9 @@ func sweep(ctx context.Context, db *store.Store, accounts *auth.Service, ly *lyr
 		}
 		if err := accounts.SweepGuestPasses(ctx); err != nil {
 			slog.Warn("sweeping old guest passes", "err", err)
+		}
+		if err := rs.DeleteSpentInvites(ctx); err != nil {
+			slog.Warn("sweeping spent room invites", "err", err)
 		}
 		if err := ly.Sweep(ctx); err != nil {
 			slog.Warn("sweeping expired lyrics", "err", err)

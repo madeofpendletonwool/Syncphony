@@ -167,6 +167,25 @@ type Room struct {
 	Settings       string
 	CreatedAt      time.Time
 	QueueVersion   int64
+	Visibility     string
+}
+
+type RoomInvite struct {
+	Code      string
+	RoomID    string
+	CreatedBy sql.NullString
+	CreatedAt time.Time
+	ExpiresAt sql.NullTime
+	MaxUses   sql.NullInt64
+	Uses      int64
+}
+
+type RoomMember struct {
+	RoomID    string
+	UserID    string
+	Status    string
+	AddedBy   sql.NullString
+	CreatedAt time.Time
 }
 
 type ServerKey struct {

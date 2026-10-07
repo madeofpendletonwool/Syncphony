@@ -17,6 +17,7 @@ import { Route as AppDesignRouteImport } from './routes/_app/design'
 import { Route as InviteCodeRouteImport } from './routes/invite.$code'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as ResetCodeRouteImport } from './routes/reset.$code'
+import { Route as RoomInviteCodeRouteImport } from './routes/room-invite.$code'
 import { Route as AppAuthedIndexRouteImport } from './routes/_app/_authed/index'
 import { Route as AppAuthedHistoryRouteImport } from './routes/_app/_authed/history'
 import { Route as AppAuthedMeRouteImport } from './routes/_app/_authed/me'
@@ -67,6 +68,11 @@ const JoinTokenRoute = JoinTokenRouteImport.update({
 const ResetCodeRoute = ResetCodeRouteImport.update({
   id: '/reset/$code',
   path: '/reset/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RoomInviteCodeRoute = RoomInviteCodeRouteImport.update({
+  id: '/room-invite/$code',
+  path: '/room-invite/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppAuthedIndexRoute = AppAuthedIndexRouteImport.update({
@@ -149,6 +155,7 @@ export interface FileRoutesByFullPath {
   '/invite/$code': typeof InviteCodeRoute
   '/join/$token': typeof JoinTokenRoute
   '/reset/$code': typeof ResetCodeRoute
+  '/room-invite/$code': typeof RoomInviteCodeRoute
   '/history': typeof AppAuthedHistoryRoute
   '/me': typeof AppAuthedMeRoute
   '/room': typeof AppAuthedRoomRoute
@@ -170,6 +177,7 @@ export interface FileRoutesByTo {
   '/invite/$code': typeof InviteCodeRoute
   '/join/$token': typeof JoinTokenRoute
   '/reset/$code': typeof ResetCodeRoute
+  '/room-invite/$code': typeof RoomInviteCodeRoute
   '/history': typeof AppAuthedHistoryRoute
   '/me': typeof AppAuthedMeRoute
   '/room': typeof AppAuthedRoomRoute
@@ -193,6 +201,7 @@ export interface FileRoutesById {
   '/invite/$code': typeof InviteCodeRoute
   '/join/$token': typeof JoinTokenRoute
   '/reset/$code': typeof ResetCodeRoute
+  '/room-invite/$code': typeof RoomInviteCodeRoute
   '/_app/_authed/history': typeof AppAuthedHistoryRoute
   '/_app/_authed/me': typeof AppAuthedMeRoute
   '/_app/_authed/room': typeof AppAuthedRoomRoute
@@ -217,6 +226,7 @@ export interface FileRouteTypes {
     | '/invite/$code'
     | '/join/$token'
     | '/reset/$code'
+    | '/room-invite/$code'
     | '/history'
     | '/me'
     | '/room'
@@ -238,6 +248,7 @@ export interface FileRouteTypes {
     | '/invite/$code'
     | '/join/$token'
     | '/reset/$code'
+    | '/room-invite/$code'
     | '/history'
     | '/me'
     | '/room'
@@ -260,6 +271,7 @@ export interface FileRouteTypes {
     | '/invite/$code'
     | '/join/$token'
     | '/reset/$code'
+    | '/room-invite/$code'
     | '/_app/_authed/history'
     | '/_app/_authed/me'
     | '/_app/_authed/room'
@@ -282,6 +294,7 @@ export interface RootRouteChildren {
   InviteCodeRoute: typeof InviteCodeRoute
   JoinTokenRoute: typeof JoinTokenRoute
   ResetCodeRoute: typeof ResetCodeRoute
+  RoomInviteCodeRoute: typeof RoomInviteCodeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -340,6 +353,13 @@ declare module '@tanstack/react-router' {
       path: '/reset/$code'
       fullPath: '/reset/$code'
       preLoaderRoute: typeof ResetCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/room-invite/$code': {
+      id: '/room-invite/$code'
+      path: '/room-invite/$code'
+      fullPath: '/room-invite/$code'
+      preLoaderRoute: typeof RoomInviteCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/_authed/': {
@@ -492,6 +512,7 @@ const rootRouteChildren: RootRouteChildren = {
   InviteCodeRoute: InviteCodeRoute,
   JoinTokenRoute: JoinTokenRoute,
   ResetCodeRoute: ResetCodeRoute,
+  RoomInviteCodeRoute: RoomInviteCodeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

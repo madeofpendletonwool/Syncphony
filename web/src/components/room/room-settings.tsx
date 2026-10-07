@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeft, LoaderCircle, Minus, Plus, Trash2, X } from 'lucide-react'
+import { ArrowRightLeft, ChevronRight, LoaderCircle, Minus, Plus, Trash2, Users, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Dialog } from 'radix-ui'
 import { useState, type ReactNode } from 'react'
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { UserAvatar } from '@/components/user-avatar'
+import { VISIBILITIES, visibility as visibilityOf, type Visibility } from '@/lib/access'
 import { useMe } from '@/lib/auth'
 import { easeOutExpo } from '@/lib/motion'
 import { roomsQuery, type Room } from '@/lib/room'
@@ -48,7 +49,18 @@ const GUEST_SONGS = [5, 10, 20, 0]
  * owner and admins. Changes save as you make them, and everyone in the
  * room sees them at once. Also where the room is handed over or deleted.
  */
-export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: boolean; onOpenChange: (open: boolean) => void }) {
+export function RoomSettings({
+  room,
+  open,
+  onOpenChange,
+  onMembers,
+}: {
+  room: Room
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** Opens the room's members and invites. */
+  onMembers: () => void
+}) {
   const queryClient = useQueryClient()
   const update = useMutation({
     mutationFn: (body: Change) => unwrap(api.PATCH('/rooms/{roomId}', { params: { path: { roomId: room.id } }, body })),
@@ -60,6 +72,8 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
             ? {
                 ...r,
                 name: body.name ?? r.name,
+                visibility: body.visibility ?? r.visibility,
+                approveJoins: body.approveJoins ?? r.approveJoins,
                 permissions: { ...r.permissions, ...body.permissions },
                 skipVotePercent: body.skipVotePercent ?? r.skipVotePercent,
                 fairnessMode: body.fairnessMode ?? r.fairnessMode,
@@ -77,7 +91,11 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
       if (ctx?.before) queryClient.setQueryData(roomsQuery.queryKey, ctx.before)
       toast({ message: errorMessage(err), tone: 'error' })
     },
-    onSuccess: (r) => queryClient.setQueryData(roomsQuery.queryKey, (rs) => rs?.map((x) => (x.id === r.id ? r : x))),
+    onSuccess: (r, body) => {
+      queryClient.setQueryData(roomsQuery.queryKey, (rs) => rs?.map((x) => (x.id === r.id ? r : x)))
+      if (body.visibility && body.visibility !== 'open' && room.visibility === 'open')
+        toast({ message: 'Everyone here now, and anyone with songs waiting, stays in as a member' }, 5000)
+    },
   })
   const me = useMe()
   // "Owner" permissions mean the room's owner, who may not be you.
@@ -106,7 +124,7 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 24 }}
                 transition={{ duration: 0.35, ease: easeOutExpo }}
-                className="glass-strong fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[90dvh] w-full max-w-md flex-col gap-5 overflow-y-auto rounded-t-3xl p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] shadow-float outline-none sm:inset-x-4 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2 sm:rounded-3xl sm:pb-5"
+                className="glass-strong fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[90dvh] w-full max-w-md flex-col gap-5 overflow-y-auto *:shrink-0 rounded-t-3xl p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] shadow-float outline-none sm:inset-x-4 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2 sm:rounded-3xl sm:pb-5"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -124,6 +142,50 @@ export function RoomSettings({ room, open, onOpenChange }: { room: Room; open: b
                 </div>
 
                 <RoomName name={room.name} onSave={(name) => update.mutate({ name })} />
+
+                <SectionTitle hint={visibilityOf(room.visibility).hint}>Who can join</SectionTitle>
+                <ToggleGroup
+                  type="single"
+                  value={room.visibility}
+                  onValueChange={(v) => v && update.mutate({ visibility: v as Visibility })}
+                  aria-label="Who can join"
+                >
+                  {VISIBILITIES.map((v) => (
+                    <ToggleGroupItem key={v.id} value={v.id} className="gap-1.5">
+                      <v.icon className="size-3.5" />
+                      {v.label}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+                <AnimatePresence initial={false}>
+                  {room.visibility === 'private' && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.25, ease: easeOutExpo }}
+                      className="-mt-2 overflow-hidden"
+                    >
+                      <Toggle
+                        label="Approve each person"
+                        hint="Someone using an invite link asks to join, and you let them in"
+                        checked={room.approveJoins}
+                        onChange={(approveJoins) => update.mutate({ approveJoins })}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                {room.visibility !== 'open' && (
+                  <button
+                    type="button"
+                    onClick={onMembers}
+                    className="-mt-1 flex items-center gap-3 rounded-2xl bg-muted/60 px-3.5 py-3 text-left text-sm transition-colors outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
+                    <Users className="size-4 text-muted-foreground" />
+                    <span className="flex-1 font-medium">Members and invite links</span>
+                    <ChevronRight className="size-4 text-muted-foreground" />
+                  </button>
+                )}
 
                 <SectionTitle hint={room.ownerId === me.id ? 'You always can, and anyone can skip their own song' : 'The owner always can, and anyone can skip their own song'}>
                   Controls

@@ -2311,8 +2311,11 @@ paths:
   /rooms:
     get:
       operationId: listRooms
-      summary: Every room
-      description: A guest sees only their own room.
+      summary: The rooms you can open
+      description: |
+        Open rooms, rooms you own, and rooms you're a member of. Admins see
+        the rest on the server page (`/admin/rooms`). A guest sees only
+        their own room.
       tags: [rooms]
       responses:
         "200":
@@ -2406,7 +2409,10 @@ paths:
     put:
       operationId: transferRoom
       summary: Give a room to someone else (owner or admin)
-      description: The new owner must be a member who can sign in. Everyone in the room gets `room.updated`.
+      description: |
+        The new owner must be a member who can sign in. The old owner
+        stays in the room as a member. Everyone in the room gets
+        `room.updated`.
       tags: [rooms]
       requestBody:
         required: true
@@ -2421,6 +2427,192 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Room"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/members:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: listRoomMembers
+      summary: Who's a member of the room
+      description: |
+        For a room that isn't open: its members, oldest first, not counting
+        the owner (always in). The owner and admins also see who's asked to
+        join (`status: pending`). An open room has no members list; anyone
+        on the server can join it.
+      tags: [rooms]
+      responses:
+        "200":
+          description: Members, and requests to join
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RoomMember"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/members/{userId}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      operationId: addRoomMember
+      summary: Let someone into the room (owner or admin)
+      description: |
+        Adds a member of the server to a room that isn't open, or lets in
+        someone who asked to join. Everyone in the room gets
+        `members.updated`.
+      tags: [rooms]
+      responses:
+        "204":
+          description: They're a member
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: removeRoomMember
+      summary: Remove someone from the room, or leave it
+      description: |
+        The owner or an admin may remove anyone but the owner, or turn down
+        a request to join. Anyone may leave, or take back their own
+        request. Their waiting songs leave the queue, and their connections
+        to the room close with 4003. Everyone in the room gets
+        `members.updated`.
+      tags: [rooms]
+      responses:
+        "204":
+          description: Removed
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/admin-join:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    post:
+      operationId: joinRoomAsAdmin
+      summary: Join a room you can't otherwise open (admins)
+      description: |
+        Makes the admin a member. Everyone in the room is told, with a
+        `playback.notice` and `members.updated`.
+      tags: [rooms]
+      responses:
+        "200":
+          description: The room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/invites:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: listRoomInvites
+      summary: The room's invite links
+      description: |
+        Invites that still work, newest first. Anyone in an unlisted room;
+        only the owner or an admin in a private one. Open rooms have none.
+      tags: [rooms]
+      responses:
+        "200":
+          description: Invites
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RoomInvite"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: createRoomInvite
+      summary: Make an invite link
+      description: |
+        A link that lets members of the server into a room that isn't open.
+        Anyone in an unlisted room may make one; only the owner or an admin
+        in a private one. Changing the room's visibility revokes them all.
+      tags: [rooms]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoomInviteRequest"
+      responses:
+        "201":
+          description: The new invite
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomInvite"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/invites/{code}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: code
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: revokeRoomInvite
+      summary: Revoke an invite link
+      description: Whoever made it, the room's owner, or an admin.
+      tags: [rooms]
+      responses:
+        "204":
+          description: Revoked
+        default:
+          $ref: "#/components/responses/Error"
+
+  /room-invites/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getRoomInvite
+      summary: Check a room invite before using it
+      description: |
+        `room_invite_invalid` (404) if it's wrong, expired, used up or
+        revoked. Members of the server only.
+      tags: [rooms]
+      responses:
+        "200":
+          description: The room the invite is for, and where you stand
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomInvitePreview"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: useRoomInvite
+      summary: Join a room with an invite
+      description: |
+        Makes you a member, or in a private room that approves who joins,
+        asks the owner to let you in (`status: pending`). If you're already
+        in, it uses nothing up. Everyone in the room gets `members.updated`.
+      tags: [rooms]
+      responses:
+        "200":
+          description: In, or asked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomInviteResult"
         default:
           $ref: "#/components/responses/Error"
 
@@ -3141,7 +3333,7 @@ components:
 
     RoomActivity:
       type: object
-      required: [roomId, roomName, ownerId, members, state]
+      required: [roomId, roomName, ownerId, visibility, canEnter, members, state]
       properties:
         roomId:
           type: string
@@ -3149,6 +3341,11 @@ components:
           type: string
         ownerId:
           type: string
+        visibility:
+          $ref: "#/components/schemas/RoomVisibility"
+        canEnter:
+          type: boolean
+          description: You can open the room. If not, join it as an admin first.
         members:
           type: array
           description: IDs of who has the room open right now.
@@ -4091,6 +4288,8 @@ components:
         - `night.ended`: Night. The night is over; crown its song of the night.
         - `guests.updated`: `{"roomId": ...}`. A guest joined or was removed,
           or the guest pass changed: fetch them again.
+        - `members.updated`: RoomMembersChanged. Someone joined a room that
+          isn't open, asked to, or left or was removed.
 
         A paired display connects with its display cookie instead, to its
         own room only. So does a signed-in user with `display=1`: either way
@@ -4099,12 +4298,15 @@ components:
         Close code 1013 (try again later) means the client fell behind and
         missed events: reconnect with `since` set to the last version seen.
         Close code 4001 means the session ended; sign in again. Close code
-        4004 means the room is gone; don't reconnect.
+        4003 means you can't open the room any more (you were removed, or
+        it stopped being open to you); don't reconnect. Close code 4004
+        means the room is gone; don't reconnect. A room you can't open is
+        404, as if it weren't there.
       required: [type, data]
       properties:
         type:
           type: string
-          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated, room.deleted, reaction.sent, hearts.updated, night.ended, guests.updated]
+          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated, room.deleted, reaction.sent, hearts.updated, night.ended, guests.updated, members.updated]
         version:
           type: integer
           format: int64
@@ -4690,9 +4892,117 @@ components:
             `similar` stays close to the room's songs, their artists
             included. `discovery` plays other artists, further afield.
 
+    RoomVisibility:
+      type: string
+      enum: [open, unlisted, private]
+      description: |
+        Who can see and join the room. `open`: everyone on the server.
+        `unlisted`: its members, and anyone with one of its invite links,
+        which any member can share. `private`: the members its owner lets
+        in. The owner is always in.
+
+    RoomMember:
+      type: object
+      required: [user, status, joinedAt]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        status:
+          type: string
+          enum: [member, pending]
+          description: "`pending`: asked to join, and not let in yet."
+        addedBy:
+          type: string
+          description: Who let them in, if someone did (not an invite).
+        joinedAt:
+          type: string
+          format: date-time
+          description: When they joined, or asked to.
+
+    RoomInvite:
+      type: object
+      required: [code, roomId, url, createdAt, uses]
+      properties:
+        code:
+          type: string
+        roomId:
+          type: string
+        url:
+          type: string
+          description: The link to share.
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          description: Absent if it works until revoked.
+        maxUses:
+          type: integer
+          description: How many people it lets in. Absent for any number.
+        uses:
+          type: integer
+
+    CreateRoomInviteRequest:
+      type: object
+      properties:
+        expiresAt:
+          type: string
+          format: date-time
+          description: Up to 90 days from now. Absent works until revoked.
+        maxUses:
+          type: integer
+          minimum: 0
+          maximum: 1000
+          description: How many people it lets in. 0 or absent for any number.
+
+    RoomInvitePreview:
+      type: object
+      required: [roomId, roomName, ownerId, visibility, approval, status]
+      properties:
+        roomId:
+          type: string
+        roomName:
+          type: string
+        ownerId:
+          type: string
+        visibility:
+          $ref: "#/components/schemas/RoomVisibility"
+        approval:
+          type: boolean
+          description: Using it asks the owner to let you in.
+        status:
+          type: string
+          enum: [none, pending, member]
+          description: "`member` includes owning the room."
+
+    RoomInviteResult:
+      type: object
+      required: [status, room]
+      properties:
+        status:
+          type: string
+          enum: [member, pending]
+        room:
+          $ref: "#/components/schemas/RoomInvitePreview"
+
+    RoomMembersChanged:
+      type: object
+      required: [roomId, userId, change]
+      properties:
+        roomId:
+          type: string
+        userId:
+          type: string
+        change:
+          type: string
+          enum: [joined, requested, removed]
+
     Room:
       type: object
-      required: [id, name, ownerId, fairnessMode, fairness, matching, autopilot, guests, permissions, skipVotePercent, createdAt]
+      required: [id, name, ownerId, visibility, approveJoins, fairnessMode, fairness, matching, autopilot, guests, permissions, skipVotePercent, createdAt]
       properties:
         id:
           type: string
@@ -4700,6 +5010,11 @@ components:
           type: string
         ownerId:
           type: string
+        visibility:
+          $ref: "#/components/schemas/RoomVisibility"
+        approveJoins:
+          type: boolean
+          description: While private, someone using an invite asks to join, and the owner lets them in.
         fairnessMode:
           $ref: "#/components/schemas/FairnessMode"
         fairness:
@@ -4726,6 +5041,10 @@ components:
           type: string
           minLength: 1
           maxLength: 64
+        visibility:
+          $ref: "#/components/schemas/RoomVisibility"
+        approveJoins:
+          type: boolean
         fairnessMode:
           $ref: "#/components/schemas/FairnessMode"
         fairness:
@@ -4748,6 +5067,14 @@ components:
           type: string
           minLength: 1
           maxLength: 64
+        visibility:
+          allOf:
+            - $ref: "#/components/schemas/RoomVisibility"
+          description: |
+            Changing it revokes the room's invite links. Closing an open
+            room makes whoever's in it, or has songs waiting, a member.
+        approveJoins:
+          type: boolean
         fairnessMode:
           $ref: "#/components/schemas/FairnessMode"
         fairness:
