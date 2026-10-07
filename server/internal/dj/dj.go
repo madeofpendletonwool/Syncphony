@@ -71,6 +71,9 @@ type Request struct {
 	Fresh func(provider.Track) bool
 	// Want is how many picks to return. Default 2.
 	Want int
+	// LongTerm is the room's taste over past nights (Memory.Load): a weak
+	// prior on the picks, and where throwbacks come from.
+	LongTerm LongTerm
 }
 
 // Pick is a song the DJ chose.
@@ -87,13 +90,19 @@ type Pick struct {
 
 // Why says why the DJ chose a song: the parts of its score.
 type Why struct {
-	// Kind is KindArtist, KindSimilarArtist, KindTwoSteps or KindSimilarSong.
+	// Kind is KindArtist, KindSimilarArtist, KindTwoSteps, KindSimilarSong
+	// or KindThrowback.
 	Kind string
-	// Via is the room's artist it leads from.
+	// Via is the room's artist it leads from: for a throwback, the artist
+	// the room loved.
 	Via string
 	// Similarity to the room's taste, popularity among the artist's songs,
-	// and novelty to the room, each 0 to 1; and the score they made.
-	Similarity, Popularity, Novelty, Score float64
+	// novelty to the room, and how much the room's past nights favor it,
+	// each 0 to 1; and the score they made.
+	Similarity, Popularity, Novelty, Prior, Score float64
+	// LovedAt is when the night ended that the room last liked a
+	// throwback's artist.
+	LovedAt time.Time
 	// DeepCut is a loved artist's lesser-known song, picked for being one.
 	DeepCut bool
 	// Sources are the sources that led to it.
@@ -105,16 +114,18 @@ type Why struct {
 // graph knows nothing near its taste; autopilot then falls back on its
 // services' own recommendations.
 func (e *Engine) Choose(ctx context.Context, r Request) []Pick {
-	p := NewProfile(r.Input)
+	in := r.Input
+	if in.Tags == nil {
+		in.Tags = CachedTags(ctx, e.Graph, in)
+	}
+	if in.Related == nil {
+		in.Related = Related(ctx, e.Graph)
+	}
+	p := NewProfile(in)
 	if len(p.Artists) == 0 || len(r.Links) == 0 {
 		return nil
 	}
-	explore := float64(min(max(r.Explore, 0), 100)) / 100
-	wctx, cancel := context.WithTimeout(ctx, walkTimeout)
-	cands := e.walk(wctx, p, explore)
-	cancel()
-	deepCut := e.Rand(100) < deepCutPercent
-	order := draw(score(cands, p, explore, deepCut), drawn, lerp(tempFamiliar, tempExplore, explore), e.Rand)
+	order := e.shortlist(ctx, p, r.LongTerm, r.Explore)
 	want := cmp.Or(r.Want, defaultWant)
 	var out []Pick
 	for _, c := range order {
@@ -128,15 +139,57 @@ func (e *Engine) Choose(ctx context.Context, r Request) []Pick {
 		taste := p.Artists[c.via]
 		pick := Pick{Track: t, Why: Why{
 			Kind: c.kind, Similarity: c.similarity, Popularity: c.popularity, Novelty: c.novelty,
-			Score: c.score, DeepCut: c.deepCut, Sources: c.sources,
+			Prior: c.prior, Score: c.score, DeepCut: c.deepCut, Sources: c.sources, LovedAt: c.lovedAt,
 		}}
-		if taste != nil {
+		switch {
+		case c.kind == KindThrowback:
+			pick.Why.Via = r.LongTerm.Artists[c.via].Name
+		case taste != nil:
 			pick.ForUser, pick.Seed, pick.Why.Via = taste.Fan(), taste.Seed, taste.Artist.Name
 		}
 		out = append(out, pick)
 		if len(out) >= want {
 			break
 		}
+	}
+	return out
+}
+
+// shortlist returns the candidates to try, in order: drawn from the best
+// the walk found, at an explore level from 0 to 100.
+func (e *Engine) shortlist(ctx context.Context, p Profile, lt LongTerm, explore int) []candidate {
+	x := float64(min(max(explore, 0), 100)) / 100
+	var back []string
+	if e.Rand(100) < throwbackChance(p) {
+		back = Throwbacks(p, lt)
+	}
+	wctx, cancel := context.WithTimeout(ctx, walkTimeout)
+	cands := e.walk(wctx, p, lt, x, back)
+	cancel()
+	deepCut := e.Rand(100) < deepCutPercent
+	return draw(score(cands, p, lt, x, deepCut), drawn, lerp(tempFamiliar, tempExplore, x), e.Rand)
+}
+
+// CachedTags returns the tags of the artists the room played lately, as
+// far as the graph's cache knows them. It's for Input.Tags.
+func CachedTags(ctx context.Context, g Graph, in Input) map[string][]musicgraph.Tag {
+	out := map[string][]musicgraph.Tag{}
+	look := func(it store.QueueItem) {
+		name := artistOf(TrackOf(it))
+		k := ArtistKey(name)
+		if _, done := out[k]; done || k == "" {
+			return
+		}
+		out[k] = nil
+		if a, ok, err := g.CachedArtist(ctx, musicgraph.ArtistRef{Name: name}); ok && err == nil {
+			out[k] = a.Tags
+		}
+	}
+	for _, it := range in.Upcoming {
+		look(it)
+	}
+	for _, h := range in.History[:min(len(in.History), profileReach)] {
+		look(h.QueueItem)
 	}
 	return out
 }

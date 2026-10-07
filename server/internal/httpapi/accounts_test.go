@@ -22,7 +22,9 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/admin"
 	"github.com/madeofpendletonwool/syncphony/server/internal/artwork"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
+	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
 	"github.com/madeofpendletonwool/syncphony/server/internal/avatar"
+	"github.com/madeofpendletonwool/syncphony/server/internal/dj"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
@@ -121,9 +123,12 @@ func newEnv(t *testing.T) *env {
 	notes := linernotes.New(db, e.mb, linernotes.Options{WikipediaURL: mbURL, WikidataURL: mbURL, Now: e.clock})
 	e.nights = nights.New(db, e.bus)
 	e.nights.Now = e.clock
+	pilot := autopilot.New(db, e.rooms, qs, e.links, presence)
+	pilot.Now, pilot.Memory = e.clock, &dj.Memory{DB: db, Now: e.clock}
+	t.Cleanup(pilot.Close)
 	api := &httpapi.Server{
 		Version: "test", StartedAt: e.clock(), Admin: e.server, Auth: e.svc, Links: e.links, Lyrics: ly, LinerNotes: notes, Artwork: art, Palettes: e.palettes, Rooms: e.rooms, Queue: qs, Playback: e.playback, Nights: e.nights, Bus: e.bus, Presence: presence,
-		Suggest: suggest.New(db, e.rooms, e.links),
+		Suggest: suggest.New(db, e.rooms, e.links), Autopilot: pilot,
 		BaseURL: e.base, PingEvery: 50 * time.Millisecond,
 	}
 	e.api = api

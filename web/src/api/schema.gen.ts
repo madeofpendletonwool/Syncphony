@@ -581,6 +581,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/rooms/{roomId}/taste": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What the DJ has learned of a room's taste (admin)
+         * @description Tonight's taste, read from the room's latest plays, and its taste
+         *     over past nights, a weak prior on the DJ's picks (ADR 0012), to
+         *     check that the learning makes sense. Like what a room is playing,
+         *     it's the room's own business: a room you can't open isn't found.
+         */
+        get: operations["getRoomTaste"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/sessions": {
         parameters: {
             query?: never;
@@ -2415,6 +2440,51 @@ export interface components {
             title?: string;
             player?: components["schemas"]["Player"];
         };
+        RoomTaste: {
+            /** @description How many past nights the DJ has learned from. */
+            nights: number;
+            /** @description The vibe is changing, so the latest songs count more. */
+            shifted: boolean;
+            /** @description The artists the room likes tonight, most first. */
+            tonight: components["schemas"]["TonightArtist"][];
+            /** @description Artists the room turned away lately. */
+            avoided: string[];
+            /**
+             * @description The artists the room liked over past nights, most first, then
+             *     those it turned away.
+             */
+            artists: components["schemas"]["LastingArtist"][];
+            /** @description The tags the room liked over past nights, most first. */
+            tags: components["schemas"]["TasteTag"][];
+        };
+        TonightArtist: {
+            name: string;
+            /** @description From 0 to 1, against the room's favorite. */
+            weight: number;
+            /** @description Songs of theirs members chose or let play through. */
+            plays: number;
+        };
+        LastingArtist: {
+            name: string;
+            /** @description From 0 to 1, against the artist the room liked most. */
+            weight: number;
+            /** @description How much the room turned them away, from 0 to 1. It fades by night. */
+            veto: number;
+            /** @description How many nights ago the room last liked them; 0 is the last night. */
+            nightsAgo: number;
+            /**
+             * Format: date-time
+             * @description When that night ended. Absent if the room never liked them.
+             */
+            lovedAt?: string;
+            /** @description The DJ could bring them back as a throwback now. */
+            throwback: boolean;
+        };
+        TasteTag: {
+            name: string;
+            /** @description From 0 to 1, against the strongest. */
+            weight: number;
+        };
         Ceremony: {
             /** @description Pass back to the matching finish endpoint within 5 minutes. */
             ceremonyId: string;
@@ -4191,6 +4261,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoomActivity"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getRoomTaste: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The room's taste */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomTaste"];
                 };
             };
             default: components["responses"]["Error"];

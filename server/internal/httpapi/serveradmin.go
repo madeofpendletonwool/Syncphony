@@ -9,6 +9,7 @@ import (
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/admin"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
+	"github.com/madeofpendletonwool/syncphony/server/internal/dj"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 )
 
@@ -146,6 +147,68 @@ func (s *Server) ListActiveRooms(ctx context.Context, _ ListActiveRoomsRequestOb
 		return cmp.Or(cmp.Compare(len(b.Members), len(a.Members)), cmp.Compare(stateRank(a.State), stateRank(b.State)))
 	})
 	return out, nil
+}
+
+// How much of a room's taste GetRoomTaste shows.
+const (
+	tasteTonight = 10
+	tasteArtists = 15
+	tasteTags    = 10
+)
+
+// GetRoomTaste shows what the DJ has learned of a room's taste: tonight's,
+// and over past nights (admins, in rooms they can open).
+func (s *Server) GetRoomTaste(ctx context.Context, req GetRoomTasteRequestObject) (GetRoomTasteResponseObject, error) {
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	// A room the admin can't open isn't found (enterRoom): what it plays
+	// is its own business, until they join.
+	out := RoomTaste{Tonight: []TonightArtist{}, Avoided: []string{}, Artists: []LastingArtist{}, Tags: []TasteTag{}}
+	if s.Autopilot == nil {
+		return GetRoomTaste200JSONResponse(out), nil
+	}
+	p, lt, err := s.Autopilot.Taste(ctx, req.RoomId)
+	if err != nil {
+		return nil, err
+	}
+	out.Nights, out.Shifted = lt.Nights, p.Shifted
+	for _, t := range p.Top(tasteTonight) {
+		out.Tonight = append(out.Tonight, TonightArtist{Name: t.Artist.Name, Weight: float32(t.Weight), Plays: t.Plays})
+	}
+	for a := range p.Avoid {
+		out.Avoided = append(out.Avoided, a)
+	}
+	slices.Sort(out.Avoided)
+	back := dj.Throwbacks(p, lt)
+	lasting := func(a string) LastingArtist {
+		l := lt.Artists[a]
+		out := LastingArtist{Name: l.Name, Weight: float32(l.Weight), Veto: float32(l.Veto), NightsAgo: l.Rest, Throwback: slices.Contains(back, a)}
+		if !l.LovedAt.IsZero() {
+			out.LovedAt = &l.LovedAt
+		}
+		return out
+	}
+	top := lt.Top(tasteArtists)
+	for _, a := range top {
+		out.Artists = append(out.Artists, lasting(a))
+	}
+	var vetoed []string
+	for a, l := range lt.Artists {
+		if l.Veto > 0 && !slices.Contains(top, a) {
+			vetoed = append(vetoed, a)
+		}
+	}
+	slices.SortFunc(vetoed, func(a, b string) int {
+		return cmp.Or(cmp.Compare(lt.Artists[b].Veto, lt.Artists[a].Veto), cmp.Compare(a, b))
+	})
+	for _, a := range vetoed {
+		out.Artists = append(out.Artists, lasting(a))
+	}
+	for _, t := range lt.TopTags(tasteTags) {
+		out.Tags = append(out.Tags, TasteTag{Name: t, Weight: float32(lt.Tags[t])})
+	}
+	return GetRoomTaste200JSONResponse(out), nil
 }
 
 // stateRank puts playing rooms first.

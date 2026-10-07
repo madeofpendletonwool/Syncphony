@@ -3,6 +3,7 @@
 package httpapi_test
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -100,4 +101,45 @@ func TestServerAdmin(t *testing.T) {
 	alice.want(http.StatusNoContent, "DELETE", "/admin/sessions/"+bobSession, nil)
 	bob.want(http.StatusUnauthorized, "GET", "/me", nil)
 	alice.want(http.StatusNotFound, "DELETE", "/admin/sessions/"+bobSession, nil)
+}
+
+// An admin can see what the DJ has learned of a room's taste: tonight's,
+// and over past nights.
+func TestRoomTaste(t *testing.T) {
+	e := newEnv(t)
+	alice := e.admin()
+	bob := e.member(alice, "bob")
+	aliceID, bobID := me(t, alice).Id, me(t, bob).Id
+	room := e.room(t, bobID)
+	path := "/admin/rooms/" + room.ID + "/taste"
+
+	// Last night: two songs. Tonight: one.
+	last := e.clock().Add(-24 * time.Hour)
+	for i := range 2 {
+		e.play(room.ID, e.queue(t, room, bobID, fmt.Sprint("Last night ", i)).ID, last.Add(time.Duration(i)*5*time.Minute))
+	}
+	if _, err := e.db.CreateNight(t.Context(), store.CreateNightParams{
+		ID: store.NewID(), RoomID: room.ID, StartedAt: last, EndedAt: last.Add(10 * time.Minute), EndedBy: "idle", Plays: 2,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.play(room.ID, e.queue(t, room, aliceID, "Tonight").ID, e.clock().Add(-10*time.Minute))
+
+	bob.want(http.StatusForbidden, "GET", path, nil)
+	var taste httpapi.RoomTaste
+	alice.want(http.StatusOK, "GET", path, nil).decode(t, &taste)
+	if taste.Nights != 1 || len(taste.Artists) != 1 || taste.Artists[0].Name != "Sine Language" || taste.Artists[0].Weight != 1 || taste.Artists[0].LovedAt == nil {
+		t.Errorf("past nights: %+v", taste)
+	}
+	if len(taste.Tonight) != 1 || taste.Tonight[0].Name != "Sine Language" || taste.Tonight[0].Weight != 1 || taste.Shifted {
+		t.Errorf("tonight: %+v", taste.Tonight)
+	}
+
+	// A private room is its own business, until the admin joins.
+	private := e.room(t, bobID)
+	if _, err := e.db.SetRoomVisibility(t.Context(), store.SetRoomVisibilityParams{Visibility: string(httpapi.Private), ID: private.ID}); err != nil {
+		t.Fatal(err)
+	}
+	alice.want(http.StatusNotFound, "GET", "/admin/rooms/"+private.ID+"/taste", nil)
+	alice.want(http.StatusNotFound, "GET", "/admin/rooms/nope/taste", nil)
 }

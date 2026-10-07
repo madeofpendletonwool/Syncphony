@@ -21,6 +21,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
 	"github.com/madeofpendletonwool/syncphony/server/internal/config"
+	"github.com/madeofpendletonwool/syncphony/server/internal/dj"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
@@ -224,8 +225,10 @@ func run() error {
 	// queue and room changes as the player, after it.
 	pilot := autopilot.New(db, roomSvc, queueSvc, a.links, presence)
 	pilot.Player = player
+	pilot.Memory = &dj.Memory{DB: db}
 	if len(graph.Sources()) > 0 {
 		pilot.Graph = graph
+		pilot.Memory.Graph = graph
 	}
 	defer pilot.Close()
 	onChange, onUpdate := queueSvc.OnChange, roomSvc.OnUpdate
@@ -240,7 +243,7 @@ func run() error {
 	nightSvc := nights.New(db, a.bus)
 	api := &httpapi.Server{
 		Version: version, StartedAt: time.Now().UTC(), Admin: admin.New(db, filepath.Join(cfg.DataDir, "backups")), Auth: accounts, Links: a.links, Lyrics: lyricsSvc, LinerNotes: notes, Artwork: art, Palettes: palettes,
-		Rooms: roomSvc, Queue: queueSvc, Playback: player, Nights: nightSvc, Suggest: suggest.New(db, roomSvc, a.links),
+		Rooms: roomSvc, Queue: queueSvc, Playback: player, Nights: nightSvc, Suggest: suggest.New(db, roomSvc, a.links), Autopilot: pilot,
 		Bus: a.bus, Presence: presence,
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	}

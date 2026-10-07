@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"slices"
+	"time"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/match"
 	"github.com/madeofpendletonwool/syncphony/server/internal/musicgraph"
@@ -54,6 +55,9 @@ const (
 	KindTwoSteps = "two-steps"
 	// KindSimilarSong is a song like one the room liked.
 	KindSimilarSong = "similar-song"
+	// KindThrowback is a song by an artist the room loved in past nights,
+	// but hasn't played lately.
+	KindThrowback = "throwback"
 )
 
 // node is an artist the walk reached.
@@ -81,16 +85,21 @@ type candidate struct {
 	// popularity is among the artist's own songs, 0 to 1.
 	popularity float64
 	sources    []string
+	// tags are the artist's, if known.
+	tags []musicgraph.Tag
+	// lovedAt is when the room last liked a throwback's artist.
+	lovedAt time.Time
 	// scored by score.
-	similarity, novelty, score float64
-	deepCut                    bool
+	similarity, novelty, prior, score float64
+	deepCut                           bool
 }
 
 // walk follows the music graph out from the room's favorite artists and
 // returns the songs it finds, deduplicated, without songs the room heard
 // or artists it turned away. Artists not cached yet are warmed for next
-// time.
-func (e *Engine) walk(ctx context.Context, p Profile, explore float64) []candidate {
+// time. The top songs of throwbacks, artists (ArtistKey) the room loved in
+// past nights, are candidates too.
+func (e *Engine) walk(ctx context.Context, p Profile, lt LongTerm, explore float64, throwbacks []string) []candidate {
 	nodes := map[string]*node{}
 	reach := func(ref musicgraph.ArtistRef, pull float64, hop int, via string, sources []string) {
 		k := ArtistKey(ref.Name)
@@ -207,6 +216,27 @@ func (e *Engine) walk(ctx context.Context, p Profile, explore float64) []candida
 		taken[k] = true
 		out = append(out, c)
 	}
+	// Throwbacks first, so that a song of theirs the walk also reached
+	// comes back as a throwback: their top songs, as near to the room as
+	// its loves were.
+	strongest := 0.0
+	for _, k := range throwbacks {
+		strongest = max(strongest, lt.Artists[k].Weight)
+	}
+	for _, k := range throwbacks {
+		l := lt.Artists[k]
+		a, ok := lookup(musicgraph.ArtistRef{Name: l.Name}, true)
+		if !ok {
+			continue
+		}
+		for _, so := range a.Top[:min(len(a.Top), songsPerArtist)] {
+			so.Artist.Name = cmp.Or(so.Artist.Name, l.Name)
+			add(candidate{
+				song: so.SongRef, artist: k, kind: KindThrowback, affinity: l.Weight / strongest,
+				via: k, popularity: so.Score, sources: so.Sources, tags: a.Tags, lovedAt: l.LovedAt,
+			})
+		}
+	}
 	for _, n := range ranked[:min(len(ranked), songArtists)] {
 		a, ok := lookup(n.ref, true)
 		if !ok {
@@ -217,7 +247,7 @@ func (e *Engine) walk(ctx context.Context, p Profile, explore float64) []candida
 			add(candidate{
 				song: so.SongRef, artist: ArtistKey(n.ref.Name), kind: kindOf(n.hop),
 				affinity: n.affinity, hop: n.hop, via: n.via, popularity: so.Score,
-				sources: union(n.sources, so.Sources),
+				sources: union(n.sources, so.Sources), tags: a.Tags,
 			})
 		}
 	}
@@ -241,18 +271,20 @@ func (e *Engine) walk(ctx context.Context, p Profile, explore float64) []candida
 			if _, mine := p.Artists[sk]; mine {
 				hop = 0
 			}
+			var tags []musicgraph.Tag
 			if n, ok := nodes[sk]; ok {
 				hop = min(hop, n.hop)
 				if a, ok := known[sk]; ok {
-					pop = popularityIn(a, so.Title)
+					pop, tags = popularityIn(a, so.Title), a.Tags
 				}
 			}
 			add(candidate{
 				song: so.SongRef, artist: sk, kind: KindSimilarSong,
-				affinity: taste.Weight * so.Score, hop: hop, via: k, popularity: pop, sources: so.Sources,
+				affinity: taste.Weight * so.Score, hop: hop, via: k, popularity: pop, sources: so.Sources, tags: tags,
 			})
 		}
 	}
+
 	missing = slices.DeleteFunc(missing, func(m musicgraph.ArtistRef) bool { return asked[ArtistKey(m.Name)] })
 	e.Graph.WarmArtist(missing...)
 	return out

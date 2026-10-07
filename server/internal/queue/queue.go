@@ -302,16 +302,23 @@ type AutopilotInfo struct {
 // and the parts of its score.
 type AutopilotReason struct {
 	// Kind is "artist" (an artist the room likes), "similar-artist",
-	// "two-steps" (an artist like one like the room's) or "similar-song".
+	// "two-steps" (an artist like one like the room's), "similar-song", or
+	// "throwback" (an artist the room loved in past nights, but not lately).
 	Kind string `json:"kind"`
-	// Via is the room's artist it leads from.
+	// Via is the room's artist it leads from: for a throwback, the artist
+	// the room loved.
 	Via string `json:"via,omitempty"`
 	// Similarity to the room's taste, popularity among the artist's songs,
-	// and novelty to the room, each 0 to 1, and the score they made.
+	// novelty to the room, and how much the room's past nights favor it,
+	// each 0 to 1, and the score they made.
 	Similarity float64 `json:"similarity"`
 	Popularity float64 `json:"popularity"`
 	Novelty    float64 `json:"novelty"`
+	Prior      float64 `json:"prior,omitempty"`
 	Score      float64 `json:"score"`
+	// LovedAt is, for a throwback, when the night ended that the room last
+	// liked its artist.
+	LovedAt *time.Time `json:"lovedAt,omitempty"`
 	// DeepCut is a loved artist's lesser-known song, picked for being one.
 	DeepCut bool `json:"deepCut,omitempty"`
 	// Sources are the music knowledge sources that led to it.

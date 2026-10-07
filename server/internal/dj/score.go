@@ -35,6 +35,36 @@ const (
 	// The softmax temperature at explore 0 and 1: low keeps to the best,
 	// higher spreads the picks.
 	tempFamiliar, tempExplore = 0.05, 0.15
+	// priorShare caps the long-term taste's share of a candidate's score:
+	// enough to tip a choice between near-equal candidates, never to
+	// outvote what the room is playing now. A prior p raises the score by
+	// p·priorShare/(1−priorShare), so its share is at most priorShare.
+	// priorArtist is how much of the prior is the room's liking of the
+	// artist, the rest of their tags.
+	priorShare  = 0.12
+	priorArtist = 0.6
+	// vetoCost is what an artist the room skipped in past nights loses at
+	// full veto; doubtCost, one it nearly turned away tonight. Both fade.
+	vetoCost  = 0.3
+	doubtCost = 0.3
+)
+
+// Throwbacks: on throwbackPercent of fills, artists the room loved in past
+// nights but hasn't played lately compete for the pick, as near to the
+// room as its nearest artist. Each throwback the room skipped lately
+// halves the chance.
+const (
+	throwbackPercent = 10
+	// throwbackRest is how many nights since the room last liked an artist
+	// before they can come back; throwbackMin, how much it must have liked
+	// them, against its favorite; throwbackTonight, how little it may like
+	// them tonight.
+	throwbackRest    = 3
+	throwbackMin     = 0.03
+	throwbackTonight = 0.2
+	// throwbackArtists is how many artists one fill brings back to choose
+	// from, the most loved first.
+	throwbackArtists = 3
 )
 
 // novelty is how new a candidate's artist is to the room.
@@ -42,11 +72,14 @@ var novelty = map[int]float64{0: 0, 1: 0.6, 2: 1}
 
 // score scores candidates for a room at an explore level from 0 to 1,
 // best first. deepCut turns a loved artist's lesser-known songs up and
-// their hits down, for this pick.
-func score(cands []candidate, p Profile, explore float64, deepCut bool) []candidate {
+// their hits down, for this pick. The room's long-term taste (lt) is a
+// weak prior, at most priorShare of a score.
+func score(cands []candidate, p Profile, lt LongTerm, explore float64, deepCut bool) []candidate {
 	most := 0.0
 	for _, c := range cands {
-		most = max(most, c.affinity)
+		if c.kind != KindThrowback {
+			most = max(most, c.affinity)
+		}
 	}
 	if most == 0 {
 		return nil
@@ -58,12 +91,17 @@ func score(cands []candidate, p Profile, explore float64, deepCut bool) []candid
 	for i := range out {
 		c := &out[i]
 		c.similarity = c.affinity / most
+		if c.kind == KindThrowback {
+			c.similarity = c.affinity // already against the most loved
+		}
 		c.novelty = novelty[c.hop]
 		pop := c.popularity
 		if t, ok := p.Artists[c.artist]; deepCut && ok && t.Plays >= lovedPlays {
 			pop, c.deepCut = 1-pop, true
 		}
-		c.score = wSim*c.similarity + wPop*pop + wNov*c.novelty
+		c.prior = lt.prior(c.artist, c.tags)
+		c.score = (wSim*c.similarity + wPop*pop + wNov*c.novelty) * (1 + c.prior*priorShare/(1-priorShare))
+		c.score -= vetoCost*lt.Artists[c.artist].Veto + doubtCost*p.Doubt[c.artist]
 		if i, ok := p.RecentlyPlayed(c.artist); ok {
 			if i < spaceNear {
 				c.score -= spaceNearCost
@@ -122,6 +160,34 @@ func draw(scored []candidate, n int, temp float64, rand func(int) int) []candida
 		}
 		out = append(out, pool[i])
 		pool = slices.Delete(pool, i, i+1)
+	}
+	return out
+}
+
+// throwbackChance is the percent chance this fill brings throwbacks.
+func throwbackChance(p Profile) int {
+	return throwbackPercent >> min(p.ThrowbacksSkipped, 8)
+}
+
+// Throwbacks returns the artists the room loved in past nights but hasn't
+// played lately, most loved first, up to throwbackArtists.
+func Throwbacks(p Profile, lt LongTerm) []string {
+	var out []string
+	for _, a := range lt.Top(len(lt.Artists)) {
+		l := lt.Artists[a]
+		if l.Weight*(1-l.Veto) < throwbackMin || l.Rest < throwbackRest || p.Avoid[a] || p.Doubt[a] > 0 {
+			continue
+		}
+		if t, ok := p.Artists[a]; ok && t.Weight >= throwbackTonight {
+			continue
+		}
+		if _, recent := p.RecentlyPlayed(a); recent {
+			continue
+		}
+		out = append(out, a)
+		if len(out) == throwbackArtists {
+			break
+		}
 	}
 	return out
 }

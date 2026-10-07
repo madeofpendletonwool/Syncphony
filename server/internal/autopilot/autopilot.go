@@ -12,7 +12,7 @@
 // Autopilot songs aren't anyone's: they play after every member's song,
 // don't take anyone's turn, and anyone may remove one. The room can skip
 // them like any other song, and autopilot steers away from artists it
-// skips.
+// skips, less as the skips fade (ADR 0012).
 package autopilot
 
 import (
@@ -54,11 +54,8 @@ const (
 	// seedReach is how many recent member songs can seed.
 	seedReach = 25
 	// autopilotReach is how many of its own recent songs autopilot reads,
-	// to rotate seeds and learn what the room skipped.
+	// to rotate seeds and learn what the room removed.
 	autopilotReach = 50
-	// skipMemory is how many of autopilot's recent songs a skip of an
-	// artist holds for.
-	skipMemory = 20
 	// seedUsers, seedsPerUser and linksPerSeed bound how many seeds and
 	// services one fill tries before falling back to random songs.
 	seedUsers    = 3
@@ -82,6 +79,9 @@ type Service struct {
 	// Graph, if set, is the music knowledge the DJ picks from (ADR 0012),
 	// before falling back on the services' own recommendations.
 	Graph dj.Graph
+	// Memory, if set, keeps each room's taste over past nights, a weak
+	// prior on the DJ's picks.
+	Memory *dj.Memory
 	// Now is the clock. Default store.Now.
 	Now func() time.Time
 	// Timeout bounds one fill. Default 30s.
@@ -209,13 +209,13 @@ func (s *Service) Fill(ctx context.Context, roomID string) error {
 	if s.missed(roomID) == newest {
 		return nil
 	}
-	mine, err := s.db.ListAutopilot(ctx, store.ListAutopilotParams{RoomID: roomID, Limit: autopilotReach})
+	in, err := s.input(ctx, roomID, history, snap.Items)
 	if err != nil {
 		return err
 	}
 	f := &fill{
 		s: s, roomID: roomID, room: room, adventure: settings.Adventure, explore: settings.ExploreLevel(),
-		history: history, upcoming: snap.Items, mine: mine, finder: suggest.NewFinder(s.links, s.Rand),
+		in: in, history: history, mine: in.Mine, finder: suggest.NewFinder(s.links, s.Rand),
 	}
 	defer f.close()
 	f.remember(snap.Items)
@@ -238,6 +238,56 @@ func (s *Service) Fill(ctx context.Context, roomID string) error {
 	s.setMissed(roomID, newest)
 	s.rooms.PublishNotice(rooms.Notice{RoomID: roomID, Message: "Autopilot couldn't find anything new to play. Add a song to keep going."})
 	return nil
+}
+
+// input reads what a room has been doing, for the DJ: its plays (newest
+// first), songs playing and waiting, autopilot's own recent songs, who's
+// here, and the hearts its songs got.
+func (s *Service) input(ctx context.Context, roomID string, history []store.ListHistoryRow, upcoming []store.QueueItem) (dj.Input, error) {
+	in := dj.Input{
+		History: history, Upcoming: upcoming, Present: s.presence.Members(roomID), Now: s.Now(),
+		Hearts: map[string]int{},
+	}
+	var err error
+	if in.Mine, err = s.db.ListAutopilot(ctx, store.ListAutopilotParams{RoomID: roomID, Limit: autopilotReach}); err != nil {
+		return in, err
+	}
+	if len(history) == 0 {
+		return in, nil
+	}
+	counts, err := s.db.HeartCountsSince(ctx, store.HeartCountsSinceParams{RoomID: roomID, Since: history[len(history)-1].PlayHistory.StartedAt})
+	for _, c := range counts {
+		in.Hearts[c.QueueItemID] = int(c.Hearts)
+	}
+	return in, err
+}
+
+// Taste returns how the DJ reads a room's taste: tonight's, and over past
+// nights (if Memory is set), for checking that its learning makes sense.
+func (s *Service) Taste(ctx context.Context, roomID string) (dj.Profile, dj.LongTerm, error) {
+	history, err := s.db.ListHistory(ctx, store.ListHistoryParams{RoomID: roomID, Limit: historyReach})
+	if err != nil {
+		return dj.Profile{}, dj.LongTerm{}, err
+	}
+	snap, err := s.rooms.QueueSnapshot(ctx, roomID)
+	if err != nil {
+		return dj.Profile{}, dj.LongTerm{}, err
+	}
+	in, err := s.input(ctx, roomID, history, snap.Items)
+	if err != nil {
+		return dj.Profile{}, dj.LongTerm{}, err
+	}
+	var lt dj.LongTerm
+	if s.Memory != nil {
+		if lt, err = s.Memory.Load(ctx, roomID); err != nil {
+			return dj.Profile{}, dj.LongTerm{}, err
+		}
+	}
+	if s.Graph != nil {
+		in.Related = dj.Related(ctx, s.Graph)
+		in.Tags = dj.CachedTags(ctx, s.Graph, in)
+	}
+	return dj.NewProfile(in), lt, nil
 }
 
 func (s *Service) missed(roomID string) string {
@@ -274,14 +324,14 @@ type fill struct {
 	room      store.Room
 	adventure string
 	explore   int
+	in        dj.Input
 	history   []store.ListHistoryRow
-	upcoming  []store.QueueItem
 	mine      []store.QueueItem
 
 	// seen holds the songs not to play: recent, waiting, or removed.
 	seen suggest.Seen
-	// skipped holds the artists of autopilot songs the room skipped.
-	skipped map[string]bool
+	// avoid holds the artists the room turned away lately (dj.Profile).
+	avoid map[string]bool
 	// recentArtists are the artists of the room's last few songs.
 	recentArtists map[string]bool
 
@@ -294,9 +344,11 @@ type fill struct {
 func (f *fill) close() { f.finder.Close() }
 
 // remember notes the songs autopilot mustn't pick, and the artists it
-// should avoid.
+// should avoid: those the room skipped more than it liked, lately. The DJ
+// weighs the rest of its doubts itself.
 func (f *fill) remember(upcoming []store.QueueItem) {
-	f.seen, f.skipped, f.recentArtists = suggest.Seen{}, map[string]bool{}, map[string]bool{}
+	f.seen, f.recentArtists = suggest.Seen{}, map[string]bool{}
+	f.avoid = dj.NewProfile(f.in).Avoid
 	for _, it := range upcoming {
 		f.seen.Item(it)
 	}
@@ -307,34 +359,16 @@ func (f *fill) remember(upcoming []store.QueueItem) {
 				f.recentArtists[a] = true
 			}
 		}
-		// A skip of autopilot's song says the room didn't want that artist.
-		// A failed song says nothing.
-		if h.QueueItem.IsAutopilot() && h.PlayHistory.EndReason.String == store.EndSkipped && f.recentlyMine(h.QueueItem.ID) {
-			if a := suggest.ArtistKey(suggest.TrackOf(h.QueueItem)); a != "" {
-				f.skipped[a] = true
-			}
-		}
 	}
 	for _, it := range f.mine {
 		f.seen.Item(it) // removed ones too: someone didn't want that song
 	}
 }
 
-// recentlyMine reports whether itemID is among autopilot's last
-// skipMemory songs.
-func (f *fill) recentlyMine(itemID string) bool {
-	for _, it := range f.mine[:min(len(f.mine), skipMemory)] {
-		if it.ID == itemID {
-			return true
-		}
-	}
-	return false
-}
-
 // fresh reports whether t may play: not heard lately, and not by an artist
-// the room skipped.
+// the room turned away.
 func (f *fill) fresh(t provider.Track) bool {
-	return !f.seen.Has(t) && !f.skipped[suggest.ArtistKey(t)]
+	return !f.seen.Has(t) && (len(t.Artists) == 0 || !f.avoid[dj.ArtistKey(t.Artists[0].Name)])
 }
 
 // choose returns songs to try adding, best first: the DJ's picks from the
@@ -487,13 +521,16 @@ func (f *fill) fromGraph(ctx context.Context, users []string) []pick {
 	if f.s.Graph == nil || len(f.searchable) == 0 {
 		return nil
 	}
+	var lt dj.LongTerm
+	if f.s.Memory != nil {
+		var err error
+		if lt, err = f.s.Memory.Load(ctx, f.roomID); err != nil {
+			slog.Warn("autopilot: reading the room's taste over past nights", "room", f.roomID, "err", err)
+		}
+	}
 	engine := &dj.Engine{Graph: f.s.Graph, Rand: f.s.Rand}
 	picks := engine.Choose(ctx, dj.Request{
-		Input: dj.Input{
-			History: f.history, Upcoming: f.upcoming, Mine: f.mine,
-			Present: f.s.presence.Members(f.roomID), Now: f.s.Now(),
-		},
-		Explore: f.explore, Links: f.searchable, Sessions: f.finder, Fresh: f.fresh,
+		Input: f.in, Explore: f.explore, Links: f.searchable, Sessions: f.finder, Fresh: f.fresh, LongTerm: lt,
 	})
 	fallback := f.room.OwnerID
 	if len(users) > 0 {
@@ -503,8 +540,11 @@ func (f *fill) fromGraph(ctx context.Context, users []string) []pick {
 	for _, p := range picks {
 		info := queue.AutopilotInfo{Reason: &queue.AutopilotReason{
 			Kind: p.Why.Kind, Via: p.Why.Via, Similarity: p.Why.Similarity, Popularity: p.Why.Popularity,
-			Novelty: p.Why.Novelty, Score: p.Why.Score, DeepCut: p.Why.DeepCut, Sources: p.Why.Sources,
+			Novelty: p.Why.Novelty, Prior: p.Why.Prior, Score: p.Why.Score, DeepCut: p.Why.DeepCut, Sources: p.Why.Sources,
 		}}
+		if !p.Why.LovedAt.IsZero() {
+			info.Reason.LovedAt = &p.Why.LovedAt
+		}
 		if p.Seed.ID != "" {
 			seed := suggest.TrackOf(p.Seed)
 			info.SeedItemID, info.SeedTitle = p.Seed.ID, seed.Title
