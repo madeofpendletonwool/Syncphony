@@ -34,6 +34,9 @@ type lrclib struct {
 	requests []*http.Request
 	// hold, if set, is waited on before answering.
 	hold chan struct{}
+	// busy is how many requests to turn away with a 503 first, as the
+	// public instance does when it's overloaded.
+	busy int
 }
 
 func newLRCLIB(t *testing.T, status int, fixture string) *lrclib {
@@ -42,9 +45,18 @@ func newLRCLIB(t *testing.T, status int, fixture string) *lrclib {
 		l.mu.Lock()
 		l.requests = append(l.requests, r)
 		status, fixture, hold := l.status, l.fixture, l.hold
+		busy := l.busy > 0
+		if busy {
+			l.busy--
+		}
 		l.mu.Unlock()
 		if hold != nil {
 			<-hold
+		}
+		if busy {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"message":"The server is busy, please retry in a moment","name":"ServerOverloaded","statusCode":503}`))
+			return
 		}
 		if r.URL.Path != "/api/get" {
 			http.NotFound(w, r)
@@ -134,7 +146,7 @@ func newEnv(t *testing.T, status int, fixture string) *env {
 	t.Cleanup(func() { db.Close() })
 	e := &env{lrclib: newLRCLIB(t, status, fixture), now: time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)}
 	e.svc = lyrics.New(db, lyrics.Options{
-		LRCLIB:  &lyrics.LRCLIB{BaseURL: e.lrclib.URL + "/", UserAgent: "Syncphony/test"},
+		LRCLIB:  &lyrics.LRCLIB{BaseURL: e.lrclib.URL + "/", UserAgent: "Syncphony/test", RetryDelay: time.Millisecond},
 		MissTTL: time.Hour,
 		Now:     func() time.Time { return e.now },
 	})
@@ -237,29 +249,47 @@ func TestMissesAreCached(t *testing.T) {
 	}
 }
 
-// When a service is down, a miss says nothing and isn't kept.
+// When a service is down, a miss says nothing: it isn't kept, and it's
+// told apart from a real one so screens ask again.
 func TestOutagesAreNotCached(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		sessErr error
-		status  int
+		name     string
+		sessErr  error
+		status   int
+		requests int
 	}{
-		{"LRCLIB down", nil, http.StatusBadGateway},
-		{"LRCLIB rate limited", nil, http.StatusTooManyRequests},
-		{"provider down", provider.ErrUnavailable, http.StatusNotFound},
+		// Three tries a lookup.
+		{"LRCLIB down", nil, http.StatusBadGateway, 6},
+		{"LRCLIB rate limited", nil, http.StatusTooManyRequests, 6},
+		{"LRCLIB broken", nil, http.StatusInternalServerError, 2},
+		{"provider down", provider.ErrUnavailable, http.StatusNotFound, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t, tc.status, "")
 			sess := &session{err: tc.sessErr}
 			for range 2 {
-				if _, err := e.svc.Get(t.Context(), sess, rolloff); !errors.Is(err, provider.ErrNotFound) {
-					t.Fatalf("got %v, want ErrNotFound", err)
+				if _, err := e.svc.Get(t.Context(), sess, rolloff); !errors.Is(err, provider.ErrUnavailable) {
+					t.Fatalf("got %v, want ErrUnavailable", err)
 				}
 			}
-			if e.lrclib.count() != 2 {
-				t.Errorf("%d LRCLIB requests, want 2", e.lrclib.count())
+			if e.lrclib.count() != tc.requests {
+				t.Errorf("%d LRCLIB requests, want %d", e.lrclib.count(), tc.requests)
 			}
 		})
+	}
+}
+
+// LRCLIB is often busy for a moment. Lyrics it has shouldn't be missed
+// for that.
+func TestLRCLIBBusy(t *testing.T) {
+	e := newEnv(t, http.StatusOK, "lrclib-synced.json")
+	e.lrclib.busy = 2
+	r, err := e.svc.Get(t.Context(), &session{}, rolloff)
+	if err != nil || r.Source != lyrics.SourceLRCLIB || len(r.Synced) == 0 {
+		t.Fatalf("got %+v, %v", r, err)
+	}
+	if e.lrclib.count() != 3 {
+		t.Errorf("%d LRCLIB requests, want 3", e.lrclib.count())
 	}
 }
 

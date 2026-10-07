@@ -70,7 +70,9 @@ func New(db *store.Store, opts Options) *Service {
 	return &Service{db: db, opts: opts}
 }
 
-// Get returns t's lyrics, or provider.ErrNotFound if there are none.
+// Get returns t's lyrics, provider.ErrNotFound if there are none, or
+// provider.ErrUnavailable if none were found because a service was down,
+// so it's worth asking again soon.
 // t.Ref names the track. sess, its link's session, may be nil if the link
 // is gone; then only LRCLIB is asked. If t has no title, it is looked up
 // through sess when LRCLIB needs it.
@@ -113,6 +115,10 @@ func (s *Service) get(ctx context.Context, sess provider.Session, t provider.Tra
 			slog.Warn("caching lyrics", "provider", t.Ref.Provider, "track", t.Ref.ID, "err", err)
 		}
 	}
+	if r.Source == "" && !sure {
+		// Not a miss: we don't know. Saying "none" would stick on screens.
+		return Result{}, fmt.Errorf("lyrics for %s %q: %w", t.Ref.Provider, t.Ref.ID, provider.ErrUnavailable)
+	}
 	return r, nil
 }
 
@@ -132,7 +138,7 @@ func (s *Service) fetch(ctx context.Context, sess provider.Session, t provider.T
 		case ctx.Err() != nil:
 			return Result{}, false, ctx.Err()
 		default:
-			slog.Debug("provider lyrics", "provider", t.Ref.Provider, "track", t.Ref.ID, "err", err)
+			slog.Warn("provider lyrics", "provider", t.Ref.Provider, "track", t.Ref.ID, "err", err)
 			sure = false
 		}
 	}
@@ -145,7 +151,7 @@ func (s *Service) fetch(ctx context.Context, sess provider.Session, t provider.T
 			if errors.Is(err, provider.ErrNotFound) && r.Source == "" {
 				return Result{}, true, nil
 			}
-			slog.Debug("looking up a track for LRCLIB", "provider", t.Ref.Provider, "track", t.Ref.ID, "err", err)
+			slog.Warn("looking up a track for LRCLIB", "provider", t.Ref.Provider, "track", t.Ref.ID, "err", err)
 			return r, false, nil
 		}
 		t = full
@@ -158,7 +164,7 @@ func (s *Service) fetch(ctx context.Context, sess provider.Session, t provider.T
 		if ctx.Err() != nil {
 			return Result{}, false, ctx.Err()
 		}
-		slog.Debug("LRCLIB lyrics", "provider", t.Ref.Provider, "track", t.Ref.ID, "err", err)
+		slog.Warn("LRCLIB lyrics", "provider", t.Ref.Provider, "track", t.Ref.ID, "title", t.Title, "err", err)
 		return r, false, nil
 	case r.Source != "" && len(f.Synced) == 0:
 		// The provider's plain lyrics are as good, and closer to home.
