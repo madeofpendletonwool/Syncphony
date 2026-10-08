@@ -20,8 +20,9 @@ export function useBeatSync(np: NowPlaying | null) {
       return
     }
     let stale = false
+    // mapKey says the map is known for this song, even when there's none.
     void loadBeatMap(roomId, itemId).then((map) => {
-      if (!stale) beatSource.set((s) => ({ ...s, map, mapKey: map ? itemId : null }))
+      if (!stale) beatSource.set((s) => ({ ...s, map, mapKey: itemId }))
     })
     return () => {
       stale = true

@@ -192,10 +192,10 @@ function Effects() {
 
 function Beat() {
   const { delayMs } = useStore(beatSettings)
-  const { map, mapKey, np } = useStore(beatSource)
+  const { mapKey, np } = useStore(beatSource)
   useStore(gridVersion)
   const now = currentBeat()
-  const loading = !!np?.itemId && mapKey !== np.itemId && !map
+  const loading = !!np?.itemId && mapKey !== np.itemId
   const [heard, setHeard] = useState(0)
   const [taps, setTaps] = useState(0)
   const canCalibrate = now.origin === 'analysed' && !!np && !np.paused

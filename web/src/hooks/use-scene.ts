@@ -4,6 +4,11 @@ import { useStore } from '@/lib/store'
 export const SCENES = ['mesh', 'horizon', 'ripples', 'aurora', 'embers'] as const
 export type Scene = (typeof SCENES)[number]
 
+// Picks follow the song whose beat map has settled (mapKey), not the one
+// that just started: while the new song's map is on its way the old pick
+// stays, rather than picking now and again when the map lands (two
+// crossfades in a row read as a flicker).
+
 /**
  * The backdrop scene for the song playing: the setting's, or one that suits
  * the song, from its beat map. A stable pick by the queue item breaks ties,
@@ -13,12 +18,12 @@ export function useScene(): Scene {
   const { scene } = useStore(beatSettings)
   const { np, map, mapKey } = useStore(beatSource)
   if (scene !== 'auto') return scene as Scene
-  const key = np?.itemId ?? np?.track.trackId
+  const key = mapKey ?? np?.itemId ?? np?.track.trackId
   if (!key) return 'mesh'
   let h = 0
   for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) | 0
   const pick = (...from: Scene[]) => from[Math.abs(h) % from.length]
-  if (!map || mapKey !== np?.itemId) return pick(...SCENES)
+  if (!map) return pick(...SCENES)
   const { energy, brightness } = map.features
   // No steady beat (ambient, a drone, spoken word): something that flows.
   if (map.bpm === 0) return pick('mesh', 'aurora')
@@ -44,12 +49,12 @@ export function isShow(s: string): s is Show {
 export function useShow(setting: string): Show {
   const { np, map, mapKey } = useStore(beatSource)
   if (isShow(setting)) return setting
-  const key = np?.itemId ?? np?.track.trackId
+  const key = mapKey ?? np?.itemId ?? np?.track.trackId
   if (!key) return 'fluid'
   let h = 7
   for (const ch of key) h = (h * 33 + ch.charCodeAt(0)) | 0
   const pick = (...from: Show[]) => from[Math.abs(h) % from.length]
-  if (!map || mapKey !== np?.itemId) return pick('spectrum', 'fluid', 'tunnel')
+  if (!map) return pick('spectrum', 'fluid', 'tunnel')
   const { energy } = map.features
   if (map.bpm === 0) return pick('fluid', 'aurora')
   if (energy < 0.4 || map.bpm < 90) return pick('fluid', 'aurora', 'rain')

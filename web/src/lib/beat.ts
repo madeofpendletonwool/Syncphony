@@ -152,6 +152,12 @@ function mapFor(key: string) {
   return map && mapKey === key ? map : null
 }
 
+/** Whether the song's map is still on its way (mapKey is set once it's known, map or not). */
+function mapPending(key: string) {
+  const { np, mapKey } = beatSource.get()
+  return !!np?.itemId && np.itemId === key && mapKey !== key
+}
+
 /** Where the current song's beat comes from, for the beat lab. */
 export type BeatOrigin = 'tapped' | 'analysed' | 'steady' | 'default'
 
@@ -295,6 +301,13 @@ const reduced = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-
 
 // Smoothed state, eased every frame so nothing snaps.
 let presence = 0
+// How hard the beat drives things: only while the music actually plays.
+let drive = 0
+// When the music stopped playing here. A song change passes through
+// "loading" for a moment, sometimes more than once: the backdrop holds
+// through that, rather than fading out and back in (it flickers).
+let quietSince = 0
+const HOLD_MS = 1500
 let energy = 0
 let loud = 0
 let swell = 0
@@ -357,6 +370,8 @@ function place(key: string, pos: number): { index: number; into: number; period:
   const own = tapped.get(key)
   const map = mapFor(key)
   if (!own && map) return map.bpm > 0 ? beatAt(map, pos) : null
+  // No guessing while the map is on its way: the guess would jump when it lands.
+  if (!own && mapPending(key)) return null
   const { bpm, anchorMs } = own ?? { bpm: DEFAULT_BPM, anchorMs: 0 }
   const period = 60000 / bpm
   const since = pos - anchorMs
@@ -378,7 +393,11 @@ function tick(now: number) {
   const map = c ? mapFor(c.key) : null
   const intensity = beatSettings.get().intensity
   // Fades in over about a second when the music starts, out when it stops.
-  presence = approach(presence, playing ? 1 : 0, dt, playing ? 900 : 500)
+  if (playing) quietSince = 0
+  else if (!quietSince) quietSince = now
+  const held = playing || (quietSince > 0 && now - quietSince < HOLD_MS && !!c)
+  presence = approach(presence, held ? 1 : 0, dt, held ? 900 : 700)
+  drive = approach(drive, playing ? 1 : 0, dt, playing ? 400 : 200)
 
   // Energy: the section's, nudged by how loud it is right now.
   let target = 0.5
@@ -394,7 +413,7 @@ function tick(now: number) {
   let breath = 0
   const p = c && presence > 0.001 ? place(c.key, c.pos) : null
   // Louder songs hit harder, but even a quiet one keeps a faint pulse.
-  const gain = presence * (0.35 + 0.65 * energy) * intensity
+  const gain = presence * drive * (0.35 + 0.65 * energy) * intensity
   if (p) {
     beatIndex = p.index
     periodMs = p.period
@@ -426,7 +445,7 @@ function tick(now: number) {
   // so the bars move rather than sit high.
   for (let k = 0; k < BANDS; k++) {
     const v = Math.max(0, (spectrum[k] - 0.4) / 0.6) ** 1.3
-    level[k] = follow(level[k], v * presence, dt, 40, 220)
+    level[k] = follow(level[k], v * presence * drive, dt, 40, 220)
   }
   const group = (from: number) => ((level[from] + level[from + 1] + level[from + 2]) / 3) * Math.min(1.5, intensity)
   vars.b0 = group(0)
@@ -434,7 +453,7 @@ function tick(now: number) {
   vars.b2 = group(6)
   vars.b3 = group(9)
 
-  swell = approach(swell, breath * presence * (0.45 + 0.55 * energy) * intensity, dt, 160)
+  swell = approach(swell, breath * presence * drive * (0.45 + 0.55 * energy) * intensity, dt, 160)
   vars.swell = swell
 
   // Calm songs drift slowly, loud ones churn. Only now and then: changing
@@ -471,7 +490,9 @@ function tick(now: number) {
   }
 
   // Idle once everything has settled: nothing playing, nothing fading.
-  if (playing || presence > 0.001 || swell > 0.001 || Math.abs(energy - target) > 0.001) frame = requestAnimationFrame(tick)
+  if (playing || presence > 0.001 || drive > 0.001 || swell > 0.001 || Math.abs(energy - target) > 0.001) {
+    frame = requestAnimationFrame(tick)
+  }
   else {
     for (const t of targets) if (t.drift) for (const a of t.el.getAnimations({ subtree: true })) a.updatePlaybackRate(1)
     lastRate = 1

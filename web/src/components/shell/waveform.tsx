@@ -7,8 +7,9 @@ const BARS = 72
 
 /**
  * The song's shape above the seek bar (MAD-777): its loudness from the beat
- * map, filled in the album color up to where it's playing. Nothing until
- * the map arrives, or if the beat lab turns it off.
+ * map, filled in the album color up to where it's playing. A flat line
+ * until the map arrives (it keeps its space, so nothing jumps), and
+ * nothing if the beat lab turns it off.
  */
 export function Waveform({ itemId, positionMs, durationMs, className }: {
   itemId?: string
@@ -21,7 +22,7 @@ export function Waveform({ itemId, positionMs, durationMs, className }: {
   const ours = map && mapKey === itemId ? map : null
 
   const heights = useMemo(() => {
-    if (!ours || ours.loudness.length === 0) return null
+    if (!ours || ours.loudness.length === 0) return Array<number>(BARS).fill(0.12)
     const per = ours.loudness.length / BARS
     const out: number[] = []
     for (let b = 0; b < BARS; b++) {
@@ -35,7 +36,7 @@ export function Waveform({ itemId, positionMs, durationMs, className }: {
     return out
   }, [ours])
 
-  if (!heights || level === 'off' || effects.waveform === 0) return null
+  if (level === 'off' || effects.waveform === 0) return null
   const played = durationMs > 0 ? Math.min(1, positionMs / durationMs) : 0
   const bars = (
     <svg viewBox={`0 0 ${BARS * 3} 24`} preserveAspectRatio="none" className="absolute inset-0 size-full">
@@ -45,7 +46,7 @@ export function Waveform({ itemId, positionMs, durationMs, className }: {
     </svg>
   )
   return (
-    <div aria-hidden className={cn('relative h-7', className)}>
+    <div aria-hidden className={cn('relative h-7 transition-opacity duration-500', !ours && 'opacity-40', className)}>
       <div className="absolute inset-0 fill-foreground/15">{bars}</div>
       <div
         className="absolute inset-0 fill-(--pal-text) transition-[clip-path] duration-300 ease-linear"
