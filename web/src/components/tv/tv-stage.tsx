@@ -9,6 +9,7 @@ import { CrownMoment } from '@/components/room/crown-moment'
 import { AlbumBackdrop } from '@/components/shell/album-backdrop'
 import { UserAvatar } from '@/components/user-avatar'
 import { useAlbumPalette } from '@/hooks/use-album-palette'
+import { useBeatSync } from '@/hooks/use-beat-sync'
 import { usePosition } from '@/hooks/use-position'
 import { autopilotReason, autopilotSource } from '@/lib/autopilot'
 import { guestPassQuery } from '@/lib/guests'
@@ -62,6 +63,7 @@ export function TvStage({
     [roomId, playback.data, users.data],
   )
   useAlbumPalette(np)
+  useBeatSync(np)
   useWakeLock()
   const { status } = useStore(live)
 

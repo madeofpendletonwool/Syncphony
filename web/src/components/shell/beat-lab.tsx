@@ -1,4 +1,5 @@
-import { Activity, X } from 'lucide-react'
+import { Activity, ChevronDown } from 'lucide-react'
+import { Popover } from 'radix-ui'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
@@ -7,129 +8,114 @@ import { useBeat } from '@/hooks/use-beat'
 import { SCENES, useScene } from '@/hooks/use-scene'
 import {
   beatSettings,
-  currentGrid,
+  beatSource,
+  currentBeat,
   gridVersion,
   nudge,
   resetGrid,
   scaleTempo,
   shiftDownbeat,
   tap,
+  type BeatOrigin,
 } from '@/lib/beat'
-import { usePlayer } from '@/lib/now-playing'
 import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 
 /**
- * Dev-only tuning for the beat prototype (MAD-772): tap along to set the
- * song's grid, fake the energy, or run without music. Goes away once the
- * server sends beat maps.
+ * The beat lab (MAD-778): how the app moves with the music, on this
+ * device. Turn it off, make it calmer or stronger, pick the backdrop, and
+ * fix the beat by tapping along when the analysis got a song wrong.
+ * Opens from now playing; its button blinks on the beat.
  */
 export function BeatLab() {
   const [open, setOpen] = useState(false)
-  const settings = useStore(beatSettings)
-  useStore(gridVersion)
-  const { nowPlaying } = usePlayer()
-  const [taps, setTaps] = useState(0)
-  const beat = useBeat<HTMLDivElement>()
-  const grid = currentGrid()
-  const scene = useScene()
-  const set = (next: Partial<typeof settings>) => beatSettings.set((s) => ({ ...s, ...next }))
+  const beat = useBeat<HTMLButtonElement>()
+  const { level } = useStore(beatSettings)
 
   return (
-    <div
-      ref={beat}
-      className="fixed top-[calc(env(safe-area-inset-top)+0.5rem)] right-2 z-[60] flex flex-col items-end gap-2"
-    >
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-label={open ? 'Close beat lab' : 'Open beat lab'}
-        className="glass-strong flex size-10 items-center justify-center rounded-full shadow-float outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-      >
-        {open ? (
-          <X className="size-4" />
-        ) : (
-          <span className="relative flex size-4 items-center justify-center">
-            <Activity className="size-4 opacity-40" />
-            {/* Blinks on the beat: is the grid in time? */}
-            <span className="absolute size-2 rounded-full bg-primary" style={{ opacity: 'calc(var(--beat, 0) * 1.6)' }} />
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>
+        <Button
+          ref={beat}
+          size="icon"
+          variant={open ? 'default' : 'glass'}
+          aria-label="Beat lab"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <span className="relative flex items-center justify-center">
+            <Activity className={cn(level !== 'off' && 'opacity-50')} />
+            {/* Blinks on the beat: is it in time? */}
+            <span
+              aria-hidden
+              className="absolute size-1.5 rounded-full bg-current"
+              style={{ opacity: 'calc(var(--beat, 0) * 1.6)' }}
+            />
           </span>
-        )}
-      </button>
+        </Button>
+      </Popover.Trigger>
+      <Popover.Content
+        align="end"
+        sideOffset={8}
+        collisionPadding={12}
+        onPointerDown={(e) => e.stopPropagation()}
+        className="z-[60] w-[min(20rem,calc(100vw-1.5rem))] outline-none"
+      >
+        <Panel />
+      </Popover.Content>
+    </Popover.Root>
+  )
+}
 
-      {open && (
-        <div className="glass-strong w-72 space-y-4 rounded-2xl p-4 text-sm shadow-float">
-          <div className="flex items-center justify-between">
-            <p className="font-medium">Beat lab</p>
+function Panel() {
+  const settings = useStore(beatSettings)
+  const { map, mapKey, np } = useStore(beatSource)
+  useStore(gridVersion)
+  const beat = useBeat<HTMLDivElement>()
+  const scene = useScene()
+  const now = currentBeat()
+  const [fixing, setFixing] = useState(false)
+  const set = (next: Partial<typeof settings>) => beatSettings.set((s) => ({ ...s, ...next }))
+  const on = settings.level !== 'off'
+  const loading = !!np?.itemId && mapKey !== np.itemId && !map
+
+  return (
+    <div ref={beat} className="glass-strong max-h-[70dvh] space-y-4 overflow-y-auto rounded-2xl p-4 text-sm shadow-float">
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-medium">Beat lab</p>
+        <Switch label="Move with the music" checked={on} onChange={(v) => set({ level: v ? 'subtle' : 'off' })} />
+      </div>
+
+      {on && (
+        <>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-lg leading-tight font-semibold tabular-nums">
+                {now.bpm > 0 ? `${Math.round(now.bpm)} BPM` : 'No steady beat'}
+              </p>
+              <p className="text-caption text-muted-foreground">{loading ? 'Listening to the song…' : origins[now.origin]}</p>
+            </div>
             <div className="flex items-center gap-1.5" aria-hidden>
               <Dot v="var(--downbeat, 0)" big />
               <Dot v="var(--beat, 0)" />
             </div>
           </div>
 
-          <Row label="Music-reactive">
-            <Switch
-              label="Music-reactive"
-              checked={settings.level !== 'off'}
-              onChange={(on) => set({ level: on ? 'subtle' : 'off' })}
+          <label className="block space-y-2">
+            <span className="flex justify-between text-muted-foreground">
+              Intensity <span>{intensityLabel(settings.intensity)}</span>
+            </span>
+            <Slider
+              min={0.5}
+              max={1.75}
+              step={0.05}
+              value={[settings.intensity]}
+              onValueChange={([intensity]) => set({ intensity })}
             />
-          </Row>
-          <Row label="Run without music">
-            <Switch label="Run without music" checked={settings.freeRun} onChange={(freeRun) => set({ freeRun })} />
-          </Row>
-
-          <div className="space-y-2">
-            <div className="flex items-baseline justify-between">
-              <span className="text-muted-foreground">
-                {nowPlaying && !nowPlaying.paused ? 'This song' : settings.freeRun ? 'Free run' : 'Nothing playing'}
-              </span>
-              <span className="text-lg font-semibold tabular-nums">{Math.round(grid.bpm)} BPM</span>
-            </div>
-            <Button
-              className="h-14 w-full text-base"
-              onPointerDown={(e) => {
-                // On press, not release: a click lands a beat late.
-                e.preventDefault()
-                setTaps(tap() ?? 0)
-              }}
-            >
-              Tap on the beat {taps > 0 && taps < 3 ? `(${taps})` : ''}
-            </Button>
-            <p className="text-caption text-muted-foreground">
-              Start on a &ldquo;one&rdquo; and tap at least 4 times. Without taps a song runs at the default tempo,
-              out of phase.
-            </p>
-            <div className="grid grid-cols-4 gap-1.5">
-              <Button size="xs" variant="secondary" onClick={() => nudge(-20)}>
-                −20ms
-              </Button>
-              <Button size="xs" variant="secondary" onClick={() => nudge(20)}>
-                +20ms
-              </Button>
-              <Button size="xs" variant="secondary" onClick={() => scaleTempo(0.5)}>
-                ½×
-              </Button>
-              <Button size="xs" variant="secondary" onClick={() => scaleTempo(2)}>
-                2×
-              </Button>
-              <Button size="xs" variant="secondary" onClick={() => scaleTempo(1 - 1 / grid.bpm)}>
-                −1
-              </Button>
-              <Button size="xs" variant="secondary" onClick={() => scaleTempo(1 + 1 / grid.bpm)}>
-                +1
-              </Button>
-              <Button size="xs" variant="secondary" onClick={shiftDownbeat}>
-                Move 1
-              </Button>
-              <Button size="xs" variant="ghost" onClick={resetGrid}>
-                Reset
-              </Button>
-            </div>
-          </div>
+          </label>
 
           <div className="space-y-2">
             <span className="flex justify-between text-muted-foreground">
-              Backdrop <span className="capitalize">{settings.scene === 'auto' ? `auto: ${scene}` : scene}</span>
+              Backdrop <span className="capitalize">{settings.scene === 'auto' ? `Auto: ${scene}` : scene}</span>
             </span>
             <div className="flex flex-wrap gap-1.5">
               {['auto', ...SCENES].map((s) => (
@@ -146,31 +132,84 @@ export function BeatLab() {
             </div>
           </div>
 
-          <label className="block space-y-2">
-            <span className="flex justify-between text-muted-foreground">
-              Energy <span className="tabular-nums">{Math.round(settings.energy * 100)}%</span>
-            </span>
-            <Slider
-              min={0}
-              max={1}
-              step={0.01}
-              value={[settings.energy]}
-              onValueChange={([energy]) => set({ energy })}
-            />
-          </label>
-        </div>
+          <div className="space-y-2">
+            <button
+              type="button"
+              aria-expanded={fixing}
+              onClick={() => setFixing((f) => !f)}
+              className="flex w-full items-center justify-between rounded-lg text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              Off the beat? Fix it
+              <ChevronDown className={cn('size-4 transition-transform', fixing && 'rotate-180')} />
+            </button>
+            {fixing && <Fix bpm={now.bpm} tapped={now.origin === 'tapped'} />}
+          </div>
+        </>
       )}
     </div>
   )
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+/** Tap along to set this song's beat, then nudge it. Only on this device. */
+function Fix({ bpm, tapped }: { bpm: number; tapped: boolean }) {
+  const [taps, setTaps] = useState(0)
   return (
-    <div className="flex items-center justify-between gap-3">
-      <span>{label}</span>
-      {children}
+    <div className="space-y-2">
+      <Button
+        className="h-14 w-full text-base"
+        onPointerDown={(e) => {
+          // On press, not release: a click lands a beat late.
+          e.preventDefault()
+          setTaps(tap() ?? 0)
+        }}
+      >
+        Tap on the beat {taps > 0 && taps < 3 ? `(${taps})` : ''}
+      </Button>
+      <p className="text-caption text-muted-foreground">
+        Start on a &ldquo;one&rdquo; and tap at least 4 times. Fixes this song on this device.
+      </p>
+      <div className="grid grid-cols-4 gap-1.5">
+        <Button size="xs" variant="secondary" onClick={() => nudge(-20)}>
+          −20ms
+        </Button>
+        <Button size="xs" variant="secondary" onClick={() => nudge(20)}>
+          +20ms
+        </Button>
+        <Button size="xs" variant="secondary" onClick={() => scaleTempo(0.5)}>
+          ½×
+        </Button>
+        <Button size="xs" variant="secondary" onClick={() => scaleTempo(2)}>
+          2×
+        </Button>
+        <Button size="xs" variant="secondary" disabled={bpm <= 0} onClick={() => scaleTempo(1 - 1 / bpm)}>
+          −1
+        </Button>
+        <Button size="xs" variant="secondary" disabled={bpm <= 0} onClick={() => scaleTempo(1 + 1 / bpm)}>
+          +1
+        </Button>
+        <Button size="xs" variant="secondary" onClick={shiftDownbeat}>
+          Move 1
+        </Button>
+        <Button size="xs" variant="ghost" disabled={!tapped} onClick={resetGrid}>
+          Reset
+        </Button>
+      </div>
     </div>
   )
+}
+
+const origins: Record<BeatOrigin, string> = {
+  analysed: 'From the song',
+  tapped: 'Tapped on this device',
+  steady: 'Moving with its loudness',
+  default: 'A guess: this song has no beat map',
+}
+
+function intensityLabel(v: number) {
+  if (v < 0.8) return 'Calm'
+  if (v <= 1.2) return 'Normal'
+  if (v <= 1.5) return 'Strong'
+  return 'Max'
 }
 
 function Dot({ v, big }: { v: string; big?: boolean }) {

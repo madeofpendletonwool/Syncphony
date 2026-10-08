@@ -94,14 +94,14 @@ function follow(from: number, to: number, dt: number, attack: number, release: n
 // --- Scenes ------------------------------------------------------------------
 // Each is a factory, so every canvas gets its own state.
 
-/** A background equalizer: soft columns along the bottom, bass in the middle, treble at the edges. */
+/** A background equalizer: soft columns along the bottom, the song's spectrum mirrored, bass in the middle. */
 function horizon(): Painter {
   const N = 32
   const level = new Float32Array(N)
   return (ctx, w, h, f, c) => {
-    const [b0, b1, b2, b3] = f.bands
     const t = f.now / 1000
     const gap = w / N
+    const bands = f.spectrum.length
     const grad = ctx.createLinearGradient(0, h, 0, h * 0.35)
     grad.addColorStop(0, c.dominant)
     grad.addColorStop(0.6, c.vibrant)
@@ -110,13 +110,12 @@ function horizon(): Painter {
     for (let i = 0; i < N; i++) {
       const x = (i + 0.5) / N
       const d = Math.abs(x - 0.5) * 2 // 0 middle, 1 edges
-      const shape =
-        b0 * (1 - d) ** 1.6 +
-        b1 * 0.7 * bump(d, 0.35, 0.25) +
-        b2 * 0.8 * bump(d, 0.62, 0.22) +
-        b3 * 0.6 * d ** 1.4
-      // Each column wanders on its own, more when the song is loud.
-      const wander = f.energy * 0.22 * (0.5 + 0.5 * Math.sin(t * (1.3 + (i % 7) * 0.31) + i * 1.7))
+      // Between the two nearest bands.
+      const b = d * (bands - 1)
+      const k = Math.min(Math.floor(b), bands - 2)
+      const shape = f.spectrum[k] * (1 - (b - k)) + f.spectrum[k + 1] * (b - k)
+      // Neighbouring columns share a band; a little wander tells them apart.
+      const wander = f.energy * 0.12 * (0.5 + 0.5 * Math.sin(t * (1.3 + (i % 7) * 0.31) + i * 1.7))
       level[i] = follow(level[i], Math.min(1, shape + wander), f.dt, 50, 320)
       const bh = h * (0.04 + level[i] * 0.5)
       const bw = gap * 0.62
@@ -258,11 +257,6 @@ function embers(): Painter {
 }
 
 const painters: Record<Scene, () => Painter> = { mesh, horizon, ripples, aurora, embers }
-
-function bump(x: number, at: number, width: number) {
-  const d = (x - at) / width
-  return Math.exp(-d * d)
-}
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath()

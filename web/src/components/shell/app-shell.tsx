@@ -3,12 +3,12 @@ import { WifiOff } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { useAlbumPalette } from '@/hooks/use-album-palette'
+import { useBeatSync } from '@/hooks/use-beat-sync'
 import { easeOutExpo } from '@/lib/motion'
 import { usePlayer } from '@/lib/now-playing'
 import { useOnline } from '@/lib/pwa'
 import { Toaster } from '@/components/toaster'
 import { AlbumBackdrop } from './album-backdrop'
-import { BeatLab } from './beat-lab'
 import { BottomNav } from './bottom-nav'
 import { MiniPlayer } from './mini-player'
 import { NowPlayingSheet } from './now-playing-sheet'
@@ -22,6 +22,7 @@ export function AppShell() {
   const { nowPlaying } = usePlayer()
   const [expanded, setExpanded] = useState(false)
   useAlbumPalette(nowPlaying)
+  useBeatSync(nowPlaying)
 
   return (
     <LayoutGroup>
@@ -42,7 +43,6 @@ export function AppShell() {
         </div>
 
         <NowPlayingSheet open={expanded} onOpenChange={setExpanded} />
-        {import.meta.env.DEV && <BeatLab />}
       </div>
     </LayoutGroup>
   )

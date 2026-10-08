@@ -17,6 +17,7 @@ import { laneStyle } from '@/lib/lane'
 import { easeOutExpo, spring } from '@/lib/motion'
 import { formatDuration, usePlayer } from '@/lib/now-playing'
 import { AlbumBackdrop } from './album-backdrop'
+import { BeatLab } from './beat-lab'
 import { TransportControls } from './player-controls'
 import { SheetQueue } from './sheet-queue'
 
@@ -69,25 +70,28 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
                 <AlbumBackdrop src={np.artworkUrl} className="absolute" />
                 <div
                   onPointerDown={(e) => drag.start(e)}
-                  className="flex touch-none items-center justify-between px-gutter pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3"
+                  className="relative flex touch-none items-center justify-between px-gutter pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3"
                 >
                   <Dialog.Close asChild>
                     <Button size="icon" variant="glass" aria-label="Close now playing">
                       <ChevronDown />
                     </Button>
                   </Dialog.Close>
-                  <span aria-hidden className="h-1.5 w-10 rounded-full bg-foreground/25" />
+                  <span aria-hidden className="absolute left-1/2 h-1.5 w-10 -translate-x-1/2 rounded-full bg-foreground/25" />
                   {np.roomId ? (
-                    <Button
-                      size="icon"
-                      variant={lyrics ? 'default' : 'glass'}
-                      aria-label="Lyrics"
-                      aria-pressed={lyrics}
-                      onClick={() => setLyrics((l) => !l)}
-                      onPointerDown={(e) => e.stopPropagation()}
-                    >
-                      <Mic2 />
-                    </Button>
+                    <div className="flex gap-2">
+                      <BeatLab />
+                      <Button
+                        size="icon"
+                        variant={lyrics ? 'default' : 'glass'}
+                        aria-label="Lyrics"
+                        aria-pressed={lyrics}
+                        onClick={() => setLyrics((l) => !l)}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <Mic2 />
+                      </Button>
+                    </div>
                   ) : (
                     <span className="size-10" />
                   )}

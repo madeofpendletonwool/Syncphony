@@ -1,10 +1,14 @@
-// The beat engine (MAD-775, prototype). One rAF loop turns the room's
-// playback position into a few CSS custom properties, so the app can
-// breathe with the song without re-rendering anything.
+// The beat engine (MAD-775). One rAF loop turns the room's playback
+// position into a few CSS custom properties, so the app can breathe with
+// the song without re-rendering anything.
 //
-// The real thing reads a server-side beat map (MAD-773). Until then a song's
-// beat grid comes from tapping along (see BeatLab); a song nobody tapped
-// runs on the default tempo, so it's in time but not in phase.
+// Where the beat comes from, first match wins:
+//   1. a grid tapped in the beat lab, for a song the analysis got wrong;
+//   2. the song's beat map from the server (lib/beat-map.ts);
+//   3. the default tempo, while the map loads or for songs without one:
+//      in time, but not in phase.
+// The map also gives the energy (its sections and loudness) and the
+// spectrum.
 //
 // Variables, written only to the elements that use them (a var on :root
 // would restyle the whole tree every frame):
@@ -13,62 +17,105 @@
 //   --swell     a slow breath once a bar: rises over a beat, fades over the
 //               rest. For big surfaces, where a per-beat flash reads as strobe.
 //   --energy    how hard the song is going right now, slowly smoothed.
-//   --b0..--b3  four synthetic "bands" for the equalizer.
+//   --b0..--b3  bass, low mids, high mids and treble, for the equalizer.
 // Elements also get data-beat-live while the engine drives them, so CSS
 // can swap a canned animation for the live one.
 
-import { player, positionAt } from './now-playing'
+import { beatAt, loudnessAt, sectionEnergy, spectrumAt, type BeatMap } from './beat-map'
+import { positionAt, type NowPlaying } from './now-playing'
 import { createStore } from './store'
 
 export type BeatLevel = 'off' | 'subtle'
 
 export type BeatSettings = {
   level: BeatLevel
-  /** Tempo for songs with no grid of their own. */
-  defaultBpm: number
-  /** Stand-in for the beat map's energy envelope, 0–1. */
-  energy: number
-  /** Run on a free clock when nothing's playing, to try the look. */
-  freeRun: boolean
+  /** How strongly things move, 0.5 (calmer) – 1.75 (stronger). */
+  intensity: number
   /** The backdrop scene, or 'auto' to pick one per song. */
   scene: string
 }
 
-export const beatSettings = createStore<BeatSettings>({
-  level: 'subtle',
-  defaultBpm: 120,
-  energy: 0.5,
-  freeRun: false,
-  scene: 'auto',
+const SETTINGS_KEY = 'syncphony-visuals'
+const DEFAULTS: BeatSettings = { level: 'subtle', intensity: 1, scene: 'auto' }
+
+export const beatSettings = createStore<BeatSettings>({ ...DEFAULTS, ...readSettings() })
+beatSettings.subscribe(() => {
+  const { level, intensity, scene } = beatSettings.get()
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ level, intensity, scene }))
+  } catch {
+    // Private mode: settings last until the tab closes.
+  }
+})
+
+function readSettings(): Partial<BeatSettings> {
+  try {
+    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<BeatSettings>
+    return {
+      ...(s.level === 'off' || s.level === 'subtle' ? { level: s.level } : {}),
+      ...(typeof s.intensity === 'number' ? { intensity: Math.min(1.75, Math.max(0.5, s.intensity)) } : {}),
+      ...(typeof s.scene === 'string' ? { scene: s.scene } : {}),
+    }
+  } catch {
+    return {}
+  }
+}
+
+/** Tempo for songs with no beat map yet. */
+const DEFAULT_BPM = 120
+
+/**
+ * What's playing, and its beat map once loaded. Set by useBeatSync, which
+ * the app shell and the big screen each mount once.
+ */
+export const beatSource = createStore<{ np: NowPlaying | null; map: BeatMap | null; mapKey: string | null }>({
+  np: null,
+  map: null,
+  mapKey: null,
 })
 
 /** A song's beat grid: its tempo and the position of one downbeat, in ms. */
 export type Grid = { bpm: number; anchorMs: number }
 
-const grids = new Map<string, Grid>()
+/** Grids tapped in the beat lab, by song. They beat the song's map. */
+const tapped = new Map<string, Grid>()
 export const gridVersion = createStore(0)
 
-const FREE_KEY = '__free'
-const freeStart = performance.now()
+function keyOf(np: NowPlaying) {
+  return np.itemId ?? np.track.trackId
+}
 
 /** Where the music is now, and which song's grid applies. */
 function clock(): { key: string; pos: number; playing: boolean } | null {
-  const np = player.get().nowPlaying
-  if (np && !np.paused) return { key: np.itemId ?? np.track.trackId, pos: positionAt(np, Date.now()), playing: true }
-  if (beatSettings.get().freeRun) return { key: FREE_KEY, pos: performance.now() - freeStart, playing: true }
-  if (np) return { key: np.itemId ?? np.track.trackId, pos: np.positionMs, playing: false }
+  const { np } = beatSource.get()
+  if (np && !np.paused) return { key: keyOf(np), pos: positionAt(np, Date.now()), playing: true }
+  if (np) return { key: keyOf(np), pos: np.positionMs, playing: false }
   return null
 }
 
-export function currentGrid(): Grid {
+/** The current song's map, if it's loaded. */
+function mapFor(key: string) {
+  const { map, mapKey } = beatSource.get()
+  return map && mapKey === key ? map : null
+}
+
+/** Where the current song's beat comes from, for the beat lab. */
+export type BeatOrigin = 'tapped' | 'analysed' | 'steady' | 'default'
+
+export function currentBeat(): Grid & { origin: BeatOrigin } {
   const c = clock()
-  return (c && grids.get(c.key)) ?? { bpm: beatSettings.get().defaultBpm, anchorMs: 0 }
+  const own = c && tapped.get(c.key)
+  if (own) return { ...own, origin: 'tapped' }
+  const map = c && mapFor(c.key)
+  if (map && map.bpm > 0) return { bpm: map.bpm, anchorMs: map.beats[map.downbeat] ?? 0, origin: 'analysed' }
+  if (map) return { bpm: 0, anchorMs: 0, origin: 'steady' }
+  return { bpm: DEFAULT_BPM, anchorMs: 0, origin: 'default' }
 }
 
 function setGrid(g: Grid) {
   const c = clock()
   if (!c) return
-  grids.set(c.key, { bpm: Math.min(220, Math.max(50, g.bpm)), anchorMs: g.anchorMs })
+  tapped.set(c.key, { bpm: Math.min(220, Math.max(50, g.bpm)), anchorMs: g.anchorMs })
   gridVersion.set((v) => v + 1)
   wake()
 }
@@ -107,26 +154,34 @@ export function tap() {
   return n
 }
 
+/** The current beat as a grid to adjust: tapped, analysed, or the default. */
+function adjustable(): Grid {
+  const b = currentBeat()
+  return b.bpm > 0 ? b : { bpm: DEFAULT_BPM, anchorMs: 0 }
+}
+
 export function nudge(ms: number) {
-  const g = currentGrid()
+  const g = adjustable()
   setGrid({ ...g, anchorMs: g.anchorMs + ms })
 }
 
 export function scaleTempo(factor: number) {
-  const g = currentGrid()
+  const g = adjustable()
   setGrid({ ...g, bpm: g.bpm * factor })
 }
 
-/** Moves the "one" along by a beat, for a grid tapped from the wrong beat. */
+/** Moves the "one" along by a beat, for a grid that starts its bars in the wrong place. */
 export function shiftDownbeat() {
-  const g = currentGrid()
+  const g = adjustable()
   setGrid({ ...g, anchorMs: g.anchorMs + 60000 / g.bpm })
 }
 
+/** Forgets the song's tapped grid, back to its beat map. */
 export function resetGrid() {
   const c = clock()
   if (!c) return
-  grids.delete(c.key)
+  tapped.delete(c.key)
+  taps = []
   gridVersion.set((v) => v + 1)
 }
 
@@ -156,12 +211,16 @@ const reduced = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-
 // Smoothed state, eased every frame so nothing snaps.
 let presence = 0
 let energy = 0
+let loud = 0
 let swell = 0
 let frame = 0
 let lastFrame = 0
 let lastRate = 1
 let lastRateAt = 0
 const written = new WeakMap<HTMLElement, Record<string, number>>()
+const BANDS = 12
+const spectrum = new Float32Array(BANDS)
+const level = new Float32Array(BANDS)
 
 /** One frame of the engine, for canvas scenes that draw rather than style. */
 export type BeatFrame = {
@@ -169,8 +228,10 @@ export type BeatFrame = {
   downbeat: number
   swell: number
   energy: number
-  /** Four bands, low to high (synthetic until the beat map has real ones). */
+  /** Four bands, low to high. */
   bands: [number, number, number, number]
+  /** Twelve bands, low to high, 0–1 (from the beat map, else made up from the beat). */
+  spectrum: Float32Array
   /** Fades in when music starts, out when it stops. */
   presence: number
   /** Beats since the grid's anchor, and the beat's length in ms. */
@@ -206,6 +267,18 @@ function wake() {
   frame = requestAnimationFrame(tick)
 }
 
+/** Where pos falls in the song's beat, from whichever source applies. */
+function place(key: string, pos: number): { index: number; into: number; period: number; bar: number } | null {
+  const own = tapped.get(key)
+  const map = mapFor(key)
+  if (!own && map) return map.bpm > 0 ? beatAt(map, pos) : null
+  const { bpm, anchorMs } = own ?? { bpm: DEFAULT_BPM, anchorMs: 0 }
+  const period = 60000 / bpm
+  const since = pos - anchorMs
+  const n = Math.floor(since / period)
+  return { index: n, into: since - n * period, period, bar: ((n % 4) + 4) % 4 }
+}
+
 function tick(now: number) {
   frame = 0
   const dt = Math.min(100, now - lastFrame)
@@ -217,40 +290,64 @@ function tick(now: number) {
 
   const c = clock()
   const playing = !!c?.playing && document.visibilityState === 'visible'
+  const map = c ? mapFor(c.key) : null
+  const intensity = beatSettings.get().intensity
   // Fades in over about a second when the music starts, out when it stops.
   presence = approach(presence, playing ? 1 : 0, dt, playing ? 900 : 500)
-  energy = approach(energy, beatSettings.get().energy, dt, 1500)
+
+  // Energy: the section's, nudged by how loud it is right now.
+  let target = 0.5
+  if (map && c) {
+    loud = approach(loud, loudnessAt(map, c.pos), dt, 600)
+    target = 0.55 * sectionEnergy(map, c.pos) + 0.45 * loud
+  }
+  energy = approach(energy, target, dt, 1500)
 
   const vars = { beat: 0, downbeat: 0, swell: 0, energy: energy * presence, b0: 0, b1: 0, b2: 0, b3: 0 }
   let beatIndex = 0
   let periodMs = 500
   let breath = 0
-  if (c && presence > 0.001) {
-    const { bpm, anchorMs } = grids.get(c.key) ?? { bpm: beatSettings.get().defaultBpm, anchorMs: 0 }
-    const period = 60000 / bpm
-    const since = c.pos - anchorMs
-    const n = Math.floor(since / period)
-    const into = since - n * period
-    const bar = ((n % 4) + 4) % 4
-    beatIndex = n
-    periodMs = period
+  const p = c && presence > 0.001 ? place(c.key, c.pos) : null
+  // Louder songs hit harder, but even a quiet one keeps a faint pulse.
+  const gain = presence * (0.35 + 0.65 * energy) * intensity
+  if (p) {
+    beatIndex = p.index
+    periodMs = p.period
+    vars.beat = gain * pulse(p.into, Math.min(240, p.period * 0.4))
+    vars.downbeat = p.bar === 0 ? gain * pulse(p.into, Math.min(520, p.period * 0.85)) : 0
     // Rises over the first beat of the bar and sinks over the rest.
-    const intoBar = bar * period + into
-    breath = intoBar < period ? Math.sin(((intoBar / period) * Math.PI) / 2) : Math.exp(-(intoBar - period) / (period * 1.2))
-    // Louder songs hit harder, but even a quiet one keeps a faint pulse.
-    const gain = presence * (0.35 + 0.65 * energy)
-    vars.beat = gain * pulse(into, Math.min(240, period * 0.4))
-    vars.downbeat = bar === 0 ? gain * pulse(into, Math.min(520, period * 0.85)) : 0
-    // Synthetic bands: kick on the beat, snare on 2 and 4, offbeat eighths, sixteenths.
-    const half = period / 2
-    const quarter = period / 4
-    vars.b0 = gain * pulse(into, period * 0.5)
-    vars.b1 = bar % 2 === 1 ? gain * pulse(into, period * 0.6) : gain * 0.15
-    vars.b2 = gain * pulse((into + half) % period, half * 0.7) * 0.8
-    vars.b3 = gain * (0.35 + 0.65 * pulse(into % quarter, quarter * 0.6)) * (0.4 + 0.6 * energy)
+    const intoBar = p.bar * p.period + p.into
+    breath =
+      intoBar < p.period ? Math.sin(((intoBar / p.period) * Math.PI) / 2) : Math.exp(-(intoBar - p.period) / (p.period * 1.2))
   }
 
-  swell = approach(swell, breath * presence * (0.45 + 0.55 * energy), dt, 160)
+  if (map && c && presence > 0.001) {
+    spectrumAt(map, c.pos, spectrum)
+  } else if (p) {
+    // No map: make a spectrum up from the beat, kick low and hats high.
+    const kick = pulse(p.into, p.period * 0.5)
+    const snare = p.bar % 2 === 1 ? pulse(p.into, p.period * 0.6) : 0.15
+    const hats = 0.35 + 0.65 * pulse(p.into % (p.period / 4), p.period * 0.15)
+    for (let k = 0; k < BANDS; k++) {
+      const x = k / (BANDS - 1)
+      spectrum[k] = kick * Math.max(0, 1 - x * 3) + snare * Math.exp(-(((x - 0.45) / 0.2) ** 2)) + hats * x ** 2 * 0.7
+    }
+  } else {
+    spectrum.fill(0)
+  }
+  // Each band's level: up fast, down slower, and only the top of its range,
+  // so the bars move rather than sit high.
+  for (let k = 0; k < BANDS; k++) {
+    const v = Math.max(0, (spectrum[k] - 0.4) / 0.6) ** 1.3
+    level[k] = follow(level[k], v * presence, dt, 40, 220)
+  }
+  const group = (from: number) => ((level[from] + level[from + 1] + level[from + 2]) / 3) * Math.min(1.5, intensity)
+  vars.b0 = group(0)
+  vars.b1 = group(3)
+  vars.b2 = group(6)
+  vars.b3 = group(9)
+
+  swell = approach(swell, breath * presence * (0.45 + 0.55 * energy) * intensity, dt, 160)
   vars.swell = swell
 
   // Calm songs drift slowly, loud ones churn. Only now and then: changing
@@ -270,6 +367,7 @@ function tick(now: number) {
       swell: vars.swell,
       energy: vars.energy,
       bands: [vars.b0, vars.b1, vars.b2, vars.b3],
+      spectrum: level,
       presence,
       beatIndex,
       periodMs,
@@ -286,7 +384,7 @@ function tick(now: number) {
   }
 
   // Idle once everything has settled: nothing playing, nothing fading.
-  if (playing || presence > 0.001 || swell > 0.001 || Math.abs(energy - beatSettings.get().energy) > 0.001) frame = requestAnimationFrame(tick)
+  if (playing || presence > 0.001 || swell > 0.001 || Math.abs(energy - target) > 0.001) frame = requestAnimationFrame(tick)
   else {
     for (const t of targets) if (t.drift) for (const a of t.el.getAnimations({ subtree: true })) a.updatePlaybackRate(1)
     lastRate = 1
@@ -303,6 +401,11 @@ function pulse(ms: number, decay: number) {
 function approach(from: number, to: number, dt: number, ms: number) {
   const next = from + (to - from) * (1 - Math.exp(-dt / (ms / 3)))
   return Math.abs(next - to) < 0.0005 ? to : next
+}
+
+/** Eases a value: fast up (attack), slower down (release). */
+function follow(from: number, to: number, dt: number, attack: number, release: number) {
+  return from + (to - from) * (1 - Math.exp(-dt / ((to > from ? attack : release) / 3)))
 }
 
 function write(el: HTMLElement, vars: Record<string, number>) {
@@ -322,7 +425,7 @@ function clear(t: Target) {
   if (t.drift) for (const a of t.el.getAnimations({ subtree: true })) a.updatePlaybackRate(1)
 }
 
-player.subscribe(wake)
+beatSource.subscribe(wake)
 beatSettings.subscribe(wake)
 reduced?.addEventListener('change', wake)
 if (typeof document !== 'undefined') document.addEventListener('visibilitychange', wake)
