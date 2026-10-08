@@ -54,3 +54,34 @@ export function shortcutOf(e: Key): Shortcut | undefined {
   }
   return undefined
 }
+
+/** What a key (or a remote's button) does on the big screen. */
+export type TvKey = 'playPause' | 'skip' | 'nextLook' | 'previousLook'
+
+/**
+ * The big screen's keys: space plays and pauses, → skips (or votes to),
+ * ↑ and ↓ change the visuals. A remote's D-pad sends arrows too, so → is
+ * left to move between buttons while one has focus; nothing sits above or
+ * below them, so ↑ and ↓ are always free.
+ */
+export function tvKeyOf(e: Key): TvKey | undefined {
+  if (e.defaultPrevented || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return undefined
+  const onControl = e.target instanceof Element && !!e.target.closest(PRESSABLE)
+  switch (e.key) {
+    case ' ':
+      return e.repeat || onControl ? undefined : 'playPause'
+    case 'ArrowRight':
+      return e.repeat || onControl ? undefined : 'skip'
+    case 'ArrowUp':
+      return 'previousLook'
+    case 'ArrowDown':
+      return 'nextLook'
+  }
+  return undefined
+}
+
+/** The entry `by` steps from `current` in `list`, wrapping around. */
+export function cycle<T>(list: readonly T[], current: T, by: number): T {
+  const i = Math.max(0, list.indexOf(current))
+  return list[(((i + by) % list.length) + list.length) % list.length]
+}

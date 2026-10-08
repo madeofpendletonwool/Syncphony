@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isTyping, shortcutOf } from './shortcuts'
+import { cycle, isTyping, shortcutOf, tvKeyOf } from './shortcuts'
 
 const press = (key: string, more: Partial<Parameters<typeof shortcutOf>[0]> = {}) =>
   shortcutOf({ key, metaKey: false, ctrlKey: false, altKey: false, repeat: false, defaultPrevented: false, target: document.body, ...more })
@@ -55,5 +55,40 @@ describe('isTyping', () => {
     expect(isTyping(el('<input type="range">'))).toBe(false)
     expect(isTyping(document.body)).toBe(false)
     expect(isTyping(null)).toBe(false)
+  })
+})
+
+describe('tvKeyOf', () => {
+  const tv = (key: string, more: Partial<Parameters<typeof tvKeyOf>[0]> = {}) =>
+    tvKeyOf({ key, metaKey: false, ctrlKey: false, altKey: false, repeat: false, defaultPrevented: false, target: document.body, ...more })
+
+  it('maps the keys', () => {
+    expect(tv(' ')).toBe('playPause')
+    expect(tv('ArrowRight')).toBe('skip')
+    expect(tv('ArrowUp')).toBe('previousLook')
+    expect(tv('ArrowDown')).toBe('nextLook')
+    expect(tv('ArrowLeft')).toBeUndefined()
+  })
+
+  it('leaves space and → to a focused button, for the remote', () => {
+    const target = el('<button>Stop</button>')
+    expect(tv(' ', { target })).toBeUndefined()
+    expect(tv('ArrowRight', { target })).toBeUndefined()
+    expect(tv('ArrowDown', { target })).toBe('nextLook')
+  })
+
+  it('stays out of combos, held skips, and typing', () => {
+    expect(tv('ArrowRight', { repeat: true })).toBeUndefined()
+    expect(tv('ArrowDown', { repeat: true })).toBe('nextLook')
+    expect(tv('ArrowRight', { altKey: true })).toBeUndefined()
+    expect(tv('ArrowDown', { target: el('<input>') })).toBeUndefined()
+  })
+})
+
+describe('cycle', () => {
+  it('wraps both ways', () => {
+    expect(cycle(['a', 'b', 'c'], 'c', 1)).toBe('a')
+    expect(cycle(['a', 'b', 'c'], 'a', -1)).toBe('c')
+    expect(cycle(['a', 'b', 'c'], 'x', 1)).toBe('b')
   })
 })

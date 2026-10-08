@@ -5,7 +5,8 @@ import { TvPairing } from '@/components/tv/tv-pairing'
 import { TvStage } from '@/components/tv/tv-stage'
 import { meQuery } from '@/lib/auth'
 import { displayMeQuery, type DisplayMe } from '@/lib/displays'
-import { can } from '@/lib/playback'
+import { useRoomControls } from '@/hooks/use-room-controls'
+import { can, playbackQuery } from '@/lib/playback'
 import { useCurrentRoom } from '@/lib/room'
 import { deviceId } from '@/lib/speaker'
 
@@ -57,6 +58,9 @@ function PairedStage({ me }: { me: DisplayMe }) {
 function SignedInStage() {
   const { room, rooms } = useCurrentRoom()
   const me = useQuery(meQuery).data
+  const playback = useQuery({ ...playbackQuery(room?.id ?? ''), enabled: !!room })
+  // The keys do what the buttons would: skip or vote, as the room allows.
+  const commands = useRoomControls(room, playback.data, me ?? { id: '', displayName: '' }, !!me?.guest)
   if (rooms.isPending) return <Blank />
   if (!room) return <TvPairing />
   const maySpeak = !!me && !me.guest && can(room, me.id, 'speaker')
@@ -69,6 +73,7 @@ function SignedInStage() {
       screens={room.screens}
       paired={false}
       onUnpaired={() => {}}
+      commands={me ? commands : {}}
       audio={
         maySpeak
           ? { device: deviceId(), name: `${me.displayName.split(' ')[0]}'s big screen`, canPlayPause: mayPlay, canSkip: maySkip }
