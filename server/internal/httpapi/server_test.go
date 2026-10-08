@@ -71,6 +71,8 @@ func TestDisplayOpsMatchSpec(t *testing.T) {
 }
 
 var displayRequests = map[string]any{
+	"GetGameRound":           GetGameRoundRequestObject{},
+	"GetGameScores":          GetGameScoresRequestObject{},
 	"GetRoom":                GetRoomRequestObject{},
 	"GetQueue":               GetQueueRequestObject{},
 	"ControlPlayback":        ControlPlaybackRequestObject{},

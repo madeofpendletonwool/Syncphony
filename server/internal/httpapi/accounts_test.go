@@ -28,6 +28,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/avatar"
 	"github.com/madeofpendletonwool/syncphony/server/internal/backup"
 	"github.com/madeofpendletonwool/syncphony/server/internal/dj"
+	"github.com/madeofpendletonwool/syncphony/server/internal/games"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
@@ -63,6 +64,7 @@ type env struct {
 	mb       *musicbrainz.Service
 	palettes *palette.Service
 	nights   *nights.Service
+	games    *games.Engine
 	api      *httpapi.Server
 	fake     *fake.Provider // links with a form
 	oauth    *fake.Provider // links with OAuth2
@@ -133,11 +135,15 @@ func newEnv(t *testing.T) *env {
 	notes := linernotes.New(db, e.mb, linernotes.Options{WikipediaURL: mbURL, WikidataURL: mbURL, Now: e.clock})
 	e.nights = nights.New(db, e.bus)
 	e.nights.Now = e.clock
+	e.games = games.New(db, e.bus, e.rooms, games.Config{Announce: 100 * time.Millisecond, RoundWindow: 400 * time.Millisecond, RevealFor: time.Minute, Seed: 1})
+	e.games.Facts = fakeFacts{}
+	t.Cleanup(e.games.Close)
+	e.nights.Awards = e.games.Awards
 	pilot := autopilot.New(db, e.rooms, qs, e.links, presence)
 	pilot.Now, pilot.Memory = e.clock, &dj.Memory{DB: db, Now: e.clock}
 	t.Cleanup(pilot.Close)
 	api := &httpapi.Server{
-		Version: "test", StartedAt: e.clock(), Admin: e.server, Backups: e.backups, Auth: e.svc, Links: e.links, Lyrics: ly, LinerNotes: notes, Artwork: art, Palettes: e.palettes, BeatMaps: beatMaps, Rooms: e.rooms, Queue: qs, Playback: e.playback, Nights: e.nights, Bus: e.bus, Presence: presence,
+		Version: "test", StartedAt: e.clock(), Admin: e.server, Backups: e.backups, Auth: e.svc, Links: e.links, Lyrics: ly, LinerNotes: notes, Artwork: art, Palettes: e.palettes, BeatMaps: beatMaps, Rooms: e.rooms, Queue: qs, Playback: e.playback, Nights: e.nights, Games: e.games, Bus: e.bus, Presence: presence,
 		Suggest: suggest.New(db, e.rooms, e.links), Autopilot: pilot,
 		BaseURL: e.base, PingEvery: 50 * time.Millisecond,
 	}

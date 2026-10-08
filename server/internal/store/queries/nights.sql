@@ -41,3 +41,6 @@ SELECT * FROM nights WHERE room_id = ? ORDER BY ended_at DESC, id DESC LIMIT 1;
 
 -- name: ListNights :many
 SELECT * FROM nights WHERE room_id = ? ORDER BY ended_at DESC, id DESC LIMIT ?;
+
+-- name: SetNightAwards :exec
+UPDATE nights SET awards = ? WHERE id = ?;

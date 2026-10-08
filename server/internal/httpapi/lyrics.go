@@ -8,6 +8,7 @@ import (
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
+	"github.com/madeofpendletonwool/syncphony/server/internal/quiz"
 )
 
 // GetTrackLyrics returns a track's lyrics through a link the caller may use.
@@ -27,6 +28,9 @@ func (s *Server) GetTrackLyrics(ctx context.Context, req GetTrackLyricsRequestOb
 // GetQueueItemLyrics returns a queued song's lyrics through the link of
 // whoever queued it, so the whole room can read along.
 func (s *Server) GetQueueItemLyrics(ctx context.Context, req GetQueueItemLyricsRequestObject) (GetQueueItemLyricsResponseObject, error) {
+	if s.hidden(req.RoomId, req.ItemId, quiz.HideLyrics) || s.hidden(req.RoomId, req.ItemId, quiz.HideSong) {
+		return nil, ErrHiddenForRound
+	}
 	it, err := s.Queue.Item(ctx, req.RoomId, req.ItemId)
 	if err != nil {
 		return nil, err

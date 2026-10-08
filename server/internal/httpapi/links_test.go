@@ -24,7 +24,7 @@ func TestProviders(t *testing.T) {
 	if len(ps) != 2 || ps[0].Id != "fake" || ps[0].LinkMethod != httpapi.Credentials || ps[1].LinkMethod != httpapi.Oauth2 {
 		t.Fatalf("providers: %+v", ps)
 	}
-	if len(ps[0].Fields) != 2 || ps[0].Fields[1].Kind != httpapi.Secret || !ps[0].Fields[1].Required {
+	if len(ps[0].Fields) != 2 || ps[0].Fields[1].Kind != httpapi.LinkFieldKindSecret || !ps[0].Fields[1].Required {
 		t.Fatalf("fields: %+v", ps[0].Fields)
 	}
 	if len(ps[1].Fields) != 0 || len(ps[0].Capabilities.Search) != 4 || ps[0].Playback != httpapi.ProviderInfoPlaybackStream {

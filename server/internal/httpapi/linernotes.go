@@ -9,10 +9,14 @@ import (
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
+	"github.com/madeofpendletonwool/syncphony/server/internal/quiz"
 )
 
 // GetQueueItemLinerNotes returns a queued song's liner notes.
 func (s *Server) GetQueueItemLinerNotes(ctx context.Context, req GetQueueItemLinerNotesRequestObject) (GetQueueItemLinerNotesResponseObject, error) {
+	if s.hidden(req.RoomId, req.ItemId, quiz.HideNotes) || s.hidden(req.RoomId, req.ItemId, quiz.HideSong) {
+		return nil, ErrHiddenForRound
+	}
 	it, err := s.Queue.Item(ctx, req.RoomId, req.ItemId)
 	if err != nil {
 		return nil, err

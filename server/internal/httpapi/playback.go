@@ -23,7 +23,7 @@ func (s *Server) GetPlayback(ctx context.Context, req GetPlaybackRequestObject) 
 	if err != nil {
 		return nil, err
 	}
-	return GetPlayback200JSONResponse(toNowPlaying(np)), nil
+	return GetPlayback200JSONResponse(s.nowPlayingFor(np, false)), nil
 }
 
 // ControlPlayback plays, pauses, skips, seeks, or plays a queued song now.
@@ -53,7 +53,7 @@ func (s *Server) ControlPlayback(ctx context.Context, req ControlPlaybackRequest
 	if err != nil {
 		return nil, err
 	}
-	return ControlPlayback200JSONResponse(toNowPlaying(np)), nil
+	return ControlPlayback200JSONResponse(s.nowPlayingFor(np, false)), nil
 }
 
 // ClaimPlayer makes the caller's device the room's speaker. A display
@@ -75,7 +75,7 @@ func (s *Server) ClaimPlayer(ctx context.Context, req ClaimPlayerRequestObject) 
 	if err != nil {
 		return nil, err
 	}
-	return ClaimPlayer200JSONResponse(toNowPlaying(np)), nil
+	return ClaimPlayer200JSONResponse(s.nowPlayingFor(np, true)), nil
 }
 
 // ReleasePlayer stops a device being the room's speaker.
@@ -88,7 +88,7 @@ func (s *Server) ReleasePlayer(ctx context.Context, req ReleasePlayerRequestObje
 	if err != nil {
 		return nil, err
 	}
-	return ReleasePlayer200JSONResponse(toNowPlaying(np)), nil
+	return ReleasePlayer200JSONResponse(s.nowPlayingFor(np, false)), nil
 }
 
 // ReportPlayback takes the speaker's report on the song it's streaming.
@@ -108,7 +108,7 @@ func (s *Server) ReportPlayback(ctx context.Context, req ReportPlaybackRequestOb
 	if err != nil {
 		return nil, err
 	}
-	return ReportPlayback200JSONResponse(toNowPlaying(np)), nil
+	return ReportPlayback200JSONResponse(s.nowPlayingFor(np, true)), nil
 }
 
 // StreamQueueItem proxies a song's audio from its service.

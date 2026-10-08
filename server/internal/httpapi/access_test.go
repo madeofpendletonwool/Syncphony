@@ -28,7 +28,7 @@ func TestRoomsOutsidersCantSee(t *testing.T) {
 	admin := e.admin()
 	bob := e.member(admin, "bob")
 	carol := e.member(admin, "carol")
-	for _, visibility := range []httpapi.RoomVisibility{httpapi.Unlisted, httpapi.Private} {
+	for _, visibility := range []httpapi.RoomVisibility{httpapi.RoomVisibilityUnlisted, httpapi.RoomVisibilityPrivate} {
 		var room httpapi.Room
 		bob.want(http.StatusCreated, "POST", "/rooms", httpapi.CreateRoomRequest{Name: "Bob's", Visibility: &visibility}).decode(t, &room)
 		if room.Visibility != visibility {
@@ -125,7 +125,7 @@ func TestRoomMembersAndInvites(t *testing.T) {
 	bob := e.member(admin, "bob")
 	carol, dave, erin := e.member(admin, "carol"), e.member(admin, "dave"), e.member(admin, "erin")
 	bobID, carolID, daveID, erinID := me(t, bob).Id, me(t, carol).Id, me(t, dave).Id, me(t, erin).Id
-	private := httpapi.Private
+	private := httpapi.RoomVisibilityPrivate
 	var room httpapi.Room
 	bob.want(http.StatusCreated, "POST", "/rooms", httpapi.CreateRoomRequest{Name: "Bob's", Visibility: &private}).decode(t, &room)
 	base := "/rooms/" + room.Id
@@ -229,7 +229,7 @@ func TestRoomMembersAndInvites(t *testing.T) {
 	admin.want(http.StatusOK, "PATCH", base, httpapi.UpdateRoomRequest{Name: ptr("Bob's place")})
 	var activity []httpapi.RoomActivity
 	admin.want(http.StatusOK, "GET", "/admin/rooms", nil).decode(t, &activity)
-	if len(activity) != 1 || activity[0].CanEnter || activity[0].Visibility != httpapi.Private {
+	if len(activity) != 1 || activity[0].CanEnter || activity[0].Visibility != httpapi.RoomVisibilityPrivate {
 		t.Fatalf("admin rooms: %+v", activity)
 	}
 	carolSock := carol.mustDial(room.Id, "")
@@ -261,7 +261,7 @@ func TestRoomMembersAndInvites(t *testing.T) {
 
 	// In an unlisted room, anyone in it shares it. Changing who can join
 	// revokes the old links.
-	unlisted := httpapi.Unlisted
+	unlisted := httpapi.RoomVisibilityUnlisted
 	carol.want(http.StatusOK, "PATCH", base, httpapi.UpdateRoomRequest{Visibility: &unlisted})
 	var link httpapi.RoomInvite
 	dave.want(http.StatusCreated, "POST", base+"/invites", httpapi.CreateRoomInviteRequest{}).decode(t, &link)
@@ -271,7 +271,7 @@ func TestRoomMembersAndInvites(t *testing.T) {
 	}
 
 	// Open rooms need no invites, or members.
-	open := httpapi.Open
+	open := httpapi.RoomVisibilityOpen
 	carol.want(http.StatusOK, "PATCH", base, httpapi.UpdateRoomRequest{Visibility: &open})
 	erin.want(http.StatusOK, "GET", base, nil)
 	carol.want(http.StatusBadRequest, "POST", base+"/invites", httpapi.CreateRoomInviteRequest{})
@@ -291,7 +291,7 @@ func TestClosingARoomKeepsWhosThere(t *testing.T) {
 	s := dave.mustDial(room.Id, "")
 	s.expect("hello", nil)
 
-	private := httpapi.Private
+	private := httpapi.RoomVisibilityPrivate
 	bob.want(http.StatusOK, "PATCH", base, httpapi.UpdateRoomRequest{Visibility: &private})
 	carol.want(http.StatusOK, "GET", base, nil)
 	dave.want(http.StatusOK, "GET", base, nil)

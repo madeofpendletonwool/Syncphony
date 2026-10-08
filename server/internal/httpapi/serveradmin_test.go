@@ -137,7 +137,7 @@ func TestRoomTaste(t *testing.T) {
 
 	// A private room is its own business, until the admin joins.
 	private := e.room(t, bobID)
-	if _, err := e.db.SetRoomVisibility(t.Context(), store.SetRoomVisibilityParams{Visibility: string(httpapi.Private), ID: private.ID}); err != nil {
+	if _, err := e.db.SetRoomVisibility(t.Context(), store.SetRoomVisibilityParams{Visibility: string(httpapi.RoomVisibilityPrivate), ID: private.ID}); err != nil {
 		t.Fatal(err)
 	}
 	alice.want(http.StatusNotFound, "GET", "/admin/rooms/"+private.ID+"/taste", nil)

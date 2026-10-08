@@ -21,7 +21,7 @@ func toHearts(h nights.Hearts) Hearts {
 func toNight(n nights.Night) Night {
 	out := Night{
 		Id: n.ID, RoomId: n.RoomID, StartedAt: n.StartedAt, EndedAt: n.EndedAt,
-		EndedBy: NightEndedBy(n.EndedBy), Plays: int(n.Plays),
+		EndedBy: NightEndedBy(n.EndedBy), Plays: int(n.Plays), Awards: toAwards(n.Awards),
 	}
 	if n.Item != nil {
 		out.SongOfTheNight = &SongOfTheNight{Item: toQueueItem(*n.Item), Hearts: int(n.Hearts)}
