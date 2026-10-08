@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { motion } from 'motion/react'
+import { useEffect, useRef } from 'react'
 import { AddButton } from '@/components/add-button'
 import { Artwork } from '@/components/artwork'
 import { ProviderIcon } from '@/components/provider-icon'
@@ -7,6 +8,7 @@ import type { LaneStatus } from '@/hooks/use-add-to-lane'
 import { artistNames, artworkUrl, type TrackResult } from '@/lib/browse'
 import { fadeUp } from '@/lib/motion'
 import { formatDuration } from '@/lib/now-playing'
+import { cn } from '@/lib/utils'
 
 type Props = {
   track: TrackResult
@@ -20,13 +22,23 @@ type Props = {
   hideAlbum?: boolean
   /** Shown after the artist instead of the album, like why it's suggested. */
   note?: string
+  /** Highlighted from the keyboard, for Enter to add. */
+  active?: boolean
 }
 
 /** A song in a list, with its one-tap add. */
-export function TrackRow({ track, status, onAdd, providerIcon, number, hideAlbum, note }: Props) {
+export function TrackRow({ track, status, onAdd, providerIcon, number, hideAlbum, note, active }: Props) {
   const albumId = track.album?.id
+  const ref = useRef<HTMLLIElement>(null)
+  useEffect(() => {
+    if (active) ref.current?.scrollIntoView({ block: 'nearest' })
+  }, [active])
   return (
-    <motion.li variants={fadeUp} className="flex items-center gap-3 rounded-2xl py-1.5 pr-1">
+    <motion.li
+      ref={ref}
+      variants={fadeUp}
+      className={cn('flex items-center gap-3 rounded-2xl py-1.5 pr-1', active && 'bg-foreground/8 ring-8 ring-foreground/8')}
+    >
       {number !== undefined ? (
         <span className="w-6 shrink-0 text-center text-sm text-muted-foreground tabular-nums">{number}</span>
       ) : (

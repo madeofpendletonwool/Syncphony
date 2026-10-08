@@ -13,7 +13,7 @@ import { Visualizer } from '@/components/visualizer/visualizer'
 import { useAlbumPalette } from '@/hooks/use-album-palette'
 import { useBeat } from '@/hooks/use-beat'
 import { useBeatSync } from '@/hooks/use-beat-sync'
-import { useShow } from '@/hooks/use-scene'
+import { isShow, useShow } from '@/hooks/use-scene'
 import { usePosition } from '@/hooks/use-position'
 import { useWakeLock } from '@/hooks/use-wake-lock'
 import { autopilotReason, autopilotSource } from '@/lib/autopilot'
@@ -24,7 +24,7 @@ import { linerCards, linerNotesQuery } from '@/lib/liner-notes'
 import { inGap, lyricsQuery, offsetKey, useLyricsOffset } from '@/lib/lyrics'
 import { easeOutExpo, spring } from '@/lib/motion'
 import { heartsQuery } from '@/lib/nights'
-import { formatDuration, type NowPlaying, type User } from '@/lib/now-playing'
+import { formatDuration, type NowPlaying, type PlayerCommands, type User } from '@/lib/now-playing'
 import { playbackQuery, queueArtworkUrl, toNowPlaying, type QueueItem } from '@/lib/playback'
 import { queueQuery, type Room } from '@/lib/room'
 import { live, useRoomSocket } from '@/lib/room-socket'
@@ -35,6 +35,7 @@ import { FloatingReactions } from './floating-reactions'
 import { LinerCards } from './liner-cards'
 import { QrCode } from './qr-code'
 import { TvAudio } from './tv-audio'
+import { TvKeys } from './tv-keys'
 
 type RoomScreens = Room['screens']
 
@@ -45,6 +46,7 @@ const UP_NEXT_SHOWN = 5
  * center, who queued it, whose turn is next, and reactions floating up
  * from everyone's phones. Nothing to click; it just runs. With audio, it
  * can play the room too: one press of OK on the remote makes it the speaker.
+ * Keys work too (see TvKeys): space, → to skip, ↑ and ↓ for the visuals.
  */
 export function TvStage({
   roomId,
@@ -53,6 +55,7 @@ export function TvStage({
   paired,
   onUnpaired,
   audio,
+  commands,
 }: {
   roomId: string
   roomName: string
@@ -63,6 +66,8 @@ export function TvStage({
   onUnpaired: () => void
   /** Set when this screen may be the room's speaker. */
   audio?: { device: string; name: string; onStopped?: () => void; canPlayPause?: boolean; canSkip?: boolean }
+  /** A signed-in screen's playback controls, as its user, for the keys. */
+  commands?: PlayerCommands
 }) {
   const queryClient = useQueryClient()
   useRoomSocket(roomId, { display: true, onSessionEnded: paired ? onUnpaired : undefined })
@@ -84,7 +89,10 @@ export function TvStage({
   const words = useQuery({ ...lyricsQuery(roomId, np?.itemId ?? ''), enabled: !!np?.itemId })
   const wordless = words.isSuccess && (!words.data || words.data.instrumental)
   const visualizing = !!np && (screens.look === 'visualizer' || (screens.look === 'auto' && wordless))
-  const show = useShow(screens.scene)
+  // ↑ and ↓ pick a show on this screen; the room's setting until then.
+  const [showPick, setShowPick] = useState<string>()
+  const showSetting = showPick ?? (isShow(screens.scene) ? screens.scene : 'auto')
+  const show = useShow(showSetting)
   const { status } = useStore(live)
   const pointer = usePointerShown()
 
@@ -125,6 +133,16 @@ export function TvStage({
         )}
       </AnimatePresence>
       <FloatingReactions users={users.data} />
+      <TvKeys
+        roomId={roomId}
+        playback={playback.data}
+        commands={commands}
+        display={paired && !!audio}
+        visualizing={visualizing}
+        show={show}
+        showSetting={showSetting}
+        onShowSetting={setShowPick}
+      />
       <CrownMoment roomId={roomId} variant="stage" />
 
       <div className="burn-in-drift flex h-full flex-col gap-[3vh] px-[4vw] pt-[4vh] pb-[3.5vh]">

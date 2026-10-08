@@ -14,6 +14,7 @@ import { VisualizerMode } from '@/components/visualizer/visualizer-mode'
 import { AlbumBackdrop } from './album-backdrop'
 import { BeatLab } from './beat-lab'
 import { BottomNav } from './bottom-nav'
+import { KeyboardShortcuts } from './keyboard-shortcuts'
 import { MiniPlayer } from './mini-player'
 import { NowPlayingSheet } from './now-playing-sheet'
 
@@ -25,6 +26,8 @@ import { NowPlayingSheet } from './now-playing-sheet'
 export function AppShell() {
   const { nowPlaying } = usePlayer()
   const [expanded, setExpanded] = useState(false)
+  // Lyrics take the artwork's place in now playing.
+  const [lyrics, setLyrics] = useState(false)
   // Once now playing has slid all the way up it covers everything, so the
   // backdrop behind it stops rendering: two full-screen backdrops of big
   // blurred layers, changing at once on a new song, made browsers flash
@@ -60,7 +63,8 @@ export function AppShell() {
           </div>
         </div>
 
-        <NowPlayingSheet open={expanded} onOpenChange={setExpanded} />
+        <NowPlayingSheet open={expanded} onOpenChange={setExpanded} lyrics={lyrics} onLyricsChange={setLyrics} />
+        <KeyboardShortcuts expanded={expanded} onExpandedChange={setExpanded} onLyricsChange={setLyrics} />
         {!expanded && <BeatLab />}
         <VisualizerMode />
         <LightsMode />
