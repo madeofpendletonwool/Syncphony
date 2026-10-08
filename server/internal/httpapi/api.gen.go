@@ -995,6 +995,62 @@ type Backup struct {
 	Name string `json:"name"`
 }
 
+// BeatMap A song's beat map (MAD-773). Times are in ms from the start of the
+// song, on the same clock as the playback position.
+type BeatMap struct {
+	// BandCount Spectrum bands per frame in `bands`.
+	BandCount int `json:"bandCount"`
+
+	// Bands Base64: each frame's level in each band, low to high, a byte
+	// (0–255) each, `bandCount` bytes a frame. Each band is scaled to
+	// its own range in the song.
+	Bands []byte `json:"bands"`
+
+	// Beats The beats.
+	Beats []int64 `json:"beats"`
+
+	// Bpm The tempo; 0 if the song has no steady beat, and then `beats` is empty.
+	Bpm float32 `json:"bpm"`
+
+	// Confidence How clear the beat is, 0–1.
+	Confidence float32 `json:"confidence"`
+
+	// Downbeat The index in `beats` of the first bar's first beat; every fourth beat after it starts a bar.
+	Downbeat   int   `json:"downbeat"`
+	DurationMs int64 `json:"durationMs"`
+
+	// Features The song as a whole, 0–1 each, for choosing how it looks.
+	Features BeatMapFeatures `json:"features"`
+
+	// FrameRate Frames a second in `bands` and `loudness`.
+	FrameRate float32 `json:"frameRate"`
+
+	// Loudness Base64: each frame's overall level, a byte (0–255) each, scaled to the song.
+	Loudness []byte `json:"loudness"`
+
+	// Sections The song's parts (intro, verse, drop), in order; the first starts at 0.
+	Sections []BeatMapSection `json:"sections"`
+}
+
+// BeatMapFeatures The song as a whole, 0–1 each, for choosing how it looks.
+type BeatMapFeatures struct {
+	// Brightness How much treble there is.
+	Brightness float32 `json:"brightness"`
+
+	// Dynamics How much its loudness changes.
+	Dynamics float32 `json:"dynamics"`
+
+	// Energy How loud it's mastered, from a quiet acoustic recording to a club track.
+	Energy float32 `json:"energy"`
+}
+
+// BeatMapSection defines model for BeatMapSection.
+type BeatMapSection struct {
+	// Energy How loud it is next to the rest of the song, 0–1.
+	Energy  float32 `json:"energy"`
+	StartMs int64   `json:"startMs"`
+}
+
 // BeginOAuthLinkRequest Set `provider` to link a new account, or `linkId` to re-link one. For
 // providers that pair first, set only `pairingId`, the approved pairing.
 type BeginOAuthLinkRequest struct {
@@ -3243,6 +3299,9 @@ type ServerInterface interface {
 	// GetQueueItemArtwork A queued song's artwork
 	// (GET /rooms/{roomId}/queue/{itemId}/artwork)
 	GetQueueItemArtwork(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string, params GetQueueItemArtworkParams)
+	// GetQueueItemBeatMap A queued song's beat map
+	// (GET /rooms/{roomId}/queue/{itemId}/beatmap)
+	GetQueueItemBeatMap(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
 	// UnheartSong Take back a heart
 	// (DELETE /rooms/{roomId}/queue/{itemId}/hearts)
 	UnheartSong(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string)
@@ -6154,6 +6213,41 @@ func (siw *ServerInterfaceWrapper) GetQueueItemArtwork(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// GetQueueItemBeatMap operation middleware
+func (siw *ServerInterfaceWrapper) GetQueueItemBeatMap(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetQueueItemBeatMap(w, r, roomId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // UnheartSong operation middleware
 func (siw *ServerInterfaceWrapper) UnheartSong(w http.ResponseWriter, r *http.Request) {
 
@@ -7170,6 +7264,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/similar", wrapper.GetQueueItemSimilar)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/artwork", wrapper.GetQueueItemArtwork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/palette", wrapper.GetQueueItemPalette)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/beatmap", wrapper.GetQueueItemBeatMap)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/lyrics", wrapper.GetQueueItemLyrics)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/liner-notes", wrapper.GetQueueItemLinerNotes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/reactions", wrapper.SendReaction)
@@ -11467,6 +11562,46 @@ func (response GetQueueItemArtworkdefaultJSONResponse) VisitGetQueueItemArtworkR
 	return err
 }
 
+type GetQueueItemBeatMapRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	ItemId string `json:"itemId"`
+}
+
+type GetQueueItemBeatMapResponseObject interface {
+	VisitGetQueueItemBeatMapResponse(w http.ResponseWriter) error
+}
+
+type GetQueueItemBeatMap200JSONResponse BeatMap
+
+func (response GetQueueItemBeatMap200JSONResponse) VisitGetQueueItemBeatMapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQueueItemBeatMapdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetQueueItemBeatMapdefaultJSONResponse) VisitGetQueueItemBeatMapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UnheartSongRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 	ItemId string `json:"itemId"`
@@ -12693,6 +12828,9 @@ type StrictServerInterface interface {
 	// GetQueueItemArtwork A queued song's artwork
 	// (GET /rooms/{roomId}/queue/{itemId}/artwork)
 	GetQueueItemArtwork(ctx context.Context, request GetQueueItemArtworkRequestObject) (GetQueueItemArtworkResponseObject, error)
+	// GetQueueItemBeatMap A queued song's beat map
+	// (GET /rooms/{roomId}/queue/{itemId}/beatmap)
+	GetQueueItemBeatMap(ctx context.Context, request GetQueueItemBeatMapRequestObject) (GetQueueItemBeatMapResponseObject, error)
 	// UnheartSong Take back a heart
 	// (DELETE /rooms/{roomId}/queue/{itemId}/hearts)
 	UnheartSong(ctx context.Context, request UnheartSongRequestObject) (UnheartSongResponseObject, error)
@@ -15834,6 +15972,33 @@ func (sh *strictHandler) GetQueueItemArtwork(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetQueueItemArtworkResponseObject); ok {
 		if err := validResponse.VisitGetQueueItemArtworkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetQueueItemBeatMap operation middleware
+func (sh *strictHandler) GetQueueItemBeatMap(w http.ResponseWriter, r *http.Request, roomId RoomId, itemId string) {
+	var request GetQueueItemBeatMapRequestObject
+
+	request.RoomId = roomId
+	request.ItemId = itemId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetQueueItemBeatMap(ctx, request.(GetQueueItemBeatMapRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetQueueItemBeatMap")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetQueueItemBeatMapResponseObject); ok {
+		if err := validResponse.VisitGetQueueItemBeatMapResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

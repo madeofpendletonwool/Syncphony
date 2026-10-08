@@ -16,6 +16,16 @@ type Avatar struct {
 	UpdatedAt   time.Time
 }
 
+type BeatMap struct {
+	Provider   string
+	TrackID    string
+	Version    int64
+	Found      bool
+	Map        string
+	AnalyzedAt time.Time
+	UsedAt     time.Time
+}
+
 type CredentialsPasskey struct {
 	ID         []byte
 	UserID     string

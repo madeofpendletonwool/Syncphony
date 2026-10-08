@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/admin"
+	"github.com/madeofpendletonwool/syncphony/server/internal/analysis"
 	"github.com/madeofpendletonwool/syncphony/server/internal/artwork"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
@@ -195,22 +196,32 @@ func run() error {
 		go repairMusicGraph(ctx, graph)
 	}
 	roomSvc := rooms.New(db, a.bus)
-	go sweep(ctx, db, accounts, roomSvc, lyricsSvc, mb, notes, graph)
 	queueSvc := queue.New(db, roomSvc, a.links)
 	art := artwork.New(a.links, mb)
 	palettes := palette.New(db, art)
 	go palettes.Run(ctx)
+	// Beat maps need ffmpeg to decode the songs.
+	var beatMaps *analysis.Service
+	if ff := (analysis.FFmpeg{}); ffmpegAvailable() {
+		beatMaps = analysis.New(db, a.links, ff)
+		go beatMaps.Run(ctx)
+	} else {
+		slog.Warn("ffmpeg not found: songs get no beat maps, so the app can't move with the music")
+	}
 	queueSvc.OnAdd = func(ts []provider.Track) {
 		if mb != nil {
 			mb.Enqueue(ts...)
 		}
 		palettes.Enqueue(ts...)
+		if beatMaps != nil {
+			beatMaps.Enqueue(ts...)
+		}
 		if len(graph.Sources()) > 0 {
 			graph.Warm(ts...)
 		}
 	}
 	var transcoder transcode.Transcoder
-	if ff := (transcode.FFmpeg{}); ff.Available() {
+	if ff := (transcode.FFmpeg{}); ffmpegAvailable() {
 		transcoder = ff
 	} else {
 		slog.Warn("ffmpeg not found: songs in formats the player can't decode won't play")
@@ -245,7 +256,7 @@ func run() error {
 	}
 	nightSvc := nights.New(db, a.bus)
 	api := &httpapi.Server{
-		Version: version, StartedAt: time.Now().UTC(), Admin: admin.New(db, filepath.Join(cfg.DataDir, "backups")), Auth: accounts, Links: a.links, Lyrics: lyricsSvc, LinerNotes: notes, Artwork: art, Palettes: palettes,
+		Version: version, StartedAt: time.Now().UTC(), Admin: admin.New(db, filepath.Join(cfg.DataDir, "backups")), Auth: accounts, Links: a.links, Lyrics: lyricsSvc, LinerNotes: notes, Artwork: art, Palettes: palettes, BeatMaps: beatMaps,
 		Rooms: roomSvc, Queue: queueSvc, Playback: player, Nights: nightSvc, Suggest: suggestions, Autopilot: pilot,
 		Bus: a.bus, Presence: presence,
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
@@ -253,6 +264,7 @@ func run() error {
 	if len(graph.Sources()) > 0 {
 		api.Graph = graph
 	}
+	go sweep(ctx, db, accounts, roomSvc, lyricsSvc, mb, notes, graph, beatMaps)
 	go tick(ctx, api, nightSvc)
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api.Handler())
@@ -288,6 +300,9 @@ func run() error {
 	}
 	return nil
 }
+
+// ffmpegAvailable reports whether ffmpeg is on $PATH, for transcoding and beat maps.
+func ffmpegAvailable() bool { return (transcode.FFmpeg{}).Available() }
 
 // tick ends guests whose time is up, and the night in rooms that went
 // quiet, every minute until ctx is done.
@@ -356,7 +371,7 @@ func repairMusicGraph(ctx context.Context, graph *musicgraph.Service) {
 // sweep deletes expired sessions, displays and room invites, cached lyrics,
 // MusicBrainz matches, liner notes and music knowledge every hour until ctx
 // is done.
-func sweep(ctx context.Context, db *store.Store, accounts *auth.Service, rs *rooms.Service, ly *lyrics.Service, mb *musicbrainz.Service, notes *linernotes.Service, graph *musicgraph.Service) {
+func sweep(ctx context.Context, db *store.Store, accounts *auth.Service, rs *rooms.Service, ly *lyrics.Service, mb *musicbrainz.Service, notes *linernotes.Service, graph *musicgraph.Service, beatMaps *analysis.Service) {
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()
 	for {
@@ -387,6 +402,11 @@ func sweep(ctx context.Context, db *store.Store, accounts *auth.Service, rs *roo
 		}
 		if err := graph.Sweep(ctx); err != nil {
 			slog.Warn("sweeping expired music knowledge", "err", err)
+		}
+		if beatMaps != nil {
+			if err := beatMaps.Sweep(ctx); err != nil {
+				slog.Warn("sweeping unused beat maps", "err", err)
+			}
 		}
 		select {
 		case <-ctx.Done():

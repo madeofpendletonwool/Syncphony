@@ -35,6 +35,7 @@ var displayOps = map[string]bool{
 	"GetUserAvatar":          true,
 	"GetQueueItemArtwork":    true,
 	"GetQueueItemPalette":    true,
+	"GetQueueItemBeatMap":    true,
 	"GetQueueItemLyrics":     true,
 	"GetQueueItemLinerNotes": true,
 	"GetHearts":              true,
@@ -74,6 +75,8 @@ func displayRoom(req any) (roomID string, ok bool) {
 	case GetQueueItemArtworkRequestObject:
 		return r.RoomId, true
 	case GetQueueItemPaletteRequestObject:
+		return r.RoomId, true
+	case GetQueueItemBeatMapRequestObject:
 		return r.RoomId, true
 	case GetQueueItemLyricsRequestObject:
 		return r.RoomId, true

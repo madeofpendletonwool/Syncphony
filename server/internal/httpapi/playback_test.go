@@ -4,6 +4,7 @@ package httpapi_test
 
 import (
 	"net/http"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -131,6 +132,21 @@ func TestPlaybackAPI(t *testing.T) {
 		}
 	}
 	item := np.Item.Id
+
+	// Anyone in the room can have the song's beat map.
+	if _, err := exec.LookPath("ffmpeg"); err == nil {
+		var bm httpapi.BeatMap
+		bob.want(http.StatusOK, "GET", base+"/queue/"+item+"/beatmap", nil).decode(t, &bm)
+		frames := len(bm.Loudness)
+		if len(bm.Sections) == 0 || bm.Sections[0].StartMs != 0 || frames == 0 || len(bm.Bands) != frames*bm.BandCount || bm.DurationMs == 0 {
+			t.Fatalf("beat map: %v BPM, %d beats, %d sections, %d frames, %d band bytes", bm.Bpm, len(bm.Beats), len(bm.Sections), frames, len(bm.Bands))
+		}
+	} else if r := bob.do("GET", base+"/queue/"+item+"/beatmap", nil); r.status != http.StatusNotFound || r.code() != "no_beat_map" {
+		t.Fatalf("beat map without ffmpeg: %d %s", r.status, r.body)
+	}
+	if r := e.client().do("GET", base+"/queue/"+item+"/beatmap", nil); r.status != http.StatusUnauthorized {
+		t.Fatalf("beat map signed out: %d", r.status)
+	}
 
 	// The speaker streams the song, from an offset.
 	r := alice.do("GET", base+"/stream/"+item+"?accept=audio/wav,audio/mpeg", nil, "Range", "bytes=100-199")

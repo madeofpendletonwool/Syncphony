@@ -1656,6 +1656,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/queue/{itemId}/beatmap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A queued song's beat map
+         * @description The song's tempo, beats, bars and sections, and its spectrum from
+         *     moment to moment, for visuals that move with the music on every
+         *     screen in the room. Worked out from the audio once, usually soon
+         *     after the song is queued; if it hasn't been yet, it's worked out
+         *     now, which can take a few seconds. 404 `no_beat_map` if the song
+         *     can't have one (its service has no audio, or it couldn't be
+         *     decoded).
+         */
+        get: operations["getQueueItemBeatMap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/queue/{itemId}/lyrics": {
         parameters: {
             query?: never;
@@ -3371,6 +3400,56 @@ export interface components {
             muted: components["schemas"]["OklchColor"];
             dark: components["schemas"]["OklchColor"];
             light: components["schemas"]["OklchColor"];
+        };
+        /**
+         * @description A song's beat map (MAD-773). Times are in ms from the start of the
+         *     song, on the same clock as the playback position.
+         */
+        BeatMap: {
+            /** Format: int64 */
+            durationMs: number;
+            /** @description The tempo; 0 if the song has no steady beat, and then `beats` is empty. */
+            bpm: number;
+            /** @description How clear the beat is, 0–1. */
+            confidence: number;
+            /** @description The beats. */
+            beats: number[];
+            /** @description The index in `beats` of the first bar's first beat; every fourth beat after it starts a bar. */
+            downbeat: number;
+            /** @description The song's parts (intro, verse, drop), in order; the first starts at 0. */
+            sections: components["schemas"]["BeatMapSection"][];
+            /** @description Frames a second in `bands` and `loudness`. */
+            frameRate: number;
+            /** @description Spectrum bands per frame in `bands`. */
+            bandCount: number;
+            /**
+             * Format: byte
+             * @description Base64: each frame's level in each band, low to high, a byte
+             *     (0–255) each, `bandCount` bytes a frame. Each band is scaled to
+             *     its own range in the song.
+             */
+            bands: string;
+            /**
+             * Format: byte
+             * @description Base64: each frame's overall level, a byte (0–255) each, scaled to the song.
+             */
+            loudness: string;
+            features: components["schemas"]["BeatMapFeatures"];
+        };
+        BeatMapSection: {
+            /** Format: int64 */
+            startMs: number;
+            /** @description How loud it is next to the rest of the song, 0–1. */
+            energy: number;
+        };
+        /** @description The song as a whole, 0–1 each, for choosing how it looks. */
+        BeatMapFeatures: {
+            /** @description How loud it's mastered, from a quiet acoustic recording to a club track. */
+            energy: number;
+            /** @description How much treble there is. */
+            brightness: number;
+            /** @description How much its loudness changes. */
+            dynamics: number;
         };
         Accent: {
             /**
@@ -5857,6 +5936,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Palette"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getQueueItemBeatMap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The beat map */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BeatMap"];
                 };
             };
             default: components["responses"]["Error"];

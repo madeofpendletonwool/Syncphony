@@ -76,6 +76,7 @@ var displayRequests = map[string]any{
 	"GetPlayback":            GetPlaybackRequestObject{},
 	"GetQueueItemArtwork":    GetQueueItemArtworkRequestObject{},
 	"GetQueueItemPalette":    GetQueueItemPaletteRequestObject{},
+	"GetQueueItemBeatMap":    GetQueueItemBeatMapRequestObject{},
 	"GetQueueItemLyrics":     GetQueueItemLyricsRequestObject{},
 	"GetQueueItemLinerNotes": GetQueueItemLinerNotesRequestObject{},
 	"GetHearts":              GetHeartsRequestObject{},
