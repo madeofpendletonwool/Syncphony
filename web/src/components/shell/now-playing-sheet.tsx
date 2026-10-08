@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { UserAvatar } from '@/components/user-avatar'
+import { useBeat } from '@/hooks/use-beat'
 import { usePosition } from '@/hooks/use-position'
 import { laneStyle } from '@/lib/lane'
 import { easeOutExpo, spring } from '@/lib/motion'
@@ -33,6 +34,7 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
   // Lyrics take the artwork's place.
   const [lyrics, setLyrics] = useState(false)
   const close = () => onOpenChange(false)
+  const beat = useBeat<HTMLDivElement>()
 
   return (
     <Dialog.Root open={open && np !== null} onOpenChange={onOpenChange}>
@@ -102,12 +104,16 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
                         onPointerDown={(e) => drag.start(e)}
                         className="flex flex-1 touch-none items-center justify-center px-8 py-4"
                       >
-                        <Artwork
-                          src={np.artworkUrl}
-                          alt={np.track.album ? `${np.track.album} cover` : ''}
-                          layoutId="now-playing-artwork"
-                          className="w-full max-w-[min(26rem,46dvh)] rounded-3xl shadow-[0_30px_80px_-20px_var(--glow)]"
-                        />
+                        {/* Lifts on the one, with a bloom of the art's color behind it. */}
+                        <div ref={beat} className="beat-lift relative w-full max-w-[min(26rem,46dvh)]">
+                          <div aria-hidden className="beat-bloom pointer-events-none absolute -inset-[12%] -z-10 rounded-full blur-2xl" />
+                          <Artwork
+                            src={np.artworkUrl}
+                            alt={np.track.album ? `${np.track.album} cover` : ''}
+                            layoutId="now-playing-artwork"
+                            className="w-full rounded-3xl shadow-[0_30px_80px_-20px_var(--glow)]"
+                          />
+                        </div>
                       </div>
                     )}
 

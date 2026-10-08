@@ -431,3 +431,55 @@
     transform: scaleY(0.6);
   }
 }
+
+/*
+ * Music-reactive layer (MAD-772). The beat engine (src/lib/beat.ts) writes
+ * --beat, --downbeat, --swell and --energy on the elements below. Subtle on
+ * purpose: the app should breathe with the song, never bounce. Light and
+ * glow move more than size does, and only the downbeat touches anything
+ * solid. Big surfaces follow --swell (once a bar), never --beat: a
+ * full-screen change twice a second reads as strobe.
+ * Every value falls back to 0, so without the engine nothing moves.
+ */
+
+/* The mesh breathes once a bar. */
+@utility beat-swell {
+  scale: calc(1 + var(--swell, 0) * 0.06);
+}
+
+/* So does the accent glow behind the page, brighter when the song is loud. */
+@utility beat-glow {
+  scale: calc(1 + var(--swell, 0) * 0.1);
+  opacity: calc(0.75 + var(--energy, 0) * 0.15 + var(--swell, 0) * 0.25);
+}
+
+/* Album art lifts slightly on the one. */
+@utility beat-lift {
+  scale: calc(1 + var(--downbeat, 0) * 0.02);
+}
+
+/* A soft bloom of the art's color behind the cover, on every beat. */
+@utility beat-bloom {
+  background: radial-gradient(closest-side, var(--pal-vibrant), transparent);
+  opacity: calc(var(--beat, 0) * 0.55 + var(--energy, 0) * 0.18);
+  scale: calc(1.02 + var(--beat, 0) * 0.07);
+}
+
+/* Light catching the glass on the one: a faint diagonal sheen and a
+   brighter top edge. */
+@utility beat-sheen {
+  background: linear-gradient(
+    115deg,
+    transparent 25%,
+    color-mix(in oklch, var(--pal-light) 22%, transparent) 50%,
+    transparent 75%
+  );
+  box-shadow: inset 0 1px 0 0 color-mix(in oklch, var(--pal-light) 60%, transparent);
+  opacity: calc(var(--downbeat, 0) * 0.9);
+}
+
+/* The equalizer follows the engine's bands while it's live. */
+[data-beat-live] .eq-bar {
+  animation: none;
+  transform: scaleY(calc(0.22 + var(--eq, 0) * 0.78));
+}

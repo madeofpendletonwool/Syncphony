@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
 import { Artwork } from '@/components/artwork'
 import { Button } from '@/components/ui/button'
+import { useBeat } from '@/hooks/use-beat'
 import { usePosition } from '@/hooks/use-position'
 import { laneStyle } from '@/lib/lane'
 import { spring } from '@/lib/motion'
@@ -16,6 +17,7 @@ import { PlayPauseButton, SkipButton } from './player-controls'
 export function MiniPlayer({ expanded, onExpand }: { expanded: boolean; onExpand: () => void }) {
   const { nowPlaying: np, commands } = usePlayer()
   const position = usePosition(np)
+  const beat = useBeat<HTMLDivElement>()
 
   if (!np) {
     return (
@@ -36,9 +38,12 @@ export function MiniPlayer({ expanded, onExpand }: { expanded: boolean; onExpand
 
   return (
     <div
+      ref={beat}
       style={laneStyle(np.requester?.color)}
       className="glass-strong relative flex h-mini items-center gap-3 overflow-hidden rounded-2xl pr-1.5 pl-2.5 shadow-float"
     >
+      {/* Light catches the glass on the one. */}
+      <div aria-hidden className="beat-sheen pointer-events-none absolute inset-0 rounded-2xl" />
       {/* The whole bar opens now-playing; the buttons sit above it. */}
       <button
         type="button"
