@@ -67,7 +67,11 @@ func (s *Server) ClaimPlayer(ctx context.Context, req ClaimPlayerRequestObject) 
 	if d := displayFrom(ctx); d != nil {
 		name = d.Name
 	}
-	np, err := s.Playback.Claim(ctx, req.RoomId, userID, device, name)
+	itemID := ""
+	if req.Body.PlayItemId != nil {
+		itemID = *req.Body.PlayItemId
+	}
+	np, err := s.Playback.ClaimAndPlay(ctx, req.RoomId, userID, device, name, itemID)
 	if err != nil {
 		return nil, err
 	}

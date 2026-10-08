@@ -1113,6 +1113,12 @@ type ClaimPlayerRequest struct {
 
 	// Name Example: Collin's phone
 	Name string `json:"name"`
+
+	// PlayItemId A queued song to play now, as `play_now` would, instead of
+	// starting the next in fair order: pressing play on a song with no
+	// speaker. Ignored if the caller would have to ask the room, or
+	// the song isn't waiting.
+	PlayItemId *string `json:"playItemId,omitempty"`
 }
 
 // ClearedLane defines model for ClearedLane.

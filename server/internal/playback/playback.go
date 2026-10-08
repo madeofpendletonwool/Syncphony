@@ -381,6 +381,15 @@ func (e *Engine) NowPlaying(ctx context.Context, roomID string) (rooms.NowPlayin
 // Claim makes a device the room's speaker, taking over from any other.
 // If the room is idle and songs are waiting, the first one starts.
 func (e *Engine) Claim(ctx context.Context, roomID, userID, deviceID, name string) (rooms.NowPlaying, error) {
+	return e.ClaimAndPlay(ctx, roomID, userID, deviceID, name, "")
+}
+
+// ClaimAndPlay is Claim, then plays the queued song itemID now, if userID
+// may do that outright (see ActionPlayNow): pressing play on a song with
+// no speaker makes this device the speaker and plays that song, rather
+// than starting another first and skipping it. If they'd have to ask the
+// room, or itemID isn't waiting, it's just Claim.
+func (e *Engine) ClaimAndPlay(ctx context.Context, roomID, userID, deviceID, name, itemID string) (rooms.NowPlaying, error) {
 	if deviceID == "" || len(deviceID) > 128 || len(name) > 64 {
 		return rooms.NowPlaying{}, &InvalidInputError{"a device needs an ID of up to 128 characters and a name of up to 64"}
 	}
@@ -411,14 +420,33 @@ func (e *Engine) Claim(ctx context.Context, roomID, userID, deviceID, name strin
 			r.np.State, r.since, r.heard = StateLoading, now, false
 		}
 	}
-	if r.np.State == StateIdle && !r.halted {
+	switch {
+	case itemID != "" && e.mayPlayNow(ctx, r, userID, itemID):
+		if err := e.playNow(ctx, r, itemID); err != nil {
+			return rooms.NowPlaying{}, err
+		}
+	case r.np.State == StateIdle && !r.halted:
 		if err := e.next(ctx, r, ""); err != nil {
 			return rooms.NowPlaying{}, err
 		}
-	} else {
+	default:
 		e.publish(r)
 	}
 	return e.view(r), nil
+}
+
+// mayPlayNow says whether userID may play itemID now without asking the
+// room, and it's waiting in the queue.
+func (e *Engine) mayPlayNow(ctx context.Context, r *room, userID, itemID string) bool {
+	skip := r.settings.Permissions.Skip
+	if userID != r.owner && (skip == rooms.Vote || !rooms.Allowed(skip, r.owner, userID)) {
+		return false
+	}
+	if _, err := e.db.GetGuest(ctx, userID); err == nil || !store.IsNotFound(err) {
+		return false
+	}
+	it, err := e.queue.Item(ctx, r.id, itemID)
+	return err == nil && it.State == store.ItemQueued
 }
 
 // Release stops a device being the speaker. The current song pauses. The

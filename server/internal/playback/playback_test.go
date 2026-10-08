@@ -516,11 +516,20 @@ func TestPlayNow(t *testing.T) {
 	if _, err := e.command(e.bob, playback.Command{Action: playback.ActionPlayNow, ItemID: id("t05")}); !errors.Is(err, playback.ErrNoPlayer) {
 		t.Fatalf("play now with no speaker: %v", err)
 	}
+	// Pressing play on a song with no speaker: this device becomes the
+	// speaker and plays it, without starting (and skipping) another first.
+	np, err := e.p.ClaimAndPlay(ctx, e.room.ID, e.carol.ID, "tablet", "carol's tablet", id("t07"))
+	if err != nil || !playing(playback.StateLoading, "t07")(np) || np.Player == nil || np.Player.DeviceID != "tablet" {
+		t.Fatalf("claim and play: %s %+v %v", describe(np), np.Player, err)
+	}
+	if h, _ := e.db.ListHistory(ctx, store.ListHistoryParams{RoomID: e.room.ID, Limit: 10}); len(h) != 1 {
+		t.Fatalf("history after claim and play: %+v", h)
+	}
 	e.claim(e.alice, "phone")
 	e.report(e.alice, "phone", playback.EventPlaying, 0)
 
 	// Bob's second song jumps everyone and the current song is skipped.
-	np, err := e.command(e.bob, playback.Command{Action: playback.ActionPlayNow, ItemID: id("t05")})
+	np, err = e.command(e.bob, playback.Command{Action: playback.ActionPlayNow, ItemID: id("t05")})
 	if err != nil || !playing(playback.StateLoading, "t05")(np) {
 		t.Fatalf("play now: %s %v", describe(np), err)
 	}
@@ -529,7 +538,7 @@ func TestPlayNow(t *testing.T) {
 		t.Fatalf("history: %+v", h)
 	}
 	// Only queued songs can be played now.
-	if _, err := e.command(e.bob, playback.Command{Action: playback.ActionPlayNow, ItemID: id("t01")}); err == nil {
+	if _, err := e.command(e.bob, playback.Command{Action: playback.ActionPlayNow, ItemID: id("t07")}); err == nil {
 		t.Error("played a song that already played")
 	}
 	if _, err := e.command(e.bob, playback.Command{Action: playback.ActionPlayNow}); err == nil {
@@ -541,10 +550,10 @@ func TestPlayNow(t *testing.T) {
 	if _, err := e.rooms.Update(ctx, rooms.Actor{UserID: e.alice.ID}, e.room.ID, owner); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.command(e.carol, playback.Command{Action: playback.ActionPlayNow, ItemID: id("t07")}); !errors.Is(err, playback.ErrForbidden) {
+	if _, err := e.command(e.carol, playback.Command{Action: playback.ActionPlayNow, ItemID: id("t04")}); !errors.Is(err, playback.ErrForbidden) {
 		t.Errorf("carol in an owner-skips room: %v", err)
 	}
-	if np := e.must(playback.Command{Action: playback.ActionPlayNow, ItemID: id("t07")}); !playing(playback.StateLoading, "t07")(np) {
+	if np := e.must(playback.Command{Action: playback.ActionPlayNow, ItemID: id("t04")}); !playing(playback.StateLoading, "t04")(np) {
 		t.Errorf("the owner: %s", describe(np))
 	}
 }

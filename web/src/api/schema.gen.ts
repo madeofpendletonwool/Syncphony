@@ -3691,6 +3691,13 @@ export interface components {
             deviceId: string;
             /** @example Collin's phone */
             name: string;
+            /**
+             * @description A queued song to play now, as `play_now` would, instead of
+             *     starting the next in fair order: pressing play on a song with no
+             *     speaker. Ignored if the caller would have to ask the room, or
+             *     the song isn't waiting.
+             */
+            playItemId?: string;
         };
         PlayerReport: {
             deviceId: string;

@@ -162,13 +162,14 @@ class Speaker {
    * Makes this device the room's speaker. Call it from a tap: browsers only
    * let audio start after a user gesture, so the elements are unlocked
    * before anything async happens. A paired TV passes its display ID as
-   * the device, since that's who the server makes the speaker.
+   * the device, since that's who the server makes the speaker. playItemId
+   * plays that queued song now, rather than the next in fair order.
    */
-  async start(roomId: string, name: string, device = deviceId()): Promise<Playback | undefined> {
+  async start(roomId: string, name: string, device = deviceId(), playItemId?: string): Promise<Playback | undefined> {
     this.begin(roomId, 'speaker', name, device)
     try {
       const np = await unwrap(
-        api.PUT('/rooms/{roomId}/player', { params: { path: { roomId } }, body: { deviceId: device, name } }),
+        api.PUT('/rooms/{roomId}/player', { params: { path: { roomId } }, body: { deviceId: device, name, playItemId } }),
       )
       this.onState?.(np)
       this.apply(np)
