@@ -199,7 +199,9 @@ function NowPlayingColumn({ np }: { np: NowPlaying }) {
   const position = usePosition(np)
   const pct = np.track.durationMs > 0 ? (position / np.track.durationMs) * 100 : 0
   return (
-    <section className="flex min-h-0 flex-col justify-center gap-[2.5vh] overflow-hidden">
+    // The artwork gives way to a long title on a short screen: it shrinks to
+    // the height that's left, so the title and the times always fit.
+    <section className="flex min-h-0 flex-col justify-center-safe gap-[2.5vh] overflow-hidden">
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.div
           key={np.itemId}
@@ -207,14 +209,16 @@ function NowPlayingColumn({ np }: { np: NowPlaying }) {
           animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
           exit={{ opacity: 0, scale: 1.04, filter: 'blur(12px)' }}
           transition={{ duration: 0.9, ease: easeOutExpo }}
-          className="flex shrink-0 flex-col gap-[2.5vh]"
+          className="flex min-h-0 flex-col gap-[2.5vh]"
         >
-          <Artwork
-            src={np.artworkUrl}
-            alt=""
-            className="w-[min(34vh,100%)] rounded-[3vh] shadow-[0_40px_120px_-30px_var(--glow)]"
-          />
-          <div className="min-w-0">
+          <div className="flex min-h-[10vh] flex-[0_1_34vh]">
+            <Artwork
+              src={np.artworkUrl}
+              alt=""
+              className="h-full w-auto max-w-full rounded-[3vh] shadow-[0_40px_120px_-30px_var(--glow)]"
+            />
+          </div>
+          <div className="min-w-0 shrink-0">
             <h1 className="line-clamp-2 text-[clamp(1.75rem,3.4vw,3.75rem)] leading-[1.08] font-bold tracking-tight text-balance">
               {np.track.title}
             </h1>
@@ -246,7 +250,7 @@ function NowPlayingColumn({ np }: { np: NowPlaying }) {
           </div>
         </motion.div>
       </AnimatePresence>
-      <div>
+      <div className="shrink-0">
         <div className="h-[0.7vh] overflow-hidden rounded-full bg-foreground/15">
           <div className="h-full rounded-full bg-(--pal-text) transition-[width] duration-300 ease-linear" style={{ width: `${pct}%` }} />
         </div>
