@@ -40,9 +40,42 @@ type Store struct {
 	db *sql.DB
 }
 
+// Option changes how Open opens a database.
+type Option func(*options)
+
+type options struct {
+	beforeMigrate func(ctx context.Context, s *Store, from, to int64) error
+}
+
+// BeforeMigrate has Open call fn when an existing database has migrations
+// to apply, before applying them, with its schema version and the one it's
+// going to. s works for BackupTo but not for queries, whose tables may not
+// match yet. An error from fn stops Open.
+func BeforeMigrate(fn func(ctx context.Context, s *Store, from, to int64) error) Option {
+	return func(o *options) { o.beforeMigrate = fn }
+}
+
 // Open opens (creating if needed) the SQLite database at path and applies
 // pending migrations.
-func Open(ctx context.Context, path string) (*Store, error) {
+func Open(ctx context.Context, path string, opts ...Option) (*Store, error) {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
+	db, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		return nil, err
+	}
+	s := &Store{Queries: New(db), db: db}
+	if err := migrate(ctx, s, o); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return s, nil
+}
+
+// dsn is how the database at path is opened.
+func dsn(path string) string {
 	q := url.Values{}
 	for _, p := range []string{
 		"foreign_keys(1)",
@@ -58,26 +91,52 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	// Take the write lock at BEGIN, so concurrent read-then-write
 	// transactions wait rather than fail when upgrading their lock.
 	q.Set("_txlock", "immediate")
-
-	db, err := sql.Open("sqlite", "file:"+path+"?"+q.Encode())
-	if err != nil {
-		return nil, err
-	}
-	if err := migrate(ctx, db); err != nil {
-		db.Close()
-		return nil, err
-	}
-	return &Store{Queries: New(db), db: db}, nil
+	return "file:" + path + "?" + q.Encode()
 }
 
-func migrate(ctx context.Context, db *sql.DB) error {
+func migrator(db *sql.DB) (*goose.Provider, error) {
 	fsys, err := fs.Sub(migrations, "migrations")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	p, err := goose.NewProvider(goose.DialectSQLite3, db, fsys)
 	if err != nil {
-		return fmt.Errorf("store: loading migrations: %w", err)
+		return nil, fmt.Errorf("store: loading migrations: %w", err)
+	}
+	return p, nil
+}
+
+// SchemaVersion is the newest migration this build has: the schema
+// version of a database it has opened.
+func SchemaVersion() int64 {
+	fsys, err := fs.Sub(migrations, "migrations")
+	if err != nil {
+		panic(err)
+	}
+	// goose only reads the files here; it needs a *sql.DB but doesn't use it.
+	p, err := goose.NewProvider(goose.DialectSQLite3, &sql.DB{}, fsys)
+	if err != nil {
+		panic(err)
+	}
+	srcs := p.ListSources()
+	return srcs[len(srcs)-1].Version
+}
+
+func migrate(ctx context.Context, s *Store, o options) error {
+	p, err := migrator(s.db)
+	if err != nil {
+		return err
+	}
+	if o.beforeMigrate != nil {
+		from, err := p.GetDBVersion(ctx)
+		if err != nil {
+			return fmt.Errorf("store: reading the schema version: %w", err)
+		}
+		if to := SchemaVersion(); from > 0 && from < to {
+			if err := o.beforeMigrate(ctx, s, from, to); err != nil {
+				return err
+			}
+		}
 	}
 	results, err := p.Up(ctx)
 	if err != nil {

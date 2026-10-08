@@ -15,7 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { api } from '@/api/client'
 import { ApiError, errorMessage, unwrap } from '@/api/errors'
 import { Field } from '@/components/field'
@@ -23,6 +23,7 @@ import { Notice } from '@/components/notice'
 import { PageHeader } from '@/components/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ConfirmButton } from '@/components/confirm-button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
@@ -70,55 +71,6 @@ function Card({ title, description, children }: { title: string; description: Re
       <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       {children}
     </motion.section>
-  )
-}
-
-/** A button that asks for a second tap before doing something destructive. */
-function ConfirmButton({
-  onConfirm,
-  pending,
-  disabled,
-  label,
-  confirmLabel,
-  icon,
-  compact,
-  size = 'sm',
-  className,
-}: {
-  onConfirm: () => void
-  pending?: boolean
-  disabled?: boolean
-  label: string
-  confirmLabel: string
-  icon: ReactNode
-  /** Just the icon until armed; label becomes its accessible name. */
-  compact?: boolean
-  size?: 'sm' | 'default'
-  className?: string
-}) {
-  const [armed, setArmed] = useState(false)
-  useEffect(() => {
-    if (!armed) return
-    const t = setTimeout(() => setArmed(false), 4000)
-    return () => clearTimeout(t)
-  }, [armed])
-  const iconOnly = compact && !armed
-  return (
-    <Button
-      variant={armed ? 'destructive' : 'ghost'}
-      size={iconOnly ? 'icon-sm' : size}
-      aria-label={iconOnly ? label : undefined}
-      disabled={disabled || pending}
-      className={className}
-      onClick={() => {
-        if (!armed) return setArmed(true)
-        setArmed(false)
-        onConfirm()
-      }}
-    >
-      {pending ? <LoaderCircle className="animate-spin" /> : icon}
-      {iconOnly ? null : armed ? confirmLabel : label}
-    </Button>
   )
 }
 

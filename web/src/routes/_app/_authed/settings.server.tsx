@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { AudioLines, DatabaseBackup, DoorOpen, History, LoaderCircle, LogOut, Speaker } from 'lucide-react'
+import { ArchiveRestore, AudioLines, DatabaseBackup, DoorOpen, Download, History, LoaderCircle, LogOut, Speaker, Trash2, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { api } from '@/api/client'
 import { errorMessage, unwrap } from '@/api/errors'
 import type { components } from '@/api/schema.gen'
+import { ConfirmButton } from '@/components/confirm-button'
 import { Notice } from '@/components/notice'
 import { PageHeader } from '@/components/page-header'
 import { ProviderIcon } from '@/components/provider-icon'
@@ -17,6 +18,16 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { UserAvatar } from '@/components/user-avatar'
 import { joinAsAdmin, visibility } from '@/lib/access'
 import { describeDevice } from '@/lib/account'
+import {
+  describeKeeping,
+  describeSchedule,
+  downloadURL,
+  formatHour,
+  frequencies,
+  kindLabels,
+  weekdays,
+  type BackupSchedule,
+} from '@/lib/backups'
 import { meQuery } from '@/lib/auth'
 import { roomsQuery as myRoomsQuery } from '@/lib/room'
 import { fadeUp, stagger } from '@/lib/motion'
@@ -39,6 +50,8 @@ export const Route = createFileRoute('/_app/_authed/settings/server')({
 })
 
 const infoQuery = { queryKey: ['admin', 'server'], queryFn: () => unwrap(api.GET('/admin/server')) }
+// The next backup and the last one's result change on their own; check back.
+const backupsQuery = { queryKey: ['admin', 'backups'], queryFn: () => unwrap(api.GET('/admin/backups')), refetchInterval: 60_000 }
 // Health changes as people use the app; check back while the page is open.
 const live = { refetchInterval: 15_000 }
 const linksQuery = { queryKey: ['admin', 'links'], queryFn: () => unwrap(api.GET('/admin/links')), ...live }
@@ -51,6 +64,7 @@ function Server() {
       <PageHeader title="Server" subtitle="How this Syncphony is doing, and its settings." />
       <motion.div variants={stagger} initial="hidden" animate="show" className="flex flex-col gap-4">
         <About />
+        <Backups />
         <Settings />
         <Services />
         <Rooms />
@@ -92,15 +106,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 // --- About ----------------------------------------------------------------------
 
 function About() {
-  const queryClient = useQueryClient()
   const info = useQuery(infoQuery)
-  const backup = useMutation({
-    mutationFn: () => unwrap(api.POST('/admin/backups')),
-    onSuccess: (b) => {
-      void queryClient.invalidateQueries({ queryKey: infoQuery.queryKey })
-      toast({ message: `Backed up (${formatBytes(b.bytes)}).` })
-    },
-  })
   const last = info.data?.backups[0]
 
   return (
@@ -110,31 +116,148 @@ function About() {
       ) : info.isError ? (
         <Notice className="mt-4">{errorMessage(info.error)}</Notice>
       ) : (
+        <dl className="mt-2 flex flex-col divide-y divide-border">
+          <Fact label="Version">
+            <span className="font-mono text-[0.8rem]">{info.data.version}</span>
+          </Fact>
+          <Fact label="Running since">
+            <span title={new Date(info.data.startedAt).toLocaleString()}>{relativeTime(info.data.startedAt)}</span>
+          </Fact>
+          <Fact label="Database">{formatBytes(info.data.databaseBytes)}</Fact>
+          <Fact label="Last backup">
+            {last ? (
+              <span title={new Date(last.createdAt).toLocaleString()}>
+                {relativeTime(last.createdAt)} · {formatBytes(last.bytes)}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">Never</span>
+            )}
+          </Fact>
+        </dl>
+      )}
+    </Card>
+  )
+}
+
+// --- Backups --------------------------------------------------------------------
+
+/** How many backups show before "Show all". */
+const backupsShown = 6
+
+function Backups() {
+  const queryClient = useQueryClient()
+  const status = useQuery(backupsQuery)
+  const [showAll, setShowAll] = useState(false)
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: backupsQuery.queryKey })
+    void queryClient.invalidateQueries({ queryKey: infoQuery.queryKey })
+  }
+  const backup = useMutation({
+    mutationFn: () => unwrap(api.POST('/admin/backups')),
+    onSuccess: (b) => {
+      refresh()
+      toast({ message: `Backed up (${formatBytes(b.bytes)}).` })
+    },
+  })
+  const remove = useMutation({
+    mutationFn: (name: string) => unwrap(api.DELETE('/admin/backups/{name}', { params: { path: { name } } })),
+    onSuccess: refresh,
+  })
+  const restore = useMutation({
+    mutationFn: (name: string) => unwrap(api.PUT('/admin/restore', { body: { name } })),
+    onSuccess: refresh,
+  })
+  const cancel = useMutation({
+    mutationFn: () => unwrap(api.DELETE('/admin/restore')),
+    onSuccess: refresh,
+  })
+  const error = backup.error ?? remove.error ?? restore.error ?? cancel.error
+
+  return (
+    <Card title="Backups" hint="Copies of the database, made on a schedule. Each one is checked before it's kept.">
+      {status.isPending ? (
+        <Loading />
+      ) : status.isError ? (
+        <Notice className="mt-4">{errorMessage(status.error)}</Notice>
+      ) : (
         <>
+          {status.data.problem && <Notice className="mt-4">{status.data.problem}</Notice>}
+          {status.data.pendingRestore && (
+            <PendingRestore restore={status.data.pendingRestore} onCancel={() => cancel.mutate()} cancelling={cancel.isPending} />
+          )}
           <dl className="mt-2 flex flex-col divide-y divide-border">
-            <Fact label="Version">
-              <span className="font-mono text-[0.8rem]">{info.data.version}</span>
+            <Fact label="Folder">
+              <span className="font-mono text-[0.8rem]" title="SYNCPHONY_BACKUP_DIR">
+                {status.data.dir}
+              </span>
             </Fact>
-            <Fact label="Running since">
-              <span title={new Date(info.data.startedAt).toLocaleString()}>{relativeTime(info.data.startedAt)}</span>
-            </Fact>
-            <Fact label="Database">{formatBytes(info.data.databaseBytes)}</Fact>
-            <Fact label="Last backup">
-              {last ? (
-                <span title={new Date(last.createdAt).toLocaleString()}>
-                  {relativeTime(last.createdAt)} · {formatBytes(last.bytes)}
-                </span>
+            <Fact label="Next backup">
+              {status.data.nextAt ? (
+                <span title={new Date(status.data.nextAt).toLocaleString()}>{relativeTime(status.data.nextAt)}</span>
               ) : (
-                <span className="text-muted-foreground">Never</span>
+                <span className="text-muted-foreground">None scheduled</span>
               )}
             </Fact>
           </dl>
+          {status.data.lastRun?.error && (
+            <Notice className="mt-2">
+              The last scheduled backup failed ({relativeTime(status.data.lastRun.at)}): {status.data.lastRun.error}. It&apos;s tried
+              again in 15 minutes.
+            </Notice>
+          )}
+          <ScheduleEditor schedule={status.data.schedule} timeZone={status.data.timeZone} />
+          {status.data.backups.length === 0 ? (
+            <p className="mt-5 text-sm text-muted-foreground">No backups yet.</p>
+          ) : (
+            <ul className="mt-5 flex flex-col divide-y divide-border">
+              {(showAll ? status.data.backups : status.data.backups.slice(0, backupsShown)).map((b) => (
+                <li key={b.name} className="flex items-center gap-2 py-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium" title={b.name}>
+                      {new Date(b.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                    </p>
+                    <p className="truncate text-caption text-muted-foreground">
+                      {kindLabels[b.kind]} · {formatBytes(b.bytes)} · {relativeTime(b.createdAt)}
+                    </p>
+                  </div>
+                  <Button asChild variant="ghost" size="icon-sm" title="Download">
+                    <a href={downloadURL(b.name)} download={b.name} aria-label={`Download the backup from ${b.createdAt}`}>
+                      <Download />
+                    </a>
+                  </Button>
+                  <ConfirmButton
+                    label="Restore"
+                    confirmLabel="Restore on restart?"
+                    icon={<ArchiveRestore data-icon="inline-start" />}
+                    compact
+                    pending={restore.isPending && restore.variables === b.name}
+                    disabled={status.data.pendingRestore?.from === b.name}
+                    onConfirm={() => restore.mutate(b.name)}
+                  />
+                  <ConfirmButton
+                    label="Delete"
+                    confirmLabel="Delete?"
+                    icon={<Trash2 data-icon="inline-start" />}
+                    compact
+                    pending={remove.isPending && remove.variables === b.name}
+                    onConfirm={() => remove.mutate(b.name)}
+                    className="hover:text-destructive"
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+          {status.data.backups.length > backupsShown && (
+            <Button variant="ghost" size="sm" className="self-start" onClick={() => setShowAll(!showAll)}>
+              {showAll ? 'Show fewer' : `Show all ${status.data.backups.length}`}
+            </Button>
+          )}
+          <Notice className="mt-3">{error && errorMessage(error)}</Notice>
           <p className="mt-3 text-caption text-muted-foreground">
-            Backups go in the server&apos;s data folder, under <span className="font-mono">backups</span>, and the newest 7 are
-            kept. Linked services&apos; passwords and tokens stay encrypted in them, so restoring one needs the same vault key.
-            To back up on a schedule, run <span className="font-mono">syncphony admin backup</span> from cron.
+            Linked services&apos; passwords and tokens stay encrypted in backups. Restoring one needs this server&apos;s vault key (ID{' '}
+            <span className="font-mono">{status.data.vaultKeyId}</span>), so keep a copy of the key somewhere safe, away from the
+            backups.
           </p>
-          <Notice className="mt-3">{backup.error && errorMessage(backup.error)}</Notice>
           <Button variant="secondary" className="mt-4 self-start" onClick={() => backup.mutate()} disabled={backup.isPending}>
             {backup.isPending ? <LoaderCircle className="animate-spin" /> : <DatabaseBackup data-icon="inline-start" />}
             Back up now
@@ -142,6 +265,148 @@ function About() {
         </>
       )}
     </Card>
+  )
+}
+
+function PendingRestore({
+  restore,
+  onCancel,
+  cancelling,
+}: {
+  restore: components['schemas']['PendingRestore']
+  onCancel: () => void
+  cancelling: boolean
+}) {
+  return (
+    <div className="mt-4 flex flex-col gap-2 rounded-2xl bg-primary/10 p-4 text-sm">
+      <p className="font-medium">A backup will be restored when the server restarts</p>
+      <p className="text-muted-foreground">
+        <span className="font-mono text-[0.8rem]">{restore.from}</span>, with {restore.users}{' '}
+        {restore.users === 1 ? 'person' : 'people'} and {restore.links} linked {restore.links === 1 ? 'service' : 'services'}.
+        Restart the server to finish (for example <span className="font-mono">docker compose restart syncphony</span>). The
+        database it replaces is backed up first.
+      </p>
+      {!restore.keyMatches && (
+        <Notice>
+          Its linked services were sealed with a different vault key ({restore.keyIds.join(', ')}). Set that key before restarting,
+          or they&apos;ll need linking again.
+        </Notice>
+      )}
+      <Button variant="ghost" size="sm" className="self-start" onClick={onCancel} disabled={cancelling}>
+        {cancelling ? <LoaderCircle className="animate-spin" /> : <X data-icon="inline-start" />}
+        Don&apos;t restore
+      </Button>
+    </div>
+  )
+}
+
+/** A whole number field, saved when you leave it. */
+function KeepField({ id, label, value, max, onSave }: { id: string; label: string; value: number; max: number; onSave: (n: number) => void }) {
+  const [draft, setDraft] = useState(String(value))
+  const save = () => {
+    const n = Math.min(max, Math.max(0, Math.round(Number(draft))))
+    if (Number.isFinite(n) && n !== value) onSave(n)
+    setDraft(String(Number.isFinite(n) ? n : value))
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-caption text-muted-foreground">
+        {label}
+      </label>
+      <Input
+        id={id}
+        type="number"
+        inputMode="numeric"
+        min={0}
+        max={max}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+        className="h-9 w-20"
+      />
+    </div>
+  )
+}
+
+function ScheduleEditor({ schedule, timeZone }: { schedule: BackupSchedule; timeZone: string }) {
+  const queryClient = useQueryClient()
+  const update = useMutation({
+    mutationFn: (body: BackupSchedule) => unwrap(api.PUT('/admin/backups/schedule', { body })),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: backupsQuery.queryKey }),
+  })
+  const set = (change: Partial<BackupSchedule>) => update.mutate({ ...schedule, ...change })
+  const s = update.isPending && update.variables ? update.variables : schedule
+
+  return (
+    <div className="mt-4 flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <div>
+          <p className="text-sm font-medium">Back up</p>
+          <p className="text-caption text-muted-foreground">{describeSchedule(s)}</p>
+        </div>
+        <ToggleGroup
+          type="single"
+          value={s.frequency}
+          onValueChange={(v) => v && set({ frequency: v as BackupSchedule['frequency'] })}
+          aria-label="How often to back up"
+          className="flex-wrap"
+        >
+          {frequencies.map((f) => (
+            <ToggleGroupItem key={f.value} value={f.value}>
+              {f.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </div>
+      {s.frequency === 'weekly' && (
+        <ToggleGroup
+          type="single"
+          value={String(s.weekday)}
+          onValueChange={(v) => v && set({ weekday: Number(v) })}
+          aria-label="Day of the week"
+          className="flex-wrap"
+        >
+          {weekdays.map((d, i) => (
+            <ToggleGroupItem key={d} value={String(i)}>
+              {d}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      )}
+      {s.frequency !== 'off' && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor="backup-hour" className="text-sm font-medium">
+            {s.frequency === '6h' || s.frequency === '12h' ? 'Starting at' : 'At'}
+          </label>
+          <select
+            id="backup-hour"
+            value={s.hour}
+            onChange={(e) => set({ hour: Number(e.target.value) })}
+            className="h-9 w-32 rounded-xl border border-input bg-muted/60 px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+          >
+            {Array.from({ length: 24 }, (_, h) => (
+              <option key={h} value={h}>
+                {formatHour(h)}
+              </option>
+            ))}
+          </select>
+          <p className="text-caption text-muted-foreground">Server time ({timeZone}). Set TZ on the server to change it.</p>
+        </div>
+      )}
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium">Keep</p>
+        <div className="flex flex-wrap gap-4">
+          <KeepField id="keep-daily" label="Days" value={schedule.keepDaily} max={90} onSave={(keepDaily) => set({ keepDaily })} />
+          <KeepField id="keep-weekly" label="Weeks" value={schedule.keepWeekly} max={52} onSave={(keepWeekly) => set({ keepWeekly })} />
+          <KeepField id="keep-monthly" label="Months" value={schedule.keepMonthly} max={36} onSave={(keepMonthly) => set({ keepMonthly })} />
+        </div>
+        <p className="text-caption text-muted-foreground">
+          {describeKeeping(s)} The newest 10 made by hand, and 3 each from before upgrades and restores, are kept too.
+        </p>
+      </div>
+      <Notice>{update.error && errorMessage(update.error)}</Notice>
+    </div>
   )
 }
 

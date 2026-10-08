@@ -21,6 +21,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/artwork"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
+	"github.com/madeofpendletonwool/syncphony/server/internal/backup"
 	"github.com/madeofpendletonwool/syncphony/server/internal/config"
 	"github.com/madeofpendletonwool/syncphony/server/internal/dj"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
@@ -57,6 +58,8 @@ func main() {
 	switch {
 	case len(os.Args) > 1 && os.Args[1] == "vault":
 		err = vaultCommand(os.Args[2:])
+	case len(os.Args) > 1 && os.Args[1] == "backup":
+		err = backupCommand(os.Args[2:])
 	case len(os.Args) > 1 && os.Args[1] == "admin":
 		err = adminCommand(os.Args[2:])
 	default:
@@ -74,6 +77,8 @@ type app struct {
 	db    *store.Store
 	bus   realtime.Bus
 	links *links.Service
+	// backups makes, rotates and restores database backups.
+	backups *backup.Service
 	// closeProviders releases providers' connections.
 	closeProviders func()
 }
@@ -95,20 +100,63 @@ func setup(ctx context.Context) (*app, error) {
 	if created {
 		slog.Warn("generated a vault key for linked-service credentials; back it up, and for better protection move it out of the data directory (SYNCPHONY_VAULT_KEY or SYNCPHONY_VAULT_KEY_FILE)", "file", keyFile)
 	}
+	backups, err := openBackups(cfg, keyFile)
+	if err != nil {
+		return nil, err
+	}
+	if p, err := backups.ApplyStaged(ctx); err != nil {
+		return nil, err
+	} else if p != nil {
+		slog.Warn("restored the database from a backup", "from", p.From, "staged_at", p.StagedAt)
+	}
 	reg, closeProviders, err := providers(cfg)
 	if err != nil {
 		return nil, err
 	}
-	db, err := store.Open(ctx, filepath.Join(cfg.DataDir, "syncphony.db"))
+	db, err := store.Open(ctx, filepath.Join(cfg.DataDir, backup.DBFile), store.BeforeMigrate(func(ctx context.Context, s *store.Store, from, to int64) error {
+		// A new version is about to change the database: keep it as it was.
+		b, err := backups.BackupFrom(ctx, s, backup.PreUpgrade)
+		if err != nil {
+			slog.Error("couldn't back up the database before upgrading it; carrying on", "err", err)
+			return nil
+		}
+		slog.Info("backed up the database before upgrading it", "file", b.Name, "schema", from, "to", to)
+		return nil
+	}))
 	if err != nil {
 		closeProviders()
 		return nil, err
 	}
+	backups.DB = db
+	backups.Schedule = admin.New(db).BackupSchedule
 	bus := realtime.NewLocal()
 	return &app{
-		cfg: cfg, db: db, bus: bus, closeProviders: closeProviders,
+		cfg: cfg, db: db, bus: bus, closeProviders: closeProviders, backups: backups,
 		links: links.New(db, v, reg, links.Config{BaseURL: cfg.BaseURL, Notifier: links.BusNotifier{Bus: bus}}),
 	}, nil
+}
+
+// openBackups sets up backups in cfg.BackupDir, warning if they can't be
+// written or would sit next to the vault key that unlocks them.
+func openBackups(cfg config.Config, keyFile string) (*backup.Service, error) {
+	dir, err := filepath.Abs(cfg.BackupDir)
+	if err != nil {
+		return nil, err
+	}
+	b := backup.New(dir, cfg.DataDir)
+	if err := b.Check(); err != nil {
+		slog.Error("backups can't be written", "err", err)
+	}
+	b.CleanUp()
+	if cfg.Vault.Key == "" {
+		if cfg.Vault.KeyFile != "" {
+			keyFile = cfg.Vault.KeyFile
+		}
+		if k, err := filepath.Abs(keyFile); err == nil && strings.HasPrefix(k, dir+string(filepath.Separator)) {
+			slog.Warn("the vault key is in the backup folder: anyone with the backups can read linked services' credentials; keep it somewhere else", "key", k, "backups", dir)
+		}
+	}
+	return b, nil
 }
 
 // providers builds the registry of linkable services, and returns a func
@@ -255,8 +303,9 @@ func run() error {
 		pilot.RoomUpdated(r)
 	}
 	nightSvc := nights.New(db, a.bus)
+	go a.backups.Run(ctx)
 	api := &httpapi.Server{
-		Version: version, StartedAt: time.Now().UTC(), Admin: admin.New(db, filepath.Join(cfg.DataDir, "backups")), Auth: accounts, Links: a.links, Lyrics: lyricsSvc, LinerNotes: notes, Artwork: art, Palettes: palettes, BeatMaps: beatMaps,
+		Version: version, StartedAt: time.Now().UTC(), Admin: admin.New(db), Backups: a.backups, Auth: accounts, Links: a.links, Lyrics: lyricsSvc, LinerNotes: notes, Artwork: art, Palettes: palettes, BeatMaps: beatMaps,
 		Rooms: roomSvc, Queue: queueSvc, Playback: player, Nights: nightSvc, Suggest: suggestions, Autopilot: pilot,
 		Bus: a.bus, Presence: presence,
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,

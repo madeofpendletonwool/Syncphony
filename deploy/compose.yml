@@ -29,8 +29,17 @@ services:
       # Spotify developer app credentials; leave unset to not offer Spotify.
       SYNCPHONY_SPOTIFY_CLIENT_ID: ${SYNCPHONY_SPOTIFY_CLIENT_ID:-}
       SYNCPHONY_SPOTIFY_CLIENT_SECRET: ${SYNCPHONY_SPOTIFY_CLIENT_SECRET:-}
+      # The time zone backup schedules (and logs) use, e.g. Europe/London.
+      TZ: ${TZ:-UTC}
     volumes:
       - syncphony-data:/data
+      # Database backups (docs/backups.md). Point this at a folder on
+      # another disk or a NAS to keep them off the data volume, e.g.
+      #   - /mnt/nas/syncphony-backups:/backups
+      # The folder must be writable by UID 65532:
+      #   sudo chown 65532:65532 /mnt/nas/syncphony-backups
+      # Never keep the vault key in it.
+      - ${SYNCPHONY_BACKUP_PATH:-syncphony-backups}:/backups
 
   caddy:
     image: caddy:2-alpine
@@ -48,4 +57,5 @@ services:
 
 volumes:
   syncphony-data:
+  syncphony-backups:
   caddy-data:

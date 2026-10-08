@@ -4,12 +4,12 @@ package admin_test
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/admin"
+	"github.com/madeofpendletonwool/syncphony/server/internal/backup"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 )
 
@@ -25,8 +25,8 @@ func open(t *testing.T) (*store.Store, string) {
 }
 
 func TestSettings(t *testing.T) {
-	db, dir := open(t)
-	s := admin.New(db, filepath.Join(dir, "backups"))
+	db, _ := open(t)
+	s := admin.New(db)
 	st, err := s.Settings(t.Context())
 	if err != nil || st.InstanceName != "" || st.InviteExpiry() != 7*24*time.Hour {
 		t.Fatalf("defaults: %+v, %v", st, err)
@@ -54,42 +54,22 @@ func TestSettings(t *testing.T) {
 	}
 }
 
-func TestBackups(t *testing.T) {
-	db, dir := open(t)
-	s := admin.New(db, filepath.Join(dir, "backups"))
-	if bs, err := s.Backups(); err != nil || len(bs) != 0 {
-		t.Fatalf("no backups yet: %v, %v", bs, err)
+func TestBackupSchedule(t *testing.T) {
+	db, _ := open(t)
+	s := admin.New(db)
+	if st, err := s.Settings(t.Context()); err != nil || st.Backups != backup.DefaultSchedule {
+		t.Fatalf("default schedule: %+v, %v", st.Backups, err)
 	}
-	now := time.Date(2026, 10, 6, 19, 30, 0, 0, time.UTC)
-	s.Now = func() time.Time { return now }
-	first, err := s.Backup(t.Context())
-	if err != nil {
+	// Midnight and keeping none are real choices, not "use the default".
+	sch := backup.Schedule{Frequency: backup.Weekly, Hour: 0, Weekday: time.Friday, KeepDaily: 0, KeepWeekly: 8, KeepMonthly: 12}
+	if _, err := s.Update(t.Context(), admin.Update{Backups: &sch}); err != nil {
 		t.Fatal(err)
 	}
-	if first.Name != "syncphony-20261006-193000.db" || first.Bytes == 0 {
-		t.Fatalf("backup: %+v", first)
+	if st, _ := s.Settings(t.Context()); st.Backups != sch {
+		t.Errorf("saved schedule: %+v", st.Backups)
 	}
-	// The copy is a working database.
-	copied, err := store.Open(t.Context(), filepath.Join(dir, "backups", first.Name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	copied.Close()
-	if _, err := s.Backup(t.Context()); err == nil {
-		t.Error("two backups in one second")
-	}
-	// Only the newest are kept.
-	for range admin.KeepBackups + 2 {
-		now = now.Add(time.Hour)
-		if _, err := s.Backup(t.Context()); err != nil {
-			t.Fatal(err)
-		}
-	}
-	bs, err := s.Backups()
-	if err != nil || len(bs) != admin.KeepBackups || !bs[0].CreatedAt.Equal(now) {
-		t.Fatalf("kept %d: %+v, %v", len(bs), bs, err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "backups", first.Name)); !os.IsNotExist(err) {
-		t.Errorf("oldest backup still there: %v", err)
+	var invalid *backup.InvalidInputError
+	if _, err := s.Update(t.Context(), admin.Update{Backups: &backup.Schedule{Frequency: "hourly"}}); !errors.As(err, &invalid) {
+		t.Errorf("bad schedule: %v", err)
 	}
 }

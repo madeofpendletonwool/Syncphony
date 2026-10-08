@@ -18,8 +18,9 @@ COPY server/ ./
 COPY --from=web /src/web/dist/ ./internal/webui/dist/
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/syncphony ./cmd/syncphony
-# An empty /data owned by nonroot, so a fresh volume mounted there is writable.
-RUN mkdir -p /out/data
+# Empty /data and /backups owned by nonroot, so fresh volumes mounted
+# there are writable.
+RUN mkdir -p /out/data /out/backups
 
 # Alpine rather than distroless, for ffmpeg: players that can't decode a
 # song's format (iOS Safari and Spotify's Ogg Vorbis) get it transcoded.
@@ -31,9 +32,11 @@ RUN apk add --no-cache ca-certificates ffmpeg tzdata \
     && adduser -S -D -H -u 65532 -G nonroot -h /data nonroot
 COPY --from=server /out/syncphony /usr/local/bin/syncphony
 COPY --from=server --chown=nonroot:nonroot /out/data /data
+COPY --from=server --chown=nonroot:nonroot /out/backups /backups
 ENV SYNCPHONY_ADDR=:8080 \
-    SYNCPHONY_DATA_DIR=/data
-VOLUME /data
+    SYNCPHONY_DATA_DIR=/data \
+    SYNCPHONY_BACKUP_DIR=/backups
+VOLUME /data /backups
 EXPOSE 8080
 USER nonroot:nonroot
 ENTRYPOINT ["/usr/local/bin/syncphony"]

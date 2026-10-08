@@ -43,10 +43,6 @@ func (s *Server) UpdateServerSettings(ctx context.Context, req UpdateServerSetti
 	return UpdateServerSettings200JSONResponse(toServerSettings(st)), nil
 }
 
-func toBackup(b admin.Backup) Backup {
-	return Backup{Name: b.Name, CreatedAt: b.CreatedAt, Bytes: b.Bytes}
-}
-
 // GetServerInfo reports the server's version, uptime, database and
 // backups (admins).
 func (s *Server) GetServerInfo(ctx context.Context, _ GetServerInfoRequestObject) (GetServerInfoResponseObject, error) {
@@ -57,7 +53,7 @@ func (s *Server) GetServerInfo(ctx context.Context, _ GetServerInfoRequestObject
 	if err != nil {
 		return nil, err
 	}
-	bs, err := s.Admin.Backups()
+	bs, err := s.Backups.List()
 	if err != nil {
 		return nil, err
 	}
@@ -66,18 +62,6 @@ func (s *Server) GetServerInfo(ctx context.Context, _ GetServerInfoRequestObject
 		out.Backups[i] = toBackup(b)
 	}
 	return GetServerInfo200JSONResponse(out), nil
-}
-
-// CreateBackup backs up the database now (admins).
-func (s *Server) CreateBackup(ctx context.Context, _ CreateBackupRequestObject) (CreateBackupResponseObject, error) {
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
-	b, err := s.Admin.Backup(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return CreateBackup201JSONResponse(toBackup(b)), nil
 }
 
 // ListAllLinks lists every linked service and its health, failing ones
