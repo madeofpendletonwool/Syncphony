@@ -19,7 +19,7 @@ export function RoomLive() {
   useRoomSocket(room?.id)
   const playback = useQuery({ ...playbackQuery(room?.id ?? ''), enabled: !!room })
   const users = useQuery(usersQuery)
-  const commands = useRoomControls(room, playback.data, me.id, !!me.guest)
+  const commands = useRoomControls(room, playback.data, me, !!me.guest)
   const queryClient = useQueryClient()
 
   // Player mode: whatever the server says, the speaker (if this device is

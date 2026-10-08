@@ -4,6 +4,7 @@ import { serverNow } from './clock'
 import { queueArtworkUrl, sendCommand, type Playback, type QueueItem } from './playback'
 import { createStore } from './store'
 import { toast } from './toast'
+import { deviceName } from './webauthn'
 
 // Player mode: this device plays the room's audio (ADR 0003). The server
 // decides what plays; the speaker applies each state revision once and
@@ -71,6 +72,11 @@ export function deviceId() {
   }
 }
 let fallbackId: string | undefined
+
+/** What to call this device as the speaker: "Collin's iPhone". */
+export function speakerName(displayName: string) {
+  return `${displayName.split(' ')[0]}'s ${deviceName()}`
+}
 
 /** Content types this browser can decode, for the stream's `accept`. */
 export function acceptedTypes(probe: (type: string) => string = (t) => new Audio().canPlayType(t)) {
@@ -154,7 +160,7 @@ class Speaker {
    * before anything async happens. A paired TV passes its display ID as
    * the device, since that's who the server makes the speaker.
    */
-  async start(roomId: string, name: string, device = deviceId()) {
+  async start(roomId: string, name: string, device = deviceId()): Promise<Playback | undefined> {
     this.begin(roomId, 'speaker', name, device)
     try {
       const np = await unwrap(
@@ -162,6 +168,7 @@ class Speaker {
       )
       this.onState?.(np)
       this.apply(np)
+      return np
     } catch (err) {
       this.halt()
       toast({ message: errorMessage(err), tone: 'error' })
@@ -273,6 +280,9 @@ class Speaker {
       this.keepTime(np)
     }
     const listening = this.mode === 'listener'
+    // Tell the server we're on it: a song that never starts on a speaker
+    // that's said nothing gets paused, not skipped.
+    if (!listening && np.state === 'loading') this.report('progress')
     if (np.state === 'playing' || (!listening && np.state === 'loading')) {
       // Already playing it (we started the preloaded song when the last one
       // ended): no new 'playing' event will come, so tell the server now.

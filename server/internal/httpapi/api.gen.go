@@ -242,12 +242,15 @@ func (e PermissionLevel) Valid() bool {
 
 // Defines values for PlaybackCommandAction.
 const (
-	Pause      PlaybackCommandAction = "pause"
-	Play       PlaybackCommandAction = "play"
-	Seek       PlaybackCommandAction = "seek"
-	Skip       PlaybackCommandAction = "skip"
-	UnvoteSkip PlaybackCommandAction = "unvote_skip"
-	VoteSkip   PlaybackCommandAction = "vote_skip"
+	Pause         PlaybackCommandAction = "pause"
+	Play          PlaybackCommandAction = "play"
+	PlayNow       PlaybackCommandAction = "play_now"
+	Seek          PlaybackCommandAction = "seek"
+	Skip          PlaybackCommandAction = "skip"
+	UnvotePlayNow PlaybackCommandAction = "unvote_play_now"
+	UnvoteSkip    PlaybackCommandAction = "unvote_skip"
+	VotePlayNow   PlaybackCommandAction = "vote_play_now"
+	VoteSkip      PlaybackCommandAction = "vote_skip"
 )
 
 // Valid indicates whether the value is a known member of the PlaybackCommandAction enum.
@@ -257,11 +260,17 @@ func (e PlaybackCommandAction) Valid() bool {
 		return true
 	case Play:
 		return true
+	case PlayNow:
+		return true
 	case Seek:
 		return true
 	case Skip:
 		return true
+	case UnvotePlayNow:
+		return true
 	case UnvoteSkip:
+		return true
+	case VotePlayNow:
 		return true
 	case VoteSkip:
 		return true
@@ -1568,6 +1577,12 @@ type NowPlaying struct {
 	Item   *QueueItem        `json:"item,omitempty"`
 	Next   *QueueItem        `json:"next,omitempty"`
 
+	// PlayNow Someone's request to play a queued song now, in a room whose skip
+	// permission is `vote`. It passes on the same share of the room as a
+	// skip, and lapses at `expires`, when the song leaves the queue, or
+	// when whoever asked takes it back.
+	PlayNow *PlayNowVote `json:"playNow,omitempty"`
+
 	// Player The device a room plays through.
 	Player     *Player `json:"player,omitempty"`
 	PositionMs int64   `json:"positionMs"`
@@ -1702,19 +1717,46 @@ type PersonStats struct {
 	UserId      string        `json:"userId"`
 }
 
+// PlayNowVote Someone's request to play a queued song now, in a room whose skip
+// permission is `vote`. It passes on the same share of the room as a
+// skip, and lapses at `expires`, when the song leaves the queue, or
+// when whoever asked takes it back.
+type PlayNowVote struct {
+	// By Who asked. Their vote is the first.
+	By      string    `json:"by"`
+	Expires time.Time `json:"expires"`
+	ItemId  string    `json:"itemId"`
+
+	// Needed How many agreeing play the song.
+	Needed int `json:"needed"`
+
+	// Voters IDs of the users who agreed, in order.
+	Voters []string `json:"voters"`
+}
+
 // PlaybackCommand defines model for PlaybackCommand.
 type PlaybackCommand struct {
+	// Action `play_now` plays the queued song `itemId` straight away, skipping
+	// the one playing. It takes the skip permission; in a room that
+	// votes on skips, it asks the room instead (`playNow`), and
+	// `vote_play_now` agrees. `unvote_play_now` takes a vote back, or
+	// withdraws the request from whoever asked.
 	Action PlaybackCommandAction `json:"action"`
 
 	// ItemId Skip (or vote) only if this is still the current song, so two
-	// people tapping skip skip one song.
+	// people tapping skip skip one song. For `play_now` and its votes,
+	// the queued song to play.
 	ItemId *string `json:"itemId,omitempty"`
 
 	// PositionMs Where to seek to.
 	PositionMs *int64 `json:"positionMs,omitempty"`
 }
 
-// PlaybackCommandAction defines model for PlaybackCommand.Action.
+// PlaybackCommandAction `play_now` plays the queued song `itemId` straight away, skipping
+// the one playing. It takes the skip permission; in a room that
+// votes on skips, it asks the room instead (`playNow`), and
+// `vote_play_now` agrees. `unvote_play_now` takes a vote back, or
+// withdraws the request from whoever asked.
 type PlaybackCommandAction string
 
 // PlaybackNotice Something members should hear about, like a song skipped because its service failed.

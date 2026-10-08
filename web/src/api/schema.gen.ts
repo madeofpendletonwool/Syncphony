@@ -3618,6 +3618,24 @@ export interface components {
             player?: components["schemas"]["Player"];
             next?: components["schemas"]["QueueItem"];
             skipVotes?: components["schemas"]["SkipVotes"];
+            playNow?: components["schemas"]["PlayNowVote"];
+        };
+        /**
+         * @description Someone's request to play a queued song now, in a room whose skip
+         *     permission is `vote`. It passes on the same share of the room as a
+         *     skip, and lapses at `expires`, when the song leaves the queue, or
+         *     when whoever asked takes it back.
+         */
+        PlayNowVote: {
+            itemId: string;
+            /** @description Who asked. Their vote is the first. */
+            by: string;
+            /** @description IDs of the users who agreed, in order. */
+            voters: string[];
+            /** @description How many agreeing play the song. */
+            needed: number;
+            /** Format: date-time */
+            expires: string;
         };
         /**
          * @description The vote to skip the playing song, while the room's skip permission
@@ -3645,8 +3663,15 @@ export interface components {
             lastSeen: string;
         };
         PlaybackCommand: {
-            /** @enum {string} */
-            action: "play" | "pause" | "skip" | "seek" | "vote_skip" | "unvote_skip";
+            /**
+             * @description `play_now` plays the queued song `itemId` straight away, skipping
+             *     the one playing. It takes the skip permission; in a room that
+             *     votes on skips, it asks the room instead (`playNow`), and
+             *     `vote_play_now` agrees. `unvote_play_now` takes a vote back, or
+             *     withdraws the request from whoever asked.
+             * @enum {string}
+             */
+            action: "play" | "pause" | "skip" | "seek" | "vote_skip" | "unvote_skip" | "play_now" | "vote_play_now" | "unvote_play_now";
             /**
              * Format: int64
              * @description Where to seek to.
@@ -3654,7 +3679,8 @@ export interface components {
             positionMs?: number;
             /**
              * @description Skip (or vote) only if this is still the current song, so two
-             *     people tapping skip skip one song.
+             *     people tapping skip skip one song. For `play_now` and its votes,
+             *     the queued song to play.
              */
             itemId?: string;
         };

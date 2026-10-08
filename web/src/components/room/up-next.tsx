@@ -1,6 +1,7 @@
 import { GripVertical } from 'lucide-react'
 import { AnimatePresence, Reorder, useDragControls } from 'motion/react'
 import { useState } from 'react'
+import { usePlayNow, type PlayNow } from '@/hooks/use-play-now'
 import { useQueueMove } from '@/hooks/use-queue-move'
 import { isMine } from '@/lib/autopilot'
 import { spring } from '@/lib/motion'
@@ -42,6 +43,7 @@ export function UpNext({
   const mineIds = new Set(items.filter((i) => isMine(i, me) && i.state === 'queued').map((i) => i.id))
 
   const move = useQueueMove(roomId)
+  const playNow = usePlayNow(roomId)
 
   const dropped = (id: string) => {
     if (draft) {
@@ -80,6 +82,7 @@ export function UpNext({
               owner={owner}
               user={userById(item.addedBy)}
               byline={byline}
+              playNow={playNow}
               onDrop={mineIds.has(id) ? () => dropped(id) : undefined}
             />
           )
@@ -99,6 +102,7 @@ function UpNextRow({
   owner,
   user,
   byline,
+  playNow,
   onDrop,
 }: {
   roomId: string
@@ -109,6 +113,7 @@ function UpNextRow({
   owner?: boolean
   user?: User
   byline?: boolean
+  playNow?: PlayNow
   onDrop?: () => void
 }) {
   const controls = useDragControls()
@@ -130,6 +135,8 @@ function UpNextRow({
         user={user}
         mine={mine}
         byline={byline || !!item.autopilot}
+        onPlay={playNow && (() => playNow.play(item))}
+        playLabel={playNow?.mode === 'ask' ? 'Ask to play now' : 'Play now'}
         leading={<span className="w-5 shrink-0 text-center text-sm text-muted-foreground tabular-nums">{index}</span>}
         trailing={
           item.autopilot ? (

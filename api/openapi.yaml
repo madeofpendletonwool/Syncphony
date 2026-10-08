@@ -5380,6 +5380,34 @@ components:
           $ref: "#/components/schemas/QueueItem"
         skipVotes:
           $ref: "#/components/schemas/SkipVotes"
+        playNow:
+          $ref: "#/components/schemas/PlayNowVote"
+
+    PlayNowVote:
+      type: object
+      description: |
+        Someone's request to play a queued song now, in a room whose skip
+        permission is `vote`. It passes on the same share of the room as a
+        skip, and lapses at `expires`, when the song leaves the queue, or
+        when whoever asked takes it back.
+      required: [itemId, by, voters, needed, expires]
+      properties:
+        itemId:
+          type: string
+        by:
+          type: string
+          description: Who asked. Their vote is the first.
+        voters:
+          type: array
+          description: IDs of the users who agreed, in order.
+          items:
+            type: string
+        needed:
+          type: integer
+          description: How many agreeing play the song.
+        expires:
+          type: string
+          format: date-time
 
     SkipVotes:
       type: object
@@ -5426,7 +5454,13 @@ components:
       properties:
         action:
           type: string
-          enum: [play, pause, skip, seek, vote_skip, unvote_skip]
+          enum: [play, pause, skip, seek, vote_skip, unvote_skip, play_now, vote_play_now, unvote_play_now]
+          description: |
+            `play_now` plays the queued song `itemId` straight away, skipping
+            the one playing. It takes the skip permission; in a room that
+            votes on skips, it asks the room instead (`playNow`), and
+            `vote_play_now` agrees. `unvote_play_now` takes a vote back, or
+            withdraws the request from whoever asked.
         positionMs:
           type: integer
           format: int64
@@ -5436,7 +5470,8 @@ components:
           type: string
           description: |
             Skip (or vote) only if this is still the current song, so two
-            people tapping skip skip one song.
+            people tapping skip skip one song. For `play_now` and its votes,
+            the queued song to play.
 
     ClaimPlayerRequest:
       type: object

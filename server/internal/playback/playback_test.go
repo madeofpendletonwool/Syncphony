@@ -431,7 +431,8 @@ func TestFailuresSkip(t *testing.T) {
 	if !playing(playback.StateLoading, "t02")(np) {
 		t.Fatalf("after error: %s", describe(np))
 	}
-	// It never starts: skipped after the load timeout.
+	// The speaker tries but it never starts: skipped after the load timeout.
+	e.report(e.alice, "phone", playback.EventProgress, 0)
 	e.advance(11 * time.Second)
 	e.p.Tick(t.Context())
 	e.waitFor("third song", playing(playback.StateLoading, "t03"))
@@ -464,6 +465,166 @@ func TestFailuresSkip(t *testing.T) {
 	got = notices()
 	if np.State != playback.StateLoading || len(got) != 7 || strings.Contains(got[6], "Stopped") {
 		t.Fatalf("after fail, start, fail, fail: %s, notices %q", describe(np), got)
+	}
+}
+
+func TestSilentSpeaker(t *testing.T) {
+	e := newEnv(t)
+	notices := e.notices()
+	e.claim(e.alice, "phone")
+	e.add(e.alice, "t01", "t02", "t03", "t04")
+	e.waitFor("first song", playing(playback.StateLoading, "t01"))
+
+	// The speaker never says a word about the song (its tab is asleep, or
+	// gone): the song isn't to blame, so the room pauses on it rather than
+	// skipping through the queue.
+	e.advance(11 * time.Second)
+	e.p.Tick(t.Context())
+	np := e.np()
+	if !playing(playback.StatePaused, "t01")(np) || np.Position != 0 {
+		t.Fatalf("after a silent load: %s at %v", describe(np), np.Position)
+	}
+	if got := notices(); len(got) != 1 || !strings.Contains(got[0], "alice's phone didn't start “Reference Tone”") {
+		t.Fatalf("notices: %q", got)
+	}
+	// Play tries the same song again, waiting for the speaker to start it.
+	if np = e.must(playback.Command{Action: playback.ActionPlay}); !playing(playback.StateLoading, "t01")(np) {
+		t.Fatalf("play after a silent load: %s", describe(np))
+	}
+	if np = e.report(e.alice, "phone", playback.EventPlaying, 0); !playing(playback.StatePlaying, "t01")(np) {
+		t.Fatalf("speaker woke up: %s", describe(np))
+	}
+}
+
+func TestPlayNow(t *testing.T) {
+	e := newEnv(t)
+	ctx := t.Context()
+	e.add(e.alice, "t01")
+	e.add(e.bob, "t04", "t05")
+	e.add(e.carol, "t07")
+	snap, _ := e.rooms.QueueSnapshot(ctx, e.room.ID)
+	id := func(track string) string {
+		for _, it := range snap.Items {
+			if it.TrackID == track {
+				return it.ID
+			}
+		}
+		t.Fatalf("no %s", track)
+		return ""
+	}
+
+	if _, err := e.command(e.bob, playback.Command{Action: playback.ActionPlayNow, ItemID: id("t05")}); !errors.Is(err, playback.ErrNoPlayer) {
+		t.Fatalf("play now with no speaker: %v", err)
+	}
+	e.claim(e.alice, "phone")
+	e.report(e.alice, "phone", playback.EventPlaying, 0)
+
+	// Bob's second song jumps everyone and the current song is skipped.
+	np, err := e.command(e.bob, playback.Command{Action: playback.ActionPlayNow, ItemID: id("t05")})
+	if err != nil || !playing(playback.StateLoading, "t05")(np) {
+		t.Fatalf("play now: %s %v", describe(np), err)
+	}
+	h, _ := e.db.ListHistory(ctx, store.ListHistoryParams{RoomID: e.room.ID, Limit: 10})
+	if len(h) != 2 || h[1].PlayHistory.EndReason.String != store.EndSkipped {
+		t.Fatalf("history: %+v", h)
+	}
+	// Only queued songs can be played now.
+	if _, err := e.command(e.bob, playback.Command{Action: playback.ActionPlayNow, ItemID: id("t01")}); err == nil {
+		t.Error("played a song that already played")
+	}
+	if _, err := e.command(e.bob, playback.Command{Action: playback.ActionPlayNow}); err == nil {
+		t.Error("play now with no item")
+	}
+
+	// It takes the skip permission.
+	owner := rooms.Update{Permissions: rooms.Permissions{Skip: rooms.Owner}}
+	if _, err := e.rooms.Update(ctx, rooms.Actor{UserID: e.alice.ID}, e.room.ID, owner); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.command(e.carol, playback.Command{Action: playback.ActionPlayNow, ItemID: id("t07")}); !errors.Is(err, playback.ErrForbidden) {
+		t.Errorf("carol in an owner-skips room: %v", err)
+	}
+	if np := e.must(playback.Command{Action: playback.ActionPlayNow, ItemID: id("t07")}); !playing(playback.StateLoading, "t07")(np) {
+		t.Errorf("the owner: %s", describe(np))
+	}
+}
+
+func TestPlayNowVote(t *testing.T) {
+	e := newEnv(t)
+	ctx := t.Context()
+	vote := rooms.Update{Permissions: rooms.Permissions{Skip: rooms.Vote}}
+	if _, err := e.rooms.Update(ctx, rooms.Actor{UserID: e.alice.ID}, e.room.ID, vote); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []member{e.alice, e.bob, e.carol} {
+		e.presence.Join(e.room.ID, m.ID)
+	}
+	notices := e.notices()
+	e.claim(e.alice, "phone")
+	e.add(e.alice, "t01")
+	e.add(e.bob, "t04", "t05")
+	e.waitFor("alice's song", playing(playback.StateLoading, "t01"))
+	e.waitFor("bob's song to be next", func(np rooms.NowPlaying) bool { return np.Next != nil && np.Next.TrackID == "t04" })
+	snap, _ := e.rooms.QueueSnapshot(ctx, e.room.ID)
+	var t05 string
+	for _, it := range snap.Items {
+		if it.TrackID == "t05" {
+			t05 = it.ID
+		}
+	}
+	playNow := playback.Command{Action: playback.ActionPlayNow, ItemID: t05}
+
+	// Bob asks; the room has to agree (2 of 3).
+	np, err := e.command(e.bob, playNow)
+	if err != nil || !playing(playback.StateLoading, "t01")(np) {
+		t.Fatalf("asking: %s %v", describe(np), err)
+	}
+	if v := np.PlayNow; v == nil || v.ItemID != t05 || v.By != e.bob.ID || len(v.Voters) != 1 || v.Needed != 2 {
+		t.Fatalf("request: %+v", np.PlayNow)
+	}
+	if got := notices(); len(got) != 1 || got[0] != "bob wants to play “Pluge” now" {
+		t.Fatalf("notices: %q", got)
+	}
+	// Only one request at a time.
+	if _, err := e.command(e.carol, playback.Command{Action: playback.ActionPlayNow, ItemID: np.Next.ID}); err == nil {
+		t.Error("a second request while one is open")
+	}
+	// Carol agrees and agreeing passes it.
+	np, err = e.command(e.carol, playback.Command{Action: playback.ActionVotePlayNow, ItemID: t05})
+	if err != nil || !playing(playback.StateLoading, "t05")(np) || np.PlayNow != nil {
+		t.Fatalf("after carol agreed: %s %+v %v", describe(np), np.PlayNow, err)
+	}
+	if got := notices(); len(got) != 2 || !strings.Contains(got[1], "the room agreed") {
+		t.Fatalf("notices: %q", got)
+	}
+
+	// Asking again, then taking it back, ends the request.
+	e.add(e.carol, "t07")
+	snap, _ = e.rooms.QueueSnapshot(ctx, e.room.ID)
+	var t07 string
+	for _, it := range snap.Items {
+		if it.TrackID == "t07" {
+			t07 = it.ID
+		}
+	}
+	if np, _ = e.command(e.carol, playback.Command{Action: playback.ActionPlayNow, ItemID: t07}); np.PlayNow == nil {
+		t.Fatal("no request")
+	}
+	if np, _ = e.command(e.carol, playback.Command{Action: playback.ActionUnvotePlayNow, ItemID: t07}); np.PlayNow != nil {
+		t.Fatalf("withdrawn request still open: %+v", np.PlayNow)
+	}
+	// A request lapses.
+	if _, err := e.command(e.carol, playback.Command{Action: playback.ActionPlayNow, ItemID: t07}); err != nil {
+		t.Fatal(err)
+	}
+	e.advance(playback.PlayNowTimeout)
+	e.p.Tick(ctx)
+	if np = e.np(); np.PlayNow != nil {
+		t.Fatalf("lapsed request still open: %+v", np.PlayNow)
+	}
+	// The owner just plays it.
+	if np = e.must(playback.Command{Action: playback.ActionPlayNow, ItemID: t07}); !playing(playback.StateLoading, "t07")(np) {
+		t.Fatalf("the owner: %s", describe(np))
 	}
 }
 
@@ -571,8 +732,9 @@ func TestRestart(t *testing.T) {
 	if r, _ := e.db.GetRoom(t.Context(), e.room.ID); r.PlayerDeviceID.Valid {
 		t.Errorf("stale player kept: %+v", r.PlayerDeviceID)
 	}
+	// The speaker hasn't started it since: play waits for it to.
 	e.claim(e.alice, "phone")
-	if np, err := e.command(e.alice, playback.Command{Action: playback.ActionPlay}); err != nil || !playing(playback.StatePlaying, "t01")(np) {
+	if np, err := e.command(e.alice, playback.Command{Action: playback.ActionPlay}); err != nil || !playing(playback.StateLoading, "t01")(np) {
 		t.Fatalf("resume: %s %v", describe(np), err)
 	}
 }

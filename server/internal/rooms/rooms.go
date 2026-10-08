@@ -706,6 +706,23 @@ type NowPlaying struct {
 	Next *store.QueueItem
 	// SkipVotes is the vote to skip Item, while the room votes on skips.
 	SkipVotes *SkipVotes
+	// PlayNow is someone's request to play a queued song now, while the
+	// room votes on it.
+	PlayNow *PlayNowVote
+}
+
+// PlayNowVote is a request to play a queued song straight away, in a
+// room that votes on skips. It passes on the same share of the room.
+type PlayNowVote struct {
+	ItemID string
+	// By is who asked. Their vote is the first.
+	By string
+	// Voters are the IDs of users who agreed, in the order they did.
+	Voters []string
+	// Needed is how many agreeing play the song, given who's in the room.
+	Needed int
+	// Expires is when the request lapses if the room hasn't agreed.
+	Expires time.Time
 }
 
 // SkipVotes is a vote to skip the playing song.

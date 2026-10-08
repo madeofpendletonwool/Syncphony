@@ -214,6 +214,13 @@ type room struct {
 	halted bool
 	// since is when the current state began (for the load timeout).
 	since time.Time
+	// heard is whether the speaker has said anything about the current
+	// song since it began loading. A song that never starts on a silent
+	// speaker isn't the song's fault.
+	heard bool
+	// request is someone's request to play a queued song now, while the
+	// room votes on it. Needed is worked out when it's shown.
+	request *rooms.PlayNowVote
 	// The remote driver's open session, while a remote song is current.
 	sess     provider.Session
 	remote   provider.Remote
@@ -350,6 +357,7 @@ func (r *room) view(now time.Time) rooms.NowPlaying {
 func (e *Engine) view(r *room) rooms.NowPlaying {
 	np := r.view(e.cfg.Now())
 	np.SkipVotes = e.tally(r)
+	np.PlayNow = e.playNowTally(r)
 	return np
 }
 
@@ -400,7 +408,7 @@ func (e *Engine) Claim(ctx context.Context, roomID, userID, deviceID, name strin
 		r.np.Position, r.np.At = r.position(now), now
 		r.np.Revision++
 		if r.np.State == StatePlaying && r.np.Driver == string(provider.PlaybackStream) {
-			r.np.State, r.since = StateLoading, now
+			r.np.State, r.since, r.heard = StateLoading, now, false
 		}
 	}
 	if r.np.State == StateIdle && !r.halted {
@@ -483,7 +491,18 @@ const (
 	// skip the current song, in rooms that vote on skips.
 	ActionVoteSkip   = "vote_skip"
 	ActionUnvoteSkip = "unvote_skip"
+	// ActionPlayNow plays a queued song straight away, skipping the one
+	// playing. In a room that votes on skips, it asks the room instead;
+	// ActionVotePlayNow agrees, and ActionUnvotePlayNow takes it back (or
+	// withdraws the request, from whoever asked).
+	ActionPlayNow       = "play_now"
+	ActionVotePlayNow   = "vote_play_now"
+	ActionUnvotePlayNow = "unvote_play_now"
 )
+
+// PlayNowTimeout is how long a request to play a song now waits for the
+// room to agree.
+const PlayNowTimeout = 2 * time.Minute
 
 // Command is a member's request to control playback.
 type Command struct {
@@ -492,6 +511,7 @@ type Command struct {
 	Position time.Duration
 	// ItemID, if set, makes a skip or vote apply only while that item is
 	// current, so two people tapping skip at once skip one song, not two.
+	// For play_now and its votes, it's the queued song to play.
 	ItemID string
 }
 
@@ -519,6 +539,12 @@ func (e *Engine) Command(ctx context.Context, roomID, userID string, c Command) 
 		level = perms.Seek
 	case ActionSkip:
 		level = perms.Skip
+	case ActionPlayNow:
+		// Playing a song now skips the one playing, so it's the skip
+		// permission's call; a room that votes on skips votes on this too.
+		if perms.Skip != rooms.Vote {
+			level = perms.Skip
+		}
 	}
 	ownSkip := c.Action == ActionSkip && mine
 	if level != "" && !ownSkip && !rooms.Allowed(level, row.OwnerID, userID) {
@@ -527,7 +553,7 @@ func (e *Engine) Command(ctx context.Context, roomID, userID string, c Command) 
 	// Guests may skip their own songs, and vote if the room lets them;
 	// the rest of the controls are the members'.
 	if _, err := e.db.GetGuest(ctx, userID); err == nil {
-		vote := c.Action == ActionVoteSkip || c.Action == ActionUnvoteSkip
+		vote := c.Action == ActionVoteSkip || c.Action == ActionUnvoteSkip || c.Action == ActionVotePlayNow || c.Action == ActionUnvotePlayNow
 		if !ownSkip && (!vote || !r.settings.Guests.CanVote()) {
 			return rooms.NowPlaying{}, ErrForbidden
 		}
@@ -591,13 +617,84 @@ func (e *Engine) Command(ctx context.Context, roomID, userID string, c Command) 
 			r.votes = slices.DeleteFunc(r.votes, func(id string) bool { return id == userID })
 			e.publish(r)
 		}
+	case ActionPlayNow:
+		err = e.playNowCommand(ctx, r, userID, c.ItemID)
+	case ActionVotePlayNow, ActionUnvotePlayNow:
+		q := r.request
+		if q == nil || (c.ItemID != "" && c.ItemID != q.ItemID) {
+			break // the request is over
+		}
+		voted := slices.Contains(q.Voters, userID)
+		switch {
+		case c.Action == ActionUnvotePlayNow && userID == q.By:
+			r.request = nil
+			e.publish(r)
+		case c.Action == ActionVotePlayNow && !voted:
+			q.Voters = append(q.Voters, userID)
+			err = e.settlePlayNow(ctx, r)
+		case c.Action == ActionUnvotePlayNow && voted:
+			q.Voters = slices.DeleteFunc(q.Voters, func(id string) bool { return id == userID })
+			e.publish(r)
+		}
 	default:
-		return rooms.NowPlaying{}, &InvalidInputError{"action is play, pause, skip, seek, vote_skip or unvote_skip"}
+		return rooms.NowPlaying{}, &InvalidInputError{"action is play, pause, skip, seek, vote_skip, unvote_skip, play_now, vote_play_now or unvote_play_now"}
 	}
 	if err != nil {
 		return rooms.NowPlaying{}, err
 	}
 	return e.view(r), nil
+}
+
+// playNowCommand plays a queued song now for userID, who passed the
+// permission check, or asks the room if it votes on skips and they can't
+// skip outright.
+func (e *Engine) playNowCommand(ctx context.Context, r *room, userID, itemID string) error {
+	if itemID == "" {
+		return &InvalidInputError{"play_now needs the itemId of a queued song"}
+	}
+	it, err := e.queue.Item(ctx, r.id, itemID)
+	if errors.Is(err, queue.ErrNotFound) || (err == nil && it.State != store.ItemQueued) {
+		return &InvalidInputError{"that song isn't waiting in the queue"}
+	} else if err != nil {
+		return err
+	}
+	if r.np.Player == nil {
+		return ErrNoPlayer
+	}
+	// The owner doesn't need to ask.
+	if r.settings.Permissions.Skip != rooms.Vote || userID == r.owner {
+		return e.playNow(ctx, r, itemID)
+	}
+	if q := r.request; q != nil {
+		if q.ItemID == itemID {
+			if !slices.Contains(q.Voters, userID) {
+				q.Voters = append(q.Voters, userID)
+			}
+			return e.settlePlayNow(ctx, r)
+		}
+		if q.By != userID {
+			return &InvalidInputError{"someone's already asking to play a song now; wait for the room to decide"}
+		}
+	}
+	r.request = &rooms.PlayNowVote{ItemID: itemID, By: userID, Voters: []string{userID}, Expires: e.cfg.Now().Add(PlayNowTimeout)}
+	if v := e.playNowTally(r); v != nil && len(v.Voters) < v.Needed {
+		name := "Someone"
+		if u, err := e.db.GetUser(ctx, userID); err == nil {
+			name = u.DisplayName
+		}
+		e.notice(r, itemID, fmt.Sprintf("%s wants to play %s now", name, title(&it)))
+	}
+	return e.settlePlayNow(ctx, r)
+}
+
+// playNow ends the current song, if any, and starts itemID in its place.
+func (e *Engine) playNow(ctx context.Context, r *room, itemID string) error {
+	r.halted, r.errors = false, 0
+	reason := ""
+	if r.np.Item != nil {
+		reason = store.EndSkipped
+	}
+	return e.nextItem(ctx, r, reason, itemID)
 }
 
 func (e *Engine) play(ctx context.Context, r *room) error {
@@ -625,6 +722,10 @@ func (e *Engine) play(ctx context.Context, r *room) error {
 		}
 	}
 	r.np.State, r.np.At, r.since = StatePlaying, now, now
+	if r.np.Driver == string(provider.PlaybackStream) && !r.heard {
+		// The speaker never started it: wait for it to, under the load timeout.
+		r.np.State = StateLoading
+	}
 	r.np.Revision++
 	e.publish(r)
 	return nil
@@ -681,6 +782,7 @@ func (e *Engine) Report(ctx context.Context, roomID, userID string, rep Report) 
 	if r.np.Item == nil || r.np.Item.ID != rep.ItemID || r.np.Driver != string(provider.PlaybackStream) {
 		return e.view(r), nil
 	}
+	r.heard = true
 	switch rep.Event {
 	case EventPlaying:
 		if r.np.State == StateLoading || r.np.State == StatePlaying {
@@ -731,14 +833,23 @@ func (e *Engine) Report(ctx context.Context, roomID, userID string, rep Report) 
 // songs that fail to start. With no speaker, or after too many failures,
 // the room goes idle instead. The caller holds r.mu.
 func (e *Engine) next(ctx context.Context, r *room, reason string) error {
+	return e.nextItem(ctx, r, reason, "")
+}
+
+// nextItem is next, starting want first if it's still queued.
+func (e *Engine) nextItem(ctx context.Context, r *room, reason, want string) error {
 	for {
 		start := r.np.Player != nil && !r.halted
-		item, snap, err := e.rotate(ctx, r, reason, start)
+		item, snap, err := e.rotate(ctx, r, reason, start, want)
 		if err != nil {
 			return err
 		}
+		want = ""
 		now := e.cfg.Now()
 		r.votes = nil
+		if r.request != nil && (item == nil || item.ID == r.request.ItemID || !queued(snap, r.request.ItemID)) {
+			r.request = nil
+		}
 		r.np.Item, r.np.Position, r.np.At, r.since = item, 0, now, now
 		r.np.Next = nextOf(snap)
 		r.np.Revision++
@@ -774,9 +885,10 @@ func (e *Engine) countFailure(r *room, item *store.QueueItem, msg string, cause 
 }
 
 // rotate ends the playing song with reason and, if start, makes the next
-// song in fair order the playing one. It returns that song (nil if none)
-// and the queue as it now stands.
-func (e *Engine) rotate(ctx context.Context, r *room, reason string, start bool) (*store.QueueItem, rooms.QueueSnapshot, error) {
+// song the playing one: want if it's queued, or else the next in fair
+// order. It returns that song (nil if none) and the queue as it now
+// stands.
+func (e *Engine) rotate(ctx context.Context, r *room, reason string, start bool, want string) (*store.QueueItem, rooms.QueueSnapshot, error) {
 	r.closeRemote()
 	var next *store.QueueItem
 	snap, err := e.queue.Change(ctx, r.id, func(q *store.Queries, _ store.Room) error {
@@ -803,6 +915,9 @@ func (e *Engine) rotate(ctx context.Context, r *room, reason string, start bool)
 			return err
 		}
 		it := nextOf(snap)
+		if i := slices.IndexFunc(snap.Items, func(it store.QueueItem) bool { return it.ID == want && it.State == store.ItemQueued }); i >= 0 {
+			it = &snap.Items[i]
+		}
 		if it == nil {
 			return nil
 		}
@@ -911,7 +1026,7 @@ func (e *Engine) start(ctx context.Context, r *room, it store.QueueItem) error {
 		return errors.New("its service can't play songs")
 	}
 	r.np.Driver = string(provider.PlaybackStream)
-	r.np.State = StateLoading
+	r.np.State, r.heard = StateLoading, false
 	return nil
 }
 
@@ -951,9 +1066,12 @@ func (e *Engine) roomUpdated(row store.Room) {
 		was := r.settings.Permissions.Skip
 		r.setRoom(row)
 		if r.settings.Permissions.Skip == rooms.Vote {
+			if err := e.settlePlayNow(ctx, r); err != nil {
+				return err
+			}
 			return e.settleVote(ctx, r)
 		}
-		r.votes = nil
+		r.votes, r.request = nil, nil
 		if was == rooms.Vote {
 			e.publish(r)
 		}
@@ -983,7 +1101,12 @@ func (e *Engine) roomDeleted(roomID string) {
 // MembersChanged follows someone joining or leaving a room: a skip vote
 // needs more or fewer votes, and may now pass.
 func (e *Engine) MembersChanged(roomID string) {
-	e.background(roomID, "reacting to members", e.settleVote)
+	e.background(roomID, "reacting to members", func(ctx context.Context, r *room) error {
+		if err := e.settlePlayNow(ctx, r); err != nil {
+			return err
+		}
+		return e.settleVote(ctx, r)
+	})
 }
 
 // background runs fn on a room the engine has loaded, on another
@@ -1021,20 +1144,41 @@ func (e *Engine) tally(r *room) *rooms.SkipVotes {
 	if r.settings.Permissions.Skip != rooms.Vote || r.np.Item == nil {
 		return nil
 	}
+	exclude := r.np.Item.AddedBy
+	if r.np.Item.IsAutopilot() {
+		exclude = ""
+	}
+	votes, needed := e.count(r, r.votes, exclude)
+	return &rooms.SkipVotes{Voters: votes, Needed: needed}
+}
+
+// playNowTally counts the vote on a request to play a song now, or is nil
+// if there's none. Everyone in the room may vote.
+func (e *Engine) playNowTally(r *room) *rooms.PlayNowVote {
+	q := r.request
+	if q == nil || r.settings.Permissions.Skip != rooms.Vote {
+		return nil
+	}
+	v := *q
+	v.Voters, v.Needed = e.count(r, q.Voters, "")
+	return &v
+}
+
+// count sizes a room's vote: the votes that count, and how many it needs.
+// Everyone connected may vote but exclude; votes count even after the
+// voter leaves.
+func (e *Engine) count(r *room, cast []string, exclude string) (votes []string, needed int) {
 	voters := map[string]bool{}
 	if e.cfg.Presence != nil {
 		for _, id := range e.cfg.Presence.Members(r.id) {
 			voters[id] = true
 		}
 	}
-	// Votes count even after the voter leaves.
-	for _, id := range r.votes {
+	for _, id := range cast {
 		voters[id] = true
 	}
-	if !r.np.Item.IsAutopilot() {
-		delete(voters, r.np.Item.AddedBy)
-	}
-	votes := append([]string{}, r.votes...)
+	delete(voters, exclude)
+	votes = append([]string{}, cast...)
 	// In rooms where guests don't vote, they don't count toward the votes
 	// needed either.
 	if !r.settings.Guests.CanVote() {
@@ -1047,10 +1191,7 @@ func (e *Engine) tally(r *room) *rooms.SkipVotes {
 			}
 		}
 	}
-	return &rooms.SkipVotes{
-		Voters: votes,
-		Needed: rooms.VotesNeeded(len(voters), *r.settings.SkipVotePercent),
-	}
+	return votes, rooms.VotesNeeded(len(voters), *r.settings.SkipVotePercent)
 }
 
 // settleVote skips the current song if enough of the room voted to, and
@@ -1068,6 +1209,27 @@ func (e *Engine) settleVote(ctx context.Context, r *room) error {
 	return e.next(ctx, r, store.EndSkipped)
 }
 
+// settlePlayNow plays the requested song if enough of the room agreed,
+// and otherwise publishes the tally. The caller holds r.mu.
+func (e *Engine) settlePlayNow(ctx context.Context, r *room) error {
+	v := e.playNowTally(r)
+	if v == nil {
+		return nil
+	}
+	if len(v.Voters) < v.Needed || r.np.Player == nil {
+		e.publish(r)
+		return nil
+	}
+	r.request = nil
+	if err := e.playNow(ctx, r, v.ItemID); err != nil {
+		return err
+	}
+	if it := r.np.Item; len(v.Voters) > 1 && it != nil && it.ID == v.ItemID {
+		e.notice(r, it.ID, fmt.Sprintf("Playing %s: the room agreed", title(it)))
+	}
+	return nil
+}
+
 // refresh starts an idle room when songs arrive, and keeps the preloaded
 // next song current as the order changes.
 func (e *Engine) refresh(ctx context.Context, r *room) error {
@@ -1079,11 +1241,20 @@ func (e *Engine) refresh(ctx context.Context, r *room) error {
 		return err
 	}
 	next := nextOf(snap)
-	if idOf(next) != idOf(r.np.Next) {
+	gone := r.request != nil && !queued(snap, r.request.ItemID)
+	if gone {
+		r.request = nil
+	}
+	if idOf(next) != idOf(r.np.Next) || gone {
 		r.np.Next = next
 		e.publish(r)
 	}
 	return nil
+}
+
+// queued reports whether itemID is waiting in snap.
+func queued(snap rooms.QueueSnapshot, itemID string) bool {
+	return slices.Contains(snap.UpNext, itemID)
 }
 
 func idOf(it *store.QueueItem) string {
@@ -1113,17 +1284,35 @@ func (e *Engine) Tick(ctx context.Context) {
 }
 
 func (e *Engine) tick(ctx context.Context, r *room) error {
-	if !r.loaded || r.np.Item == nil {
+	if !r.loaded {
 		return nil
 	}
 	now := e.cfg.Now()
+	if r.request != nil && !now.Before(r.request.Expires) {
+		r.request = nil
+		e.publish(r)
+	}
+	if r.np.Item == nil {
+		return nil
+	}
 	switch r.np.Driver {
 	case string(provider.PlaybackStream):
 		switch r.np.State {
 		case StateLoading:
-			if now.Sub(r.since) >= e.cfg.LoadTimeout {
-				return e.failed(ctx, r, fmt.Sprintf("Skipped %s: it took too long to start", title(r.np.Item)), errors.New("load timeout"))
+			if now.Sub(r.since) < e.cfg.LoadTimeout {
+				break
 			}
+			if p := r.np.Player; p != nil && !r.heard {
+				// The speaker never answered: it's asleep or gone, and
+				// skipping would burn the queue on songs that are fine.
+				if err := e.pause(ctx, r); err != nil {
+					return err
+				}
+				e.notice(r, r.np.Item.ID, fmt.Sprintf("Paused: %s didn't start %s", playerName(p), title(r.np.Item)))
+				e.publish(r)
+				return nil
+			}
+			return e.failed(ctx, r, fmt.Sprintf("Skipped %s: it took too long to start", title(r.np.Item)), errors.New("load timeout"))
 		case StatePlaying:
 			if p := r.np.Player; p != nil && now.Sub(p.LastSeen) >= e.cfg.PlayerTimeout {
 				if err := e.pause(ctx, r); err != nil {

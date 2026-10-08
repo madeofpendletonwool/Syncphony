@@ -26,7 +26,7 @@ func (s *Server) GetPlayback(ctx context.Context, req GetPlaybackRequestObject) 
 	return GetPlayback200JSONResponse(toNowPlaying(np)), nil
 }
 
-// ControlPlayback plays, pauses, skips or seeks.
+// ControlPlayback plays, pauses, skips, seeks, or plays a queued song now.
 func (s *Server) ControlPlayback(ctx context.Context, req ControlPlaybackRequestObject) (ControlPlaybackResponseObject, error) {
 	c := playback.Command{Action: string(req.Body.Action)}
 	if req.Body.PositionMs != nil {
@@ -190,6 +190,9 @@ func toNowPlaying(np rooms.NowPlaying) NowPlaying {
 	}
 	if v := np.SkipVotes; v != nil {
 		out.SkipVotes = &SkipVotes{Voters: v.Voters, Needed: v.Needed}
+	}
+	if v := np.PlayNow; v != nil {
+		out.PlayNow = &PlayNowVote{ItemId: v.ItemID, By: v.By, Voters: v.Voters, Needed: v.Needed, Expires: v.Expires}
 	}
 	return out
 }

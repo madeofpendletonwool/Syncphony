@@ -7,6 +7,7 @@ import { useBeatSync } from '@/hooks/use-beat-sync'
 import { easeOutExpo } from '@/lib/motion'
 import { usePlayer } from '@/lib/now-playing'
 import { useOnline } from '@/lib/pwa'
+import { PlayNowRequest } from '@/components/room/play-now-request'
 import { Toaster } from '@/components/toaster'
 import { LightsMode } from '@/components/visualizer/lights-mode'
 import { VisualizerMode } from '@/components/visualizer/visualizer-mode'
@@ -52,6 +53,7 @@ export function AppShell() {
 
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40">
           <div className="pointer-events-auto mx-auto flex max-w-2xl flex-col gap-2 px-3 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+            <PlayNowRequest />
             <Toaster />
             <MiniPlayer expanded={expanded} onExpand={() => setExpanded(true)} />
             <BottomNav />
