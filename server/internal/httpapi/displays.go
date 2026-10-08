@@ -35,6 +35,7 @@ var displayOps = map[string]bool{
 	"GetUserAvatar":          true,
 	"GetQueueItemArtwork":    true,
 	"GetQueueItemPalette":    true,
+	"GetQueueItemBeatMap":    true,
 	"GetQueueItemLyrics":     true,
 	"GetQueueItemLinerNotes": true,
 	"GetHearts":              true,
@@ -44,6 +45,7 @@ var displayOps = map[string]bool{
 	"ReleasePlayer":   true,
 	"ReportPlayback":  true,
 	"StreamQueueItem": true,
+	"ControlPlayback": true,
 }
 
 // audioOps are the displayOps that make a display the room's speaker. They
@@ -53,6 +55,7 @@ var audioOps = map[string]bool{
 	"ReleasePlayer":   true,
 	"ReportPlayback":  true,
 	"StreamQueueItem": true,
+	"ControlPlayback": true,
 }
 
 // Display errors.
@@ -71,9 +74,13 @@ func displayRoom(req any) (roomID string, ok bool) {
 		return r.RoomId, true
 	case GetPlaybackRequestObject:
 		return r.RoomId, true
+	case ControlPlaybackRequestObject:
+		return r.RoomId, true
 	case GetQueueItemArtworkRequestObject:
 		return r.RoomId, true
 	case GetQueueItemPaletteRequestObject:
+		return r.RoomId, true
+	case GetQueueItemBeatMapRequestObject:
 		return r.RoomId, true
 	case GetQueueItemLyricsRequestObject:
 		return r.RoomId, true

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/analysis"
 	"github.com/madeofpendletonwool/syncphony/server/internal/artcache"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
@@ -359,6 +360,37 @@ func (s *Server) GetQueueItemPalette(ctx context.Context, req GetQueueItemPalett
 		return nil, err
 	}
 	return GetQueueItemPalette200JSONResponse(toPalette(p)), nil
+}
+
+// GetQueueItemBeatMap returns a queued song's beat map, working it out if
+// it hasn't been.
+func (s *Server) GetQueueItemBeatMap(ctx context.Context, req GetQueueItemBeatMapRequestObject) (GetQueueItemBeatMapResponseObject, error) {
+	it, err := s.Queue.Item(ctx, req.RoomId, req.ItemId)
+	if err != nil {
+		return nil, err
+	}
+	if s.BeatMaps == nil {
+		return nil, analysis.ErrUnavailable
+	}
+	t, _ := queuedTrack(it)
+	m, err := s.BeatMaps.ForItem(ctx, it, t.Duration)
+	if err != nil {
+		return nil, err
+	}
+	return GetQueueItemBeatMap200JSONResponse(toBeatMap(m)), nil
+}
+
+func toBeatMap(m analysis.Map) BeatMap {
+	out := BeatMap{
+		DurationMs: m.DurationMs, Bpm: float32(m.BPM), Confidence: float32(m.Confidence), Beats: m.BeatsMs, Downbeat: m.Downbeat,
+		FrameRate: float32(m.FrameRate), BandCount: analysis.Bands, Bands: m.BandsEnv, Loudness: m.Loudness,
+		Features: BeatMapFeatures{Energy: float32(m.Features.Energy), Brightness: float32(m.Features.Brightness), Dynamics: float32(m.Features.Dynamics)},
+		Sections: make([]BeatMapSection, len(m.Sections)),
+	}
+	for i, sec := range m.Sections {
+		out.Sections[i] = BeatMapSection{StartMs: sec.StartMs, Energy: float32(sec.Energy)}
+	}
+	return out
 }
 
 // queuedTrack is the provider.Track snapshot taken when it was queued.

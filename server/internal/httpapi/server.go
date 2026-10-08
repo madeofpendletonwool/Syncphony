@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/admin"
+	"github.com/madeofpendletonwool/syncphony/server/internal/analysis"
 	"github.com/madeofpendletonwool/syncphony/server/internal/artwork"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
@@ -59,6 +60,8 @@ type Server struct {
 	Artwork *artwork.Service
 	// Palettes works out queued songs' artwork colors.
 	Palettes *palette.Service
+	// BeatMaps works out queued songs' beat maps; nil without ffmpeg.
+	BeatMaps *analysis.Service
 	// Realtime: room state, the event bus, and who's connected.
 	Rooms    *rooms.Service
 	Queue    *queue.Service
@@ -405,6 +408,7 @@ var errorCodes = []struct {
 	{playback.ErrNothingPlaying, http.StatusConflict, "nothing_playing"},
 	{playback.ErrNotStreamable, http.StatusConflict, "not_streamable"},
 	{transcode.ErrNoTranscoder, http.StatusUnsupportedMediaType, "unsupported_format"},
+	{analysis.ErrUnavailable, http.StatusNotFound, "no_beat_map"},
 	{provider.ErrRange, http.StatusRequestedRangeNotSatisfiable, "range_not_satisfiable"},
 	{queue.ErrNotFound, http.StatusNotFound, "not_found"},
 	{queue.ErrForbidden, http.StatusForbidden, "forbidden"},

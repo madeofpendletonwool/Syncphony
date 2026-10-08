@@ -1,4 +1,4 @@
-import { ChevronDown, ListMusic, Mic2 } from 'lucide-react'
+import { ChevronDown, Lightbulb, ListMusic, Mic2, Sparkles } from 'lucide-react'
 import { AnimatePresence, motion, useDragControls } from 'motion/react'
 import { Dialog } from 'radix-ui'
 import { useRef, useState } from 'react'
@@ -11,13 +11,17 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { UserAvatar } from '@/components/user-avatar'
+import { useBeat } from '@/hooks/use-beat'
 import { usePosition } from '@/hooks/use-position'
 import { laneStyle } from '@/lib/lane'
+import { lightsOpen, visualizerOpen } from '@/lib/beat'
 import { easeOutExpo, spring } from '@/lib/motion'
 import { formatDuration, usePlayer } from '@/lib/now-playing'
 import { AlbumBackdrop } from './album-backdrop'
 import { TransportControls } from './player-controls'
+import { BeatLab } from './beat-lab'
 import { SheetQueue } from './sheet-queue'
+import { Waveform } from './waveform'
 
 /**
  * Full-screen now playing, with the room's queue below (beside, on wide
@@ -33,6 +37,7 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
   // Lyrics take the artwork's place.
   const [lyrics, setLyrics] = useState(false)
   const close = () => onOpenChange(false)
+  const beat = useBeat<HTMLDivElement>()
 
   return (
     <Dialog.Root open={open && np !== null} onOpenChange={onOpenChange}>
@@ -67,25 +72,46 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
                 <AlbumBackdrop src={np.artworkUrl} className="absolute" />
                 <div
                   onPointerDown={(e) => drag.start(e)}
-                  className="flex touch-none items-center justify-between px-gutter pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3"
+                  className="relative flex touch-none items-center justify-between px-gutter pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3"
                 >
                   <Dialog.Close asChild>
                     <Button size="icon" variant="glass" aria-label="Close now playing">
                       <ChevronDown />
                     </Button>
                   </Dialog.Close>
-                  <span aria-hidden className="h-1.5 w-10 rounded-full bg-foreground/25" />
+                  <span aria-hidden className="absolute left-1/2 h-1.5 w-10 -translate-x-1/2 rounded-full bg-foreground/25" />
                   {np.roomId ? (
-                    <Button
-                      size="icon"
-                      variant={lyrics ? 'default' : 'glass'}
-                      aria-label="Lyrics"
-                      aria-pressed={lyrics}
-                      onClick={() => setLyrics((l) => !l)}
-                      onPointerDown={(e) => e.stopPropagation()}
-                    >
-                      <Mic2 />
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        size="icon"
+                        variant="glass"
+                        aria-label="Visualizer"
+                        onClick={() => visualizerOpen.set(true)}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <Sparkles />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="glass"
+                        aria-label="Lights"
+                        onClick={() => lightsOpen.set(true)}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <Lightbulb />
+                      </Button>
+                      <BeatLab inline />
+                      <Button
+                        size="icon"
+                        variant={lyrics ? 'default' : 'glass'}
+                        aria-label="Lyrics"
+                        aria-pressed={lyrics}
+                        onClick={() => setLyrics((l) => !l)}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <Mic2 />
+                      </Button>
+                    </div>
                   ) : (
                     <span className="size-10" />
                   )}
@@ -102,12 +128,16 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
                         onPointerDown={(e) => drag.start(e)}
                         className="flex flex-1 touch-none items-center justify-center px-8 py-4"
                       >
-                        <Artwork
-                          src={np.artworkUrl}
-                          alt={np.track.album ? `${np.track.album} cover` : ''}
-                          layoutId="now-playing-artwork"
-                          className="w-full max-w-[min(26rem,46dvh)] rounded-3xl shadow-[0_30px_80px_-20px_var(--glow)]"
-                        />
+                        {/* Lifts on the one, with a bloom of the art's color behind it. */}
+                        <div ref={beat} className="beat-lift relative w-full max-w-[min(26rem,46dvh)]">
+                          <div aria-hidden className="beat-bloom pointer-events-none absolute -inset-[12%] -z-10 rounded-full blur-2xl" />
+                          <Artwork
+                            src={np.artworkUrl}
+                            alt={np.track.album ? `${np.track.album} cover` : ''}
+                            layoutId="now-playing-artwork"
+                            className="w-full rounded-3xl shadow-[0_30px_80px_-20px_var(--glow)]"
+                          />
+                        </div>
                       </div>
                     )}
 
@@ -140,6 +170,12 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
                       </motion.div>
 
                       <div className="mt-5">
+                        <Waveform
+                          itemId={np.itemId}
+                          positionMs={scrub ?? position}
+                          durationMs={np.track.durationMs}
+                          className="mb-1"
+                        />
                         <Slider
                           aria-label="Seek"
                           max={np.track.durationMs}

@@ -5,9 +5,9 @@ import { Equalizer } from '@/components/equalizer'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { useMe } from '@/lib/auth'
-import { can, playbackQuery } from '@/lib/playback'
+import { can, playbackQuery, sendCommand } from '@/lib/playback'
 import type { Room } from '@/lib/room'
-import { deviceId, speaker, speakerState } from '@/lib/speaker'
+import { deviceId, speaker, speakerName, speakerState } from '@/lib/speaker'
 import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { deviceName } from '@/lib/webauthn'
@@ -29,11 +29,23 @@ export function SpeakerPanel({ room, prominent }: { room: Room; prominent?: bool
   // Guests are in the room with the speaker; listening along is for members.
   const mayListen = !me.guest
   const thisDevice = deviceNoun()
-  const name = `${me.displayName.split(' ')[0]}'s ${deviceName()}`
+  const name = speakerName(me.displayName)
 
   const start = () => {
     setStarting(true)
-    void speaker.start(room.id, name).finally(() => setStarting(false))
+    const takingOver = !!other
+    void speaker
+      .start(room.id, name)
+      .then(async (np) => {
+        // "Play on this phone" means play: start a paused room too. Taking
+        // over from another speaker leaves it as it was.
+        if (!np || takingOver || np.state !== 'paused' || !can(room, me.id, 'playPause')) return
+        speaker.onState?.(await sendCommand(room.id, { action: 'play' }))
+      })
+      .catch(() => {
+        // The speaker is set up either way; play is a tap away.
+      })
+      .finally(() => setStarting(false))
   }
   const listen = () => speaker.listen(room.id, name, playback.data, allowed)
 
@@ -141,13 +153,13 @@ function speakerHint(status: string) {
   return 'Leave this open; it keeps playing locked'
 }
 
-function listenerHint(status: string, speakerName?: string, roomState?: string) {
+function listenerHint(status: string, speakerWho?: string, roomState?: string) {
   if (status === 'remote') return 'This song plays on its own service'
   if (status === 'blocked') return 'The browser needs a tap first'
   if (status === 'paused') return roomState === 'playing' ? 'Paused here; the room plays on' : 'The room is paused'
-  if (!speakerName) return 'Waiting for a speaker'
-  if (status === 'waiting') return `Waiting for ${speakerName}`
-  return `In time with ${speakerName}`
+  if (!speakerWho) return 'Waiting for a speaker'
+  if (status === 'waiting') return `Waiting for ${speakerWho}`
+  return `In time with ${speakerWho}`
 }
 
 /** What to call this device in "play on this …". */

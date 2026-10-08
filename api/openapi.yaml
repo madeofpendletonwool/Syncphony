@@ -2105,6 +2105,39 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /rooms/{roomId}/queue/{itemId}/beatmap:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getQueueItemBeatMap
+      summary: A queued song's beat map
+      description: |
+        The song's tempo, beats, bars and sections, and its spectrum from
+        moment to moment, for visuals that move with the music on every
+        screen in the room. Worked out from the audio once, usually soon
+        after the song is queued; if it hasn't been yet, it's worked out
+        now, which can take a few seconds. 404 `no_beat_map` if the song
+        can't have one (its service has no audio, or it couldn't be
+        decoded).
+      tags: [queue]
+      security:
+        - session: []
+        - display: []
+      responses:
+        "200":
+          description: The beat map
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BeatMap"
+        default:
+          $ref: "#/components/responses/Error"
+
   /rooms/{roomId}/queue/{itemId}/lyrics:
     parameters:
       - $ref: "#/components/parameters/RoomId"
@@ -2937,8 +2970,13 @@ paths:
         else sends `vote_skip` (and `unvote_skip` to take it back); the
         song is skipped once `skipVotes.needed` have voted.
         `play` needs a speaker (`no_player`); pausing, skipping, seeking or
-        voting with nothing playing is `nothing_playing`.
+        voting with nothing playing is `nothing_playing`. A display with
+        `audio` on may `play`, `pause` and `skip` in its own room, as
+        whoever paired it.
       tags: [playback]
+      security:
+        - session: []
+        - display: []
       requestBody:
         required: true
         content:
@@ -3320,6 +3358,33 @@ components:
           description: |
             The guest expired or was removed. They're kept only so the room's
             history and recaps can show their name.
+
+    RoomScreens:
+      type: object
+      description: |
+        How the room's big screens show the music (MAD-779). Set from any
+        phone by whoever manages the room; every screen follows.
+      required: [look, scene, intensity]
+      properties:
+        look:
+          type: string
+          enum: [stage, visualizer, auto]
+          default: auto
+          description: |
+            `stage`: now playing, lyrics and what's next. `visualizer`:
+            full-screen visuals with now playing small. `auto`: the stage,
+            with visuals taking over for songs with no words to sing.
+        scene:
+          type: string
+          maxLength: 32
+          default: ""
+          description: The visualizer's scene, or "" to pick one that suits each song.
+        intensity:
+          type: number
+          minimum: 0.5
+          maximum: 2
+          default: 1.5
+          description: How strongly the screens move with the music.
 
     RoomGuests:
       type: object
@@ -5013,6 +5078,82 @@ components:
         light:
           $ref: "#/components/schemas/OklchColor"
 
+    BeatMap:
+      type: object
+      description: |
+        A song's beat map (MAD-773). Times are in ms from the start of the
+        song, on the same clock as the playback position.
+      required: [durationMs, bpm, confidence, beats, downbeat, sections, frameRate, bandCount, bands, loudness, features]
+      properties:
+        durationMs:
+          type: integer
+          format: int64
+        bpm:
+          type: number
+          description: The tempo; 0 if the song has no steady beat, and then `beats` is empty.
+        confidence:
+          type: number
+          description: How clear the beat is, 0–1.
+        beats:
+          type: array
+          description: The beats.
+          items:
+            type: integer
+            format: int64
+        downbeat:
+          type: integer
+          description: The index in `beats` of the first bar's first beat; every fourth beat after it starts a bar.
+        sections:
+          type: array
+          description: The song's parts (intro, verse, drop), in order; the first starts at 0.
+          items:
+            $ref: "#/components/schemas/BeatMapSection"
+        frameRate:
+          type: number
+          description: Frames a second in `bands` and `loudness`.
+        bandCount:
+          type: integer
+          description: Spectrum bands per frame in `bands`.
+        bands:
+          type: string
+          format: byte
+          description: |
+            Base64: each frame's level in each band, low to high, a byte
+            (0–255) each, `bandCount` bytes a frame. Each band is scaled to
+            its own range in the song.
+        loudness:
+          type: string
+          format: byte
+          description: "Base64: each frame's overall level, a byte (0–255) each, scaled to the song."
+        features:
+          $ref: "#/components/schemas/BeatMapFeatures"
+
+    BeatMapSection:
+      type: object
+      required: [startMs, energy]
+      properties:
+        startMs:
+          type: integer
+          format: int64
+        energy:
+          type: number
+          description: How loud it is next to the rest of the song, 0–1.
+
+    BeatMapFeatures:
+      type: object
+      description: The song as a whole, 0–1 each, for choosing how it looks.
+      required: [energy, brightness, dynamics]
+      properties:
+        energy:
+          type: number
+          description: How loud it's mastered, from a quiet acoustic recording to a club track.
+        brightness:
+          type: number
+          description: How much treble there is.
+        dynamics:
+          type: number
+          description: How much its loudness changes.
+
     Accent:
       type: object
       required: [h, c]
@@ -5244,6 +5385,34 @@ components:
           $ref: "#/components/schemas/QueueItem"
         skipVotes:
           $ref: "#/components/schemas/SkipVotes"
+        playNow:
+          $ref: "#/components/schemas/PlayNowVote"
+
+    PlayNowVote:
+      type: object
+      description: |
+        Someone's request to play a queued song now, in a room whose skip
+        permission is `vote`. It passes on the same share of the room as a
+        skip, and lapses at `expires`, when the song leaves the queue, or
+        when whoever asked takes it back.
+      required: [itemId, by, voters, needed, expires]
+      properties:
+        itemId:
+          type: string
+        by:
+          type: string
+          description: Who asked. Their vote is the first.
+        voters:
+          type: array
+          description: IDs of the users who agreed, in order.
+          items:
+            type: string
+        needed:
+          type: integer
+          description: How many agreeing play the song.
+        expires:
+          type: string
+          format: date-time
 
     SkipVotes:
       type: object
@@ -5290,7 +5459,13 @@ components:
       properties:
         action:
           type: string
-          enum: [play, pause, skip, seek, vote_skip, unvote_skip]
+          enum: [play, pause, skip, seek, vote_skip, unvote_skip, play_now, vote_play_now, unvote_play_now]
+          description: |
+            `play_now` plays the queued song `itemId` straight away, skipping
+            the one playing. It takes the skip permission; in a room that
+            votes on skips, it asks the room instead (`playNow`), and
+            `vote_play_now` agrees. `unvote_play_now` takes a vote back, or
+            withdraws the request from whoever asked.
         positionMs:
           type: integer
           format: int64
@@ -5300,7 +5475,8 @@ components:
           type: string
           description: |
             Skip (or vote) only if this is still the current song, so two
-            people tapping skip skip one song.
+            people tapping skip skip one song. For `play_now` and its votes,
+            the queued song to play.
 
     ClaimPlayerRequest:
       type: object
@@ -5315,6 +5491,13 @@ components:
           type: string
           maxLength: 64
           example: Collin's phone
+        playItemId:
+          type: string
+          description: |
+            A queued song to play now, as `play_now` would, instead of
+            starting the next in fair order: pressing play on a song with no
+            speaker. Ignored if the caller would have to ask the room, or
+            the song isn't waiting.
 
     PlayerReport:
       type: object
@@ -5601,7 +5784,7 @@ components:
 
     Room:
       type: object
-      required: [id, name, ownerId, visibility, approveJoins, fairnessMode, fairness, matching, autopilot, guests, permissions, skipVotePercent, createdAt]
+      required: [id, name, ownerId, visibility, approveJoins, fairnessMode, fairness, matching, autopilot, guests, screens, permissions, skipVotePercent, createdAt]
       properties:
         id:
           type: string
@@ -5624,6 +5807,8 @@ components:
           $ref: "#/components/schemas/RoomAutopilot"
         guests:
           $ref: "#/components/schemas/RoomGuests"
+        screens:
+          $ref: "#/components/schemas/RoomScreens"
         permissions:
           $ref: "#/components/schemas/RoomPermissions"
         skipVotePercent:
@@ -5654,6 +5839,8 @@ components:
           $ref: "#/components/schemas/RoomAutopilot"
         guests:
           $ref: "#/components/schemas/RoomGuests"
+        screens:
+          $ref: "#/components/schemas/RoomScreens"
         permissions:
           $ref: "#/components/schemas/RoomPermissionsChange"
         skipVotePercent:
@@ -5684,6 +5871,8 @@ components:
           $ref: "#/components/schemas/RoomAutopilot"
         guests:
           $ref: "#/components/schemas/RoomGuests"
+        screens:
+          $ref: "#/components/schemas/RoomScreens"
         permissions:
           $ref: "#/components/schemas/RoomPermissionsChange"
         skipVotePercent:

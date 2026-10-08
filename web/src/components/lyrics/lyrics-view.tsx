@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { Mic2, Minus, Music4, Plus, RotateCcw } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useBeat } from '@/hooks/use-beat'
 import { easeOutExpo } from '@/lib/motion'
 import {
   activeLine,
@@ -92,6 +93,15 @@ function SyncedLyrics({
   const position = () => positionAt(np, Math.max(Date.now(), np.at)) - offset
   const current = useActiveLine(lines, np, position)
   const scroller = useRef<HTMLDivElement>(null)
+  // The current line's glow follows the beat.
+  const beat = useBeat<HTMLDivElement>()
+  const scrollerRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      scroller.current = el
+      return beat(el)
+    },
+    [beat],
+  )
   const lineRefs = useRef<(HTMLElement | null)[]>([])
   const reduced = useReducedMotion()
   // Reading ahead pauses following along for a few seconds.
@@ -109,7 +119,7 @@ function SyncedLyrics({
 
   return (
     <div
-      ref={scroller}
+      ref={scrollerRef}
       onWheel={touched}
       onTouchMove={touched}
       className={cn(
@@ -210,7 +220,7 @@ function LineText({
         backgroundImage:
           'linear-gradient(90deg, var(--pal-text) var(--fill, 0%), color-mix(in oklch, var(--pal-text) 55%, var(--foreground)) var(--fill, 0%))',
       }}
-      className="bg-clip-text text-transparent [-webkit-box-decoration-break:clone] [box-decoration-break:clone] drop-shadow-[0_0_24px_color-mix(in_oklch,var(--pal-text)_35%,transparent)]"
+      className="beat-lyric bg-clip-text text-transparent [-webkit-box-decoration-break:clone] [box-decoration-break:clone]"
     >
       {line.text}
     </span>

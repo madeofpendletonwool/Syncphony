@@ -1,16 +1,21 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Heart, Sparkles } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Artwork } from '@/components/artwork'
 import { LyricsView } from '@/components/lyrics/lyrics-view'
 import { AutopilotMark } from '@/components/room/autopilot-badge'
 import { CrownMoment } from '@/components/room/crown-moment'
 import { AlbumBackdrop } from '@/components/shell/album-backdrop'
 import { UserAvatar } from '@/components/user-avatar'
+import { Visualizer } from '@/components/visualizer/visualizer'
 import { useAlbumPalette } from '@/hooks/use-album-palette'
+import { useBeatSync } from '@/hooks/use-beat-sync'
+import { useShow } from '@/hooks/use-scene'
 import { usePosition } from '@/hooks/use-position'
+import { useWakeLock } from '@/hooks/use-wake-lock'
 import { autopilotReason, autopilotSource } from '@/lib/autopilot'
+import { setBeatSettings } from '@/lib/beat'
 import { guestPassQuery } from '@/lib/guests'
 import { laneStyle } from '@/lib/lane'
 import { linerCards, linerNotesQuery } from '@/lib/liner-notes'
@@ -19,7 +24,7 @@ import { easeOutExpo, spring } from '@/lib/motion'
 import { heartsQuery } from '@/lib/nights'
 import { formatDuration, type NowPlaying, type User } from '@/lib/now-playing'
 import { playbackQuery, queueArtworkUrl, toNowPlaying, type QueueItem } from '@/lib/playback'
-import { queueQuery } from '@/lib/room'
+import { queueQuery, type Room } from '@/lib/room'
 import { live, useRoomSocket } from '@/lib/room-socket'
 import { useStore } from '@/lib/store'
 import { usersQuery } from '@/lib/users'
@@ -28,6 +33,8 @@ import { FloatingReactions } from './floating-reactions'
 import { LinerCards } from './liner-cards'
 import { QrCode } from './qr-code'
 import { TvAudio } from './tv-audio'
+
+type RoomScreens = Room['screens']
 
 const UP_NEXT_SHOWN = 5
 
@@ -40,17 +47,20 @@ const UP_NEXT_SHOWN = 5
 export function TvStage({
   roomId,
   roomName,
+  screens,
   paired,
   onUnpaired,
   audio,
 }: {
   roomId: string
   roomName: string
+  /** How the room's big screens look (room settings). */
+  screens: RoomScreens
   /** A paired display, rather than a signed-in user's screen. */
   paired: boolean
   onUnpaired: () => void
   /** Set when this screen may be the room's speaker. */
-  audio?: { device: string; name: string; onStopped?: () => void }
+  audio?: { device: string; name: string; onStopped?: () => void; canPlayPause?: boolean; canSkip?: boolean }
 }) {
   const queryClient = useQueryClient()
   useRoomSocket(roomId, { display: true, onSessionEnded: paired ? onUnpaired : undefined })
@@ -62,8 +72,19 @@ export function TvStage({
     [roomId, playback.data, users.data],
   )
   useAlbumPalette(np)
+  useBeatSync(np)
   useWakeLock()
+  // Big screens move harder than phones, as hard as the room says.
+  useEffect(() => {
+    setBeatSettings({ level: 'subtle', intensity: screens.intensity, scene: 'auto' })
+  }, [screens.intensity])
+  // The visualizer takes over in its look, and in auto for songs with no words to sing.
+  const words = useQuery({ ...lyricsQuery(roomId, np?.itemId ?? ''), enabled: !!np?.itemId })
+  const wordless = words.isSuccess && (!words.data || words.data.instrumental)
+  const visualizing = !!np && (screens.look === 'visualizer' || (screens.look === 'auto' && wordless))
+  const show = useShow(screens.scene)
   const { status } = useStore(live)
+  const pointer = usePointerShown()
 
   // Songs queued by someone who signed up after we loaded the user list.
   useEffect(() => {
@@ -84,9 +105,23 @@ export function TvStage({
     : { url: `${location.origin}/room?join=${encodeURIComponent(roomId)}`, guests: false }
 
   return (
-    <div className="relative isolate h-dvh cursor-none overflow-hidden select-none">
-      <AlbumBackdrop src={np?.artworkUrl} />
+    <div className={cn('relative isolate h-dvh overflow-hidden select-none', !pointer && 'cursor-none')}>
+      <AlbumBackdrop src={np?.artworkUrl} scene={!visualizing} />
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgb(0_0_0/0.55))]" />
+      <AnimatePresence>
+        {visualizing && (
+          <motion.div
+            key="visualizer"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.6 }}
+            className="absolute inset-0"
+          >
+            <Visualizer show={show} artworkUrl={np?.artworkUrl} />
+          </motion.div>
+        )}
+      </AnimatePresence>
       <FloatingReactions users={users.data} />
       <CrownMoment roomId={roomId} variant="stage" />
 
@@ -100,19 +135,63 @@ export function TvStage({
           {audio && <TvAudio roomId={roomId} {...audio} />}
         </header>
 
-        <main className="grid min-h-0 flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)] gap-[4vw]">
-          {np ? <NowPlayingColumn np={np} /> : <QuietColumn />}
-          <section className="relative flex min-h-0 flex-col justify-center">
-            {np ? <StageWords np={np} /> : <JoinPrompt {...join} big />}
-          </section>
-        </main>
+        {visualizing && np ? (
+          <footer className="mt-auto flex items-end justify-between gap-[3vw]">
+            <VisualizerCaption np={np} />
+            <JoinPrompt {...join} />
+          </footer>
+        ) : (
+          <>
+            <main className="grid min-h-0 flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)] gap-[4vw]">
+              {np ? <NowPlayingColumn np={np} /> : <QuietColumn />}
+              <section className="relative flex min-h-0 flex-col justify-center">
+                {np ? <StageWords np={np} /> : <JoinPrompt {...join} big />}
+              </section>
+            </main>
 
-        <footer className="flex items-end justify-between gap-[3vw]">
-          <UpNext items={upNext.slice(0, UP_NEXT_SHOWN)} more={Math.max(0, upNext.length - UP_NEXT_SHOWN)} roomId={roomId} userById={userById} />
-          {np && <JoinPrompt {...join} />}
-        </footer>
+            <footer className="flex items-end justify-between gap-[3vw]">
+              <UpNext items={upNext.slice(0, UP_NEXT_SHOWN)} more={Math.max(0, upNext.length - UP_NEXT_SHOWN)} roomId={roomId} userById={userById} />
+              {np && <JoinPrompt {...join} />}
+            </footer>
+          </>
+        )}
       </div>
     </div>
+  )
+}
+
+/** What's playing, small in a corner while the visualizer has the screen. */
+function VisualizerCaption({ np }: { np: NowPlaying }) {
+  const position = usePosition(np)
+  const pct = np.track.durationMs > 0 ? (position / np.track.durationMs) * 100 : 0
+  return (
+    <AnimatePresence mode="popLayout" initial={false}>
+      <motion.div
+        key={np.itemId}
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -16 }}
+        transition={{ duration: 0.8, ease: easeOutExpo }}
+        className="glass flex max-w-[55vw] min-w-0 items-center gap-[1.5vw] rounded-[2.4vh] p-[1.2vh] pr-[2vw]"
+      >
+        <Artwork src={np.artworkUrl} alt="" className="size-[11vh] rounded-[1.6vh]" />
+        <div className="min-w-0">
+          <p className="line-clamp-1 text-[clamp(1.2rem,2.2vw,2.4rem)] leading-tight font-bold">{np.track.title}</p>
+          <p className="line-clamp-1 text-[clamp(0.95rem,1.5vw,1.6rem)] text-muted-foreground">
+            {np.track.artists.join(', ')}
+            {np.requester && (
+              <span style={laneStyle(np.requester.color)}>
+                {' · '}
+                <span className="text-(--lane)">{np.requester.displayName}</span>
+              </span>
+            )}
+          </p>
+          <div className="mt-[1vh] h-[0.5vh] w-[18vw] overflow-hidden rounded-full bg-foreground/15">
+            <div className="h-full rounded-full bg-(--pal-text) transition-[width] duration-300 ease-linear" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      </motion.div>
+    </AnimatePresence>
   )
 }
 
@@ -120,7 +199,9 @@ function NowPlayingColumn({ np }: { np: NowPlaying }) {
   const position = usePosition(np)
   const pct = np.track.durationMs > 0 ? (position / np.track.durationMs) * 100 : 0
   return (
-    <section className="flex min-h-0 flex-col justify-center gap-[2.5vh] overflow-hidden">
+    // The artwork gives way to a long title on a short screen: it shrinks to
+    // the height that's left, so the title and the times always fit.
+    <section className="flex min-h-0 flex-col justify-center-safe gap-[2.5vh] overflow-hidden">
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.div
           key={np.itemId}
@@ -128,14 +209,16 @@ function NowPlayingColumn({ np }: { np: NowPlaying }) {
           animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
           exit={{ opacity: 0, scale: 1.04, filter: 'blur(12px)' }}
           transition={{ duration: 0.9, ease: easeOutExpo }}
-          className="flex shrink-0 flex-col gap-[2.5vh]"
+          className="flex min-h-0 flex-col gap-[2.5vh]"
         >
-          <Artwork
-            src={np.artworkUrl}
-            alt=""
-            className="w-[min(34vh,100%)] rounded-[3vh] shadow-[0_40px_120px_-30px_var(--glow)]"
-          />
-          <div className="min-w-0">
+          <div className="flex min-h-[10vh] flex-[0_1_34vh]">
+            <Artwork
+              src={np.artworkUrl}
+              alt=""
+              className="h-full w-auto max-w-full rounded-[3vh] shadow-[0_40px_120px_-30px_var(--glow)]"
+            />
+          </div>
+          <div className="min-w-0 shrink-0">
             <h1 className="line-clamp-2 text-[clamp(1.75rem,3.4vw,3.75rem)] leading-[1.08] font-bold tracking-tight text-balance">
               {np.track.title}
             </h1>
@@ -167,7 +250,7 @@ function NowPlayingColumn({ np }: { np: NowPlaying }) {
           </div>
         </motion.div>
       </AnimatePresence>
-      <div>
+      <div className="shrink-0">
         <div className="h-[0.7vh] overflow-hidden rounded-full bg-foreground/15">
           <div className="h-full rounded-full bg-(--pal-text) transition-[width] duration-300 ease-linear" style={{ width: `${pct}%` }} />
         </div>
@@ -344,26 +427,25 @@ function JoinPrompt({ url, guests, big }: { url: string; guests: boolean; big?: 
   )
 }
 
-/** Keeps the screen from sleeping while it's on show. */
-function useWakeLock() {
+// How long the mouse pointer stays up after it last moved.
+const POINTER_SHOWN = 3000
+
+/** Whether the mouse moved lately: the pointer hides otherwise, but a desktop needs it to press the buttons. */
+function usePointerShown() {
+  const [shown, setShown] = useState(false)
   useEffect(() => {
-    let lock: WakeLockSentinel | undefined
-    let stopped = false
-    const request = async () => {
-      if (document.visibilityState !== 'visible' || !('wakeLock' in navigator)) return
-      try {
-        lock = await navigator.wakeLock.request('screen')
-        if (stopped) void lock.release()
-      } catch {
-        // Not allowed (battery saver, or no user gesture yet): the TV may dim.
-      }
+    let t: number | undefined
+    const moved = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse') return
+      setShown(true)
+      window.clearTimeout(t)
+      t = window.setTimeout(() => setShown(false), POINTER_SHOWN)
     }
-    void request()
-    document.addEventListener('visibilitychange', request)
+    window.addEventListener('pointermove', moved)
     return () => {
-      stopped = true
-      document.removeEventListener('visibilitychange', request)
-      void lock?.release()
+      window.removeEventListener('pointermove', moved)
+      window.clearTimeout(t)
     }
   }, [])
+  return shown
 }

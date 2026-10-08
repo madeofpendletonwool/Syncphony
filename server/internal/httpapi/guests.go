@@ -55,6 +55,7 @@ var guestOps = map[string]bool{
 	"ClearLane":              true,
 	"GetQueueItemArtwork":    true,
 	"GetQueueItemPalette":    true,
+	"GetQueueItemBeatMap":    true,
 	"GetQueueItemLyrics":     true,
 	"GetQueueItemLinerNotes": true,
 	"GetQueueItemSimilar":    true,

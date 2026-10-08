@@ -43,9 +43,10 @@ The song's service decides the driver, by whether its session implements `provid
 | --- | --- |
 | The song can't start (link removed, service error, speaker reports `error`) | Skip it and push a `playback.notice` |
 | A streamed song doesn't start within 20s | Skip it with a notice |
+| …and the speaker said nothing about it the whole time (its tab is asleep, or gone) | Pause on it with a notice instead. The song isn't to blame, and skipping would burn the queue. The speaker acknowledges each song it starts loading (a `progress` report), so a speaker that's there but can't play the song still skips it. Play loads it again |
 | The speaker never reports `ended` | Move on 15s after the song's length |
 | The speaker goes quiet for 2 minutes while playing | Pause with a notice. The timeout is generous because mobile browsers throttle background tabs |
-| 3 songs in a row fail | Stop, with a notice, instead of skipping through the whole queue. Pressing play resumes |
+| 3 songs in a row fail | Stop, with a notice, instead of skipping through the whole queue. Pressing play resumes; the room shows a play button while it's stopped |
 
 ### Permissions
 
@@ -56,6 +57,14 @@ A room's owner sets who may do each thing (MAD-701): `playPause`, `seek` and `sp
 When `skip` is `vote`, the owner and the song's requester can still skip outright, and everyone else votes (`vote_skip`, and `unvote_skip` to take it back). Votes live in memory with the rest of the room's state and reset when the song changes. `nowplaying.updated` carries the tally: who voted and how many votes are `needed`.
 
 The vote passes once more than `skipVotePercent` (default 50, a majority) of the room has voted. "The room" is everyone connected to it, plus anyone who voted and has since left, minus whoever queued the song, since they'd just skip it. The engine re-counts whenever someone joins or leaves and whenever the owner changes the settings, so a vote can pass because a member walked away. A passed vote skips with a `playback.notice`.
+
+#### Play now
+
+`play_now` with a queued `itemId` makes that song current straight away, skipping the one playing. The fair order isn't changed: the song simply jumps it, and the fair order then sees its requester just played. It takes the `skip` permission. When `skip` is `vote`, the owner still plays it outright, and anyone else asks the room: `nowplaying.updated` carries the request (`playNow`), everyone gets a notice, and the room agrees with `vote_play_now` on the same share as a skip vote. One request is open at a time. It lapses after 2 minutes, when its song leaves the queue, or when whoever asked withdraws it (`unvote_play_now`).
+
+#### One tap to play
+
+With no speaker, a member who may be the speaker pressing play becomes the speaker and starts the room in the same tap. "Play on this phone" does the same for a paused room.
 
 ### Restarts
 

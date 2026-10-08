@@ -26,7 +26,7 @@ func (s *Server) GetPlayback(ctx context.Context, req GetPlaybackRequestObject) 
 	return GetPlayback200JSONResponse(toNowPlaying(np)), nil
 }
 
-// ControlPlayback plays, pauses, skips or seeks.
+// ControlPlayback plays, pauses, skips, seeks, or plays a queued song now.
 func (s *Server) ControlPlayback(ctx context.Context, req ControlPlaybackRequestObject) (ControlPlaybackResponseObject, error) {
 	c := playback.Command{Action: string(req.Body.Action)}
 	if req.Body.PositionMs != nil {
@@ -35,7 +35,21 @@ func (s *Server) ControlPlayback(ctx context.Context, req ControlPlaybackRequest
 	if req.Body.ItemId != nil {
 		c.ItemID = *req.Body.ItemId
 	}
-	np, err := s.Playback.Command(ctx, req.RoomId, sessionFrom(ctx).User.ID, c)
+	userID := ""
+	if d := displayFrom(ctx); d != nil {
+		// A screen playing the room has a speaker's buttons, as whoever paired it.
+		if c.Action != playback.ActionPlay && c.Action != playback.ActionPause && c.Action != playback.ActionSkip {
+			return nil, playback.ErrForbidden
+		}
+		id, _, err := speakerOf(ctx, "")
+		if err != nil {
+			return nil, err
+		}
+		userID = id
+	} else {
+		userID = sessionFrom(ctx).User.ID
+	}
+	np, err := s.Playback.Command(ctx, req.RoomId, userID, c)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +67,11 @@ func (s *Server) ClaimPlayer(ctx context.Context, req ClaimPlayerRequestObject) 
 	if d := displayFrom(ctx); d != nil {
 		name = d.Name
 	}
-	np, err := s.Playback.Claim(ctx, req.RoomId, userID, device, name)
+	itemID := ""
+	if req.Body.PlayItemId != nil {
+		itemID = *req.Body.PlayItemId
+	}
+	np, err := s.Playback.ClaimAndPlay(ctx, req.RoomId, userID, device, name, itemID)
 	if err != nil {
 		return nil, err
 	}
@@ -190,6 +208,9 @@ func toNowPlaying(np rooms.NowPlaying) NowPlaying {
 	}
 	if v := np.SkipVotes; v != nil {
 		out.SkipVotes = &SkipVotes{Voters: v.Voters, Needed: v.Needed}
+	}
+	if v := np.PlayNow; v != nil {
+		out.PlayNow = &PlayNowVote{ItemId: v.ItemID, By: v.By, Voters: v.Voters, Needed: v.Needed, Expires: v.Expires}
 	}
 	return out
 }

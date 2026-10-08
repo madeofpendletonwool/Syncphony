@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Check, ChevronDown, Crown, History, LogOut, MonitorPlay, Plus, QrCode, Settings2, Sparkles, Speaker, Users } from 'lucide-react'
+import { Check, ChevronDown, Crown, History, LogOut, MonitorPlay, Play, Plus, QrCode, Settings2, Sparkles, Speaker, Users } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { DropdownMenu } from 'radix-ui'
 import { useEffect, useState, type ReactNode } from 'react'
@@ -327,14 +327,22 @@ function NowPlayingCard({ room, waiting }: { room: RoomInfo; waiting: number }) 
         <div className="grid size-14 place-items-center rounded-2xl bg-primary/15 text-primary">
           {waiting > 0 ? <Speaker className="size-7" /> : <Sparkles className="size-7" />}
         </div>
-        <h2 className="text-headline">{waiting > 0 ? 'Ready when the speaker is' : 'The queue is quiet'}</h2>
+        <h2 className="text-headline">
+          {waiting > 0 ? (speaker ? 'Stopped' : 'Ready when the speaker is') : 'The queue is quiet'}
+        </h2>
         <p className="text-sm text-muted-foreground">
           {waiting > 0
             ? speaker
-              ? `Waiting to start on ${speaker.name}.`
+              ? `${speaker.name} is the speaker. Press play to start the next song.`
               : 'Songs are waiting. Start playing on the device connected to the speaker.'
             : 'Be the first to put something on.'}
         </p>
+        {waiting > 0 && speaker && commands.toggle && (
+          <Button size="lg" onClick={commands.toggle} className="mt-2 w-full max-w-xs">
+            <Play data-icon="inline-start" className="fill-current" />
+            Play
+          </Button>
+        )}
         <div className="mt-2 w-full max-w-xs">
           <SpeakerPanel room={room} prominent={waiting > 0 && !speaker} />
         </div>

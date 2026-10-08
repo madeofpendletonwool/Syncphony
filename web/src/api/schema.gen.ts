@@ -1656,6 +1656,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/queue/{itemId}/beatmap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A queued song's beat map
+         * @description The song's tempo, beats, bars and sections, and its spectrum from
+         *     moment to moment, for visuals that move with the music on every
+         *     screen in the room. Worked out from the audio once, usually soon
+         *     after the song is queued; if it hasn't been yet, it's worked out
+         *     now, which can take a few seconds. 404 `no_beat_map` if the song
+         *     can't have one (its service has no audio, or it couldn't be
+         *     decoded).
+         */
+        get: operations["getQueueItemBeatMap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/queue/{itemId}/lyrics": {
         parameters: {
             query?: never;
@@ -2271,7 +2300,9 @@ export interface paths {
          *     else sends `vote_skip` (and `unvote_skip` to take it back); the
          *     song is skipped once `skipVotes.needed` have voted.
          *     `play` needs a speaker (`no_player`); pausing, skipping, seeking or
-         *     voting with nothing playing is `nothing_playing`.
+         *     voting with nothing playing is `nothing_playing`. A display with
+         *     `audio` on may `play`, `pause` and `skip` in its own room, as
+         *     whoever paired it.
          */
         post: operations["controlPlayback"];
         delete?: never;
@@ -2452,6 +2483,30 @@ export interface components {
              *     history and recaps can show their name.
              */
             ended: boolean;
+        };
+        /**
+         * @description How the room's big screens show the music (MAD-779). Set from any
+         *     phone by whoever manages the room; every screen follows.
+         */
+        RoomScreens: {
+            /**
+             * @description `stage`: now playing, lyrics and what's next. `visualizer`:
+             *     full-screen visuals with now playing small. `auto`: the stage,
+             *     with visuals taking over for songs with no words to sing.
+             * @default auto
+             * @enum {string}
+             */
+            look: "stage" | "visualizer" | "auto";
+            /**
+             * @description The visualizer's scene, or "" to pick one that suits each song.
+             * @default
+             */
+            scene: string;
+            /**
+             * @description How strongly the screens move with the music.
+             * @default 1.5
+             */
+            intensity: number;
         };
         /**
          * @description Whether people without an account may join the room by scanning a
@@ -3372,6 +3427,56 @@ export interface components {
             dark: components["schemas"]["OklchColor"];
             light: components["schemas"]["OklchColor"];
         };
+        /**
+         * @description A song's beat map (MAD-773). Times are in ms from the start of the
+         *     song, on the same clock as the playback position.
+         */
+        BeatMap: {
+            /** Format: int64 */
+            durationMs: number;
+            /** @description The tempo; 0 if the song has no steady beat, and then `beats` is empty. */
+            bpm: number;
+            /** @description How clear the beat is, 0–1. */
+            confidence: number;
+            /** @description The beats. */
+            beats: number[];
+            /** @description The index in `beats` of the first bar's first beat; every fourth beat after it starts a bar. */
+            downbeat: number;
+            /** @description The song's parts (intro, verse, drop), in order; the first starts at 0. */
+            sections: components["schemas"]["BeatMapSection"][];
+            /** @description Frames a second in `bands` and `loudness`. */
+            frameRate: number;
+            /** @description Spectrum bands per frame in `bands`. */
+            bandCount: number;
+            /**
+             * Format: byte
+             * @description Base64: each frame's level in each band, low to high, a byte
+             *     (0–255) each, `bandCount` bytes a frame. Each band is scaled to
+             *     its own range in the song.
+             */
+            bands: string;
+            /**
+             * Format: byte
+             * @description Base64: each frame's overall level, a byte (0–255) each, scaled to the song.
+             */
+            loudness: string;
+            features: components["schemas"]["BeatMapFeatures"];
+        };
+        BeatMapSection: {
+            /** Format: int64 */
+            startMs: number;
+            /** @description How loud it is next to the rest of the song, 0–1. */
+            energy: number;
+        };
+        /** @description The song as a whole, 0–1 each, for choosing how it looks. */
+        BeatMapFeatures: {
+            /** @description How loud it's mastered, from a quiet acoustic recording to a club track. */
+            energy: number;
+            /** @description How much treble there is. */
+            brightness: number;
+            /** @description How much its loudness changes. */
+            dynamics: number;
+        };
         Accent: {
             /**
              * Format: double
@@ -3515,6 +3620,24 @@ export interface components {
             player?: components["schemas"]["Player"];
             next?: components["schemas"]["QueueItem"];
             skipVotes?: components["schemas"]["SkipVotes"];
+            playNow?: components["schemas"]["PlayNowVote"];
+        };
+        /**
+         * @description Someone's request to play a queued song now, in a room whose skip
+         *     permission is `vote`. It passes on the same share of the room as a
+         *     skip, and lapses at `expires`, when the song leaves the queue, or
+         *     when whoever asked takes it back.
+         */
+        PlayNowVote: {
+            itemId: string;
+            /** @description Who asked. Their vote is the first. */
+            by: string;
+            /** @description IDs of the users who agreed, in order. */
+            voters: string[];
+            /** @description How many agreeing play the song. */
+            needed: number;
+            /** Format: date-time */
+            expires: string;
         };
         /**
          * @description The vote to skip the playing song, while the room's skip permission
@@ -3542,8 +3665,15 @@ export interface components {
             lastSeen: string;
         };
         PlaybackCommand: {
-            /** @enum {string} */
-            action: "play" | "pause" | "skip" | "seek" | "vote_skip" | "unvote_skip";
+            /**
+             * @description `play_now` plays the queued song `itemId` straight away, skipping
+             *     the one playing. It takes the skip permission; in a room that
+             *     votes on skips, it asks the room instead (`playNow`), and
+             *     `vote_play_now` agrees. `unvote_play_now` takes a vote back, or
+             *     withdraws the request from whoever asked.
+             * @enum {string}
+             */
+            action: "play" | "pause" | "skip" | "seek" | "vote_skip" | "unvote_skip" | "play_now" | "vote_play_now" | "unvote_play_now";
             /**
              * Format: int64
              * @description Where to seek to.
@@ -3551,7 +3681,8 @@ export interface components {
             positionMs?: number;
             /**
              * @description Skip (or vote) only if this is still the current song, so two
-             *     people tapping skip skip one song.
+             *     people tapping skip skip one song. For `play_now` and its votes,
+             *     the queued song to play.
              */
             itemId?: string;
         };
@@ -3560,6 +3691,13 @@ export interface components {
             deviceId: string;
             /** @example Collin's phone */
             name: string;
+            /**
+             * @description A queued song to play now, as `play_now` would, instead of
+             *     starting the next in fair order: pressing play on a song with no
+             *     speaker. Ignored if the caller would have to ask the room, or
+             *     the song isn't waiting.
+             */
+            playItemId?: string;
         };
         PlayerReport: {
             deviceId: string;
@@ -3765,6 +3903,7 @@ export interface components {
             matching: components["schemas"]["RoomMatching"];
             autopilot: components["schemas"]["RoomAutopilot"];
             guests: components["schemas"]["RoomGuests"];
+            screens: components["schemas"]["RoomScreens"];
             permissions: components["schemas"]["RoomPermissions"];
             skipVotePercent: components["schemas"]["SkipVotePercent"];
             /** Format: date-time */
@@ -3779,6 +3918,7 @@ export interface components {
             matching?: components["schemas"]["RoomMatching"];
             autopilot?: components["schemas"]["RoomAutopilot"];
             guests?: components["schemas"]["RoomGuests"];
+            screens?: components["schemas"]["RoomScreens"];
             permissions?: components["schemas"]["RoomPermissionsChange"];
             skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };
@@ -3795,6 +3935,7 @@ export interface components {
             matching?: components["schemas"]["RoomMatching"];
             autopilot?: components["schemas"]["RoomAutopilot"];
             guests?: components["schemas"]["RoomGuests"];
+            screens?: components["schemas"]["RoomScreens"];
             permissions?: components["schemas"]["RoomPermissionsChange"];
             skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };
@@ -5857,6 +5998,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Palette"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getQueueItemBeatMap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The beat map */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BeatMap"];
                 };
             };
             default: components["responses"]["Error"];

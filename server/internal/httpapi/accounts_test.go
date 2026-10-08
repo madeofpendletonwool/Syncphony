@@ -12,6 +12,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"time"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/admin"
+	"github.com/madeofpendletonwool/syncphony/server/internal/analysis"
 	"github.com/madeofpendletonwool/syncphony/server/internal/artwork"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
@@ -110,6 +112,10 @@ func newEnv(t *testing.T) *env {
 	e.mb = musicbrainz.New(db, musicbrainz.Options{BaseURL: mbURL, CoverArtURL: mbURL, Interval: -1, Now: e.clock})
 	art := artwork.New(e.links, e.mb)
 	e.palettes = palette.New(db, art)
+	var beatMaps *analysis.Service
+	if _, err := exec.LookPath("ffmpeg"); err == nil {
+		beatMaps = analysis.New(db, e.links, analysis.FFmpeg{})
+	}
 	qs.OnAdd = func(ts []provider.Track) {
 		e.mb.Enqueue(ts...)
 		e.palettes.Enqueue(ts...)
@@ -127,7 +133,7 @@ func newEnv(t *testing.T) *env {
 	pilot.Now, pilot.Memory = e.clock, &dj.Memory{DB: db, Now: e.clock}
 	t.Cleanup(pilot.Close)
 	api := &httpapi.Server{
-		Version: "test", StartedAt: e.clock(), Admin: e.server, Auth: e.svc, Links: e.links, Lyrics: ly, LinerNotes: notes, Artwork: art, Palettes: e.palettes, Rooms: e.rooms, Queue: qs, Playback: e.playback, Nights: e.nights, Bus: e.bus, Presence: presence,
+		Version: "test", StartedAt: e.clock(), Admin: e.server, Auth: e.svc, Links: e.links, Lyrics: ly, LinerNotes: notes, Artwork: art, Palettes: e.palettes, BeatMaps: beatMaps, Rooms: e.rooms, Queue: qs, Playback: e.playback, Nights: e.nights, Bus: e.bus, Presence: presence,
 		Suggest: suggest.New(db, e.rooms, e.links), Autopilot: pilot,
 		BaseURL: e.base, PingEvery: 50 * time.Millisecond,
 	}

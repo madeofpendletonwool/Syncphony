@@ -4,6 +4,7 @@ import { serverNow } from './clock'
 import { queueArtworkUrl, sendCommand, type Playback, type QueueItem } from './playback'
 import { createStore } from './store'
 import { toast } from './toast'
+import { deviceName } from './webauthn'
 
 // Player mode: this device plays the room's audio (ADR 0003). The server
 // decides what plays; the speaker applies each state revision once and
@@ -54,6 +55,9 @@ const MAX_DRIFT_RELOAD = 4_000
 const RESYNC_EVERY = 15_000
 // Retries before a failing stream is reported as an error.
 const RETRIES = 2
+// How long a screen that let go of the speaker waits for the next one to
+// keep it (the big screen loads its room first) before stopping.
+const HANDOFF = 5_000
 
 export const speakerState = createStore<SpeakerState>({ status: 'off', mode: 'speaker', keepAwake: readFlag(AWAKE_KEY, true) })
 
@@ -71,6 +75,11 @@ export function deviceId() {
   }
 }
 let fallbackId: string | undefined
+
+/** What to call this device as the speaker: "Collin's iPhone". */
+export function speakerName(displayName: string) {
+  return `${displayName.split(' ')[0]}'s ${deviceName()}`
+}
 
 /** Content types this browser can decode, for the stream's `accept`. */
 export function acceptedTypes(probe: (type: string) => string = (t) => new Audio().canPlayType(t)) {
@@ -141,6 +150,7 @@ class Speaker {
   // The room plays on; this device stays quiet until it's played again.
   private localPause = false
   private resyncTimer?: ReturnType<typeof setInterval>
+  private stopping?: ReturnType<typeof setTimeout>
   /** Receives every playback state the server returns to a report. */
   onState?: (p: Playback) => void
 
@@ -152,16 +162,18 @@ class Speaker {
    * Makes this device the room's speaker. Call it from a tap: browsers only
    * let audio start after a user gesture, so the elements are unlocked
    * before anything async happens. A paired TV passes its display ID as
-   * the device, since that's who the server makes the speaker.
+   * the device, since that's who the server makes the speaker. playItemId
+   * plays that queued song now, rather than the next in fair order.
    */
-  async start(roomId: string, name: string, device = deviceId()) {
+  async start(roomId: string, name: string, device = deviceId(), playItemId?: string): Promise<Playback | undefined> {
     this.begin(roomId, 'speaker', name, device)
     try {
       const np = await unwrap(
-        api.PUT('/rooms/{roomId}/player', { params: { path: { roomId } }, body: { deviceId: device, name } }),
+        api.PUT('/rooms/{roomId}/player', { params: { path: { roomId } }, body: { deviceId: device, name, playItemId } }),
       )
       this.onState?.(np)
       this.apply(np)
+      return np
     } catch (err) {
       this.halt()
       toast({ message: errorMessage(err), tone: 'error' })
@@ -180,8 +192,34 @@ class Speaker {
     this.apply(np)
   }
 
+  /**
+   * Stops playing here unless another screen keeps it in a moment: moving
+   * between the app and the big screen hands the music over rather than
+   * stopping it.
+   */
+  stopSoon() {
+    clearTimeout(this.stopping)
+    this.stopping = setTimeout(() => {
+      this.stopping = undefined
+      void this.stop()
+    }, HANDOFF)
+  }
+
+  /**
+   * Keeps playing roomId through a handoff (stopSoon). Says whether this
+   * device is playing it.
+   */
+  keep(roomId: string) {
+    if (!this.active || this.roomId !== roomId) return false
+    clearTimeout(this.stopping)
+    this.stopping = undefined
+    return true
+  }
+
   /** Stops playing here: a speaker gives up the room, a listener just goes quiet. */
   async stop() {
+    clearTimeout(this.stopping)
+    this.stopping = undefined
     const roomId = this.roomId
     const speaking = this.mode === 'speaker'
     this.halt()
@@ -273,6 +311,9 @@ class Speaker {
       this.keepTime(np)
     }
     const listening = this.mode === 'listener'
+    // Tell the server we're on it: a song that never starts on a speaker
+    // that's said nothing gets paused, not skipped.
+    if (!listening && np.state === 'loading') this.report('progress')
     if (np.state === 'playing' || (!listening && np.state === 'loading')) {
       // Already playing it (we started the preloaded song when the last one
       // ended): no new 'playing' event will come, so tell the server now.
@@ -298,6 +339,8 @@ class Speaker {
 
   /** Sets up for a room, unlocking the audio elements during the tap that started it. */
   private begin(roomId: string, mode: SpeakerMode, name: string, device: string) {
+    clearTimeout(this.stopping)
+    this.stopping = undefined
     const [a, b] = this.elements()
     for (const el of [a, b]) {
       this.offsets.set(el, 0)

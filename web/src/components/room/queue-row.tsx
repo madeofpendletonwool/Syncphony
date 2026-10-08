@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { Play } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Artwork } from '@/components/artwork'
 import { ServiceGlyph } from '@/components/service-tag'
 import { AutopilotMark } from '@/components/room/autopilot-badge'
@@ -22,6 +23,8 @@ export function QueueRow({
   mine,
   hideAvatar,
   byline,
+  onPlay,
+  playLabel = 'Play now',
   className,
 }: {
   roomId: string
@@ -35,6 +38,9 @@ export function QueueRow({
   hideAvatar?: boolean
   /** Name who added it under the title, for lists without lane context. */
   byline?: boolean
+  /** Makes the artwork a play button: hover (or tap once on touch) shows it. */
+  onPlay?: () => void
+  playLabel?: string
   className?: string
 }) {
   const autopilot = item.autopilot
@@ -54,7 +60,13 @@ export function QueueRow({
       )}
     >
       {leading}
-      <Artwork src={queueArtworkUrl(roomId, item, 120)} className="size-11 rounded-lg shadow-none" />
+      {onPlay ? (
+        <PlayArt label={`${playLabel}: ${item.track.title}`} onPlay={onPlay}>
+          <Artwork src={queueArtworkUrl(roomId, item, 120)} className="size-11 rounded-lg shadow-none" />
+        </PlayArt>
+      ) : (
+        <Artwork src={queueArtworkUrl(roomId, item, 120)} className="size-11 rounded-lg shadow-none" />
+      )}
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium">{item.track.title}</p>
         <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -80,5 +92,52 @@ export function QueueRow({
       {autopilot && <AutopilotMark />}
       {trailing}
     </div>
+  )
+}
+
+// How long a first tap on touch keeps the play button up.
+const ARMED_FOR = 3000
+
+/**
+ * Artwork that plays its song. With a mouse, hovering shows the button. On
+ * touch there's no hover, so the first tap shows it and a second plays:
+ * one stray tap shouldn't skip the song the room is listening to.
+ */
+function PlayArt({ label, onPlay, children }: { label: string; onPlay: () => void; children: ReactNode }) {
+  const [armed, setArmed] = useState(false)
+  const pointer = useRef('mouse')
+  useEffect(() => {
+    if (!armed) return
+    const t = window.setTimeout(() => setArmed(false), ARMED_FOR)
+    return () => window.clearTimeout(t)
+  }, [armed])
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      data-armed={armed || undefined}
+      onPointerDown={(e) => {
+        pointer.current = e.pointerType
+      }}
+      onClick={(e) => {
+        e.stopPropagation()
+        if (pointer.current === 'touch' && !armed) {
+          setArmed(true)
+          return
+        }
+        setArmed(false)
+        onPlay()
+      }}
+      className="group/play relative shrink-0 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+    >
+      {children}
+      <span
+        aria-hidden
+        className="absolute inset-0 grid place-items-center rounded-lg bg-black/50 text-white opacity-0 transition-opacity group-hover/play:opacity-100 group-focus-visible/play:opacity-100 group-data-armed/play:opacity-100"
+      >
+        <Play className="size-5 fill-current" />
+      </span>
+    </button>
   )
 }
