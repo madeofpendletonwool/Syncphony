@@ -526,6 +526,10 @@ const (
 	ActionPlayNow       = "play_now"
 	ActionVotePlayNow   = "vote_play_now"
 	ActionUnvotePlayNow = "unvote_play_now"
+	// ActionPrevious plays the song before this one again, and puts this
+	// one back at the front of the queue. Like play_now, a room that
+	// votes on skips is asked, and the play_now votes answer.
+	ActionPrevious = "previous"
 )
 
 // PlayNowTimeout is how long a request to play a song now waits for the
@@ -567,7 +571,7 @@ func (e *Engine) Command(ctx context.Context, roomID, userID string, c Command) 
 		level = perms.Seek
 	case ActionSkip:
 		level = perms.Skip
-	case ActionPlayNow:
+	case ActionPlayNow, ActionPrevious:
 		// Playing a song now skips the one playing, so it's the skip
 		// permission's call; a room that votes on skips votes on this too.
 		if perms.Skip != rooms.Vote {
@@ -647,6 +651,8 @@ func (e *Engine) Command(ctx context.Context, roomID, userID string, c Command) 
 		}
 	case ActionPlayNow:
 		err = e.playNowCommand(ctx, r, userID, c.ItemID)
+	case ActionPrevious:
+		err = e.previousCommand(ctx, r, userID)
 	case ActionVotePlayNow, ActionUnvotePlayNow:
 		q := r.request
 		if q == nil || (c.ItemID != "" && c.ItemID != q.ItemID) {
@@ -665,7 +671,7 @@ func (e *Engine) Command(ctx context.Context, roomID, userID string, c Command) 
 			e.publish(r)
 		}
 	default:
-		return rooms.NowPlaying{}, &InvalidInputError{"action is play, pause, skip, seek, vote_skip, unvote_skip, play_now, vote_play_now or unvote_play_now"}
+		return rooms.NowPlaying{}, &InvalidInputError{"action is play, pause, skip, seek, vote_skip, unvote_skip, play_now, vote_play_now, unvote_play_now or previous"}
 	}
 	if err != nil {
 		return rooms.NowPlaying{}, err
@@ -706,13 +712,121 @@ func (e *Engine) playNowCommand(ctx context.Context, r *room, userID, itemID str
 	}
 	r.request = &rooms.PlayNowVote{ItemID: itemID, By: userID, Voters: []string{userID}, Expires: e.cfg.Now().Add(PlayNowTimeout)}
 	if v := e.playNowTally(r); v != nil && len(v.Voters) < v.Needed {
-		name := "Someone"
-		if u, err := e.db.GetUser(ctx, userID); err == nil {
-			name = u.DisplayName
-		}
-		e.notice(r, itemID, fmt.Sprintf("%s wants to play %s now", name, title(&it)))
+		e.notice(r, itemID, fmt.Sprintf("%s wants to play %s now", e.nameOf(ctx, userID), title(&it)))
 	}
 	return e.settlePlayNow(ctx, r)
+}
+
+// previousCommand goes back to the song before this one for userID, who
+// passed the permission check, or asks the room if it votes on skips and
+// they can't skip outright.
+func (e *Engine) previousCommand(ctx context.Context, r *room, userID string) error {
+	if r.np.Player == nil {
+		return ErrNoPlayer
+	}
+	prev, err := e.previous(ctx, r)
+	if err != nil {
+		return err
+	}
+	if prev == nil {
+		return &InvalidInputError{"there's no song before this one to go back to"}
+	}
+	// The owner doesn't need to ask.
+	if r.settings.Permissions.Skip != rooms.Vote || userID == r.owner {
+		return e.goBack(ctx, r, prev.ID)
+	}
+	if q := r.request; q != nil {
+		if q.Back && q.ItemID == prev.ID {
+			if !slices.Contains(q.Voters, userID) {
+				q.Voters = append(q.Voters, userID)
+			}
+			return e.settlePlayNow(ctx, r)
+		}
+		if q.By != userID {
+			return &InvalidInputError{"someone's already asking to play a song now; wait for the room to decide"}
+		}
+	}
+	r.request = &rooms.PlayNowVote{ItemID: prev.ID, By: userID, Voters: []string{userID}, Expires: e.cfg.Now().Add(PlayNowTimeout), Back: true, Item: prev}
+	if v := e.playNowTally(r); v != nil && len(v.Voters) < v.Needed {
+		e.notice(r, prev.ID, fmt.Sprintf("%s wants to go back to %s", e.nameOf(ctx, userID), title(prev)))
+	}
+	return e.settlePlayNow(ctx, r)
+}
+
+// previous is the song that played before the current one: the latest to
+// have started and ended that isn't waiting or playing now. Nil if none.
+func (e *Engine) previous(ctx context.Context, r *room) (*store.QueueItem, error) {
+	rows, err := e.db.ListPlayed(ctx, store.ListPlayedParams{RoomID: r.id, Before: e.cfg.Now().Add(time.Second), Limit: 20})
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if it := row.QueueItem; it.State != store.ItemQueued && it.State != store.ItemPlaying {
+			return &it, nil
+		}
+	}
+	return nil, nil
+}
+
+// goBack plays itemID, a song the room played before, again, and puts the
+// current song back at the front of the queue to play next, from the
+// start. The current song's unfinished play is forgotten, so it doesn't
+// count as skipped.
+func (e *Engine) goBack(ctx context.Context, r *room, itemID string) error {
+	r.halted, r.errors = false, 0
+	r.closeRemote()
+	var item *store.QueueItem
+	snap, err := e.queue.Change(ctx, r.id, func(q *store.Queries, _ store.Room) error {
+		now := e.cfg.Now()
+		it, err := q.GetQueueItem(ctx, itemID)
+		if err != nil {
+			return err
+		}
+		if it.RoomID != r.id || it.State == store.ItemQueued || it.State == store.ItemPlaying {
+			return &InvalidInputError{"that song can't be played again now"}
+		}
+		if cur, err := q.GetPlaying(ctx, r.id); err == nil {
+			if err := q.DeleteOpenPlays(ctx, r.id); err != nil {
+				return err
+			}
+			if err := q.ResumeQueueItem(ctx, store.ResumeQueueItemParams{ResumeAt: nullTime(now), UpdatedAt: now, ID: cur.ID}); err != nil {
+				return err
+			}
+		} else if !store.IsNotFound(err) {
+			return err
+		}
+		if err := q.SetQueueItemState(ctx, store.SetQueueItemStateParams{State: store.ItemPlaying, UpdatedAt: now, ID: it.ID}); err != nil {
+			return err
+		}
+		if _, err := q.StartPlay(ctx, store.StartPlayParams{ID: store.NewID(), RoomID: r.id, QueueItemID: it.ID, StartedAt: now}); err != nil {
+			return err
+		}
+		it.State, it.ResumeAt = store.ItemPlaying, sql.NullTime{}
+		item = &it
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	now := e.cfg.Now()
+	r.votes, r.request = nil, nil
+	r.np.Item, r.np.Position, r.np.At, r.since = item, 0, now, now
+	r.np.Next = nextOf(snap)
+	r.np.Revision++
+	if cause := e.begin(ctx, r, *item); cause != nil {
+		e.countFailure(r, item, fmt.Sprintf("Couldn't go back to %s", title(item)), cause)
+		return e.next(ctx, r, store.EndError)
+	}
+	e.publish(r)
+	return nil
+}
+
+// nameOf is a user's display name, for notices.
+func (e *Engine) nameOf(ctx context.Context, userID string) string {
+	if u, err := e.db.GetUser(ctx, userID); err == nil {
+		return u.DisplayName
+	}
+	return "Someone"
 }
 
 // playNow ends the current song, if any, and starts itemID in its place.
@@ -875,7 +989,8 @@ func (e *Engine) nextItem(ctx context.Context, r *room, reason, want string) err
 		want = ""
 		now := e.cfg.Now()
 		r.votes = nil
-		if r.request != nil && (item == nil || item.ID == r.request.ItemID || !queued(snap, r.request.ItemID)) {
+		// A request to go back is about the song that was playing.
+		if r.request != nil && (r.request.Back || item == nil || item.ID == r.request.ItemID || !queued(snap, r.request.ItemID)) {
 			r.request = nil
 		}
 		r.np.Item, r.np.Position, r.np.At, r.since = item, 0, now, now
@@ -1249,11 +1364,21 @@ func (e *Engine) settlePlayNow(ctx context.Context, r *room) error {
 		return nil
 	}
 	r.request = nil
-	if err := e.playNow(ctx, r, v.ItemID); err != nil {
+	var err error
+	if v.Back {
+		err = e.goBack(ctx, r, v.ItemID)
+	} else {
+		err = e.playNow(ctx, r, v.ItemID)
+	}
+	if err != nil {
 		return err
 	}
 	if it := r.np.Item; len(v.Voters) > 1 && it != nil && it.ID == v.ItemID {
-		e.notice(r, it.ID, fmt.Sprintf("Playing %s: the room agreed", title(it)))
+		msg := "Playing %s: the room agreed"
+		if v.Back {
+			msg = "Back to %s: the room agreed"
+		}
+		e.notice(r, it.ID, fmt.Sprintf(msg, title(it)))
 	}
 	return nil
 }
@@ -1269,7 +1394,7 @@ func (e *Engine) refresh(ctx context.Context, r *room) error {
 		return err
 	}
 	next := nextOf(snap)
-	gone := r.request != nil && !queued(snap, r.request.ItemID)
+	gone := r.request != nil && !r.request.Back && !queued(snap, r.request.ItemID)
 	if gone {
 		r.request = nil
 	}

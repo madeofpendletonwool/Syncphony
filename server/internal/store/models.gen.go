@@ -210,6 +210,7 @@ type QueueItem struct {
 	Palette      sql.NullString
 	Autopilot    sql.NullString
 	RemovedBy    sql.NullString
+	ResumeAt     sql.NullTime
 }
 
 type ResetLink struct {

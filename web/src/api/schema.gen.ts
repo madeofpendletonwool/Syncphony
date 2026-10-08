@@ -3755,9 +3755,16 @@ export interface components {
          *     permission is `vote`. It passes on the same share of the room as a
          *     skip, and lapses at `expires`, when the song leaves the queue, or
          *     when whoever asked takes it back.
+         *
+         *     With `back`, it's a request to go back to the song that played
+         *     before this one (`previous`): `item` is that song, which isn't in
+         *     the queue. It lapses when the playing song changes.
          */
         PlayNowVote: {
             itemId: string;
+            /** @description A request to go back to the previous song. */
+            back?: boolean;
+            item?: components["schemas"]["QueueItem"];
             /** @description Who asked. Their vote is the first. */
             by: string;
             /** @description IDs of the users who agreed, in order. */
@@ -3799,9 +3806,14 @@ export interface components {
              *     votes on skips, it asks the room instead (`playNow`), and
              *     `vote_play_now` agrees. `unvote_play_now` takes a vote back, or
              *     withdraws the request from whoever asked.
+             *
+             *     `previous` plays the song before this one again, and puts the
+             *     one playing back at the front of the queue to play next, from
+             *     the start. Like `play_now` it takes the skip permission, or asks
+             *     the room (`playNow` with `back`), whose votes are the same.
              * @enum {string}
              */
-            action: "play" | "pause" | "skip" | "seek" | "vote_skip" | "unvote_skip" | "play_now" | "vote_play_now" | "unvote_play_now";
+            action: "play" | "pause" | "skip" | "seek" | "vote_skip" | "unvote_skip" | "play_now" | "vote_play_now" | "unvote_play_now" | "previous";
             /**
              * Format: int64
              * @description Where to seek to.

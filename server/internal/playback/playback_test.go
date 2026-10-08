@@ -637,6 +637,122 @@ func TestPlayNowVote(t *testing.T) {
 	}
 }
 
+func TestPrevious(t *testing.T) {
+	e := newEnv(t)
+	ctx := t.Context()
+	e.add(e.alice, "t01")
+	e.add(e.bob, "t04")
+	e.add(e.carol, "t07")
+	e.claim(e.alice, "phone")
+	e.report(e.alice, "phone", playback.EventPlaying, 0)
+	previous := playback.Command{Action: playback.ActionPrevious}
+	if _, err := e.command(e.bob, previous); err == nil {
+		t.Fatal("went back from the first song")
+	}
+	e.report(e.alice, "phone", playback.EventEnded, 0)
+	e.waitFor("bob's song", playing(playback.StateLoading, "t04"))
+	e.report(e.alice, "phone", playback.EventPlaying, 0)
+
+	// Back to alice's song; bob's waits at the front, ahead of carol's.
+	np, err := e.command(e.bob, previous)
+	if err != nil || !playing(playback.StateLoading, "t01")(np) || np.Next == nil || np.Next.TrackID != "t04" {
+		t.Fatalf("going back: %s next %+v %v", describe(np), np.Next, err)
+	}
+	// Bob's interrupted play is forgotten, not counted as a skip.
+	h, _ := e.db.ListHistory(ctx, store.ListHistoryParams{RoomID: e.room.ID, Limit: 10})
+	if len(h) != 2 || h[0].QueueItem.TrackID != "t01" || h[1].QueueItem.TrackID != "t01" || h[1].PlayHistory.EndReason.String != store.EndFinished {
+		t.Fatalf("history: %+v", h)
+	}
+	e.report(e.alice, "phone", playback.EventEnded, 0)
+	e.waitFor("bob's song again", playing(playback.StateLoading, "t04"))
+	e.report(e.alice, "phone", playback.EventEnded, 0)
+	e.waitFor("carol's song", playing(playback.StateLoading, "t07"))
+
+	// Going back twice puts both songs back, the latest first.
+	e.must(previous)
+	e.advance(time.Second)
+	if np := e.must(previous); !playing(playback.StateLoading, "t01")(np) {
+		t.Fatalf("back twice: %s", describe(np))
+	}
+	snap, _ := e.rooms.QueueSnapshot(ctx, e.room.ID)
+	var order []string
+	for _, id := range snap.UpNext {
+		for _, it := range snap.Items {
+			if it.ID == id {
+				order = append(order, it.TrackID)
+			}
+		}
+	}
+	if !slices.Equal(order, []string{"t04", "t07"}) {
+		t.Fatalf("up next: %v", order)
+	}
+
+	// It takes the skip permission.
+	owner := rooms.Update{Permissions: rooms.Permissions{Skip: rooms.Owner}}
+	if _, err := e.rooms.Update(ctx, rooms.Actor{UserID: e.alice.ID}, e.room.ID, owner); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.command(e.carol, previous); !errors.Is(err, playback.ErrForbidden) {
+		t.Errorf("carol in an owner-skips room: %v", err)
+	}
+}
+
+func TestPreviousVote(t *testing.T) {
+	e := newEnv(t)
+	ctx := t.Context()
+	vote := rooms.Update{Permissions: rooms.Permissions{Skip: rooms.Vote}}
+	if _, err := e.rooms.Update(ctx, rooms.Actor{UserID: e.alice.ID}, e.room.ID, vote); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []member{e.alice, e.bob, e.carol} {
+		e.presence.Join(e.room.ID, m.ID)
+	}
+	notices := e.notices()
+	e.claim(e.alice, "phone")
+	e.add(e.alice, "t01")
+	e.add(e.bob, "t04", "t05")
+	e.waitFor("alice's song", playing(playback.StateLoading, "t01"))
+	e.report(e.alice, "phone", playback.EventEnded, 0)
+	e.waitFor("bob's song", playing(playback.StateLoading, "t04"))
+	previous := playback.Command{Action: playback.ActionPrevious}
+
+	// Bob asks the room to go back to alice's song.
+	np, err := e.command(e.bob, previous)
+	if err != nil || !playing(playback.StateLoading, "t04")(np) {
+		t.Fatalf("asking: %s %v", describe(np), err)
+	}
+	v := np.PlayNow
+	if v == nil || !v.Back || v.Item == nil || v.Item.TrackID != "t01" || v.ItemID != v.Item.ID || len(v.Voters) != 1 || v.Needed != 2 {
+		t.Fatalf("request: %+v", v)
+	}
+	if got := notices(); len(got) != 1 || got[0] != "bob wants to go back to “Reference Tone”" {
+		t.Fatalf("notices: %q", got)
+	}
+	// Carol agrees and it goes back.
+	np, err = e.command(e.carol, playback.Command{Action: playback.ActionVotePlayNow, ItemID: v.ItemID})
+	if err != nil || !playing(playback.StateLoading, "t01")(np) || np.PlayNow != nil || np.Next == nil || np.Next.TrackID != "t04" {
+		t.Fatalf("after carol agreed: %s %+v %v", describe(np), np.PlayNow, err)
+	}
+	if got := notices(); len(got) != 2 || got[1] != "Back to “Reference Tone”: the room agreed" {
+		t.Fatalf("notices: %q", got)
+	}
+
+	// A request to go back ends when the song does.
+	e.report(e.alice, "phone", playback.EventEnded, 0)
+	e.waitFor("bob's song again", playing(playback.StateLoading, "t04"))
+	if np, _ = e.command(e.carol, previous); np.PlayNow == nil {
+		t.Fatal("no request")
+	}
+	e.report(e.alice, "phone", playback.EventEnded, 0)
+	if np = e.waitFor("bob's next song", playing(playback.StateLoading, "t05")); np.PlayNow != nil {
+		t.Fatalf("request outlived its song: %+v", np.PlayNow)
+	}
+	// The owner just goes back.
+	if np = e.must(previous); !playing(playback.StateLoading, "t04")(np) {
+		t.Fatalf("the owner: %s", describe(np))
+	}
+}
+
 func TestUnlinkedSongSkipped(t *testing.T) {
 	e := newEnv(t)
 	ctx := t.Context()
