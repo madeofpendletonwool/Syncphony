@@ -12,7 +12,7 @@ The code is in `web/src/lib/speaker.ts`, with its UI in `web/src/components/room
 - **Format:** the stream URL carries `accept=` with the types this browser says it can play (`canPlayType`). The server transcodes anything else.
 - **Reports:** `playing` when audio starts, `progress` every 5s while playing, `paused` when something outside the app pauses it (a Bluetooth disconnect, a phone call), `ended`, and `error` after two retries.
 - **Network blips:** a failed stream is reloaded from the same position, with backoff. The room socket reconnects on its own and catches up. If the server forgets the speaker (after a restart), the speaker claims the room again. If another device takes over, this one stops and says so.
-- **Media Session:** sets the lock-screen title, artist, album, and artwork, plus the position. Play, pause, next, previous (restart the song), and seek are wired to the room. So the speaker's and headphones' buttons control the room, subject to the room's permissions.
+- **Media Session:** sets the lock-screen title, artist, album, and artwork, plus the position. Play, pause, next, previous (restarts the song, or in its first few seconds goes back to the one before), and seek are wired to the room. So the speaker's and headphones' buttons control the room, subject to the room's permissions.
 - **Screen Wake Lock:** **Keep the screen on** is on by default and remembered per device. The lock is requested again whenever the page becomes visible, because browsers drop it when the page is hidden.
 
 ## Listening along

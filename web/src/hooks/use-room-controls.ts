@@ -4,7 +4,16 @@ import { errorMessage } from '@/api/errors'
 import { tap } from '@/lib/haptics'
 import type { PlayerCommands } from '@/lib/now-playing'
 import { isMine } from '@/lib/autopilot'
-import { can, playbackQuery, sendCommand, skipMode, type Permission, type Playback, type PlaybackCommand } from '@/lib/playback'
+import {
+  BACK_WITHIN_MS,
+  can,
+  playbackQuery,
+  sendCommand,
+  skipMode,
+  type Permission,
+  type Playback,
+  type PlaybackCommand,
+} from '@/lib/playback'
 import type { Room } from '@/lib/room'
 import { speaker, speakerName } from '@/lib/speaker'
 import { toast } from '@/lib/toast'
@@ -32,7 +41,9 @@ export function useRoomControls(
       const before = queryClient.getQueryData(key)
       if (before && optimistic) queryClient.setQueryData(key, optimistic(before))
       try {
-        queryClient.setQueryData(key, await sendCommand(room.id, cmd))
+        const np = await sendCommand(room.id, cmd)
+        queryClient.setQueryData(key, np)
+        return np
       } catch (err) {
         if (before) queryClient.setQueryData(key, before)
         toast({ message: errorMessage(err), tone: 'error' })
@@ -62,11 +73,28 @@ export function useRoomControls(
     if (guest && !isMine(item, userId)) skip = skip === 'vote' && room.guests.canVote ? 'vote' : undefined
     const votes = playback.skipVotes
     const voted = !!votes?.voters.includes(userId)
+    const restart = allowed('seek')
+      ? () => send({ action: 'seek', positionMs: 0 }, (p) => ({ ...p, positionMs: 0, at: new Date().toISOString() }))
+      : undefined
+    // Going back ends the song playing, so it's the skip permission's
+    // call: in a room that votes on skips, it asks the room.
+    const goBack =
+      !guest && (can(room, userId, 'skip') || room.permissions.skip === 'vote')
+        ? () =>
+            send({ action: 'previous' }).then((np) => {
+              if (np?.playNow?.back && np.playNow.by === userId) {
+                toast({ message: `Asked the room to go back to “${np.playNow.item?.track.title ?? 'the last song'}”` })
+              }
+            })
+        : undefined
     return {
       toggle,
-      // There's no going back in a fair queue; "previous" restarts the song,
-      // like most players do past the first few seconds.
-      previous: allowed('seek') ? () => send({ action: 'seek', positionMs: 0 }, (p) => ({ ...p, positionMs: 0, at: new Date().toISOString() })) : undefined,
+      // Restarts the song, and goes back to the one before in its first
+      // few seconds, like most players.
+      previous:
+        restart || goBack
+          ? () => void (restart && (!goBack || currentPosition(playback) > BACK_WITHIN_MS) ? restart() : goBack?.())
+          : undefined,
       next: skip === 'skip' ? () => send({ action: 'skip', itemId: item.id }) : undefined,
       vote:
         skip === 'vote' && votes

@@ -12,9 +12,9 @@ import { queueQuery, useCurrentRoom } from '@/lib/room'
 import { usersQuery } from '@/lib/users'
 
 /**
- * Someone asked to play a song now, in a room that votes on skips: the
- * rest of the room says yes here, on any screen. Whoever asked sees the
- * tally and can take it back.
+ * Someone asked to play a song now, or to go back to the last one, in a
+ * room that votes on skips: the rest of the room says yes here, on any
+ * screen. Whoever asked sees the tally and can take it back.
  */
 export function PlayNowRequest() {
   const me = useMe()
@@ -28,7 +28,9 @@ export function PlayNowRequest() {
   const [hidden, setHidden] = useState<string>()
 
   const req = room ? playback.data?.playNow : undefined
-  const item = req && queue.data?.items.find((i) => i.id === req.itemId)
+  // A song to go back to isn't in the queue: the request carries it.
+  const item = req && (req.item ?? queue.data?.items.find((i) => i.id === req.itemId))
+  const back = !!req?.back
   const mine = req?.by === me.id
   const voted = !!req?.voters.includes(me.id)
   const mayVote = !me.guest || !!room?.guests.canVote
@@ -50,7 +52,7 @@ export function PlayNowRequest() {
           <Artwork src={queueArtworkUrl(roomId, item, 120)} className="size-10 rounded-lg shadow-none" />
           <div className="min-w-0 flex-1 text-sm">
             <p className="truncate">
-              {mine ? 'You asked to play ' : `${by} wants to play `}
+              {mine ? (back ? 'You asked to go back to ' : 'You asked to play ') : `${by} wants to ${back ? 'go back to' : 'play'} `}
               <span className="font-medium">{item.track.title}</span>
             </p>
             <p className="text-caption text-muted-foreground tabular-nums">
@@ -82,7 +84,7 @@ export function PlayNowRequest() {
                 onClick={() => void command({ action: voted ? 'unvote_play_now' : 'vote_play_now', itemId: req.itemId })}
               >
                 <Check data-icon="inline-start" />
-                {voted ? 'Agreed' : 'Play it'}
+                {voted ? 'Agreed' : back ? 'Go back' : 'Play it'}
               </Button>
             </>
           )}

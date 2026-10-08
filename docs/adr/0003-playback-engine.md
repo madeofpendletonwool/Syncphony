@@ -62,6 +62,10 @@ The vote passes once more than `skipVotePercent` (default 50, a majority) of the
 
 `play_now` with a queued `itemId` makes that song current straight away, skipping the one playing. The fair order isn't changed: the song simply jumps it, and the fair order then sees its requester just played. It takes the `skip` permission. When `skip` is `vote`, the owner still plays it outright, and anyone else asks the room: `nowplaying.updated` carries the request (`playNow`), everyone gets a notice, and the room agrees with `vote_play_now` on the same share as a skip vote. One request is open at a time. It lapses after 2 minutes, when its song leaves the queue, or when whoever asked withdraws it (`unvote_play_now`).
 
+#### Previous
+
+`previous` plays the song before this one again: the latest finished play whose song isn't waiting or playing. The song that was playing goes back to the front of the queue (`resume_at`), ahead of the fair order, to play next from the start; its unfinished play is deleted, so it isn't counted as a skip and doesn't cost its owner a turn. Going back several times puts each song back, the latest first. Moving or removing a song gives up its place at the front. Like `play_now` it takes the `skip` permission, and in a room that votes the request is a `playNow` with `back` set and the song in `item`, since it isn't in the queue; it lapses when the playing song changes. Clients send it when back is pressed in a song's first 3 seconds, and restart the song otherwise.
+
 #### One tap to play
 
 With no speaker, a member who may be the speaker pressing play becomes the speaker and starts the room in the same tap. "Play on this phone" does the same for a paused room.

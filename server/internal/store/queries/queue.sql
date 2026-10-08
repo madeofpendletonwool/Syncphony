@@ -23,19 +23,26 @@ ORDER BY added_by, lane_position, added_at;
 -- name: GetPlaying :one
 SELECT * FROM queue_items WHERE room_id = ? AND state = 'playing';
 
+-- SetQueueItemState also ends a song's place at the front of the queue.
 -- name: SetQueueItemState :exec
-UPDATE queue_items SET state = ?, updated_at = ? WHERE id = ?;
+UPDATE queue_items SET state = ?, resume_at = NULL, updated_at = ? WHERE id = ?;
+
+-- ResumeQueueItem puts the playing song back at the front of the queue,
+-- when someone goes back to the song before it.
+-- name: ResumeQueueItem :exec
+UPDATE queue_items SET state = 'queued', resume_at = ?, updated_at = ? WHERE id = ? AND state = 'playing';
 
 -- RemoveQueueItem takes a waiting song out of the queue, noting who did.
 -- name: RemoveQueueItem :exec
-UPDATE queue_items SET state = 'removed', removed_by = ?, updated_at = ? WHERE id = ?;
+UPDATE queue_items SET state = 'removed', removed_by = ?, resume_at = NULL, updated_at = ? WHERE id = ?;
 
 -- RestoreQueueItem puts a removed song back, in the place it had.
 -- name: RestoreQueueItem :exec
 UPDATE queue_items SET state = 'queued', removed_by = NULL, updated_at = ? WHERE id = ? AND state = 'removed';
 
+-- MoveQueueItem also gives up a place at the front: it goes where it's put.
 -- name: MoveQueueItem :exec
-UPDATE queue_items SET lane_position = ?, updated_at = ? WHERE id = ? AND state = 'queued';
+UPDATE queue_items SET lane_position = ?, resume_at = NULL, updated_at = ? WHERE id = ? AND state = 'queued';
 
 -- name: StartPlay :one
 INSERT INTO play_history (id, room_id, queue_item_id, started_at)
@@ -79,6 +86,11 @@ WHERE play_history.room_id = sqlc.arg(room_id)
 
 -- EndOpenPlays closes a room's unfinished play_history rows. There is at
 -- most one: the playing item's.
+-- DeleteOpenPlays forgets a room's unfinished play, for a song put back
+-- in the queue: it'll play again from the start.
+-- name: DeleteOpenPlays :exec
+DELETE FROM play_history WHERE room_id = ? AND ended_at IS NULL;
+
 -- name: EndOpenPlays :exec
 UPDATE play_history SET ended_at = ?, end_reason = ? WHERE room_id = ? AND ended_at IS NULL;
 

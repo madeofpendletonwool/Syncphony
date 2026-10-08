@@ -723,6 +723,10 @@ type PlayNowVote struct {
 	Needed int
 	// Expires is when the request lapses if the room hasn't agreed.
 	Expires time.Time
+	// Back makes it a request to go back to Item, the song that played
+	// before this one, rather than to play a queued song.
+	Back bool
+	Item *store.QueueItem
 }
 
 // SkipVotes is a vote to skip the playing song.
@@ -872,15 +876,29 @@ func SnapshotTx(ctx context.Context, q *store.Queries, id string) (QueueSnapshot
 	fs := fairnessState(items, history)
 	fs.Recent = recent
 	order := fairness.ForMode(r.FairnessMode, opts).Order(fs)
-	upNext := make([]string, len(order), len(items))
-	for i, it := range order {
-		upNext[i] = it.ID
+	// Songs put back when someone went back to the one before play first,
+	// the latest first, then the fair order.
+	var resumed []store.QueueItem
+	for _, it := range items {
+		if it.State == store.ItemQueued && it.ResumeAt.Valid {
+			resumed = append(resumed, it)
+		}
+	}
+	slices.SortFunc(resumed, func(a, b store.QueueItem) int {
+		return cmp.Or(b.ResumeAt.Time.Compare(a.ResumeAt.Time), cmp.Compare(a.ID, b.ID))
+	})
+	upNext := make([]string, 0, len(items))
+	for _, it := range resumed {
+		upNext = append(upNext, it.ID)
+	}
+	for _, it := range order {
+		upNext = append(upNext, it.ID)
 	}
 	// Autopilot songs aren't in any lane: they wait behind everyone's, in
 	// the order autopilot added them, so a member's song always goes first.
 	var autopilot []store.QueueItem
 	for _, it := range items {
-		if it.State == store.ItemQueued && it.IsAutopilot() {
+		if it.State == store.ItemQueued && it.IsAutopilot() && !it.ResumeAt.Valid {
 			autopilot = append(autopilot, it)
 		}
 	}
@@ -895,11 +913,12 @@ func SnapshotTx(ctx context.Context, q *store.Queries, id string) (QueueSnapshot
 
 // fairnessState builds the fairness engine's input from the upcoming items
 // (lanes in order, as ListUpcoming returns them) and each user's last play.
-// Autopilot songs are nobody's turn, so the engine doesn't see them.
+// Autopilot songs are nobody's turn, so the engine doesn't see them, and
+// nor does it see songs put back at the front.
 func fairnessState(items []store.QueueItem, history []store.LastPlayedByUserRow) fairness.State {
 	s := fairness.State{Lanes: map[string][]fairness.Item{}, LastPlayed: map[string]time.Time{}}
 	for _, it := range items {
-		if it.IsAutopilot() {
+		if it.IsAutopilot() || (it.State == store.ItemQueued && it.ResumeAt.Valid) {
 			continue
 		}
 		switch it.State {

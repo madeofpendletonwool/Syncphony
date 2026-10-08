@@ -211,6 +211,12 @@ func toNowPlaying(np rooms.NowPlaying) NowPlaying {
 	}
 	if v := np.PlayNow; v != nil {
 		out.PlayNow = &PlayNowVote{ItemId: v.ItemID, By: v.By, Voters: v.Voters, Needed: v.Needed, Expires: v.Expires}
+		if v.Back {
+			out.PlayNow.Back = ptr(true)
+		}
+		if v.Item != nil {
+			out.PlayNow.Item = ptr(toQueueItem(*v.Item))
+		}
 	}
 	return out
 }

@@ -53,6 +53,12 @@ export function can(room: Pick<Room, 'permissions' | 'ownerId'>, userId: string,
 }
 
 /**
+ * Back restarts the song; pressed again this soon into it, it goes back to
+ * the song before, like most players.
+ */
+export const BACK_WITHIN_MS = 3000
+
+/**
  * How userId can skip item: outright, by voting, or not at all. Whoever
  * queued a song can always skip it; autopilot's songs are nobody's.
  */

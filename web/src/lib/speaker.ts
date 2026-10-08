@@ -1,7 +1,7 @@
 import { api } from '@/api/client'
 import { ApiError, errorMessage, unwrap } from '@/api/errors'
 import { serverNow } from './clock'
-import { queueArtworkUrl, sendCommand, type Playback, type QueueItem } from './playback'
+import { BACK_WITHIN_MS, queueArtworkUrl, sendCommand, type Playback, type QueueItem } from './playback'
 import { createStore } from './store'
 import { toast } from './toast'
 import { deviceName } from './webauthn'
@@ -704,7 +704,9 @@ class Speaker {
       this.set({ status: 'paused' })
     })
     set('nexttrack', () => command({ action: 'skip', itemId: this.curItem?.id }))
-    set('previoustrack', () => command({ action: 'seek', positionMs: 0 }))
+    set('previoustrack', () =>
+      command(this.position() > BACK_WITHIN_MS ? { action: 'seek', positionMs: 0 } : { action: 'previous' }),
+    )
     set('seekto', (d) => d.seekTime !== undefined && command({ action: 'seek', positionMs: Math.round(d.seekTime * 1000) }))
   }
 

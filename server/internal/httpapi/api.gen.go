@@ -296,6 +296,7 @@ const (
 	Pause         PlaybackCommandAction = "pause"
 	Play          PlaybackCommandAction = "play"
 	PlayNow       PlaybackCommandAction = "play_now"
+	Previous      PlaybackCommandAction = "previous"
 	Seek          PlaybackCommandAction = "seek"
 	Skip          PlaybackCommandAction = "skip"
 	UnvotePlayNow PlaybackCommandAction = "unvote_play_now"
@@ -312,6 +313,8 @@ func (e PlaybackCommandAction) Valid() bool {
 	case Play:
 		return true
 	case PlayNow:
+		return true
+	case Previous:
 		return true
 	case Seek:
 		return true
@@ -1700,6 +1703,10 @@ type NowPlaying struct {
 	// permission is `vote`. It passes on the same share of the room as a
 	// skip, and lapses at `expires`, when the song leaves the queue, or
 	// when whoever asked takes it back.
+	//
+	// With `back`, it's a request to go back to the song that played
+	// before this one (`previous`): `item` is that song, which isn't in
+	// the queue. It lapses when the playing song changes.
 	PlayNow *PlayNowVote `json:"playNow,omitempty"`
 
 	// Player The device a room plays through.
@@ -1858,11 +1865,19 @@ type PersonStats struct {
 // permission is `vote`. It passes on the same share of the room as a
 // skip, and lapses at `expires`, when the song leaves the queue, or
 // when whoever asked takes it back.
+//
+// With `back`, it's a request to go back to the song that played
+// before this one (`previous`): `item` is that song, which isn't in
+// the queue. It lapses when the playing song changes.
 type PlayNowVote struct {
+	// Back A request to go back to the previous song.
+	Back *bool `json:"back,omitempty"`
+
 	// By Who asked. Their vote is the first.
-	By      string    `json:"by"`
-	Expires time.Time `json:"expires"`
-	ItemId  string    `json:"itemId"`
+	By      string     `json:"by"`
+	Expires time.Time  `json:"expires"`
+	Item    *QueueItem `json:"item,omitempty"`
+	ItemId  string     `json:"itemId"`
 
 	// Needed How many agreeing play the song.
 	Needed int `json:"needed"`
@@ -1878,6 +1893,11 @@ type PlaybackCommand struct {
 	// votes on skips, it asks the room instead (`playNow`), and
 	// `vote_play_now` agrees. `unvote_play_now` takes a vote back, or
 	// withdraws the request from whoever asked.
+	//
+	// `previous` plays the song before this one again, and puts the
+	// one playing back at the front of the queue to play next, from
+	// the start. Like `play_now` it takes the skip permission, or asks
+	// the room (`playNow` with `back`), whose votes are the same.
 	Action PlaybackCommandAction `json:"action"`
 
 	// ItemId Skip (or vote) only if this is still the current song, so two
@@ -1894,6 +1914,11 @@ type PlaybackCommand struct {
 // votes on skips, it asks the room instead (`playNow`), and
 // `vote_play_now` agrees. `unvote_play_now` takes a vote back, or
 // withdraws the request from whoever asked.
+//
+// `previous` plays the song before this one again, and puts the
+// one playing back at the front of the queue to play next, from
+// the start. Like `play_now` it takes the skip permission, or asks
+// the room (`playNow` with `back`), whose votes are the same.
 type PlaybackCommandAction string
 
 // PlaybackNotice Something members should hear about, like a song skipped because its service failed.
