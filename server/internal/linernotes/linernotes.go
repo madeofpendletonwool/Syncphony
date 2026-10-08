@@ -59,6 +59,8 @@ type Work struct {
 type SongRef struct {
 	Title  string `json:"title"`
 	Artist string `json:"artist,omitempty"`
+	// MBID is its MusicBrainz recording, for its cover.
+	MBID string `json:"mbid,omitempty"`
 }
 
 // Release is where the song came out.
@@ -76,6 +78,8 @@ type Artist struct {
 	Name string `json:"name"`
 	// About is a one-liner: "Group from Seattle, formed 1987".
 	About string `json:"about,omitempty"`
+	// Area is where they're from: "Seattle", "United Kingdom".
+	Area string `json:"area,omitempty"`
 	// Bio is a short summary from Wikipedia, and BioURL the article.
 	Bio    string `json:"bio,omitempty"`
 	BioURL string `json:"bioUrl,omitempty"`
@@ -291,18 +295,18 @@ func write(ids musicbrainz.IDs, d musicbrainz.Details) Notes {
 	}
 	for _, r := range d.Samples[:min(len(d.Samples), maxSampleFacts)] {
 		n.Facts = append(n.Facts, Fact{Kind: FactSamples, Text: "Samples " + ref(r)})
-		n.Samples = append(n.Samples, SongRef{Title: r.Title, Artist: r.Artist})
+		n.Samples = append(n.Samples, SongRef{Title: r.Title, Artist: r.Artist, MBID: r.MBID})
 	}
 	for _, r := range d.SampledBy[:min(len(d.SampledBy), maxSampleFacts)] {
 		n.Facts = append(n.Facts, Fact{Kind: FactSampledBy, Text: "Sampled in " + ref(r)})
-		n.SampledBy = append(n.SampledBy, SongRef{Title: r.Title, Artist: r.Artist})
+		n.SampledBy = append(n.SampledBy, SongRef{Title: r.Title, Artist: r.Artist, MBID: r.MBID})
 	}
 	// On a compilation or a reissue, when it first came out.
 	if d.Release != nil && n.Year > 0 && year(d.Release.Date) > n.Year {
 		n.Facts = append(n.Facts, Fact{Kind: FactReissue, Text: "First released in " + strconv.Itoa(n.Year)})
 	}
 	if d.Artist != nil {
-		n.Artist = &Artist{MBID: d.Artist.MBID, Name: d.Artist.Name, About: about(d.Artist)}
+		n.Artist = &Artist{MBID: d.Artist.MBID, Name: d.Artist.Name, About: about(d.Artist), Area: cmp.Or(d.Artist.Area, d.Artist.BeginArea)}
 		if f := origin(d.Artist); f != "" {
 			n.Facts = append(n.Facts, Fact{Kind: FactOrigin, Text: f})
 		}

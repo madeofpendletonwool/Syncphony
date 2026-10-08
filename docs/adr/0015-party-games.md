@@ -2,7 +2,7 @@
 
 - **Status:** accepted
 - **Date:** 2026-10-08
-- **Issue:** MAD-783 (stage 1: MAD-784, MAD-785, MAD-786, MAD-787)
+- **Issue:** MAD-783 (stage 1: MAD-784, MAD-785, MAD-786, MAD-787; stage 2: MAD-788, MAD-789, MAD-790, MAD-791)
 
 ## Context
 
@@ -25,7 +25,7 @@ The engine reads the settings as each song starts, so a level change applies fro
 - **Scoring.** A right answer scores 500, plus up to 500 more for speed. A near miss on a number scores a share of that. Finished rounds and answers are kept (`game_rounds`, `game_answers`), and the night's scores are everyone's points since the room's last night ended. They go out as `game.scores` after each reveal: everyone's on a `board`, your own when `private`, none when `off`.
 - **Hiding the answer.** A question says what it hides until the reveal: the song (title, artists, album, artwork), its liner notes, or its lyrics. The WebSocket sends `nowplaying.updated` and `queue.updated` with a "Mystery song" to everyone but the speaker. The speaker is the connection whose `device` matches the room's player, because its lock screen shows the song anyway. REST snapshots and the item's artwork, lyrics and liner-notes endpoints refuse with `hidden_for_round` too. When a round starts or stops hiding the song, the room is sent its playback and queue again.
 
-Games that pause the music (finish the lyric, name that tune) are only allowed at Game night and count toward the breaks per hour. The engine doesn't start them until stage 3 teaches it to pause and resume. Queue games aren't about one song, so they're never ready from a song's facts.
+Games that pause the music (finish the lyric, name that tune) are only allowed at Game night and count toward the breaks per hour. Finish the lyric runs from stage 2; name that tune waits for clips (stage 3). Queue games aren't about one song, so they're never ready from a song's facts.
 
 ### The question kit is pure
 
@@ -44,9 +44,23 @@ A wrong answer can never also be right: anyone credited on the song is excluded,
 
 Package `awards` turns the night's plays, hearts, beat maps, music graph and game scores into at most six awards, with no person winning more than two. The awards are Deepest Cut, Dance Floor MVP, Vibe Killer, Trendsetter, Time Traveler, Tempo Whiplash, Sample Snitch, The Comeback, The Opener, The Closer and Trivia Champ. A tie for the top skips that award. Autopilot never wins. `nights` computes the awards after it keeps the night, from cached facts only, and stores them on the night. A failure leaves the night without awards rather than losing it. Every level but Off gets awards.
 
+### Stage 2: trivia while the song plays
+
+Each game is still a round kind with its question from `quiz`; stage 2 gives them their own shape.
+
+- **Guess the year** is a slider, not choices. Its ends are loose so they don't give the answer away: from a decade start 10–40 years before the year (never later than 1970) to this year. It asks for the first release, so a remaster doesn't fool it. At the reveal the big screen puts everyone's guess on a timeline with the real year marked. An exact guess scores `ExactBonus` (250) more; otherwise the nearest guess that scored at all scores `ClosestBonus` (100) more.
+- **Higher or lower** is guess the year's other topic: is this song older or newer than the one the room played before? The engine remembers each room's previous song and finds its year from the facts cache. Two songs from the same year aren't asked. Streaks come from the night's kept rounds (a wrong answer ends one, sitting a round out doesn't) and go out with the scores; the night's best streak is shown only on a board, since it names someone.
+- **Liner-notes trivia** also asks who produced or wrote the song, who played on it, which album it's from, what label put it out, and where the artist is from. Wrong answers come from the night's other liner notes (players, albums, labels, places). Where the artist is from falls back to well-known countries or music cities, whichever the answer is, so it never stands out. An album question hides the song, since the album's on every screen. Each reveal carries a `detail` line from the notes. "Who did it first?" for a cover stays "who wrote the original": MusicBrainz doesn't link a cover to the first recording without another lookup per song.
+- **Sample detective** reveals both songs' covers side by side. The other song's cover comes from the Cover Art Archive through its MusicBrainz recording (`GET /rooms/{id}/games/rounds/{roundId}/artwork`, only from the reveal on). Playing a clip of the other song waits for the clip endpoint (stage 3). MusicBrainz doesn't describe the sampled part, so there's no description.
+- **Beat the singer** shows a line coming up with one to three words blanked, `LyricLead` (8s) before it's sung, and closes as the singer gets there. It picks lines that come back (a chorus) or sit in the song's loudest section, never the first line, and blanks words worth guessing: always the last one (often the rhyme), never small words. Each right word scores a share. A round about a moment later in the song waits `pending`, seen by nobody, until it's time to show the line; it's dropped if the song changes first. It picks from the next few fair lines, so a round started by hand doesn't keep the room waiting.
+- **Finish the lyric** (Game night) stops the music as a line begins, through `playback.Engine.Break`, shows the line before, and plays on from that line at the reveal (`Resume`, which only acts if the song is still the room's and still paused). It needs the hour's break budget (`breaksPerHour`, counted from kept rounds) and an engine that can stop the music. A typed line is right with 85% of its words in order; half or more scores a share.
+- **Hiding one line.** Lyric games hide `line`, not all the lyrics: the lyrics endpoint blanks that line, everywhere it's sung, until the reveal, and the web app does the same for lyrics it already had.
+- **Matching** evens out how lyrics are sung and typed: "do not" and "don't", "runnin'" and "running", "'cause" and "because" are the same.
+
 ## Consequences
 
 - Rounds live in memory: a restart drops a round in progress, but kept rounds and scores survive.
 - Hiding is cooperative on clients that already fetched the lyrics or notes before the round began. The server stops new fetches, and the web app hides them while a round asks.
 - Facts are only as good as MusicBrainz, LRCLIB and the graph's sources. Songs they don't know simply aren't asked about.
-- Stage 1 asks year, liner-notes, sample and beat-the-singer questions through the shared engine and kit. Stages 2–4 add each game's own UI, clips, pausing rounds and queue games.
+- Stage 1 built the shared engine and kit; stage 2 gave the trivia games their own questions, timing and reveals, and taught the engine to stop the music. Stages 3–4 add clips (name that tune) and queue games.
+- Higher or lower needs the previous song's facts, so it only appears when they're cached: songs are worked out a few ahead as they're queued.

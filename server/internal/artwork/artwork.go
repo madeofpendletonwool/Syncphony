@@ -72,6 +72,15 @@ func (s *Service) ForTrack(ctx context.Context, t provider.Track, px int) (artca
 	return caa, nil
 }
 
+// ForRecording returns the cover of a MusicBrainz recording nobody
+// queued, about px wide: the other half of a sample, say.
+func (s *Service) ForRecording(ctx context.Context, mbid string, px int) (artcache.Image, error) {
+	if s.mb == nil || mbid == "" {
+		return artcache.Image{}, provider.ErrNotFound
+	}
+	return s.mb.RecordingArt(ctx, mbid, px)
+}
+
 // own loads t's artwork from its own service.
 func (s *Service) own(ctx context.Context, t provider.Track, px int) (artcache.Image, error) {
 	if t.Artwork == "" || t.Ref.LinkID == "" {

@@ -66,15 +66,16 @@ var guestOps = map[string]bool{
 	"SendReaction":    true,
 	"GetHearts":       true,
 	// Games, when the room lets guests play (the games engine checks).
-	"GetGameRound":    true,
-	"AnswerGameRound": true,
-	"GetGameScores":   true,
-	"HeartSong":       true,
-	"UnheartSong":     true,
-	"GetHistory":      true,
-	"GetRoomStats":    true,
-	"ListSessions":    true,
-	"ListNights":      true,
+	"GetGameRound":        true,
+	"GetGameRoundArtwork": true,
+	"AnswerGameRound":     true,
+	"GetGameScores":       true,
+	"HeartSong":           true,
+	"UnheartSong":         true,
+	"GetHistory":          true,
+	"GetRoomStats":        true,
+	"ListSessions":        true,
+	"ListNights":          true,
 }
 
 // requestRoom is the room a request is about, if it names one.

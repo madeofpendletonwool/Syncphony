@@ -153,3 +153,47 @@ func (q *Queries) GameScoresSince(ctx context.Context, arg GameScoresSinceParams
 	}
 	return items, nil
 }
+
+const higherLowerAnswersSince = `-- name: HigherLowerAnswersSince :many
+SELECT game_answers.user_id, game_answers.correct
+FROM game_answers
+JOIN game_rounds ON game_rounds.id = game_answers.round_id
+WHERE game_rounds.room_id = ?1 AND game_rounds.started_at >= ?2
+  AND game_rounds.kind = 'year' AND json_extract(game_rounds.question, '$.Topic') = 'higher_lower'
+ORDER BY game_rounds.started_at, game_rounds.id
+`
+
+type HigherLowerAnswersSinceParams struct {
+	RoomID string
+	Since  time.Time
+}
+
+type HigherLowerAnswersSinceRow struct {
+	UserID  string
+	Correct bool
+}
+
+// HigherLowerAnswersSince lists the answers to a room's higher-or-lower
+// rounds since a time, oldest first, for the night's streaks.
+func (q *Queries) HigherLowerAnswersSince(ctx context.Context, arg HigherLowerAnswersSinceParams) ([]HigherLowerAnswersSinceRow, error) {
+	rows, err := q.db.QueryContext(ctx, higherLowerAnswersSince, arg.RoomID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []HigherLowerAnswersSinceRow{}
+	for rows.Next() {
+		var i HigherLowerAnswersSinceRow
+		if err := rows.Scan(&i.UserID, &i.Correct); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

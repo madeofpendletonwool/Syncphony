@@ -50,15 +50,26 @@ func (s *Sources) Song(ctx context.Context, it store.QueueItem, cachedOnly bool)
 		f.Year = n.Year
 		if n.Release != nil {
 			f.ReleaseYear = year(n.Release.Date)
+			if len(n.Release.Labels) > 0 {
+				f.Label = n.Release.Labels[0]
+			}
+		}
+		if n.Artist != nil && n.Artist.Area != "" {
+			f.Origin, f.OriginLine = n.Artist.Area, n.Artist.About
+			for _, fact := range n.Facts {
+				if fact.Kind == linernotes.FactOrigin {
+					f.OriginLine = fact.Text
+				}
+			}
 		}
 		if c := n.CoverOf; c != nil {
 			f.CoverOf = &quiz.Original{Title: c.Title, Writers: c.Writers}
 		}
 		for _, r := range n.Samples {
-			f.Samples = append(f.Samples, quiz.Song{Title: r.Title, Artist: r.Artist})
+			f.Samples = append(f.Samples, quiz.Song{Title: r.Title, Artist: r.Artist, ID: r.MBID})
 		}
 		for _, r := range n.SampledBy {
-			f.SampledBy = append(f.SampledBy, quiz.Song{Title: r.Title, Artist: r.Artist})
+			f.SampledBy = append(f.SampledBy, quiz.Song{Title: r.Title, Artist: r.Artist, ID: r.MBID})
 		}
 		for _, c := range n.Credits {
 			f.Credits = append(f.Credits, quiz.Credit{Role: c.Role, Names: c.Names})
@@ -187,12 +198,27 @@ func (s *Sources) Pool(ctx context.Context, roomID string, it store.QueueItem, f
 		}
 		t := queuedTrack(other)
 		p.Songs = append(p.Songs, quiz.Song{Title: t.Title, Artist: mainArtist(t)})
-		if n, ok := s.notes(ctx, t, true); ok {
-			for _, c := range n.Credits {
-				if c.Role == "Produced by" || c.Role == "Written by" || c.Role == "Music by" || c.Role == "Lyrics by" {
-					p.People = append(p.People, c.Names...)
-				}
+		if t.Album.Title != "" {
+			p.Albums = append(p.Albums, t.Album.Title)
+		}
+		n, ok := s.notes(ctx, t, true)
+		if !ok {
+			continue
+		}
+		for _, c := range n.Credits {
+			switch c.Role {
+			case "Produced by", "Written by", "Music by", "Lyrics by":
+				p.People = append(p.People, c.Names...)
+			case "Arranged by", "Mixed by", "Engineered by", "Mastered by":
+			default:
+				p.Players = append(p.Players, c.Names...)
 			}
+		}
+		if n.Release != nil {
+			p.Labels = append(p.Labels, n.Release.Labels...)
+		}
+		if n.Artist != nil && n.Artist.Area != "" {
+			p.Places = append(p.Places, n.Artist.Area)
 		}
 	}
 	return p

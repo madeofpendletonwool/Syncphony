@@ -22,6 +22,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -48,8 +49,10 @@ type InvalidInputError struct{ Message string }
 
 func (e *InvalidInputError) Error() string { return e.Message }
 
-// Round states.
+// Round states. A round about a moment later in the song (a lyric) waits
+// pending, unseen, until its announce.
 const (
+	StatePending  = "pending"
 	StateAnnounce = "announce"
 	StateOpen     = "open"
 	StateReveal   = "reveal"
@@ -74,6 +77,9 @@ type Config struct {
 	AmbientWindow, RoundWindow time.Duration
 	// RevealFor is how long the reveal stays up. Default 10s.
 	RevealFor time.Duration
+	// LyricLead is how long before its line beat the singer shows the
+	// line with words blanked. Default 8s.
+	LyricLead time.Duration
 	// Now is the clock. Default store.Now.
 	Now func() time.Time
 	// Seed seeds the engine's choices, for tests. 0 is random.
@@ -92,6 +98,9 @@ type Engine struct {
 	// OnHide, if set, is called when a round starts or stops hiding the
 	// playing song, so screens can be sent it again without (or with) it.
 	OnHide func(ctx context.Context, roomID string)
+	// Music pauses and resumes the music for rounds that stop it (finish
+	// the lyric). Nil runs none of them.
+	Music Music
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -115,10 +124,21 @@ type Facts interface {
 	Pool(ctx context.Context, roomID string, it store.QueueItem, f quiz.Facts) quiz.Pool
 }
 
+// Music pauses a room's music for a round, and plays it on after.
+// playback.Engine is one.
+type Music interface {
+	// Break pauses itemID where it is, if it's the song playing.
+	Break(ctx context.Context, roomID, itemID string) error
+	// Resume plays itemID on from at, if it's still the room's song.
+	Resume(ctx context.Context, roomID, itemID string, at time.Duration) error
+}
+
 // room is one room's games: the current round, and what's played since
 // the last one.
 type room struct {
-	np    rooms.NowPlaying
+	np rooms.NowPlaying
+	// prev is the song that played before this one, for higher or lower.
+	prev  *store.QueueItem
 	round *Round
 	// songs counts songs that started since the last round.
 	songs int
@@ -146,6 +166,8 @@ type Round struct {
 	// Scores is who sees scores (rooms.Scores*).
 	Scores  string
 	Answers map[string]*Answer
+	// Breaks is set when the round stops the music while answers are open.
+	Breaks bool
 }
 
 // Answer is someone's answer to a round.
@@ -156,7 +178,9 @@ type Answer struct {
 	At        time.Time
 	Correct   bool
 	Closeness float64
-	Points    int
+	// Closest is set on the guesses nearest a number answer.
+	Closest bool
+	Points  int
 }
 
 // New returns an Engine, and registers it for rooms' playback, so rounds
@@ -173,6 +197,9 @@ func New(db *store.Store, bus realtime.Bus, rs *rooms.Service, cfg Config) *Engi
 	}
 	if cfg.RevealFor == 0 {
 		cfg.RevealFor = 10 * time.Second
+	}
+	if cfg.LyricLead == 0 {
+		cfg.LyricLead = 8 * time.Second
 	}
 	if cfg.Now == nil {
 		cfg.Now = store.Now
@@ -238,14 +265,24 @@ func (e *Engine) NowPlaying(np rooms.NowPlaying) {
 		return
 	}
 	r := e.roomOf(np.RoomID)
-	before := idOf(r.np.Item)
+	before := r.np.Item
 	r.np = np
 	now := idOf(np.Item)
-	if now == before {
+	if now == idOf(before) {
 		return
 	}
-	if rd := r.round; rd != nil && rd.ItemID != now && (rd.State == StateAnnounce || rd.State == StateOpen) {
-		e.reveal(rd)
+	if before != nil {
+		r.prev = before
+	}
+	if rd := r.round; rd != nil && rd.ItemID != now {
+		switch rd.State {
+		case StatePending:
+			// Its line won't be sung now. Nobody saw it.
+			rd.State = StateDone
+			r.round = nil
+		case StateAnnounce, StateOpen:
+			e.reveal(rd)
+		}
 	}
 	if now == "" {
 		return
@@ -341,10 +378,15 @@ func (e *Engine) make(ctx context.Context, roomID string, it store.QueueItem, g 
 		kinds = []string{kind}
 	}
 	ready := quiz.Ready(f)
+	breaks := e.breaksLeft(ctx, roomID, g)
 	kinds = slices.DeleteFunc(kinds, func(k string) bool {
-		// Games that pause the music wait for the engine to learn how
-		// (MAD-791, MAD-793); queue games aren't about one song.
-		return !slices.Contains(ready, k) || slices.Contains(rooms.GameBreaks, k)
+		if !slices.Contains(ready, k) {
+			return true
+		}
+		// Games that stop the music need a player and the hour's budget.
+		// Name that tune waits for clips (stage 3); queue games aren't
+		// about one song.
+		return k == rooms.GameTune || (slices.Contains(rooms.GameBreaks, k) && (e.Music == nil || !breaks))
 	})
 	if len(kinds) == 0 {
 		return nil, ErrNoQuestion
@@ -353,8 +395,22 @@ func (e *Engine) make(ctx context.Context, roomID string, it store.QueueItem, g 
 	pool.ThisYear = e.cfg.Now().Year()
 
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	r := e.roomOf(roomID)
+	prev := r.prev
+	e.mu.Unlock()
+	if prev != nil && prev.ID != it.ID {
+		pf, ok := e.ready.get(key(*prev))
+		if !ok {
+			pf, err = e.Facts.Song(ctx, *prev, true)
+			ok = err == nil
+		}
+		if ok && pf.Year > 0 {
+			pool.Previous = &quiz.Dated{Song: pf.Song, Year: pf.Year}
+		}
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	if r.round != nil {
 		return nil, ErrRoundRunning
 	}
@@ -368,30 +424,66 @@ func (e *Engine) make(ctx context.Context, roomID string, it store.QueueItem, g 
 		mode = ModeAmbient
 	}
 	for _, k := range kinds {
-		// A few tries: a lyric question needs its line far enough ahead.
-		for range 4 {
-			q, ok := quiz.Ask(k, f, pool, e.rng)
-			if !ok {
-				break
-			}
-			opens, closes, ok := e.times(r.np, f, q, mode, now)
-			if !ok {
-				continue
-			}
-			rd := &Round{
-				ID: store.NewID(), RoomID: roomID, ItemID: it.ID, Kind: k, Mode: mode, State: StateAnnounce,
-				Question: q, StartedBy: by, StartedAt: now, OpensAt: opens, ClosesAt: closes, DoneAt: closes.Add(e.cfg.RevealFor),
-				Guests: g.GuestsAnswer(), TVOnly: g.TVOnly, Scores: g.ScoreMode(), Answers: map[string]*Answer{},
-			}
-			r.round, r.songs = rd, 0
-			e.publish(rd)
-			e.hide(rd)
-			e.at(rd, opens, StateAnnounce, func() { e.open(rd) })
-			e.at(rd, closes, StateOpen, func() { e.reveal(rd) })
-			return rd, nil
+		// A lyric question is about a line far enough ahead to show it in time.
+		pool.AfterMs = (position(r.np, now) + e.lead(k) + time.Second).Milliseconds()
+		q, ok := quiz.Ask(k, f, pool, e.rng)
+		if !ok {
+			continue
 		}
+		start, opens, closes, ok := e.times(r.np, f, q, mode, now)
+		if !ok {
+			continue
+		}
+		rd := &Round{
+			ID: store.NewID(), RoomID: roomID, ItemID: it.ID, Kind: k, Mode: mode, State: StateAnnounce,
+			Question: q, StartedBy: by, StartedAt: now, OpensAt: opens, ClosesAt: closes, DoneAt: closes.Add(e.cfg.RevealFor),
+			Guests: g.GuestsAnswer(), TVOnly: g.TVOnly, Scores: g.ScoreMode(), Answers: map[string]*Answer{},
+			Breaks: slices.Contains(rooms.GameBreaks, k),
+		}
+		r.round, r.songs = rd, 0
+		if start.After(now) {
+			// Wait, unseen, until it's time to show the line.
+			rd.State = StatePending
+			e.at(rd, start, StatePending, func() { e.announce(rd) })
+		} else {
+			e.announce(rd)
+		}
+		e.at(rd, opens, StateAnnounce, func() { e.open(rd) })
+		e.at(rd, closes, StateOpen, func() { e.reveal(rd) })
+		return rd, nil
 	}
 	return nil, ErrNoQuestion
+}
+
+// lead is how far ahead of now a game's question has to be about: the
+// announce, and for beat the singer, the time to read the line.
+func (e *Engine) lead(kind string) time.Duration {
+	switch kind {
+	case rooms.GameLyrics:
+		return e.cfg.Announce + e.cfg.LyricLead
+	case rooms.GameFinishLyric:
+		return e.cfg.Announce
+	}
+	return 0
+}
+
+// breaksLeft reports whether the hour's budget of rounds that stop the
+// music has any left.
+func (e *Engine) breaksLeft(ctx context.Context, roomID string, g rooms.Games) bool {
+	if g.Breaks() == 0 {
+		return false
+	}
+	n, err := e.db.CountGameRoundsSince(ctx, store.CountGameRoundsSinceParams{
+		RoomID: roomID, Since: e.cfg.Now().Add(-time.Hour), Kinds: rooms.GameBreaks,
+	})
+	return err == nil && n < int64(g.Breaks())
+}
+
+// announce shows a round's question. The caller holds mu.
+func (e *Engine) announce(rd *Round) {
+	rd.State = StateAnnounce
+	e.publish(rd)
+	e.hide(rd)
 }
 
 // song returns what's known about a song: from the cache made as it was
@@ -413,12 +505,14 @@ func (e *Engine) song(ctx context.Context, it store.QueueItem) (quiz.Facts, erro
 // Song positions are kept a little clear of the song's end.
 const endMargin = 3 * time.Second
 
-// times works out when a round's answers open and close. With a beat map,
-// answers open on a section's start and close on the next section
-// boundary, or a downbeat, so the reveal lands with the music; without
-// one, they're fixed timers. A lyric question closes as the singer gets
-// to the line. ok is false if the song doesn't have long enough left.
-func (e *Engine) times(np rooms.NowPlaying, f quiz.Facts, q quiz.Question, mode string, now time.Time) (opens, closes time.Time, ok bool) {
+// times works out when a round is announced, and when its answers open
+// and close. With a beat map, answers open on a section's start and close
+// on the next section boundary, or a downbeat, so the reveal lands with
+// the music; without one, they're fixed timers. Beat the singer opens a
+// little before its line and closes as the singer gets there; finish the
+// lyric opens as its line would begin, with the music stopped. ok is
+// false if the song doesn't have long enough left.
+func (e *Engine) times(np rooms.NowPlaying, f quiz.Facts, q quiz.Question, mode string, now time.Time) (start, opens, closes time.Time, ok bool) {
 	pos := position(np, now)
 	at := func(ms int64) time.Time { return now.Add(time.Duration(ms)*time.Millisecond - pos) }
 	ms := func(t time.Time) int64 { return (pos + t.Sub(now)).Milliseconds() }
@@ -430,12 +524,19 @@ func (e *Engine) times(np rooms.NowPlaying, f quiz.Facts, q quiz.Question, mode 
 	if f.DurationMs > 0 {
 		end = at(f.DurationMs).Add(-endMargin)
 	}
-	opens = now.Add(e.cfg.Announce)
-	if q.AtMs > 0 {
+	inSong := func(t time.Time) bool { return end.IsZero() || !t.After(end) }
+	switch q.Kind {
+	case rooms.GameLyrics:
 		closes = at(q.AtMs)
-		// Enough time to read the line and type.
-		return opens, closes, closes.Sub(opens) >= 6*time.Second && (end.IsZero() || !closes.After(end))
+		opens = closes.Add(-e.cfg.LyricLead)
+		start = opens.Add(-e.cfg.Announce)
+		return start, opens, closes, !start.Before(now) && inSong(closes)
+	case rooms.GameFinishLyric:
+		opens = at(q.AtMs)
+		start = opens.Add(-e.cfg.Announce)
+		return start, opens, opens.Add(e.cfg.RoundWindow), !start.Before(now) && inSong(opens)
 	}
+	start, opens = now, now.Add(e.cfg.Announce)
 	// Open on the next section start if it's soon.
 	if s, found := next(sectionStarts(f), ms(opens)); found && at(s).Sub(opens) <= 8*time.Second {
 		opens = at(s)
@@ -449,7 +550,7 @@ func (e *Engine) times(np rooms.NowPlaying, f quiz.Facts, q quiz.Question, mode 
 	if !end.IsZero() && closes.After(end) {
 		closes = end
 	}
-	return opens, closes, closes.Sub(opens) >= window/2
+	return start, opens, closes, closes.Sub(opens) >= window/2
 }
 
 func sectionStarts(f quiz.Facts) []int64 {
@@ -495,10 +596,18 @@ func (e *Engine) at(rd *Round, t time.Time, state string, fn func()) {
 	e.timers[timer] = struct{}{}
 }
 
-// open opens a round for answers. The caller holds mu.
+// open opens a round for answers, stopping the music if it's that kind
+// of round. The caller holds mu.
 func (e *Engine) open(rd *Round) {
 	rd.State = StateOpen
 	e.publish(rd)
+	if rd.Breaks && e.Music != nil {
+		e.background(func(ctx context.Context) {
+			if err := e.Music.Break(ctx, rd.RoomID, rd.ItemID); err != nil {
+				slog.Warn("games: stopping the music", "room", rd.RoomID, "err", err)
+			}
+		})
+	}
 }
 
 // reveal closes a round, scores it, keeps it, and shows the answer. The
@@ -515,7 +624,17 @@ func (e *Engine) reveal(rd *Round) {
 		a.Correct, a.Closeness = quiz.Check(rd.Question, a.Response)
 		a.Points = Points(a.Closeness, a.At, rd.OpensAt, rd.ClosesAt)
 	}
+	closest(rd)
 	e.publish(rd)
+	if rd.Breaks && e.Music != nil {
+		// The music comes back on the line, as the answer.
+		at := time.Duration(rd.Question.AtMs) * time.Millisecond
+		e.background(func(ctx context.Context) {
+			if err := e.Music.Resume(ctx, rd.RoomID, rd.ItemID, at); err != nil {
+				slog.Warn("games: resuming the music", "room", rd.RoomID, "err", err)
+			}
+		})
+	}
 	e.at(rd, rd.DoneAt, StateReveal, func() { e.done(rd) })
 	// Keep it, then send the night's scores. In the background: it's I/O,
 	// and the caller holds mu.
@@ -551,6 +670,51 @@ func (e *Engine) done(rd *Round) {
 	rd.State = StateDone
 	e.publish(rd)
 	e.byRoom[rd.RoomID].round = nil
+}
+
+// Bonuses on a number answer: exactly right, and nearest in the room.
+const (
+	ExactBonus   = 250
+	ClosestBonus = 100
+)
+
+// closest marks the guesses nearest a number answer, and adds their
+// bonuses: an exact one scores ExactBonus more; otherwise the nearest
+// that scored at all, ClosestBonus. The caller holds mu.
+func closest(rd *Round) {
+	q := rd.Question
+	if q.Answer != quiz.AnswerNumber {
+		return
+	}
+	want, err := strconv.Atoi(q.Correct)
+	if err != nil {
+		return
+	}
+	best := -1
+	for _, a := range rd.Answers {
+		if a.Response.Number != nil && (best < 0 || abs(*a.Response.Number-want) < best) {
+			best = abs(*a.Response.Number - want)
+		}
+	}
+	for _, a := range rd.Answers {
+		if a.Response.Number == nil || abs(*a.Response.Number-want) != best {
+			continue
+		}
+		a.Closest = true
+		switch {
+		case best == 0:
+			a.Points += ExactBonus
+		case a.Points > 0:
+			a.Points += ClosestBonus
+		}
+	}
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
 
 // Points scores an answer: a right one 500, plus up to 500 more the
@@ -645,7 +809,7 @@ func (e *Engine) Current(roomID string) (Round, bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	r := e.byRoom[roomID]
-	if r == nil || r.round == nil {
+	if r == nil || r.round == nil || r.round.State == StatePending {
 		return Round{}, false
 	}
 	return snapshot(r.round), true
@@ -661,6 +825,19 @@ func (e *Engine) Hidden(roomID string) (itemID string, hides []string) {
 		return "", nil
 	}
 	return r.round.ItemID, r.round.Question.Hides
+}
+
+// HiddenLine reports the lyric line a room's round keeps back until its
+// reveal: the one sung at atMs in itemID. ok is false if there's none.
+func (e *Engine) HiddenLine(roomID string) (itemID string, atMs int64, ok bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	r := e.byRoom[roomID]
+	if r == nil || r.round == nil || (r.round.State != StateAnnounce && r.round.State != StateOpen) ||
+		!slices.Contains(r.round.Question.Hides, quiz.HideLine) {
+		return "", 0, false
+	}
+	return r.round.ItemID, r.round.Question.AtMs, true
 }
 
 // RoomDeleted forgets a room.
@@ -695,6 +872,9 @@ type Scores struct {
 	// Mode is who sees them (rooms.Scores*).
 	Mode    string
 	Players []Player
+	// Best is the night's longest higher-or-lower streak, if anyone has
+	// one going or had one.
+	Best *Streak
 }
 
 // Player is one person's score tonight.
@@ -702,6 +882,15 @@ type Player struct {
 	UserID            string
 	Points            int
 	Correct, Answered int
+	// Streak is how many higher-or-lower rounds they've got right in a
+	// row, up to now; BestStreak their longest tonight.
+	Streak, BestStreak int
+}
+
+// Streak is someone's run of right higher-or-lower answers.
+type Streak struct {
+	UserID string
+	Count  int
 }
 
 // Scores returns the room's game scores since its last night ended, best
@@ -724,6 +913,27 @@ func (e *Engine) Scores(ctx context.Context, roomID string) (Scores, error) {
 	}
 	for _, r := range rows {
 		out.Players = append(out.Players, Player{UserID: r.UserID, Points: int(r.Points), Correct: int(r.Correct), Answered: int(r.Answered)})
+	}
+	// Higher-or-lower streaks: a wrong answer ends one, sitting a round out doesn't.
+	hl, err := e.db.HigherLowerAnswersSince(ctx, store.HigherLowerAnswersSinceParams{RoomID: roomID, Since: since})
+	if err != nil {
+		return Scores{}, err
+	}
+	cur, best := map[string]int{}, map[string]int{}
+	for _, a := range hl {
+		if a.Correct {
+			cur[a.UserID]++
+			best[a.UserID] = max(best[a.UserID], cur[a.UserID])
+		} else {
+			cur[a.UserID] = 0
+		}
+	}
+	for i := range out.Players {
+		p := &out.Players[i]
+		p.Streak, p.BestStreak = cur[p.UserID], best[p.UserID]
+		if p.BestStreak > 0 && (out.Best == nil || p.BestStreak > out.Best.Count) {
+			out.Best = &Streak{UserID: p.UserID, Count: p.BestStreak}
+		}
 	}
 	return out, nil
 }

@@ -48,8 +48,76 @@ func Check(q Question, r Response) (correct bool, closeness float64) {
 				return true, 1
 			}
 		}
+		switch {
+		case len(q.Blanks) > 0:
+			return blanksRight(r.Text, q.Blanks)
+		case q.Topic == TopicNextLine:
+			return lineRight(r.Text, q.Correct)
+		}
 	}
 	return false, 0
+}
+
+// blanksRight marks the words typed for a line's blanks: each one right,
+// in any order, scores its share.
+func blanksRight(got string, blanks []string) (bool, float64) {
+	typed := canon(got)
+	used := make([]bool, len(typed))
+	right := 0
+	for _, b := range blanks {
+		want := strings.Join(canon(b), "")
+		for i, w := range typed {
+			if !used[i] && sameWord(w, want) {
+				used[i] = true
+				right++
+				break
+			}
+		}
+	}
+	if right == len(blanks) {
+		return true, 1
+	}
+	return false, float64(right) / float64(len(blanks))
+}
+
+// lineRight marks a typed lyric line by how many of its words came in
+// order: nearly all is right, half or more scores a share.
+func lineRight(got, want string) (bool, float64) {
+	g, w := canon(got), canon(want)
+	if len(w) == 0 {
+		return false, 0
+	}
+	// The longest run of words in common, in order.
+	prev := make([]int, len(w)+1)
+	cur := make([]int, len(w)+1)
+	for i := range g {
+		for j := range w {
+			if sameWord(g[i], w[j]) {
+				cur[j+1] = prev[j] + 1
+			} else {
+				cur[j+1] = max(prev[j+1], cur[j])
+			}
+		}
+		prev, cur = cur, prev
+	}
+	share := float64(prev[len(w)]) / float64(len(w))
+	switch {
+	case share >= 0.85:
+		return true, 1
+	case share >= 0.5:
+		return false, share
+	}
+	return false, 0
+}
+
+// sameWord reports whether a typed word is the wanted one, allowing a typo
+// in longer words.
+func sameWord(got, want string) bool {
+	allow := 0
+	if len([]rune(want)) >= 6 {
+		allow = 1
+	}
+	return got == want || levenshtein(got, want, allow) <= allow
 }
 
 func number(q Question, r Response) (int, bool) {
@@ -85,8 +153,48 @@ func Matches(got, want string) bool {
 }
 
 func simple(s string) string {
-	s = parens.ReplaceAllString(s, "")
-	return strings.ReplaceAll(key(s), " ", "")
+	return strings.Join(canon(parens.ReplaceAllString(s, "")), "")
+}
+
+// canon is text's words, simplified and with how people sing and type
+// them evened out: "do not" and "don't", "runnin'" and "running",
+// "'cause" and "because" are the same.
+func canon(s string) []string {
+	ws := strings.Fields(key(s))
+	out := make([]string, 0, len(ws))
+	for i := 0; i < len(ws); i++ {
+		if i+1 < len(ws) {
+			if c, ok := contractions[ws[i]+" "+ws[i+1]]; ok {
+				out = append(out, c)
+				i++
+				continue
+			}
+		}
+		w := ws[i]
+		if c, ok := spellings[w]; ok {
+			w = c
+		}
+		if len(w) > 4 && strings.HasSuffix(w, "ing") {
+			w = strings.TrimSuffix(w, "g")
+		}
+		out = append(out, w)
+	}
+	return out
+}
+
+// contractions are two words sung as one, after punctuation's gone.
+var contractions = map[string]string{
+	"do not": "dont", "does not": "doesnt", "did not": "didnt", "is not": "isnt", "are not": "arent",
+	"was not": "wasnt", "can not": "cant", "will not": "wont", "would not": "wouldnt", "could not": "couldnt",
+	"should not": "shouldnt", "i am": "im", "you are": "youre", "they are": "theyre", "it is": "its",
+	"that is": "thats", "i will": "ill", "you will": "youll", "i have": "ive", "you have": "youve",
+	"i would": "id", "let us": "lets", "going to": "gonna", "want to": "wanna", "got to": "gotta",
+}
+
+// spellings are words with another way of writing them.
+var spellings = map[string]string{
+	"cannot": "cant", "because": "cause", "cuz": "cause", "cos": "cause", "coz": "cause",
+	"until": "til", "till": "til", "them": "em", "okay": "ok", "though": "tho",
 }
 
 // levenshtein is the edit distance between a and b, or more than limit

@@ -61,6 +61,8 @@ type Service struct {
 	jobs    chan provider.Track
 	mu      sync.Mutex
 	pending map[string]bool
+	// releases are recordings' releases, for their covers: "" for none.
+	releases map[string]IDs
 }
 
 // New returns a Service.
