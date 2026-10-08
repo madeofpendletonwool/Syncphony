@@ -27,15 +27,24 @@ import { Waveform } from './waveform'
  * Full-screen now playing, with the room's queue below (beside, on wide
  * screens). Swipe down or press Escape to close.
  */
-export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function NowPlayingSheet({
+  open,
+  onOpenChange,
+  lyrics,
+  onLyricsChange: setLyrics,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** Lyrics in place of the artwork. */
+  lyrics: boolean
+  onLyricsChange: (toggle: (lyrics: boolean) => boolean) => void
+}) {
   const { nowPlaying: np, commands } = usePlayer()
   const position = usePosition(np)
   const drag = useDragControls()
   // While scrubbing, show the thumb where the finger is, not the live position.
   const [scrub, setScrub] = useState<number>()
   const queueRef = useRef<HTMLElement>(null)
-  // Lyrics take the artwork's place.
-  const [lyrics, setLyrics] = useState(false)
   const close = () => onOpenChange(false)
   const beat = useBeat<HTMLDivElement>()
 
@@ -52,7 +61,17 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
                 className="fixed inset-0 z-50 bg-black/40"
               />
             </Dialog.Overlay>
-            <Dialog.Content asChild forceMount aria-describedby={undefined}>
+            <Dialog.Content
+              asChild
+              forceMount
+              aria-describedby={undefined}
+              // Focus the sheet, not its close button, so space plays and
+              // pauses rather than closing it.
+              onOpenAutoFocus={(e) => {
+                e.preventDefault()
+                ;(e.currentTarget as HTMLElement | null)?.focus()
+              }}
+            >
               <motion.div
                 initial={{ y: '100%' }}
                 animate={{ y: 0 }}
@@ -67,6 +86,8 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
                   if (info.offset.y > 120 || info.velocity.y > 600) onOpenChange(false)
                 }}
                 style={laneStyle(np.requester?.color)}
+                // Keyboard shortcuts carry on in here (MAD-735).
+                data-shortcuts
                 className="fixed inset-0 isolate z-50 flex flex-col overflow-hidden bg-background outline-none"
               >
                 <AlbumBackdrop src={np.artworkUrl} className="absolute" />
