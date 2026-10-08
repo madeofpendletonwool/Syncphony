@@ -1,4 +1,3 @@
-import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef } from 'react'
 import { useScene } from '@/hooks/use-scene'
 import { beatSettings, onBeatFrame } from '@/lib/beat'
@@ -14,29 +13,24 @@ import { cn } from '@/lib/utils'
  * not pixels, and a phone fills a quarter of the pixels a frame.
  */
 
-/** The scene layer, crossfading from one song's scene to the next. */
+/**
+ * The scene layer. One canvas for good: a new song's scene crossfades in
+ * on it, rather than on a second full-screen canvas (a pile of big
+ * blurred layers is what makes a browser flash black).
+ */
 export function BackdropScene() {
   const scene = useScene()
-  return (
-    <AnimatePresence>
-      <motion.div
-        key={scene}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 1.6 }}
-        className="absolute inset-0"
-      >
-        <SceneCanvas paint={painters[scene]} />
-      </motion.div>
-    </AnimatePresence>
-  )
+  return <SceneCanvas paint={painters[scene]} />
 }
+
+/** How long one painter takes to fade into the next. */
+const CROSSFADE_MS = 1600
 
 /**
  * A canvas a painter draws on every frame the beat engine runs. Drawn at a
  * fraction of the element's size (`scale`) and blurred by its class, so it
- * reads as glow. In the app it follows the beat lab's scene strength.
+ * reads as glow. A new painter crossfades in on the same canvas. In the
+ * app it follows the beat lab's scene strength.
  */
 export function SceneCanvas({ paint, scale = 1 / 2, app = true, className = 'opacity-70 blur-md dark:opacity-90' }: {
   paint: () => Painter
@@ -46,12 +40,19 @@ export function SceneCanvas({ paint, scale = 1 / 2, app = true, className = 'opa
   className?: string
 }) {
   const ref = useRef<HTMLCanvasElement>(null)
+  // The painter drawing now, the one fading out, and since when.
+  const layers = useRef<{ make: () => Painter; draw: Painter; old?: Painter; since: number } | null>(null)
+
+  useEffect(() => {
+    const l = layers.current
+    if (!l) layers.current = { make: paint, draw: paint(), since: -Infinity }
+    else if (l.make !== paint) layers.current = { make: paint, draw: paint(), old: l.draw, since: performance.now() }
+  }, [paint])
 
   useEffect(() => {
     const canvas = ref.current
     const ctx = canvas?.getContext('2d')
     if (!canvas || !ctx) return
-    const draw = paint()
 
     const fit = () => {
       canvas.width = Math.max(1, Math.round(canvas.clientWidth * scale))
@@ -66,24 +67,33 @@ export function SceneCanvas({ paint, scale = 1 / 2, app = true, className = 'opa
     let readAt = 0
 
     const off = onBeatFrame((f) => {
+      const l = layers.current
       if (f.now - readAt > 300) {
         colors = readColors(canvas)
         readAt = f.now
       }
       ctx.clearRect(0, 0, canvas.width, canvas.height)
-      if (f.presence < 0.002) return
+      if (!l || f.presence < 0.002) return
       const strength = app ? beatSettings.get().effects.scene : 1
       if (strength === 0) return
-      ctx.save()
-      ctx.globalAlpha = Math.min(1, f.presence * strength)
-      draw(ctx, canvas.width, canvas.height, f, colors)
-      ctx.restore()
+      const t = Math.min(1, (f.now - l.since) / CROSSFADE_MS)
+      if (t >= 1) l.old = undefined
+      const layer = (draw: Painter, weight: number) => {
+        // Painters fade with presence, so scaling it fades the whole layer.
+        const presence = Math.min(1, f.presence * strength * weight)
+        ctx.save()
+        ctx.globalAlpha = presence
+        draw(ctx, canvas.width, canvas.height, { ...f, presence }, colors)
+        ctx.restore()
+      }
+      if (l.old) layer(l.old, 1 - t)
+      layer(l.draw, t)
     })
     return () => {
       off()
       ro.disconnect()
     }
-  }, [paint, scale, app])
+  }, [scale, app])
 
   return <canvas ref={ref} aria-hidden className={cn('absolute inset-0 size-full', className)} />
 }

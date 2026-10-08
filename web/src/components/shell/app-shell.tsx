@@ -1,7 +1,7 @@
 import { Outlet, useRouterState } from '@tanstack/react-router'
 import { WifiOff } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useAlbumPalette } from '@/hooks/use-album-palette'
 import { useBeatSync } from '@/hooks/use-beat-sync'
 import { easeOutExpo } from '@/lib/motion'
@@ -23,14 +23,26 @@ import { NowPlayingSheet } from './now-playing-sheet'
 export function AppShell() {
   const { nowPlaying } = usePlayer()
   const [expanded, setExpanded] = useState(false)
+  // Once now playing has slid all the way up it covers everything, so the
+  // backdrop behind it stops rendering: two full-screen backdrops of big
+  // blurred layers, changing at once on a new song, made browsers flash
+  // black. It's back the moment now playing starts to close.
+  const [covered, setCovered] = useState(false)
+  useEffect(() => {
+    if (!expanded) return
+    const t = window.setTimeout(() => setCovered(true), 600)
+    return () => {
+      window.clearTimeout(t)
+      setCovered(false)
+    }
+  }, [expanded])
   useAlbumPalette(nowPlaying)
   useBeatSync(nowPlaying)
 
   return (
     <LayoutGroup>
       <div className="relative isolate min-h-dvh">
-        {/* Its scene rests while now playing covers it. */}
-        <AlbumBackdrop src={nowPlaying?.artworkUrl} scene={!expanded} />
+        <AlbumBackdrop src={nowPlaying?.artworkUrl} scene={!expanded} className={covered ? 'hidden' : undefined} />
 
         <main className="pt-safe mx-auto w-full max-w-2xl px-gutter pb-[calc(var(--spacing-nav)+var(--spacing-mini)+env(safe-area-inset-bottom)+2.5rem)]">
           <OfflineBanner />
