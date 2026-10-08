@@ -29,10 +29,10 @@ export const LEVELS: { id: GameLevel; label: string; hint: string }[] = [
 
 /** Each game, as the settings list it. */
 export const GAMES: Record<GameKind, { label: string; hint: string }> = {
-  year: { label: 'Guess the year', hint: 'When did it first come out?' },
+  year: { label: 'Guess the year', hint: 'When did it first come out? And older or newer than the last?' },
   liner: { label: 'Liner notes', hint: 'Covers, credits and releases' },
   sample: { label: 'Sample detective', hint: 'What it samples, and what samples it' },
-  lyrics: { label: 'Beat the singer', hint: 'Type the next line before it’s sung' },
+  lyrics: { label: 'Beat the singer', hint: 'Fill in a line’s missing words before it’s sung' },
   finish_lyric: { label: 'Finish the lyric', hint: 'The music stops; you finish the line' },
   tune: { label: 'Name that tune', hint: 'From a few seconds of the song' },
   connect: { label: 'Connect the artists', hint: 'Link one artist to another through the queue' },
@@ -121,6 +121,60 @@ export function useHidden(roomId: string | undefined, itemId: string | undefined
     notes: hides(round, itemId, 'notes'),
     lyrics: hides(round, itemId, 'lyrics'),
   }
+}
+
+// --- Lyric lines ------------------------------------------------------------
+
+/** What stands in for a lyric line a round keeps back. */
+export const HIDDEN_LINE = '• • •'
+
+/** When the lyric line a round keeps back is sung, if it keeps one back. */
+export function hiddenLineAt(round: GameRound | null | undefined, itemId: string | undefined) {
+  return hides(round, itemId, 'line') ? round?.atMs : undefined
+}
+
+/** The lyric line the room's round keeps back right now, by when it's sung. */
+export function useHiddenLine(roomId: string | undefined, itemId: string | undefined) {
+  const round = useQuery({ ...gameRoundQuery(roomId ?? ''), enabled: !!roomId }).data
+  return hiddenLineAt(round, itemId)
+}
+
+/**
+ * Lyrics with a hidden line blanked out, everywhere it's sung (a chorus
+ * comes back). The server does the same, for lyrics fetched during a round.
+ */
+export function maskLine<T extends { atMs: number; text: string }>(lines: T[], atMs: number | undefined): T[] {
+  const text = atMs === undefined ? undefined : lines.find((l) => l.atMs === atMs)?.text.trim()
+  if (!text) return lines
+  return lines.map((l) => (l.text.trim() === text ? { ...l, text: HIDDEN_LINE } : l))
+}
+
+/** A quoted line in parts, with "____" as blanks to fill in. */
+export function lineParts(text: string): { text: string; blank: boolean }[] {
+  return text
+    .split(/(_{3,})/)
+    .filter((t) => t !== '')
+    .map((t) => ({ text: t, blank: /^_{3,}$/.test(t) }))
+}
+
+/** A prompt's question, and the quoted line under it, if any. */
+export function splitPrompt(prompt: string) {
+  const [question, ...rest] = prompt.split('\n')
+  return { question, line: rest.length > 0 ? rest.join(' ') : undefined }
+}
+
+// --- Reveals ----------------------------------------------------------------
+
+/** The cover of a round's other song (a sample's), from its reveal on. */
+export function roundArtworkUrl(round: GameRound, size = 300) {
+  if (!round.other?.hasArtwork) return undefined
+  return `/api/rooms/${encodeURIComponent(round.roomId)}/games/rounds/${encodeURIComponent(round.id)}/artwork?size=${size}`
+}
+
+/** Your higher-or-lower streak tonight, and your best. */
+export function streakOf(scores: GameScores | undefined, userId: string) {
+  const p = scores?.players.find((x) => x.userId === userId)
+  return { streak: p?.streak ?? 0, best: p?.bestStreak ?? 0 }
 }
 
 /** Whether answers are open, by the server's clock. */

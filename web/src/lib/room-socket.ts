@@ -193,6 +193,8 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
         for (const key of [['lyrics', roomId, round.itemId], ['liner-notes', roomId, round.itemId]]) {
           if (queryClient.getQueryState(key)?.status === 'error') void queryClient.invalidateQueries({ queryKey: key })
         }
+        // Lyrics fetched during a round have its line blanked.
+        if (round.hides.includes('line')) void queryClient.invalidateQueries({ queryKey: ['lyrics', roomId, round.itemId] })
       }
       break
     }

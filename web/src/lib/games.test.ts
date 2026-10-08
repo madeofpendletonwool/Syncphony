@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hides, isOpen, plays, remaining, secondsUntil, type GameRound } from './games'
+import { HIDDEN_LINE, hiddenLineAt, hides, isOpen, lineParts, maskLine, plays, remaining, roundArtworkUrl, secondsUntil, splitPrompt, streakOf, type GameRound } from './games'
 
 const at = (s: number) => new Date(Date.UTC(2026, 9, 8, 20, 0, s)).toISOString()
 const ms = (s: number) => Date.parse(at(s))
@@ -23,6 +23,7 @@ const round = (over: Partial<GameRound> = {}): GameRound => ({
   tvOnly: false,
   scores: 'board',
   difficulty: 0.5,
+  stopsMusic: false,
   ...over,
 })
 
@@ -52,5 +53,39 @@ describe('games', () => {
     expect(remaining(round(), ms(20))).toBeCloseTo(0.5)
     expect(remaining(round({ state: 'announce' }), ms(5))).toBe(1)
     expect(remaining(round({ state: 'reveal' }), ms(31))).toBe(0)
+  })
+
+  it('keeps back a lyric line, every time it comes back', () => {
+    const lines = [
+      { atMs: 0, text: 'We can be heroes' },
+      { atMs: 4000, text: 'Just for one day' },
+      { atMs: 8000, text: 'We can be heroes ' },
+    ]
+    const r = round({ kind: 'lyrics', hides: ['line'], atMs: 8000 })
+    expect(hiddenLineAt(r, 'song')).toBe(8000)
+    expect(hiddenLineAt(round({ ...r, state: 'reveal' }), 'song')).toBeUndefined()
+    expect(hiddenLineAt(r, 'other')).toBeUndefined()
+    expect(maskLine(lines, 8000).map((l) => l.text)).toEqual([HIDDEN_LINE, 'Just for one day', HIDDEN_LINE])
+    expect(maskLine(lines, undefined)).toBe(lines)
+  })
+
+  it('splits a prompt into its question, and its line into words and blanks', () => {
+    expect(splitPrompt('Fill in the blanks\n“I ____ you ____”')).toEqual({ question: 'Fill in the blanks', line: '“I ____ you ____”' })
+    expect(splitPrompt('What year is this from?').line).toBeUndefined()
+    expect(lineParts('“I ____ you, ____”')).toEqual([
+      { text: '“I ', blank: false },
+      { text: '____', blank: true },
+      { text: ' you, ', blank: false },
+      { text: '____', blank: true },
+      { text: '”', blank: false },
+    ])
+  })
+
+  it('finds the other song’s cover and your streak', () => {
+    expect(roundArtworkUrl(round())).toBeUndefined()
+    expect(roundArtworkUrl(round({ other: { title: 'Thank You', hasArtwork: true } }), 200)).toBe('/api/rooms/room/games/rounds/r1/artwork?size=200')
+    const scores = { roomId: 'room', mode: 'board' as const, players: [{ userId: 'me', points: 1, correct: 1, answered: 1, streak: 3, bestStreak: 4 }] }
+    expect(streakOf(scores, 'me')).toEqual({ streak: 3, best: 4 })
+    expect(streakOf(scores, 'you')).toEqual({ streak: 0, best: 0 })
   })
 })
