@@ -7,9 +7,11 @@ import { LyricsView } from '@/components/lyrics/lyrics-view'
 import { AutopilotMark } from '@/components/room/autopilot-badge'
 import { CrownMoment } from '@/components/room/crown-moment'
 import { AlbumBackdrop } from '@/components/shell/album-backdrop'
+import { Waveform } from '@/components/shell/waveform'
 import { UserAvatar } from '@/components/user-avatar'
 import { Visualizer } from '@/components/visualizer/visualizer'
 import { useAlbumPalette } from '@/hooks/use-album-palette'
+import { useBeat } from '@/hooks/use-beat'
 import { useBeatSync } from '@/hooks/use-beat-sync'
 import { useShow } from '@/hooks/use-scene'
 import { usePosition } from '@/hooks/use-position'
@@ -163,7 +165,6 @@ export function TvStage({
 /** What's playing, small in a corner while the visualizer has the screen. */
 function VisualizerCaption({ np }: { np: NowPlaying }) {
   const position = usePosition(np)
-  const pct = np.track.durationMs > 0 ? (position / np.track.durationMs) * 100 : 0
   return (
     <AnimatePresence mode="popLayout" initial={false}>
       <motion.div
@@ -186,9 +187,7 @@ function VisualizerCaption({ np }: { np: NowPlaying }) {
               </span>
             )}
           </p>
-          <div className="mt-[1vh] h-[0.5vh] w-[18vw] overflow-hidden rounded-full bg-foreground/15">
-            <div className="h-full rounded-full bg-(--pal-text) transition-[width] duration-300 ease-linear" style={{ width: `${pct}%` }} />
-          </div>
+          <Waveform itemId={np.itemId} positionMs={position} durationMs={np.track.durationMs} className="mt-[1vh] h-[3vh] w-[18vw]" />
         </div>
       </motion.div>
     </AnimatePresence>
@@ -197,7 +196,7 @@ function VisualizerCaption({ np }: { np: NowPlaying }) {
 
 function NowPlayingColumn({ np }: { np: NowPlaying }) {
   const position = usePosition(np)
-  const pct = np.track.durationMs > 0 ? (position / np.track.durationMs) * 100 : 0
+  const beat = useBeat<HTMLDivElement>()
   return (
     // The artwork gives way to a long title on a short screen: it shrinks to
     // the height that's left, so the title and the times always fit.
@@ -212,11 +211,15 @@ function NowPlayingColumn({ np }: { np: NowPlaying }) {
           className="flex min-h-0 flex-col gap-[2.5vh]"
         >
           <div className="flex min-h-[10vh] flex-[0_1_34vh]">
-            <Artwork
-              src={np.artworkUrl}
-              alt=""
-              className="h-full w-auto max-w-full rounded-[3vh] shadow-[0_40px_120px_-30px_var(--glow)]"
-            />
+            {/* Lifts on the one, with a bloom of the art's color behind it, as in the expanded player. */}
+            <div ref={beat} className="beat-lift relative aspect-square h-full max-w-full">
+              <div aria-hidden className="beat-bloom pointer-events-none absolute -inset-[12%] -z-10 rounded-full blur-2xl" />
+              <Artwork
+                src={np.artworkUrl}
+                alt=""
+                className="size-full rounded-[3vh] shadow-[0_40px_120px_-30px_var(--glow)]"
+              />
+            </div>
           </div>
           <div className="min-w-0 shrink-0">
             <h1 className="line-clamp-2 text-[clamp(1.75rem,3.4vw,3.75rem)] leading-[1.08] font-bold tracking-tight text-balance">
@@ -251,9 +254,8 @@ function NowPlayingColumn({ np }: { np: NowPlaying }) {
         </motion.div>
       </AnimatePresence>
       <div className="shrink-0">
-        <div className="h-[0.7vh] overflow-hidden rounded-full bg-foreground/15">
-          <div className="h-full rounded-full bg-(--pal-text) transition-[width] duration-300 ease-linear" style={{ width: `${pct}%` }} />
-        </div>
+        {/* The song's shape instead of a plain progress bar: nobody scrubs a TV. */}
+        <Waveform itemId={np.itemId} positionMs={position} durationMs={np.track.durationMs} className="h-[5vh]" />
         <div className="mt-[1vh] flex justify-between text-[clamp(0.8rem,1.1vw,1.15rem)] text-muted-foreground tabular-nums">
           <span>{np.paused ? 'Paused' : formatDuration(position)}</span>
           <span>-{formatDuration(np.track.durationMs - position)}</span>
