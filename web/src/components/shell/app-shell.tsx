@@ -9,6 +9,7 @@ import { usePlayer } from '@/lib/now-playing'
 import { useOnline } from '@/lib/pwa'
 import { Toaster } from '@/components/toaster'
 import { AlbumBackdrop } from './album-backdrop'
+import { BeatLab } from './beat-lab'
 import { BottomNav } from './bottom-nav'
 import { MiniPlayer } from './mini-player'
 import { NowPlayingSheet } from './now-playing-sheet'
@@ -27,7 +28,8 @@ export function AppShell() {
   return (
     <LayoutGroup>
       <div className="relative isolate min-h-dvh">
-        <AlbumBackdrop src={nowPlaying?.artworkUrl} />
+        {/* Its scene rests while now playing covers it. */}
+        <AlbumBackdrop src={nowPlaying?.artworkUrl} scene={!expanded} />
 
         <main className="pt-safe mx-auto w-full max-w-2xl px-gutter pb-[calc(var(--spacing-nav)+var(--spacing-mini)+env(safe-area-inset-bottom)+2.5rem)]">
           <OfflineBanner />
@@ -43,6 +45,7 @@ export function AppShell() {
         </div>
 
         <NowPlayingSheet open={expanded} onOpenChange={setExpanded} />
+        {!expanded && <BeatLab />}
       </div>
     </LayoutGroup>
   )

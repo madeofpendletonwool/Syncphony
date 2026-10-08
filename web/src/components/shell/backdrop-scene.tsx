@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef } from 'react'
 import { useScene, type Scene } from '@/hooks/use-scene'
-import { onBeatFrame, type BeatFrame } from '@/lib/beat'
+import { beatSettings, onBeatFrame, type BeatFrame } from '@/lib/beat'
 
 /*
  * Backdrop scenes (MAD-772 prototype): a canvas over the palette mesh that
@@ -65,8 +65,10 @@ function SceneCanvas({ paint }: { paint: () => Painter }) {
       }
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       if (f.presence < 0.002) return
+      const strength = beatSettings.get().effects.scene
+      if (strength === 0) return
       ctx.save()
-      ctx.globalAlpha = f.presence
+      ctx.globalAlpha = Math.min(1, f.presence * strength)
       draw(ctx, canvas.width, canvas.height, f, colors)
       ctx.restore()
     })

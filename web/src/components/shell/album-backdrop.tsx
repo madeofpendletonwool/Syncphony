@@ -15,7 +15,12 @@ import { BackdropScene } from './backdrop-scene'
  * mesh drifts faster when the song is loud, and each song gets a scene
  * drawn over it (see backdrop-scene.tsx).
  */
-export function AlbumBackdrop({ src: next, className }: { src?: string; className?: string }) {
+export function AlbumBackdrop({ src: next, scene = true, className }: {
+  src?: string
+  /** Draw the song's scene; off while something covers the backdrop. */
+  scene?: boolean
+  className?: string
+}) {
   // Crossfade to art that's ready, not to an empty image.
   const src = useLoadedSrc(next)
   const beat = useBeat<HTMLDivElement>({ drift: true })
@@ -43,7 +48,7 @@ export function AlbumBackdrop({ src: next, className }: { src?: string; classNam
           )}
         </AnimatePresence>
       </div>
-      <BackdropScene />
+      {scene && <BackdropScene />}
     </div>
   )
 }

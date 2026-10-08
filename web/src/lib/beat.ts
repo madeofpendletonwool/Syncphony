@@ -27,38 +27,84 @@ import { createStore } from './store'
 
 export type BeatLevel = 'off' | 'subtle'
 
+/** The effects the beat lab can tune one by one. */
+export const EFFECTS = {
+  breath: 'Backdrop breathing',
+  scene: 'Backdrop scene',
+  drift: 'Backdrop drift',
+  art: 'Album art lift',
+  glass: 'Glass shine',
+  eq: 'Equalizer',
+  lyrics: 'Lyrics glow',
+  waveform: 'Waveform scrubber',
+} as const
+export type Effect = keyof typeof EFFECTS
+
 export type BeatSettings = {
   level: BeatLevel
-  /** How strongly things move, 0.5 (calmer) – 1.75 (stronger). */
+  /** How strongly everything moves, 0.5 (calmer) – 1.75 (stronger). */
   intensity: number
   /** The backdrop scene, or 'auto' to pick one per song. */
   scene: string
+  /** Each effect's strength, 0 (off) – 2. */
+  effects: Record<Effect, number>
+  /** How late this device's sound is, ms: a Bluetooth speaker, say. Visuals wait for it. */
+  delayMs: number
 }
 
 const SETTINGS_KEY = 'syncphony-visuals'
-const DEFAULTS: BeatSettings = { level: 'subtle', intensity: 1, scene: 'auto' }
+export const BEAT_DEFAULTS: BeatSettings = {
+  level: 'subtle',
+  intensity: 1,
+  scene: 'auto',
+  effects: { breath: 1, scene: 1, drift: 1, art: 1, glass: 1, eq: 1, lyrics: 1, waveform: 1 },
+  delayMs: 0,
+}
 
-export const beatSettings = createStore<BeatSettings>({ ...DEFAULTS, ...readSettings() })
+export const beatSettings = createStore<BeatSettings>(readSettings())
 beatSettings.subscribe(() => {
-  const { level, intensity, scene } = beatSettings.get()
+  const s = beatSettings.get()
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ level, intensity, scene }))
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s))
   } catch {
     // Private mode: settings last until the tab closes.
   }
+  applyEffects(s)
 })
+applyEffects(beatSettings.get())
 
-function readSettings(): Partial<BeatSettings> {
+/** Changes some settings; effects merge into the current ones. */
+export function setBeatSettings(next: Partial<Omit<BeatSettings, 'effects'>> & { effects?: Partial<Record<Effect, number>> }) {
+  beatSettings.set((s) => ({ ...s, ...next, effects: { ...s.effects, ...next.effects } }))
+}
+
+function readSettings(): BeatSettings {
+  const clamp = (v: unknown, lo: number, hi: number, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d)
   try {
     const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<BeatSettings>
+    const effects = { ...BEAT_DEFAULTS.effects }
+    for (const k of Object.keys(effects) as Effect[]) effects[k] = clamp(s.effects?.[k], 0, 2, effects[k])
     return {
-      ...(s.level === 'off' || s.level === 'subtle' ? { level: s.level } : {}),
-      ...(typeof s.intensity === 'number' ? { intensity: Math.min(1.75, Math.max(0.5, s.intensity)) } : {}),
-      ...(typeof s.scene === 'string' ? { scene: s.scene } : {}),
+      level: s.level === 'off' ? 'off' : 'subtle',
+      intensity: clamp(s.intensity, 0.5, 1.75, BEAT_DEFAULTS.intensity),
+      scene: typeof s.scene === 'string' ? s.scene : BEAT_DEFAULTS.scene,
+      effects,
+      delayMs: clamp(s.delayMs, -300, 600, 0),
     }
   } catch {
-    return {}
+    return BEAT_DEFAULTS
   }
+}
+
+/**
+ * The CSS effects read their strength from --fx-* on the root: set once
+ * when the settings change, never per frame.
+ */
+function applyEffects(s: BeatSettings) {
+  if (typeof document === 'undefined') return
+  const root = document.documentElement
+  for (const [k, v] of Object.entries(s.effects)) root.style.setProperty(`--fx-${k}`, String(v))
+  root.toggleAttribute('data-fx-eq-off', s.effects.eq === 0)
 }
 
 /** Tempo for songs with no beat map yet. */
@@ -88,7 +134,7 @@ function keyOf(np: NowPlaying) {
 /** Where the music is now, and which song's grid applies. */
 function clock(): { key: string; pos: number; playing: boolean } | null {
   const { np } = beatSource.get()
-  if (np && !np.paused) return { key: keyOf(np), pos: positionAt(np, Date.now()), playing: true }
+  if (np && !np.paused) return { key: keyOf(np), pos: positionAt(np, Date.now()) - beatSettings.get().delayMs, playing: true }
   if (np) return { key: keyOf(np), pos: np.positionMs, playing: false }
   return null
 }
@@ -183,6 +229,38 @@ export function resetGrid() {
   tapped.delete(c.key)
   taps = []
   gridVersion.set((v) => v + 1)
+}
+
+// --- Delay calibration -------------------------------------------------------
+
+let heard: number[] = []
+
+/**
+ * A tap on the beat as it's heard here, to work out how late this
+ * device's sound is (a Bluetooth speaker can add a fifth of a second).
+ * Compares the taps with the song's beat map; after four, sets delayMs to
+ * their typical lag. Returns how many taps so far, or null if the song
+ * playing has no beat to compare with.
+ */
+export function calibrateTap(): number | null {
+  const { np } = beatSource.get()
+  const map = np && !np.paused ? mapFor(keyOf(np)) : null
+  if (!np || !map || map.bpm <= 0) return null
+  const pos = positionAt(np, Date.now())
+  const last = heard.at(-1)
+  if (last === undefined || pos - last > 2000 || pos < last) heard = []
+  heard.push(pos)
+  heard = heard.slice(-16)
+  const lags = heard
+    .map((t) => beatAt(map, t))
+    .filter((p) => p !== null)
+    .map((p) => (p.into > p.period / 2 ? p.into - p.period : p.into))
+    .sort((a, b) => a - b)
+  if (lags.length >= 4) {
+    const median = lags[Math.floor(lags.length / 2)]
+    setBeatSettings({ delayMs: Math.round(Math.min(600, Math.max(-300, median))) })
+  }
+  return heard.length
 }
 
 // --- Targets ---------------------------------------------------------------
@@ -313,7 +391,9 @@ function tick(now: number) {
   if (p) {
     beatIndex = p.index
     periodMs = p.period
-    vars.beat = gain * pulse(p.into, Math.min(240, p.period * 0.4))
+    // Never more than three flashes a second: at very fast tempos, every other beat.
+    const flash = p.period >= 333 || p.index % 2 === 0
+    vars.beat = flash ? gain * pulse(p.into, Math.min(240, p.period * 0.4)) : 0
     vars.downbeat = p.bar === 0 ? gain * pulse(p.into, Math.min(520, p.period * 0.85)) : 0
     // Rises over the first beat of the bar and sinks over the rest.
     const intoBar = p.bar * p.period + p.into
@@ -352,7 +432,7 @@ function tick(now: number) {
 
   // Calm songs drift slowly, loud ones churn. Only now and then: changing
   // an animation's rate is cheap, but not free.
-  const rate = 1 + presence * (energy - 0.5) * 1.6
+  const rate = 1 + presence * (energy - 0.5) * 1.6 * beatSettings.get().effects.drift
   const setRate = Math.abs(rate - lastRate) > 0.04 && now - lastRateAt > 250
   if (setRate) {
     lastRate = rate

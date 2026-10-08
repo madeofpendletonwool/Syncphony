@@ -17,9 +17,10 @@ import { laneStyle } from '@/lib/lane'
 import { easeOutExpo, spring } from '@/lib/motion'
 import { formatDuration, usePlayer } from '@/lib/now-playing'
 import { AlbumBackdrop } from './album-backdrop'
-import { BeatLab } from './beat-lab'
 import { TransportControls } from './player-controls'
+import { BeatLab } from './beat-lab'
 import { SheetQueue } from './sheet-queue'
+import { Waveform } from './waveform'
 
 /**
  * Full-screen now playing, with the room's queue below (beside, on wide
@@ -80,7 +81,7 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
                   <span aria-hidden className="absolute left-1/2 h-1.5 w-10 -translate-x-1/2 rounded-full bg-foreground/25" />
                   {np.roomId ? (
                     <div className="flex gap-2">
-                      <BeatLab />
+                      <BeatLab inline />
                       <Button
                         size="icon"
                         variant={lyrics ? 'default' : 'glass'}
@@ -150,6 +151,12 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
                       </motion.div>
 
                       <div className="mt-5">
+                        <Waveform
+                          itemId={np.itemId}
+                          positionMs={scrub ?? position}
+                          durationMs={np.track.durationMs}
+                          className="mb-1"
+                        />
                         <Slider
                           aria-label="Seek"
                           max={np.track.durationMs}
