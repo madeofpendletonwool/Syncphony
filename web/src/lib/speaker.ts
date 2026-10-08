@@ -55,6 +55,9 @@ const MAX_DRIFT_RELOAD = 4_000
 const RESYNC_EVERY = 15_000
 // Retries before a failing stream is reported as an error.
 const RETRIES = 2
+// How long a screen that let go of the speaker waits for the next one to
+// keep it (the big screen loads its room first) before stopping.
+const HANDOFF = 5_000
 
 export const speakerState = createStore<SpeakerState>({ status: 'off', mode: 'speaker', keepAwake: readFlag(AWAKE_KEY, true) })
 
@@ -147,6 +150,7 @@ class Speaker {
   // The room plays on; this device stays quiet until it's played again.
   private localPause = false
   private resyncTimer?: ReturnType<typeof setInterval>
+  private stopping?: ReturnType<typeof setTimeout>
   /** Receives every playback state the server returns to a report. */
   onState?: (p: Playback) => void
 
@@ -187,8 +191,34 @@ class Speaker {
     this.apply(np)
   }
 
+  /**
+   * Stops playing here unless another screen keeps it in a moment: moving
+   * between the app and the big screen hands the music over rather than
+   * stopping it.
+   */
+  stopSoon() {
+    clearTimeout(this.stopping)
+    this.stopping = setTimeout(() => {
+      this.stopping = undefined
+      void this.stop()
+    }, HANDOFF)
+  }
+
+  /**
+   * Keeps playing roomId through a handoff (stopSoon). Says whether this
+   * device is playing it.
+   */
+  keep(roomId: string) {
+    if (!this.active || this.roomId !== roomId) return false
+    clearTimeout(this.stopping)
+    this.stopping = undefined
+    return true
+  }
+
   /** Stops playing here: a speaker gives up the room, a listener just goes quiet. */
   async stop() {
+    clearTimeout(this.stopping)
+    this.stopping = undefined
     const roomId = this.roomId
     const speaking = this.mode === 'speaker'
     this.halt()
@@ -308,6 +338,8 @@ class Speaker {
 
   /** Sets up for a room, unlocking the audio elements during the tap that started it. */
   private begin(roomId: string, mode: SpeakerMode, name: string, device: string) {
+    clearTimeout(this.stopping)
+    this.stopping = undefined
     const [a, b] = this.elements()
     for (const el of [a, b]) {
       this.offsets.set(el, 0)

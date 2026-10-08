@@ -32,8 +32,12 @@ export function RoomLive() {
   useEffect(() => {
     if (speaker.active && rooms.isSuccess && speakerRoom() !== room?.id) void speaker.stop()
   }, [room, rooms.isSuccess])
-  // Signing out stops the speaker.
-  useEffect(() => () => void speaker.stop(), [])
+  // Signing out stops the speaker. Going to the big screen hands it over
+  // instead, and coming back keeps whatever it's playing.
+  useEffect(() => () => speaker.stopSoon(), [])
+  useEffect(() => {
+    if (room) speaker.keep(room.id)
+  }, [room])
 
   // On the next frame, so a burst of updates (a phone waking with songs'
   // worth of events queued up) shows only the last, and none while hidden.

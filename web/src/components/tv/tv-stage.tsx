@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Heart, Sparkles } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Artwork } from '@/components/artwork'
 import { LyricsView } from '@/components/lyrics/lyrics-view'
 import { AutopilotMark } from '@/components/room/autopilot-badge'
@@ -60,7 +60,7 @@ export function TvStage({
   paired: boolean
   onUnpaired: () => void
   /** Set when this screen may be the room's speaker. */
-  audio?: { device: string; name: string; onStopped?: () => void }
+  audio?: { device: string; name: string; onStopped?: () => void; canPlayPause?: boolean; canSkip?: boolean }
 }) {
   const queryClient = useQueryClient()
   useRoomSocket(roomId, { display: true, onSessionEnded: paired ? onUnpaired : undefined })
@@ -84,6 +84,7 @@ export function TvStage({
   const visualizing = !!np && (screens.look === 'visualizer' || (screens.look === 'auto' && wordless))
   const show = useShow(screens.scene)
   const { status } = useStore(live)
+  const pointer = usePointerShown()
 
   // Songs queued by someone who signed up after we loaded the user list.
   useEffect(() => {
@@ -104,7 +105,7 @@ export function TvStage({
     : { url: `${location.origin}/room?join=${encodeURIComponent(roomId)}`, guests: false }
 
   return (
-    <div className="relative isolate h-dvh cursor-none overflow-hidden select-none">
+    <div className={cn('relative isolate h-dvh overflow-hidden select-none', !pointer && 'cursor-none')}>
       <AlbumBackdrop src={np?.artworkUrl} scene={!visualizing} />
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgb(0_0_0/0.55))]" />
       <AnimatePresence>
@@ -420,4 +421,27 @@ function JoinPrompt({ url, guests, big }: { url: string; guests: boolean; big?: 
       </p>
     </div>
   )
+}
+
+// How long the mouse pointer stays up after it last moved.
+const POINTER_SHOWN = 3000
+
+/** Whether the mouse moved lately: the pointer hides otherwise, but a desktop needs it to press the buttons. */
+function usePointerShown() {
+  const [shown, setShown] = useState(false)
+  useEffect(() => {
+    let t: number | undefined
+    const moved = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse') return
+      setShown(true)
+      window.clearTimeout(t)
+      t = window.setTimeout(() => setShown(false), POINTER_SHOWN)
+    }
+    window.addEventListener('pointermove', moved)
+    return () => {
+      window.removeEventListener('pointermove', moved)
+      window.clearTimeout(t)
+    }
+  }, [])
+  return shown
 }

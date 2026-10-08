@@ -2300,7 +2300,9 @@ export interface paths {
          *     else sends `vote_skip` (and `unvote_skip` to take it back); the
          *     song is skipped once `skipVotes.needed` have voted.
          *     `play` needs a speaker (`no_player`); pausing, skipping, seeking or
-         *     voting with nothing playing is `nothing_playing`.
+         *     voting with nothing playing is `nothing_playing`. A display with
+         *     `audio` on may `play`, `pause` and `skip` in its own room, as
+         *     whoever paired it.
          */
         post: operations["controlPlayback"];
         delete?: never;

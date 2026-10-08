@@ -60,6 +60,8 @@ function SignedInStage() {
   if (rooms.isPending) return <Blank />
   if (!room) return <TvPairing />
   const maySpeak = !!me && !me.guest && can(room, me.id, 'speaker')
+  const mayPlay = maySpeak && can(room, me.id, 'playPause')
+  const maySkip = maySpeak && can(room, me.id, 'skip')
   return (
     <TvStage
       roomId={room.id}
@@ -67,7 +69,11 @@ function SignedInStage() {
       screens={room.screens}
       paired={false}
       onUnpaired={() => {}}
-      audio={maySpeak ? { device: deviceId(), name: `${me.displayName.split(' ')[0]}'s big screen` } : undefined}
+      audio={
+        maySpeak
+          ? { device: deviceId(), name: `${me.displayName.split(' ')[0]}'s big screen`, canPlayPause: mayPlay, canSkip: maySkip }
+          : undefined
+      }
     />
   )
 }

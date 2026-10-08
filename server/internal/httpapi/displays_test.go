@@ -249,6 +249,21 @@ func TestDisplaySpeaker(t *testing.T) {
 	if np.State != httpapi.PlaybackStatePlaying {
 		t.Fatalf("after the display's report: %+v", np)
 	}
+	// It has a speaker's buttons: play, pause and skip, as bob. Nothing else.
+	tv.want(http.StatusOK, "POST", base+"/playback", httpapi.PlaybackCommand{Action: httpapi.Pause}).decode(t, &np)
+	if np.State != httpapi.PlaybackStatePaused {
+		t.Fatalf("after the display paused: %+v", np)
+	}
+	tv.want(http.StatusOK, "POST", base+"/playback", httpapi.PlaybackCommand{Action: httpapi.Play}).decode(t, &np)
+	if np.State != httpapi.PlaybackStatePlaying {
+		t.Fatalf("after the display played: %+v", np)
+	}
+	if r := tv.do("POST", base+"/playback", httpapi.PlaybackCommand{Action: httpapi.Seek, PositionMs: ptr(int64(0))}); r.status != http.StatusForbidden {
+		t.Fatalf("display seeking: %d %s", r.status, r.body)
+	}
+	if r := tv.do("POST", "/rooms/"+other.Id+"/playback", httpapi.PlaybackCommand{Action: httpapi.Pause}); r.status != http.StatusForbidden {
+		t.Fatalf("display pausing another room: %d %s", r.status, r.body)
+	}
 	// Bob's own phone isn't the TV.
 	if r := bob.do("POST", base+"/player/report", httpapi.PlayerReport{DeviceId: "bobs-phone", ItemId: item, Event: "ended"}); r.status != http.StatusConflict {
 		t.Fatalf("bob reporting as his phone: %d %s", r.status, r.body)
@@ -266,6 +281,9 @@ func TestDisplaySpeaker(t *testing.T) {
 	}
 	if r := tv.do("GET", base+"/stream/"+item, nil); r.status != http.StatusForbidden {
 		t.Fatalf("streaming with audio off: %d", r.status)
+	}
+	if r := tv.do("POST", base+"/playback", httpapi.PlaybackCommand{Action: httpapi.Play}); r.status != http.StatusForbidden {
+		t.Fatalf("playing with audio off: %d %s", r.status, r.body)
 	}
 
 	// A display can let go itself; unpairing one that's the speaker stops it too.

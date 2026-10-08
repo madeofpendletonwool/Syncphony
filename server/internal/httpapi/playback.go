@@ -35,7 +35,21 @@ func (s *Server) ControlPlayback(ctx context.Context, req ControlPlaybackRequest
 	if req.Body.ItemId != nil {
 		c.ItemID = *req.Body.ItemId
 	}
-	np, err := s.Playback.Command(ctx, req.RoomId, sessionFrom(ctx).User.ID, c)
+	userID := ""
+	if d := displayFrom(ctx); d != nil {
+		// A screen playing the room has a speaker's buttons, as whoever paired it.
+		if c.Action != playback.ActionPlay && c.Action != playback.ActionPause && c.Action != playback.ActionSkip {
+			return nil, playback.ErrForbidden
+		}
+		id, _, err := speakerOf(ctx, "")
+		if err != nil {
+			return nil, err
+		}
+		userID = id
+	} else {
+		userID = sessionFrom(ctx).User.ID
+	}
+	np, err := s.Playback.Command(ctx, req.RoomId, userID, c)
 	if err != nil {
 		return nil, err
 	}
