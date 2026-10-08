@@ -3,7 +3,7 @@ export type Shortcut = 'playPause' | 'skip' | 'search' | 'lyrics' | 'help'
 
 /** The cheat sheet's rows, in the order it lists them. */
 export const SHORTCUTS: { id: Shortcut; keys: string[][]; label: string }[] = [
-  { id: 'playPause', keys: [['Space']], label: 'Play or pause' },
+  { id: 'playPause', keys: [['Space'], ['K']], label: 'Play or pause' },
   { id: 'skip', keys: [['N']], label: 'Skip, or vote to skip' },
   { id: 'search', keys: [['/'], ['⌘', 'K']], label: 'Search' },
   { id: 'lyrics', keys: [['L']], label: 'Show or hide lyrics' },
@@ -41,6 +41,10 @@ export function shortcutOf(e: Key): Shortcut | undefined {
     case ' ':
       if (e.repeat || (e.target instanceof Element && e.target.closest(PRESSABLE))) return undefined
       return 'playPause'
+    // K plays and pauses wherever focus is, even on a button, like YouTube.
+    case 'k':
+    case 'K':
+      return e.repeat ? undefined : 'playPause'
     case 'n':
     case 'N':
       return e.repeat ? undefined : 'skip'
@@ -59,7 +63,7 @@ export function shortcutOf(e: Key): Shortcut | undefined {
 export type TvKey = 'playPause' | 'skip' | 'nextLook' | 'previousLook'
 
 /**
- * The big screen's keys: space plays and pauses, → skips (or votes to),
+ * The big screen's keys: space (or K, even on a button) plays and pauses, → skips (or votes to),
  * ↑ and ↓ change the visuals. A remote's D-pad sends arrows too, so → is
  * left to move between buttons while one has focus; nothing sits above or
  * below them, so ↑ and ↓ are always free.
@@ -70,6 +74,9 @@ export function tvKeyOf(e: Key): TvKey | undefined {
   switch (e.key) {
     case ' ':
       return e.repeat || onControl ? undefined : 'playPause'
+    case 'k':
+    case 'K':
+      return e.repeat ? undefined : 'playPause'
     case 'ArrowRight':
       return e.repeat || onControl ? undefined : 'skip'
     case 'ArrowUp':

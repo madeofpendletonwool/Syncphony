@@ -12,7 +12,7 @@ import { useStore } from '@/lib/store'
 const SHOWN_MS = 2200
 
 /**
- * The big screen's keys (MAD-735), for a keyboard or a remote: space plays
+ * The big screen's keys (MAD-735), for a keyboard or a remote: space or K plays
  * and pauses, → skips (or votes to skip), ↑ and ↓ step through the visuals.
  * The visuals change on this screen only, starting from the room's pick;
  * auto is one of the steps. Each press says what it did, big, for a while.

@@ -16,6 +16,8 @@ describe('shortcutOf', () => {
     expect(press('n')).toBe('skip')
     expect(press('N')).toBe('skip')
     expect(press('/')).toBe('search')
+    expect(press('k')).toBe('playPause')
+    expect(press('K')).toBe('playPause')
     expect(press('k', { metaKey: true })).toBe('search')
     expect(press('k', { ctrlKey: true })).toBe('search')
     expect(press('l')).toBe('lyrics')
@@ -36,6 +38,7 @@ describe('shortcutOf', () => {
     expect(press(' ', { target: el('<button>Play</button>') })).toBeUndefined()
     expect(press(' ', { target: el('<div role="switch"></div>') })).toBeUndefined()
     expect(press('n', { target: el('<button>Play</button>') })).toBe('skip')
+    expect(press('k', { target: el('<button>Play</button>') })).toBe('playPause')
   })
 
   it('stays out of the browser’s own combos and held keys', () => {
@@ -75,6 +78,7 @@ describe('tvKeyOf', () => {
     expect(tv(' ', { target })).toBeUndefined()
     expect(tv('ArrowRight', { target })).toBeUndefined()
     expect(tv('ArrowDown', { target })).toBe('nextLook')
+    expect(tv('k', { target })).toBe('playPause')
   })
 
   it('stays out of combos, held skips, and typing', () => {
@@ -82,6 +86,8 @@ describe('tvKeyOf', () => {
     expect(tv('ArrowDown', { repeat: true })).toBe('nextLook')
     expect(tv('ArrowRight', { altKey: true })).toBeUndefined()
     expect(tv('ArrowDown', { target: el('<input>') })).toBeUndefined()
+    expect(tv('k', { target: el('<input>') })).toBeUndefined()
+    expect(tv('k', { repeat: true })).toBeUndefined()
   })
 })
 

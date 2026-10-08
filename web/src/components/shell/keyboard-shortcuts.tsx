@@ -12,7 +12,7 @@ import { SEARCH_KEYS, SHORTCUTS, shortcutOf } from '@/lib/shortcuts'
 export const SEARCH_INPUT_ID = 'search-input'
 
 /**
- * Keyboard shortcuts for a computer (MAD-735): space plays and pauses, N
+ * Keyboard shortcuts for a computer (MAD-735): space or K plays and pauses, N
  * skips (or votes to), / or ⌘K searches, L shows lyrics, ? lists them all.
  * Never while typing, and not under another dialog; now playing is the one
  * that lets them through. Play and skip do only what the room lets you.
