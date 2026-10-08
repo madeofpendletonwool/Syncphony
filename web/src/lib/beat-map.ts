@@ -104,3 +104,33 @@ export function loudnessAt(m: BeatMap, pos: number) {
   const i = Math.floor((pos / 1000) * m.frameRate)
   return i >= 0 && i < m.loudness.length ? m.loudness[i] / 255 : 0
 }
+
+/**
+ * The song's shape for the waveform: `bars` heights, 0–1. Each bar is the
+ * average level of its stretch, scaled against the song's own quiet and
+ * loud parts, so a loud, compressed song still shows its verses and
+ * choruses instead of sitting at the top. A song that barely changes sits
+ * mid-height, so small wobbles don't become big ones.
+ */
+export function waveform(loudness: Uint8Array, bars: number): number[] {
+  const per = loudness.length / bars
+  const means: number[] = []
+  for (let b = 0; b < bars; b++) {
+    const from = Math.floor(b * per)
+    const to = Math.max(from + 1, Math.min(loudness.length, Math.floor((b + 1) * per)))
+    let sum = 0
+    for (let i = from; i < to; i++) sum += loudness[i] ?? 0
+    means.push(sum / (to - from) / 255)
+  }
+  const sorted = [...means].sort((a, b) => a - b)
+  let hi = sorted[sorted.length - 1] ?? 0
+  let lo = sorted[Math.floor(sorted.length * 0.1)] ?? 0
+  if (hi - lo < 0.08) {
+    // Barely changes: sit in the middle, wobbling a little.
+    const mid = (hi + lo) / 2
+    lo = mid - 0.04
+    hi = mid + 0.04
+  }
+  // Quiet parts still show a sliver, and only the loudest bar reaches the top.
+  return means.map((m) => 0.12 + 0.8 * Math.min(1, Math.max(0, (m - lo) / (hi - lo))) ** 1.5)
+}

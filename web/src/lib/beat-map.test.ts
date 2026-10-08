@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { beatAt, decode, loudnessAt, sectionEnergy, spectrumAt } from './beat-map'
+import { beatAt, decode, loudnessAt, sectionEnergy, spectrumAt, waveform } from './beat-map'
 
 const wire = {
   durationMs: 10_000,
@@ -47,5 +47,23 @@ describe('beat maps', () => {
     // Halfway between the first two frames.
     expect([...spectrumAt(m, 250, out)]).toEqual([0.5, 0.5])
     expect([...spectrumAt(m, -10, out)]).toEqual([0, 0])
+  })
+})
+
+describe('waveform', () => {
+  it('shows the shape of a loud, compressed song instead of filling to the top', () => {
+    // Verses at 220, choruses at 245: nearly flat out the whole way.
+    const loud = Uint8Array.from({ length: 400 }, (_, i) => (Math.floor(i / 100) % 2 ? 245 : 220))
+    const h = waveform(loud, 4)
+    expect(Math.max(...h)).toBeCloseTo(0.92)
+    expect(h[0]).toBeLessThan(0.5)
+    expect(h[1]).toBeGreaterThan(0.9)
+  })
+
+  it('keeps a near-flat song flat, at mid-height', () => {
+    const flat = Uint8Array.from({ length: 400 }, (_, i) => 240 + Math.floor(i / 100))
+    const h = waveform(flat, 8)
+    expect(Math.max(...h) - Math.min(...h)).toBeLessThan(0.15)
+    expect(Math.max(...h)).toBeLessThan(0.6)
   })
 })

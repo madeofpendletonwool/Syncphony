@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { beatSettings, beatSource } from '@/lib/beat'
+import { waveform } from '@/lib/beat-map'
 import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 
@@ -7,7 +8,7 @@ const BARS = 72
 
 /**
  * The song's shape above the seek bar (MAD-777): its loudness from the beat
- * map, filled in the album color up to where it's playing. A flat line
+ * map, relative to the song's own range (lib/beat-map.ts `waveform`), filled in the album color up to where it's playing. A flat line
  * until the map arrives (it keeps its space, so nothing jumps), and
  * nothing if the beat lab turns it off.
  */
@@ -21,20 +22,10 @@ export function Waveform({ itemId, positionMs, durationMs, className }: {
   const { level, effects } = useStore(beatSettings)
   const ours = map && mapKey === itemId ? map : null
 
-  const heights = useMemo(() => {
-    if (!ours || ours.loudness.length === 0) return Array<number>(BARS).fill(0.12)
-    const per = ours.loudness.length / BARS
-    const out: number[] = []
-    for (let b = 0; b < BARS; b++) {
-      let peak = 0
-      for (let i = Math.floor(b * per); i < Math.min(ours.loudness.length, Math.floor((b + 1) * per)); i++) {
-        peak = Math.max(peak, ours.loudness[i])
-      }
-      // Quiet parts still show a sliver, so the line reads as a whole.
-      out.push(0.12 + 0.88 * (peak / 255) ** 1.6)
-    }
-    return out
-  }, [ours])
+  const heights = useMemo(
+    () => (ours && ours.loudness.length > 0 ? waveform(ours.loudness, BARS) : Array<number>(BARS).fill(0.12)),
+    [ours],
+  )
 
   if (level === 'off' || effects.waveform === 0) return null
   const played = durationMs > 0 ? Math.min(1, positionMs / durationMs) : 0
