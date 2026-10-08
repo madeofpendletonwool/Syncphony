@@ -13,6 +13,7 @@ import { useAlbumPalette } from '@/hooks/use-album-palette'
 import { useBeatSync } from '@/hooks/use-beat-sync'
 import { useShow } from '@/hooks/use-scene'
 import { usePosition } from '@/hooks/use-position'
+import { useWakeLock } from '@/hooks/use-wake-lock'
 import { autopilotReason, autopilotSource } from '@/lib/autopilot'
 import { setBeatSettings } from '@/lib/beat'
 import { guestPassQuery } from '@/lib/guests'
@@ -419,28 +420,4 @@ function JoinPrompt({ url, guests, big }: { url: string; guests: boolean; big?: 
       </p>
     </div>
   )
-}
-
-/** Keeps the screen from sleeping while it's on show. */
-function useWakeLock() {
-  useEffect(() => {
-    let lock: WakeLockSentinel | undefined
-    let stopped = false
-    const request = async () => {
-      if (document.visibilityState !== 'visible' || !('wakeLock' in navigator)) return
-      try {
-        lock = await navigator.wakeLock.request('screen')
-        if (stopped) void lock.release()
-      } catch {
-        // Not allowed (battery saver, or no user gesture yet): the TV may dim.
-      }
-    }
-    void request()
-    document.addEventListener('visibilitychange', request)
-    return () => {
-      stopped = true
-      document.removeEventListener('visibilitychange', request)
-      void lock?.release()
-    }
-  }, [])
 }

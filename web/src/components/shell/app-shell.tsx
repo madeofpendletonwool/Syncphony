@@ -8,6 +8,7 @@ import { easeOutExpo } from '@/lib/motion'
 import { usePlayer } from '@/lib/now-playing'
 import { useOnline } from '@/lib/pwa'
 import { Toaster } from '@/components/toaster'
+import { LightsMode } from '@/components/visualizer/lights-mode'
 import { VisualizerMode } from '@/components/visualizer/visualizer-mode'
 import { AlbumBackdrop } from './album-backdrop'
 import { BeatLab } from './beat-lab'
@@ -60,6 +61,7 @@ export function AppShell() {
         <NowPlayingSheet open={expanded} onOpenChange={setExpanded} />
         {!expanded && <BeatLab />}
         <VisualizerMode />
+        <LightsMode />
       </div>
     </LayoutGroup>
   )

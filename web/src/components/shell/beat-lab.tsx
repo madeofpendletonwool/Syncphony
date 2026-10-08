@@ -1,4 +1,4 @@
-import { Activity, RotateCcw, Sparkles, X } from 'lucide-react'
+import { Activity, Lightbulb, RotateCcw, Sparkles, X } from 'lucide-react'
 import { Popover } from 'radix-ui'
 import { useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ import {
   calibrateTap,
   currentBeat,
   gridVersion,
+  lightsOpen,
   nudge,
   resetGrid,
   scaleTempo,
@@ -158,6 +159,15 @@ function Look() {
           Open the visualizer
         </Button>
         <p className="text-caption text-muted-foreground">The song's visuals, full screen. ← and → change the show.</p>
+      </Field>
+      <Field label="Lights">
+        <Button variant="secondary" className="w-full" onClick={() => lightsOpen.set(true)}>
+          <Lightbulb data-icon="inline-start" />
+          Turn this phone into a light
+        </Button>
+        <p className="text-caption text-muted-foreground">
+          The screen flashes the song's colors on the downbeat, in time with every other phone in the room doing the same.
+        </p>
       </Field>
     </>
   )

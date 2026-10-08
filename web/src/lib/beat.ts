@@ -114,6 +114,9 @@ function applyEffects(s: BeatSettings) {
 /** Whether the full-screen visualizer is open in the app. */
 export const visualizerOpen = createStore(false)
 
+/** Whether lights mode (MAD-781) is on: the phone as a light, flashing on the downbeats. */
+export const lightsOpen = createStore(false)
+
 /** Tempo for songs with no beat map yet. */
 const DEFAULT_BPM = 120
 
@@ -334,6 +337,8 @@ export type BeatFrame = {
   presence: number
   /** Beats since the grid's anchor, and the beat's length in ms. */
   beatIndex: number
+  /** Where the beat falls in its bar, 0 (the one) – 3. */
+  bar: number
   periodMs: number
   /** Frame time (performance.now) and time since the last frame. */
   now: number
@@ -409,6 +414,7 @@ function tick(now: number) {
 
   const vars = { beat: 0, downbeat: 0, swell: 0, energy: energy * presence, b0: 0, b1: 0, b2: 0, b3: 0 }
   let beatIndex = 0
+  let bar = 0
   let periodMs = 500
   let breath = 0
   const p = c && presence > 0.001 ? place(c.key, c.pos) : null
@@ -416,6 +422,7 @@ function tick(now: number) {
   const gain = presence * drive * (0.35 + 0.65 * energy) * intensity
   if (p) {
     beatIndex = p.index
+    bar = p.bar
     periodMs = p.period
     // Never more than three flashes a second: at very fast tempos, every other beat.
     const flash = p.period >= 333 || p.index % 2 === 0
@@ -476,6 +483,7 @@ function tick(now: number) {
       spectrum: level,
       presence,
       beatIndex,
+      bar,
       periodMs,
       now,
       dt,
