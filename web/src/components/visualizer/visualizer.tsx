@@ -57,32 +57,40 @@ function ShowLayer({ show, artworkUrl }: { show: Show; artworkUrl?: string }) {
       </>
     )
   }
-  if (show === 'starfield') return <SceneCanvas paint={showPainters.starfield} scale={sharp} app={false} className="" />
+  if (show === 'tunnel' || show === 'rain' || show === 'sparks') {
+    return <SceneCanvas paint={showPainters[show]} scale={sharp} app={false} className="" />
+  }
   // The backdrop's scenes, full strength.
   return <SceneCanvas paint={painters[show]} scale={1 / 2} app={false} className="blur-md" />
 }
 
 /** The palette fluid, or the aurora where there's no WebGL. */
 function FluidCanvas() {
-  const ref = useRef<HTMLCanvasElement>(null)
+  const ref = useRef<HTMLDivElement>(null)
   const [webgl] = useState(hasWebGL)
 
   useEffect(() => {
-    const canvas = ref.current
-    if (!canvas) return
+    const box = ref.current
+    if (!box || !webgl) return
+    // A canvas of its own each time: a context let go can't be had back,
+    // and React may mount this twice (strict mode).
+    const canvas = document.createElement('canvas')
+    canvas.className = 'absolute inset-0 size-full'
+    box.append(canvas)
     let fluid: Fluid
     try {
       fluid = new Fluid(canvas)
     } catch (err) {
       console.warn('visualizer: no fluid', err)
+      canvas.remove()
       return
     }
     let colors: FluidColors | null = null
     let readAt = -Infinity
     const off = onBeatFrame((f) => {
       if (f.now - readAt > 300) {
-        const c = readColors(canvas)
-        const dark = getComputedStyle(canvas).getPropertyValue('--pal-dark').trim() || 'black'
+        const c = readColors(box)
+        const dark = getComputedStyle(box).getPropertyValue('--pal-dark').trim() || 'black'
         colors = { dark: toRgb(dark), dominant: toRgb(c.dominant), vibrant: toRgb(c.vibrant), light: toRgb(c.light) }
         readAt = f.now
       }
@@ -91,11 +99,12 @@ function FluidCanvas() {
     return () => {
       off()
       fluid.dispose()
+      canvas.remove()
     }
-  }, [])
+  }, [webgl])
 
   if (!webgl) return <SceneCanvas paint={painters.aurora} scale={1 / 2} app={false} className="blur-md" />
-  return <canvas ref={ref} className="absolute inset-0 size-full" />
+  return <div ref={ref} className="absolute inset-0" />
 }
 
 let webglChecked: boolean | undefined

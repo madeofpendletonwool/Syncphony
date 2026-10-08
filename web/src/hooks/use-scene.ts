@@ -30,7 +30,7 @@ export function useScene(): Scene {
 }
 
 /** The big visualizer's shows (MAD-779, MAD-780). */
-export const SHOWS = ['fluid', 'spectrum', 'starfield', 'aurora', 'embers', 'horizon', 'ripples'] as const
+export const SHOWS = ['spectrum', 'fluid', 'tunnel', 'horizon', 'rain', 'sparks', 'aurora'] as const
 export type Show = (typeof SHOWS)[number]
 
 export function isShow(s: string): s is Show {
@@ -49,10 +49,10 @@ export function useShow(setting: string): Show {
   let h = 7
   for (const ch of key) h = (h * 33 + ch.charCodeAt(0)) | 0
   const pick = (...from: Show[]) => from[Math.abs(h) % from.length]
-  if (!map || mapKey !== np?.itemId) return pick('fluid', 'spectrum', 'starfield')
+  if (!map || mapKey !== np?.itemId) return pick('spectrum', 'fluid', 'tunnel')
   const { energy } = map.features
   if (map.bpm === 0) return pick('fluid', 'aurora')
-  if (energy < 0.4 || map.bpm < 90) return pick('fluid', 'aurora', 'embers')
-  if (energy > 0.65 && map.bpm >= 110) return pick('spectrum', 'starfield', 'horizon', 'fluid')
+  if (energy < 0.4 || map.bpm < 90) return pick('fluid', 'aurora', 'rain')
+  if (energy > 0.65 && map.bpm >= 110) return pick('spectrum', 'tunnel', 'horizon', 'sparks')
   return pick(...SHOWS)
 }

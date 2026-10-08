@@ -16,7 +16,13 @@ void main() { gl_Position = vec4(p, 0.0, 1.0); }
 `
 
 const FRAGMENT = `
+// Full precision where there is any: phones run mediump at half
+// precision, which turns the noise's hash to mush.
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
 precision mediump float;
+#endif
 uniform vec2 uRes;
 uniform float uTime;
 uniform vec3 uDark, uDominant, uVibrant, uLight;
