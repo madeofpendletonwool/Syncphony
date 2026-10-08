@@ -1,22 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package admin runs the server as a whole: settings that don't belong to
-// a room, and database backups.
+// Package admin keeps the server's own settings: those that don't belong
+// to a room.
 package admin
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"slices"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/backup"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 )
 
@@ -29,6 +25,8 @@ type Settings struct {
 	// InviteExpiryHours is how long a new invite lasts when the admin
 	// doesn't say: 1 to MaxInviteHours. 0 means DefaultInviteHours.
 	InviteExpiryHours int `json:"inviteExpiryHours,omitempty"`
+	// Backups says when the database is backed up, and what's kept.
+	Backups backup.Schedule `json:"backups"`
 }
 
 // Setting limits.
@@ -52,34 +50,17 @@ type InvalidInputError struct{ Message string }
 
 func (e *InvalidInputError) Error() string { return e.Message }
 
-// KeepBackups is how many backups Backup keeps; older ones are deleted.
-const KeepBackups = 7
-
-const (
-	backupPrefix = "syncphony-"
-	backupSuffix = ".db"
-	backupTime   = "20060102-150405"
-)
-
-// Service manages the server's settings and backups.
+// Service manages the server's settings.
 type Service struct {
 	db *store.Store
-	// BackupDir is where backups go. Default <data dir>/backups.
-	BackupDir string
-	// Now is the clock. Default store.Now.
-	Now func() time.Time
-
-	backingUp sync.Mutex
 }
 
-// New returns a Service keeping backups in backupDir.
-func New(db *store.Store, backupDir string) *Service {
-	return &Service{db: db, BackupDir: backupDir, Now: store.Now}
-}
+// New returns a Service.
+func New(db *store.Store) *Service { return &Service{db: db} }
 
 // Settings returns the server's settings.
 func (s *Service) Settings(ctx context.Context) (Settings, error) {
-	var st Settings
+	st := Settings{Backups: backup.DefaultSchedule}
 	raw, err := s.db.GetServerSettings(ctx)
 	if store.IsNotFound(err) {
 		return st, nil
@@ -94,6 +75,7 @@ func (s *Service) Settings(ctx context.Context) (Settings, error) {
 type Update struct {
 	InstanceName      *string
 	InviteExpiryHours *int
+	Backups           *backup.Schedule
 }
 
 // Update changes the server's settings.
@@ -115,6 +97,12 @@ func (s *Service) Update(ctx context.Context, u Update) (Settings, error) {
 		}
 		st.InviteExpiryHours = *h
 	}
+	if b := u.Backups; b != nil {
+		if err := b.Validate(); err != nil {
+			return st, err
+		}
+		st.Backups = *b
+	}
 	raw, err := json.Marshal(st)
 	if err != nil {
 		return st, err
@@ -122,79 +110,12 @@ func (s *Service) Update(ctx context.Context, u Update) (Settings, error) {
 	return st, s.db.SetServerSettings(ctx, string(raw))
 }
 
-// Backup is a copy of the database.
-type Backup struct {
-	Name      string
-	CreatedAt time.Time
-	Bytes     int64
-}
-
-// Backups lists the backups in BackupDir, newest first.
-func (s *Service) Backups() ([]Backup, error) {
-	entries, err := os.ReadDir(s.BackupDir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	} else if err != nil {
-		return nil, err
-	}
-	var out []Backup
-	for _, e := range entries {
-		stamp, ok := strings.CutPrefix(e.Name(), backupPrefix)
-		stamp, ok2 := strings.CutSuffix(stamp, backupSuffix)
-		if !ok || !ok2 || e.IsDir() {
-			continue
-		}
-		at, err := time.Parse(backupTime, stamp)
-		if err != nil {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		out = append(out, Backup{Name: e.Name(), CreatedAt: at, Bytes: info.Size()})
-	}
-	slices.SortFunc(out, func(a, b Backup) int { return b.CreatedAt.Compare(a.CreatedAt) })
-	return out, nil
-}
-
-// Backup copies the database into BackupDir, and deletes all but the
-// newest KeepBackups. The copy holds linked services' credentials still
-// sealed: restoring it needs the same vault key.
-func (s *Service) Backup(ctx context.Context) (Backup, error) {
-	s.backingUp.Lock()
-	defer s.backingUp.Unlock()
-	if err := os.MkdirAll(s.BackupDir, 0o700); err != nil {
-		return Backup{}, err
-	}
-	now := s.Now().UTC().Truncate(time.Second)
-	name := backupPrefix + now.Format(backupTime) + backupSuffix
-	path := filepath.Join(s.BackupDir, name)
-	if _, err := os.Stat(path); err == nil {
-		// One a second is plenty: the last one is the same.
-		return Backup{}, &InvalidInputError{"a backup was just made; try again in a moment"}
-	}
-	if err := s.db.BackupTo(ctx, path); err != nil {
-		return Backup{}, err
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		return Backup{}, err
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return Backup{}, err
-	}
-	all, err := s.Backups()
-	if err != nil {
-		return Backup{}, err
-	}
-	for _, old := range all[min(len(all), KeepBackups):] {
-		if err := os.Remove(filepath.Join(s.BackupDir, old.Name)); err != nil {
-			return Backup{}, err
-		}
-	}
-	return Backup{Name: name, CreatedAt: now, Bytes: info.Size()}, nil
-}
-
 // DatabaseSize is how many bytes the database takes up.
 func (s *Service) DatabaseSize(ctx context.Context) (int64, error) { return s.db.Size(ctx) }
+
+// BackupSchedule is when the database is backed up, and what's kept: for
+// backup.Service.Schedule.
+func (s *Service) BackupSchedule(ctx context.Context) (backup.Schedule, error) {
+	st, err := s.Settings(ctx)
+	return st.Backups, err
+}

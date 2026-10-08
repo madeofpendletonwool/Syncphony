@@ -33,11 +33,12 @@ Each friend links their own service (self-hosted Navidrome, Spotify, nugs.net, a
 ```
 api/openapi.yaml        HTTP API contract
 server/                 Go module
-  cmd/syncphony/        entrypoint, and the `syncphony vault` commands
+  cmd/syncphony/        entrypoint, and the `syncphony vault`, `backup` and `admin` commands
   internal/config/      SYNCPHONY_* env config
   internal/httpapi/     API handlers and the room WebSocket (+ api.gen.go, generated)
   internal/auth/        accounts: invites, passkeys, passwords, sessions
   internal/vault/       envelope encryption for linked-service credentials
+  internal/backup/      scheduled database backups, rotation and restores
   internal/links/       linking service accounts, link health
   internal/realtime/    event bus and presence
   internal/rooms/       room snapshots and change announcements
@@ -89,7 +90,9 @@ This serves on port 8080, ready for your existing reverse proxy. If you don't ha
 
 **First run:** there are no accounts yet, so the server logs a one-time setup link (`docker compose logs syncphony`). Whoever opens it becomes the admin. The link lasts 24 hours, and restarting while there are still no accounts prints a new one. After that, Syncphony is invite-only: admins create invite links for friends. Everyone can sign in with a passkey, a password, or both.
 
-**Credential vault:** linked-service credentials are encrypted at rest with a master key. If you don't set one, the server generates `vault.key` in the data directory on first run. That's convenient, but a backup of the data directory then holds both the key and the credentials it protects. For better protection, set `SYNCPHONY_VAULT_KEY` (or `SYNCPHONY_VAULT_KEY_FILE`, e.g. a Docker secret) and keep the key somewhere else. To rotate the key, run `syncphony vault` for the steps (`docker compose exec syncphony syncphony vault rotate`). Losing the key means everyone links their services again; nothing else is lost.
+**Backups:** the database is backed up every night at 3:00 (server time; set `TZ`) into `/backups`, its own volume. Mount a folder on another disk or a NAS there (`SYNCPHONY_BACKUP_PATH=/mnt/nas/syncphony-backups`). Admins change the schedule and rotation, download backups and restore one on **Settings → Server**. [docs/backups.md](docs/backups.md) covers setup and the restore procedure.
+
+**Credential vault:** linked-service credentials are encrypted at rest with a master key, and stay encrypted in backups, so restoring one needs the key. Keep a copy of it, but never with the backups. If you don't set one, the server generates `vault.key` in the data directory on first run. That's convenient, but a backup of the data directory then holds both the key and the credentials it protects. For better protection, set `SYNCPHONY_VAULT_KEY` (or `SYNCPHONY_VAULT_KEY_FILE`, e.g. a Docker secret) and keep the key somewhere else. To rotate the key, run `syncphony vault` for the steps (`docker compose exec syncphony syncphony vault rotate`). Losing the key means everyone links their services again; nothing else is lost.
 
 **Spotify:** to offer Spotify, register an app at [developer.spotify.com](https://developer.spotify.com/dashboard). The account that creates it must have Premium.
 

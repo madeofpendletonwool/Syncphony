@@ -22,6 +22,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/artwork"
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
+	"github.com/madeofpendletonwool/syncphony/server/internal/backup"
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
@@ -33,6 +34,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
+	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 	"github.com/madeofpendletonwool/syncphony/server/internal/suggest"
 	"github.com/madeofpendletonwool/syncphony/server/internal/transcode"
 )
@@ -47,10 +49,12 @@ type Server struct {
 	// StartedAt is when the server started, for its uptime.
 	StartedAt time.Time
 	// Admin holds the server's own settings, and backs it up.
-	Admin  *admin.Service
-	Auth   *auth.Service
-	Links  *links.Service
-	Lyrics *lyrics.Service
+	Admin *admin.Service
+	// Backups makes and restores database backups.
+	Backups *backup.Service
+	Auth    *auth.Service
+	Links   *links.Service
+	Lyrics  *lyrics.Service
 	// LinerNotes writes songs' liner notes. Nil when MusicBrainz is off.
 	LinerNotes *linernotes.Service
 	// Graph is what's known about music, for artist and genre pages.
@@ -320,7 +324,10 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var guestLimit *queue.GuestLimitError
 	var invalidHeart *nights.InvalidInputError
 	var invalidAdmin *admin.InvalidInputError
+	var invalidBackup *backup.InvalidInputError
 	switch {
+	case errors.As(err, &invalidBackup):
+		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidBackup.Error())
 	case errors.As(err, &invalidAdmin):
 		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidAdmin.Error())
 	case errors.As(err, &guestLimit):
@@ -368,6 +375,8 @@ var errorCodes = []struct {
 	{auth.ErrForbidden, http.StatusForbidden, "forbidden"},
 	{auth.ErrWrongPassword, http.StatusForbidden, "wrong_password"},
 	{auth.ErrNotFound, http.StatusNotFound, "not_found"},
+	{backup.ErrNotFound, http.StatusNotFound, "not_found"},
+	{store.ErrNotDatabase, http.StatusBadRequest, "not_a_backup"},
 	{auth.ErrAccountDisabled, http.StatusForbidden, "account_disabled"},
 	{auth.ErrLastAdmin, http.StatusConflict, "last_admin"},
 	{auth.ErrInviteInvalid, http.StatusNotFound, "invite_invalid"},

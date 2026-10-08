@@ -583,13 +583,26 @@ paths:
           $ref: "#/components/responses/Error"
 
   /admin/backups:
+    get:
+      operationId: getBackups
+      summary: Backups, their schedule, and any restore waiting for a restart (admin)
+      tags: [admin]
+      responses:
+        "200":
+          description: The backups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupStatus"
+        default:
+          $ref: "#/components/responses/Error"
     post:
       operationId: createBackup
       summary: Back up the database now (admin)
       description: |
-        Writes a copy of the database to the server's backup directory and
-        keeps the newest 7. Linked services' credentials stay sealed in it:
-        restoring needs the same vault key.
+        Writes a checked copy of the database to the server's backup
+        directory. The newest 10 made this way are kept. Linked services'
+        credentials stay sealed in it: restoring needs the same vault key.
       tags: [admin]
       responses:
         "201":
@@ -598,6 +611,99 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Backup"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /admin/backups/schedule:
+    put:
+      operationId: updateBackupSchedule
+      summary: Change when the database is backed up, and what's kept (admin)
+      tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BackupSchedule"
+      responses:
+        "200":
+          description: The schedule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupSchedule"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /admin/backups/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+        example: syncphony-20261006-030000-scheduled.db
+    get:
+      operationId: downloadBackup
+      summary: Download a backup (admin)
+      tags: [admin]
+      responses:
+        "200":
+          description: The backup, an SQLite database
+          content:
+            application/vnd.sqlite3:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deleteBackup
+      summary: Delete a backup (admin)
+      tags: [admin]
+      responses:
+        "204":
+          description: Deleted
+        default:
+          $ref: "#/components/responses/Error"
+
+  /admin/restore:
+    put:
+      operationId: stageRestore
+      summary: Restore a backup when the server next restarts (admin)
+      description: |
+        Checks the backup all the way through and sets a copy aside. When the
+        server next starts, it backs up the database it's replacing, then
+        runs on the backup (migrating it if it's from an older version).
+        Replaces any restore already waiting.
+      tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  description: The backup's name.
+      responses:
+        "200":
+          description: The restore, waiting for a restart
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingRestore"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: cancelRestore
+      summary: Don't restore a backup after all (admin)
+      tags: [admin]
+      responses:
+        "204":
+          description: Nothing will be restored
         default:
           $ref: "#/components/responses/Error"
 
@@ -3675,17 +3781,124 @@ components:
 
     Backup:
       type: object
-      required: [name, createdAt, bytes]
+      required: [name, kind, createdAt, bytes]
       properties:
         name:
           type: string
-          example: syncphony-20261006-193000.db
+          example: syncphony-20261006-030000-scheduled.db
+        kind:
+          type: string
+          enum: [scheduled, manual, pre-upgrade, pre-restore]
+          description: |
+            Why it was made: on the schedule, on request, before a new
+            version changed the database, or the database a restore replaced.
         createdAt:
           type: string
           format: date-time
         bytes:
           type: integer
           format: int64
+
+    BackupSchedule:
+      type: object
+      required: [frequency, hour, weekday, keepDaily, keepWeekly, keepMonthly]
+      properties:
+        frequency:
+          type: string
+          enum: ["off", 6h, 12h, daily, weekly]
+        hour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: The hour, in the server's time zone, daily and weekly backups are made at. Every 6 or 12 hours counts from it.
+        weekday:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: The day weekly backups are made on, 0 for Sunday.
+        keepDaily:
+          type: integer
+          minimum: 0
+          maximum: 90
+          description: How many days keep their newest scheduled backup. Every backup from the last day is kept too.
+        keepWeekly:
+          type: integer
+          minimum: 0
+          maximum: 52
+        keepMonthly:
+          type: integer
+          minimum: 0
+          maximum: 36
+
+    BackupStatus:
+      type: object
+      required: [dir, timeZone, schedule, vaultKeyId, backups]
+      properties:
+        dir:
+          type: string
+          description: Where backups go on the server, e.g. a mounted volume.
+          example: /backups
+        problem:
+          type: string
+          description: Why backups can't be written there, if they can't.
+        timeZone:
+          type: string
+          description: The server's time zone, which the schedule's hours are in.
+          example: Europe/London
+        schedule:
+          $ref: "#/components/schemas/BackupSchedule"
+        nextAt:
+          type: string
+          format: date-time
+          description: When the next scheduled backup is due. Absent when they're off.
+        lastRun:
+          type: object
+          description: How the last scheduled backup since the server started went.
+          required: [at]
+          properties:
+            at:
+              type: string
+              format: date-time
+            error:
+              type: string
+              description: Why it failed, if it did. It's tried again in 15 minutes.
+        pendingRestore:
+          $ref: "#/components/schemas/PendingRestore"
+        vaultKeyId:
+          type: string
+          description: The vault key linked services' credentials are sealed with now.
+        backups:
+          type: array
+          description: Newest first.
+          items:
+            $ref: "#/components/schemas/Backup"
+
+    PendingRestore:
+      type: object
+      required: [from, stagedAt, schemaVersion, users, links, keyIds, keyMatches]
+      properties:
+        from:
+          type: string
+          description: The backup's name.
+        stagedAt:
+          type: string
+          format: date-time
+        schemaVersion:
+          type: integer
+          format: int64
+        users:
+          type: integer
+        links:
+          type: integer
+          description: Linked services in the backup.
+        keyIds:
+          type: array
+          items:
+            type: string
+          description: The vault keys the backup's linked services are sealed with.
+        keyMatches:
+          type: boolean
+          description: Whether the server's vault key opens them. If not, they'll need linking again after the restore.
 
     RoomActivity:
       type: object

@@ -26,6 +26,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
 	"github.com/madeofpendletonwool/syncphony/server/internal/avatar"
+	"github.com/madeofpendletonwool/syncphony/server/internal/backup"
 	"github.com/madeofpendletonwool/syncphony/server/internal/dj"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
@@ -53,6 +54,7 @@ type env struct {
 	base     string // the public base URL the server believes it has
 	svc      *auth.Service
 	server   *admin.Service
+	backups  *backup.Service
 	links    *links.Service
 	db       *store.Store
 	bus      *realtime.Local
@@ -104,7 +106,9 @@ func newEnv(t *testing.T) *env {
 	}
 	key, _ := vault.ParseKey(vault.GenerateKey())
 	e.db, e.bus = db, realtime.NewLocal()
-	e.server = admin.New(db, filepath.Join(t.TempDir(), "backups"))
+	e.server = admin.New(db)
+	e.backups = backup.New(filepath.Join(t.TempDir(), "backups"), t.TempDir())
+	e.backups.DB, e.backups.Schedule = db, e.server.BackupSchedule
 	e.rooms = rooms.New(db, e.bus)
 	e.links = links.New(db, vault.New(key), reg, links.Config{BaseURL: e.base, Now: e.clock, Notifier: links.BusNotifier{Bus: e.bus}})
 	qs := queue.New(db, e.rooms, e.links)
@@ -133,7 +137,7 @@ func newEnv(t *testing.T) *env {
 	pilot.Now, pilot.Memory = e.clock, &dj.Memory{DB: db, Now: e.clock}
 	t.Cleanup(pilot.Close)
 	api := &httpapi.Server{
-		Version: "test", StartedAt: e.clock(), Admin: e.server, Auth: e.svc, Links: e.links, Lyrics: ly, LinerNotes: notes, Artwork: art, Palettes: e.palettes, BeatMaps: beatMaps, Rooms: e.rooms, Queue: qs, Playback: e.playback, Nights: e.nights, Bus: e.bus, Presence: presence,
+		Version: "test", StartedAt: e.clock(), Admin: e.server, Backups: e.backups, Auth: e.svc, Links: e.links, Lyrics: ly, LinerNotes: notes, Artwork: art, Palettes: e.palettes, BeatMaps: beatMaps, Rooms: e.rooms, Queue: qs, Playback: e.playback, Nights: e.nights, Bus: e.bus, Presence: presence,
 		Suggest: suggest.New(db, e.rooms, e.links), Autopilot: pilot,
 		BaseURL: e.base, PingEvery: 50 * time.Millisecond,
 	}

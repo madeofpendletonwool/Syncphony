@@ -63,6 +63,57 @@ func (e ArtistFactKind) Valid() bool {
 	}
 }
 
+// Defines values for BackupKind.
+const (
+	Manual     BackupKind = "manual"
+	PreRestore BackupKind = "pre-restore"
+	PreUpgrade BackupKind = "pre-upgrade"
+	Scheduled  BackupKind = "scheduled"
+)
+
+// Valid indicates whether the value is a known member of the BackupKind enum.
+func (e BackupKind) Valid() bool {
+	switch e {
+	case Manual:
+		return true
+	case PreRestore:
+		return true
+	case PreUpgrade:
+		return true
+	case Scheduled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BackupScheduleFrequency.
+const (
+	Daily  BackupScheduleFrequency = "daily"
+	N12h   BackupScheduleFrequency = "12h"
+	N6h    BackupScheduleFrequency = "6h"
+	Off    BackupScheduleFrequency = "off"
+	Weekly BackupScheduleFrequency = "weekly"
+)
+
+// Valid indicates whether the value is a known member of the BackupScheduleFrequency enum.
+func (e BackupScheduleFrequency) Valid() bool {
+	switch e {
+	case Daily:
+		return true
+	case N12h:
+		return true
+	case N6h:
+		return true
+	case Off:
+		return true
+	case Weekly:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DisplayPairingStatusStatus.
 const (
 	Paired  DisplayPairingStatusStatus = "paired"
@@ -1021,8 +1072,70 @@ type Backup struct {
 	Bytes     int64     `json:"bytes"`
 	CreatedAt time.Time `json:"createdAt"`
 
-	// Name Example: syncphony-20261006-193000.db
+	// Kind Why it was made: on the schedule, on request, before a new
+	// version changed the database, or the database a restore replaced.
+	Kind BackupKind `json:"kind"`
+
+	// Name Example: syncphony-20261006-030000-scheduled.db
 	Name string `json:"name"`
+}
+
+// BackupKind Why it was made: on the schedule, on request, before a new
+// version changed the database, or the database a restore replaced.
+type BackupKind string
+
+// BackupSchedule defines model for BackupSchedule.
+type BackupSchedule struct {
+	Frequency BackupScheduleFrequency `json:"frequency"`
+
+	// Hour The hour, in the server's time zone, daily and weekly backups are made at. Every 6 or 12 hours counts from it.
+	Hour int `json:"hour"`
+
+	// KeepDaily How many days keep their newest scheduled backup. Every backup from the last day is kept too.
+	KeepDaily   int `json:"keepDaily"`
+	KeepMonthly int `json:"keepMonthly"`
+	KeepWeekly  int `json:"keepWeekly"`
+
+	// Weekday The day weekly backups are made on, 0 for Sunday.
+	Weekday int `json:"weekday"`
+}
+
+// BackupScheduleFrequency defines model for BackupSchedule.Frequency.
+type BackupScheduleFrequency string
+
+// BackupStatus defines model for BackupStatus.
+type BackupStatus struct {
+	// Backups Newest first.
+	Backups []Backup `json:"backups"`
+
+	// Dir Where backups go on the server, e.g. a mounted volume.
+	//
+	// Example: /backups
+	Dir string `json:"dir"`
+
+	// LastRun How the last scheduled backup since the server started went.
+	LastRun *struct {
+		At time.Time `json:"at"`
+
+		// Error Why it failed, if it did. It's tried again in 15 minutes.
+		Error *string `json:"error,omitempty"`
+	} `json:"lastRun,omitempty"`
+
+	// NextAt When the next scheduled backup is due. Absent when they're off.
+	NextAt         *time.Time      `json:"nextAt,omitempty"`
+	PendingRestore *PendingRestore `json:"pendingRestore,omitempty"`
+
+	// Problem Why backups can't be written there, if they can't.
+	Problem  *string        `json:"problem,omitempty"`
+	Schedule BackupSchedule `json:"schedule"`
+
+	// TimeZone The server's time zone, which the schedule's hours are in.
+	//
+	// Example: Europe/London
+	TimeZone string `json:"timeZone"`
+
+	// VaultKeyId The vault key linked services' credentials are sealed with now.
+	VaultKeyId string `json:"vaultKeyId"`
 }
 
 // BeatMap A song's beat map (MAD-773). Times are in ms from the start of the
@@ -1709,6 +1822,24 @@ type PasskeySignupRequest struct {
 
 // Password defines model for Password.
 type Password = string
+
+// PendingRestore defines model for PendingRestore.
+type PendingRestore struct {
+	// From The backup's name.
+	From string `json:"from"`
+
+	// KeyIds The vault keys the backup's linked services are sealed with.
+	KeyIds []string `json:"keyIds"`
+
+	// KeyMatches Whether the server's vault key opens them. If not, they'll need linking again after the restore.
+	KeyMatches bool `json:"keyMatches"`
+
+	// Links Linked services in the backup.
+	Links         int       `json:"links"`
+	SchemaVersion int64     `json:"schemaVersion"`
+	StagedAt      time.Time `json:"stagedAt"`
+	Users         int       `json:"users"`
+}
 
 // PermissionLevel Who may do something. The room's owner always may.
 type PermissionLevel string
@@ -2808,6 +2939,12 @@ type RoomId = string
 // SignedIn defines model for SignedIn.
 type SignedIn = Me
 
+// StageRestoreJSONBody defines parameters for StageRestore.
+type StageRestoreJSONBody struct {
+	// Name The backup's name.
+	Name string `json:"name"`
+}
+
 // ListLinksParams defines parameters for ListLinks.
 type ListLinksParams struct {
 	// Include `shared`: also list links others have shared, after yours.
@@ -2960,6 +3097,12 @@ type SearchParams struct {
 	PublicPlaylists *bool `form:"publicPlaylists,omitempty" json:"publicPlaylists,omitempty"`
 }
 
+// UpdateBackupScheduleJSONRequestBody defines body for UpdateBackupSchedule for application/json ContentType.
+type UpdateBackupScheduleJSONRequestBody = BackupSchedule
+
+// StageRestoreJSONRequestBody defines body for StageRestore for application/json ContentType.
+type StageRestoreJSONRequestBody StageRestoreJSONBody
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
@@ -3070,12 +3213,30 @@ type CreateResetLinkJSONRequestBody = CreateResetLinkRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetBackups Backups, their schedule, and any restore waiting for a restart (admin)
+	// (GET /admin/backups)
+	GetBackups(w http.ResponseWriter, r *http.Request)
 	// CreateBackup Back up the database now (admin)
 	// (POST /admin/backups)
 	CreateBackup(w http.ResponseWriter, r *http.Request)
+	// UpdateBackupSchedule Change when the database is backed up, and what's kept (admin)
+	// (PUT /admin/backups/schedule)
+	UpdateBackupSchedule(w http.ResponseWriter, r *http.Request)
+	// DeleteBackup Delete a backup (admin)
+	// (DELETE /admin/backups/{name})
+	DeleteBackup(w http.ResponseWriter, r *http.Request, name string)
+	// DownloadBackup Download a backup (admin)
+	// (GET /admin/backups/{name})
+	DownloadBackup(w http.ResponseWriter, r *http.Request, name string)
 	// ListAllLinks Every linked service on the server, and its health (admin)
 	// (GET /admin/links)
 	ListAllLinks(w http.ResponseWriter, r *http.Request)
+	// CancelRestore Don't restore a backup after all (admin)
+	// (DELETE /admin/restore)
+	CancelRestore(w http.ResponseWriter, r *http.Request)
+	// StageRestore Restore a backup when the server next restarts (admin)
+	// (PUT /admin/restore)
+	StageRestore(w http.ResponseWriter, r *http.Request)
 	// ListActiveRooms Every room, who's in it, and what it's playing through (admin)
 	// (GET /admin/rooms)
 	ListActiveRooms(w http.ResponseWriter, r *http.Request)
@@ -3480,6 +3641,20 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// GetBackups operation middleware
+func (siw *ServerInterfaceWrapper) GetBackups(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBackups(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateBackup operation middleware
 func (siw *ServerInterfaceWrapper) CreateBackup(w http.ResponseWriter, r *http.Request) {
 
@@ -3494,11 +3669,105 @@ func (siw *ServerInterfaceWrapper) CreateBackup(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateBackupSchedule operation middleware
+func (siw *ServerInterfaceWrapper) UpdateBackupSchedule(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateBackupSchedule(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteBackup operation middleware
+func (siw *ServerInterfaceWrapper) DeleteBackup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteBackup(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadBackup operation middleware
+func (siw *ServerInterfaceWrapper) DownloadBackup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadBackup(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListAllLinks operation middleware
 func (siw *ServerInterfaceWrapper) ListAllLinks(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListAllLinks(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelRestore operation middleware
+func (siw *ServerInterfaceWrapper) CancelRestore(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelRestore(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StageRestore operation middleware
+func (siw *ServerInterfaceWrapper) StageRestore(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StageRestore(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7309,7 +7578,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/server-settings", wrapper.GetServerSettings)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/server-settings", wrapper.UpdateServerSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/server", wrapper.GetServerInfo)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/backups", wrapper.GetBackups)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/admin/backups", wrapper.CreateBackup)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/admin/backups/schedule", wrapper.UpdateBackupSchedule)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/admin/backups/{name}", wrapper.DeleteBackup)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/backups/{name}", wrapper.DownloadBackup)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/admin/restore", wrapper.CancelRestore)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/admin/restore", wrapper.StageRestore)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/links", wrapper.ListAllLinks)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/rooms", wrapper.ListActiveRooms)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/admin/rooms/{roomId}/taste", wrapper.GetRoomTaste)
@@ -7427,6 +7702,44 @@ type SignedInJSONResponse struct {
 	Headers SignedInResponseHeaders
 }
 
+type GetBackupsRequestObject struct {
+}
+
+type GetBackupsResponseObject interface {
+	VisitGetBackupsResponse(w http.ResponseWriter) error
+}
+
+type GetBackups200JSONResponse BackupStatus
+
+func (response GetBackups200JSONResponse) VisitGetBackupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBackupsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetBackupsdefaultJSONResponse) VisitGetBackupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateBackupRequestObject struct {
 }
 
@@ -7465,6 +7778,123 @@ func (response CreateBackupdefaultJSONResponse) VisitCreateBackupResponse(w http
 	return err
 }
 
+type UpdateBackupScheduleRequestObject struct {
+	Body *UpdateBackupScheduleJSONRequestBody
+}
+
+type UpdateBackupScheduleResponseObject interface {
+	VisitUpdateBackupScheduleResponse(w http.ResponseWriter) error
+}
+
+type UpdateBackupSchedule200JSONResponse BackupSchedule
+
+func (response UpdateBackupSchedule200JSONResponse) VisitUpdateBackupScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBackupScheduledefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateBackupScheduledefaultJSONResponse) VisitUpdateBackupScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteBackupRequestObject struct {
+	Name string `json:"name"`
+}
+
+type DeleteBackupResponseObject interface {
+	VisitDeleteBackupResponse(w http.ResponseWriter) error
+}
+
+type DeleteBackup204Response struct {
+}
+
+func (response DeleteBackup204Response) VisitDeleteBackupResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteBackupdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteBackupdefaultJSONResponse) VisitDeleteBackupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadBackupRequestObject struct {
+	Name string `json:"name"`
+}
+
+type DownloadBackupResponseObject interface {
+	VisitDownloadBackupResponse(w http.ResponseWriter) error
+}
+
+type DownloadBackup200ApplicationvndSqlite3Response struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response DownloadBackup200ApplicationvndSqlite3Response) VisitDownloadBackupResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/vnd.sqlite3")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type DownloadBackupdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DownloadBackupdefaultJSONResponse) VisitDownloadBackupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListAllLinksRequestObject struct {
 }
 
@@ -7492,6 +7922,77 @@ type ListAllLinksdefaultJSONResponse struct {
 }
 
 func (response ListAllLinksdefaultJSONResponse) VisitListAllLinksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelRestoreRequestObject struct {
+}
+
+type CancelRestoreResponseObject interface {
+	VisitCancelRestoreResponse(w http.ResponseWriter) error
+}
+
+type CancelRestore204Response struct {
+}
+
+func (response CancelRestore204Response) VisitCancelRestoreResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type CancelRestoredefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CancelRestoredefaultJSONResponse) VisitCancelRestoreResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StageRestoreRequestObject struct {
+	Body *StageRestoreJSONRequestBody
+}
+
+type StageRestoreResponseObject interface {
+	VisitStageRestoreResponse(w http.ResponseWriter) error
+}
+
+type StageRestore200JSONResponse PendingRestore
+
+func (response StageRestore200JSONResponse) VisitStageRestoreResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StageRestoredefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response StageRestoredefaultJSONResponse) VisitStageRestoreResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -12599,12 +13100,30 @@ func (response CreateResetLinkdefaultJSONResponse) VisitCreateResetLinkResponse(
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// GetBackups Backups, their schedule, and any restore waiting for a restart (admin)
+	// (GET /admin/backups)
+	GetBackups(ctx context.Context, request GetBackupsRequestObject) (GetBackupsResponseObject, error)
 	// CreateBackup Back up the database now (admin)
 	// (POST /admin/backups)
 	CreateBackup(ctx context.Context, request CreateBackupRequestObject) (CreateBackupResponseObject, error)
+	// UpdateBackupSchedule Change when the database is backed up, and what's kept (admin)
+	// (PUT /admin/backups/schedule)
+	UpdateBackupSchedule(ctx context.Context, request UpdateBackupScheduleRequestObject) (UpdateBackupScheduleResponseObject, error)
+	// DeleteBackup Delete a backup (admin)
+	// (DELETE /admin/backups/{name})
+	DeleteBackup(ctx context.Context, request DeleteBackupRequestObject) (DeleteBackupResponseObject, error)
+	// DownloadBackup Download a backup (admin)
+	// (GET /admin/backups/{name})
+	DownloadBackup(ctx context.Context, request DownloadBackupRequestObject) (DownloadBackupResponseObject, error)
 	// ListAllLinks Every linked service on the server, and its health (admin)
 	// (GET /admin/links)
 	ListAllLinks(ctx context.Context, request ListAllLinksRequestObject) (ListAllLinksResponseObject, error)
+	// CancelRestore Don't restore a backup after all (admin)
+	// (DELETE /admin/restore)
+	CancelRestore(ctx context.Context, request CancelRestoreRequestObject) (CancelRestoreResponseObject, error)
+	// StageRestore Restore a backup when the server next restarts (admin)
+	// (PUT /admin/restore)
+	StageRestore(ctx context.Context, request StageRestoreRequestObject) (StageRestoreResponseObject, error)
 	// ListActiveRooms Every room, who's in it, and what it's playing through (admin)
 	// (GET /admin/rooms)
 	ListActiveRooms(ctx context.Context, request ListActiveRoomsRequestObject) (ListActiveRoomsResponseObject, error)
@@ -13039,6 +13558,30 @@ type strictHandler struct {
 	options     StrictHTTPServerOptions
 }
 
+// GetBackups operation middleware
+func (sh *strictHandler) GetBackups(w http.ResponseWriter, r *http.Request) {
+	var request GetBackupsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBackups(ctx, request.(GetBackupsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBackups")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBackupsResponseObject); ok {
+		if err := validResponse.VisitGetBackupsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CreateBackup operation middleware
 func (sh *strictHandler) CreateBackup(w http.ResponseWriter, r *http.Request) {
 	var request CreateBackupRequestObject
@@ -13063,6 +13606,89 @@ func (sh *strictHandler) CreateBackup(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// UpdateBackupSchedule operation middleware
+func (sh *strictHandler) UpdateBackupSchedule(w http.ResponseWriter, r *http.Request) {
+	var request UpdateBackupScheduleRequestObject
+
+	var body UpdateBackupScheduleJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateBackupSchedule(ctx, request.(UpdateBackupScheduleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateBackupSchedule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateBackupScheduleResponseObject); ok {
+		if err := validResponse.VisitUpdateBackupScheduleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteBackup operation middleware
+func (sh *strictHandler) DeleteBackup(w http.ResponseWriter, r *http.Request, name string) {
+	var request DeleteBackupRequestObject
+
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteBackup(ctx, request.(DeleteBackupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteBackup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteBackupResponseObject); ok {
+		if err := validResponse.VisitDeleteBackupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadBackup operation middleware
+func (sh *strictHandler) DownloadBackup(w http.ResponseWriter, r *http.Request, name string) {
+	var request DownloadBackupRequestObject
+
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadBackup(ctx, request.(DownloadBackupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadBackup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadBackupResponseObject); ok {
+		if err := validResponse.VisitDownloadBackupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListAllLinks operation middleware
 func (sh *strictHandler) ListAllLinks(w http.ResponseWriter, r *http.Request) {
 	var request ListAllLinksRequestObject
@@ -13080,6 +13706,61 @@ func (sh *strictHandler) ListAllLinks(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListAllLinksResponseObject); ok {
 		if err := validResponse.VisitListAllLinksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelRestore operation middleware
+func (sh *strictHandler) CancelRestore(w http.ResponseWriter, r *http.Request) {
+	var request CancelRestoreRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelRestore(ctx, request.(CancelRestoreRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelRestore")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelRestoreResponseObject); ok {
+		if err := validResponse.VisitCancelRestoreResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StageRestore operation middleware
+func (sh *strictHandler) StageRestore(w http.ResponseWriter, r *http.Request) {
+	var request StageRestoreRequestObject
+
+	var body StageRestoreJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StageRestore(ctx, request.(StageRestoreRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StageRestore")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StageRestoreResponseObject); ok {
+		if err := validResponse.VisitStageRestoreResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

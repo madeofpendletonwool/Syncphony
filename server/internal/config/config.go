@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/vault"
@@ -22,6 +23,9 @@ type Config struct {
 	BaseURL string
 	// DataDir holds the SQLite database and other persistent state.
 	DataDir string
+	// BackupDir is where database backups go, e.g. a mounted volume.
+	// Default <DataDir>/backups.
+	BackupDir string
 	// LogLevel is one of debug, info, warn, error.
 	LogLevel slog.Level
 	// TrustedProxies are reverse proxies whose X-Forwarded-For header is
@@ -70,6 +74,7 @@ func Load() (Config, error) {
 		BaseURL: strings.TrimRight(env("SYNCPHONY_BASE_URL", "http://localhost:8080"), "/"),
 		DataDir: env("SYNCPHONY_DATA_DIR", "./data"),
 	}
+	c.BackupDir = env("SYNCPHONY_BACKUP_DIR", filepath.Join(c.DataDir, "backups"))
 	if err := c.LogLevel.UnmarshalText([]byte(env("SYNCPHONY_LOG_LEVEL", "info"))); err != nil {
 		return Config{}, fmt.Errorf("SYNCPHONY_LOG_LEVEL: %w", err)
 	}

@@ -532,16 +532,79 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Backups, their schedule, and any restore waiting for a restart (admin) */
+        get: operations["getBackups"];
         put?: never;
         /**
          * Back up the database now (admin)
-         * @description Writes a copy of the database to the server's backup directory and
-         *     keeps the newest 7. Linked services' credentials stay sealed in it:
-         *     restoring needs the same vault key.
+         * @description Writes a checked copy of the database to the server's backup
+         *     directory. The newest 10 made this way are kept. Linked services'
+         *     credentials stay sealed in it: restoring needs the same vault key.
          */
         post: operations["createBackup"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/backups/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change when the database is backed up, and what's kept (admin) */
+        put: operations["updateBackupSchedule"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/backups/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @example syncphony-20261006-030000-scheduled.db */
+                name: string;
+            };
+            cookie?: never;
+        };
+        /** Download a backup (admin) */
+        get: operations["downloadBackup"];
+        put?: never;
+        post?: never;
+        /** Delete a backup (admin) */
+        delete: operations["deleteBackup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Restore a backup when the server next restarts (admin)
+         * @description Checks the backup all the way through and sets a copy aside. When the
+         *     server next starts, it backs up the database it's replacing, then
+         *     runs on the backup (migrating it if it's from an older version).
+         *     Replaces any restore already waiting.
+         */
+        put: operations["stageRestore"];
+        post?: never;
+        /** Don't restore a backup after all (admin) */
+        delete: operations["cancelRestore"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2665,12 +2728,77 @@ export interface components {
             backups: components["schemas"]["Backup"][];
         };
         Backup: {
-            /** @example syncphony-20261006-193000.db */
+            /** @example syncphony-20261006-030000-scheduled.db */
             name: string;
+            /**
+             * @description Why it was made: on the schedule, on request, before a new
+             *     version changed the database, or the database a restore replaced.
+             * @enum {string}
+             */
+            kind: "scheduled" | "manual" | "pre-upgrade" | "pre-restore";
             /** Format: date-time */
             createdAt: string;
             /** Format: int64 */
             bytes: number;
+        };
+        BackupSchedule: {
+            /** @enum {string} */
+            frequency: "off" | "6h" | "12h" | "daily" | "weekly";
+            /** @description The hour, in the server's time zone, daily and weekly backups are made at. Every 6 or 12 hours counts from it. */
+            hour: number;
+            /** @description The day weekly backups are made on, 0 for Sunday. */
+            weekday: number;
+            /** @description How many days keep their newest scheduled backup. Every backup from the last day is kept too. */
+            keepDaily: number;
+            keepWeekly: number;
+            keepMonthly: number;
+        };
+        BackupStatus: {
+            /**
+             * @description Where backups go on the server, e.g. a mounted volume.
+             * @example /backups
+             */
+            dir: string;
+            /** @description Why backups can't be written there, if they can't. */
+            problem?: string;
+            /**
+             * @description The server's time zone, which the schedule's hours are in.
+             * @example Europe/London
+             */
+            timeZone: string;
+            schedule: components["schemas"]["BackupSchedule"];
+            /**
+             * Format: date-time
+             * @description When the next scheduled backup is due. Absent when they're off.
+             */
+            nextAt?: string;
+            /** @description How the last scheduled backup since the server started went. */
+            lastRun?: {
+                /** Format: date-time */
+                at: string;
+                /** @description Why it failed, if it did. It's tried again in 15 minutes. */
+                error?: string;
+            };
+            pendingRestore?: components["schemas"]["PendingRestore"];
+            /** @description The vault key linked services' credentials are sealed with now. */
+            vaultKeyId: string;
+            /** @description Newest first. */
+            backups: components["schemas"]["Backup"][];
+        };
+        PendingRestore: {
+            /** @description The backup's name. */
+            from: string;
+            /** Format: date-time */
+            stagedAt: string;
+            /** Format: int64 */
+            schemaVersion: number;
+            users: number;
+            /** @description Linked services in the backup. */
+            links: number;
+            /** @description The vault keys the backup's linked services are sealed with. */
+            keyIds: string[];
+            /** @description Whether the server's vault key opens them. If not, they'll need linking again after the restore. */
+            keyMatches: boolean;
         };
         RoomActivity: {
             roomId: string;
@@ -4630,6 +4758,27 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    getBackups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The backups */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     createBackup: {
         parameters: {
             query?: never;
@@ -4647,6 +4796,124 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Backup"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateBackupSchedule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackupSchedule"];
+            };
+        };
+        responses: {
+            /** @description The schedule */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupSchedule"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    downloadBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @example syncphony-20261006-030000-scheduled.db */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The backup, an SQLite database */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.sqlite3": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @example syncphony-20261006-030000-scheduled.db */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    stageRestore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The backup's name. */
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The restore, waiting for a restart */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingRestore"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    cancelRestore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Nothing will be restored */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };

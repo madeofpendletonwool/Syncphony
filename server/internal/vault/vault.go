@@ -121,6 +121,16 @@ func New(current *Key, old ...*Key) *Vault {
 // CurrentKeyID is the ID of the sealing key.
 func (v *Vault) CurrentKeyID() string { return v.current.ID() }
 
+// Has reports whether the vault has the key with that ID, current or old.
+func (v *Vault) Has(id string) bool {
+	for _, k := range v.keys {
+		if k.ID() == id {
+			return true
+		}
+	}
+	return false
+}
+
 // aad binds a record to its row. The wrapped data key is also bound to the
 // master key's ID.
 func aad(linkID, userID string, keyID []byte) []byte {
