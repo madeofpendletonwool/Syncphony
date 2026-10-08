@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { ChevronRight, Dices, History, LoaderCircle, Search as SearchIcon, Waypoints, X } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { errorMessage } from '@/api/errors'
 import type { components } from '@/api/schema.gen'
 import { AlbumCard, ArtistCard, PlaylistCard } from '@/components/album-card'
@@ -11,6 +11,7 @@ import { PageHeader } from '@/components/page-header'
 import { ProviderIcon } from '@/components/provider-icon'
 import { Shelf } from '@/components/shelf'
 import { JoinRoomPrompt } from '@/components/start-room'
+import { SEARCH_INPUT_ID } from '@/components/shell/keyboard-shortcuts'
 import { TrackRow } from '@/components/track-row'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -88,6 +89,34 @@ function Search() {
     return () => clearTimeout(t)
   }, [found, q])
 
+  // ↓ and ↑ from the box highlight a song, and Enter adds it (MAD-735).
+  // Only songs on screen: the first few under All, every one under Songs.
+  const { add, status } = useAddToLane()
+  const [active, setActive] = useState<string>()
+  const songs =
+    q && results.data && (tab === 'all' || tab === 'songs')
+      ? interleave(
+          results.data.groups.filter((g) => !g.error),
+          (g) => g.tracks,
+        ).slice(0, tab === 'all' ? 5 : undefined)
+      : []
+  const at = songs.findIndex((t) => trackKey(t) === active)
+  const highlighted = at >= 0 ? songs[at] : undefined
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (songs.length === 0) return
+      e.preventDefault()
+      const next = e.key === 'ArrowDown' ? Math.min(at + 1, songs.length - 1) : at - 1
+      setActive(next >= 0 ? trackKey(songs[next]) : undefined)
+    } else if (e.key === 'Enter' && highlighted) {
+      e.preventDefault()
+      if (status(highlighted) === 'idle') add([highlighted])
+    } else if (e.key === 'Escape' && highlighted) {
+      e.preventDefault()
+      setActive(undefined)
+    }
+  }
+
   const searchFor = (next: string) => {
     setText(next)
     void navigate({ search: (s) => ({ ...s, q: next, tab: undefined }), replace: true })
@@ -110,6 +139,7 @@ function Search() {
           <SearchIcon className="pointer-events-none absolute top-1/2 left-4 z-10 size-5 -translate-y-1/2 text-muted-foreground" />
           <Input
             ref={inputRef}
+            id={SEARCH_INPUT_ID}
             type="search"
             inputMode="search"
             enterKeyHint="search"
@@ -117,7 +147,11 @@ function Search() {
             aria-label="Search songs, albums, artists and playlists"
             placeholder="Songs, albums, artists, playlists"
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value)
+              setActive(undefined)
+            }}
+            onKeyDown={onKeyDown}
             className="glass h-13 rounded-2xl pr-12 pl-12 text-base [&::-webkit-search-cancel-button]:hidden"
           />
           {results.isFetching ? (
@@ -168,14 +202,14 @@ function Search() {
         <Notice className="mt-6">{errorMessage(results.error)}</Notice>
       ) : (
         <div className={cn('transition-opacity duration-200', results.isPlaceholderData && 'opacity-60')}>
-          <Results key={results.data.query} groups={results.data.groups} tab={tab} />
+          <Results key={results.data.query} groups={results.data.groups} tab={tab} active={highlighted && trackKey(highlighted)} />
         </div>
       )}
     </>
   )
 }
 
-function Results({ groups, tab }: { groups: SearchGroup[]; tab: Tab }) {
+function Results({ groups, tab, active }: { groups: SearchGroup[]; tab: Tab; active?: string }) {
   const me = useMe()
   const navigate = useNavigate({ from: Route.fullPath })
   const { add, status } = useAddToLane()
@@ -217,7 +251,14 @@ function Results({ groups, tab }: { groups: SearchGroup[]; tab: Tab }) {
   const songList = (limit?: number) => (
     <motion.ul variants={stagger} initial="hidden" animate="show" className="flex flex-col">
       {tracks.slice(0, limit).map((t) => (
-        <TrackRow key={trackKey(t)} track={t} status={status(t)} onAdd={() => add([t])} providerIcon={tag(t.linkId)} />
+        <TrackRow
+          key={trackKey(t)}
+          track={t}
+          status={status(t)}
+          onAdd={() => add([t])}
+          providerIcon={tag(t.linkId)}
+          active={trackKey(t) === active}
+        />
       ))}
     </motion.ul>
   )
