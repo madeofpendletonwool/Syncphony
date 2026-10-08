@@ -1,6 +1,6 @@
 import { Activity, Lightbulb, RotateCcw, Sparkles, X } from 'lucide-react'
 import { Popover } from 'radix-ui'
-import { useState, type ReactNode } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
@@ -41,14 +41,24 @@ type Tab = 'look' | 'effects' | 'beat'
  */
 export function BeatLab({ inline = false }: { inline?: boolean }) {
   const [open, setOpen] = useState(false)
+  // Inside now playing (a modal dialog) the panel has to open within the
+  // dialog: the dialog blocks scrolling everywhere outside it.
+  const [container, setContainer] = useState<HTMLElement | null>(null)
   const beat = useBeat<HTMLButtonElement>()
+  const trigger = useCallback(
+    (el: HTMLButtonElement | null) => {
+      setContainer(el?.closest<HTMLElement>('[role="dialog"]') ?? null)
+      return beat(el)
+    },
+    [beat],
+  )
   const { level } = useStore(beatSettings)
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
         <button
-          ref={beat}
+          ref={trigger}
           type="button"
           aria-label={open ? 'Close beat lab' : 'Beat lab'}
           onPointerDown={(e) => e.stopPropagation()}
@@ -72,7 +82,7 @@ export function BeatLab({ inline = false }: { inline?: boolean }) {
           )}
         </button>
       </Popover.Trigger>
-      <Popover.Portal>
+      <Popover.Portal container={container ?? undefined}>
         <Popover.Content
           align="end"
           sideOffset={8}
@@ -93,9 +103,15 @@ function Panel() {
   const on = settings.level !== 'off'
 
   return (
-    <div ref={beat} className="glass-strong flex max-h-[min(36rem,80dvh)] flex-col rounded-2xl text-sm shadow-float">
+    <div
+      ref={beat}
+      className="glass-strong flex max-h-[min(36rem,80dvh,var(--radix-popover-content-available-height))] flex-col rounded-2xl text-sm shadow-float"
+    >
       <div className="flex items-center justify-between gap-3 px-4 pt-4">
-        <p className="font-medium">Beat lab</p>
+        <div>
+          <p className="font-medium">Beat lab</p>
+          <p className="text-caption text-muted-foreground">{on ? 'Visuals move with the music' : 'All visuals off'}</p>
+        </div>
         <Switch label="Move with the music" checked={on} onChange={(v) => setBeatSettings({ level: v ? 'subtle' : 'off' })} />
       </div>
       {!on ? (
