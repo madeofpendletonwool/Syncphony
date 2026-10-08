@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Check, ChevronDown, Crown, History, LogOut, MonitorPlay, Play, Plus, QrCode, Settings2, Sparkles, Speaker, Users } from 'lucide-react'
+import { Check, ChevronDown, Crown, Dices, History, LogOut, MonitorPlay, Play, Plus, QrCode, Settings2, Sparkles, Speaker, Users } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { DropdownMenu } from 'radix-ui'
 import { useEffect, useState, type ReactNode } from 'react'
@@ -35,9 +35,10 @@ import { useMe } from '@/lib/auth'
 import { isMine } from '@/lib/autopilot'
 import { laneStyle } from '@/lib/lane'
 import { fadeUp, spring, stagger } from '@/lib/motion'
+import { plays, startRound } from '@/lib/games'
 import { endNight } from '@/lib/nights'
 import { formatDuration, usePlayer, type User } from '@/lib/now-playing'
-import { playbackQuery, songsBeforeYours, type QueueItem } from '@/lib/playback'
+import { can, playbackQuery, songsBeforeYours, type QueueItem } from '@/lib/playback'
 import { chooseRoom, leaveRoom, queueQuery, useCurrentRoom, type Room as RoomInfo } from '@/lib/room'
 import { live } from '@/lib/room-socket'
 import { useStore } from '@/lib/store'
@@ -216,6 +217,15 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
             <DropdownMenu.Item onSelect={() => setGuests(true)} className={menuItem}>
               <QrCode className="size-4 text-muted-foreground" />
               <span className="flex-1">Invite guests</span>
+            </DropdownMenu.Item>
+          )}
+          {!guest && plays(room.games.level) && (host || can(room, me.id, 'startRounds')) && (
+            <DropdownMenu.Item
+              onSelect={() => startRound(room.id).catch((e: unknown) => toast({ message: errorMessage(e), tone: 'error' }))}
+              className={menuItem}
+            >
+              <Dices className="size-4 text-muted-foreground" />
+              <span className="flex-1">Start a round</span>
             </DropdownMenu.Item>
           )}
           {host && (

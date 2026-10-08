@@ -63,6 +63,23 @@ type Night struct {
 	store.Night
 	Item   *store.QueueItem
 	Awards []awards.Award
+	// AwardItems are the songs the awards are for, by item ID.
+	AwardItems map[string]store.QueueItem
+}
+
+// awardItems reads the songs a night's awards are for. Songs since
+// deleted are left out.
+func awardItems(ctx context.Context, q *store.Queries, as []awards.Award) map[string]store.QueueItem {
+	out := map[string]store.QueueItem{}
+	for _, a := range as {
+		if a.ItemID == "" {
+			continue
+		}
+		if it, err := q.GetQueueItem(ctx, a.ItemID); err == nil {
+			out[a.ItemID] = it
+		}
+	}
+	return out
 }
 
 // Service hearts songs and ends nights.
@@ -237,6 +254,7 @@ func (s *Service) end(ctx context.Context, roomID, by string, at time.Time) (Nig
 				slog.Warn("nights: keeping awards", "room", roomID, "err", err)
 			} else {
 				out.Awards, out.Night.Awards = as, string(raw)
+				out.AwardItems = awardItems(ctx, s.db.Queries, as)
 			}
 		}
 	}
@@ -336,6 +354,7 @@ func (s *Service) List(ctx context.Context, roomID string, limit int) ([]Night, 
 	for i, r := range rows {
 		out[i] = Night{Night: r}
 		_ = json.Unmarshal([]byte(r.Awards), &out[i].Awards)
+		out[i].AwardItems = awardItems(ctx, s.db.Queries, out[i].Awards)
 		if r.QueueItemID.Valid {
 			it, err := s.db.GetQueueItem(ctx, r.QueueItemID.String)
 			if err != nil {

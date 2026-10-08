@@ -7,6 +7,7 @@ import { api } from '@/api/client'
 import { errorMessage, unwrap } from '@/api/errors'
 import type { components } from '@/api/schema.gen'
 import { Notice } from '@/components/notice'
+import { GamesSettings } from '@/components/room/games-settings'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Slider } from '@/components/ui/slider'
@@ -131,7 +132,7 @@ export function RoomSettings({
                   <div>
                     <Dialog.Title className="text-headline">Room settings</Dialog.Title>
                     <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-                      Who controls playback, and how everyone takes turns.
+                      Who controls playback, how everyone takes turns, and the games.
                       {room.ownerId !== me.id && ' You can change it because you’re an admin.'}
                     </Dialog.Description>
                   </div>
@@ -316,6 +317,14 @@ export function RoomSettings({
                     </motion.div>
                   )}
                 </AnimatePresence>
+
+                <SectionTitle hint="Trivia about the music: when it came out, who made it, what it samples">Games</SectionTitle>
+                <GamesSettings
+                  room={room}
+                  ownerLabel={ownerLabel}
+                  onChange={(games) => update.mutate({ games })}
+                  onStartRounds={(startRounds) => set({ startRounds })}
+                />
 
                 <SectionTitle hint="Friends of friends scan a QR code and add songs, with no account. They search the server's shared services">
                   Guests

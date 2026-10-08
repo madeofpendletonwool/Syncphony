@@ -1988,6 +1988,107 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/games/round": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The room's game round, if one is up
+         * @description The round on screen now (see ADR 0015), the same as the latest
+         *     `game.round` event. Until the reveal it carries no answer. 204 when
+         *     no round is up.
+         */
+        get: operations["getGameRound"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/games/rounds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a round about the song that's playing
+         * @description Who may is the room's `startRounds` permission; admins always may.
+         *     `games_off` (409) if the room's games level doesn't run rounds,
+         *     `round_running` (409) if one is up, `nothing_playing` (409) with
+         *     nothing playing, and `no_question` (409) if there's nothing to ask
+         *     about this song yet.
+         */
+        post: operations["startGameRound"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/games/rounds/{roundId}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer the open round
+         * @description One answer per person per round; send again to change it until the
+         *     round closes. Answers are timed by when the server gets them: the
+         *     sooner a right answer, the more it scores. `round_closed` (409) if
+         *     the round isn't open; `forbidden` for a guest in a room where
+         *     guests don't play.
+         */
+        post: operations["answerGameRound"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/games/scores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Tonight's game scores
+         * @description Everyone's points since the room's last night ended, best first.
+         *     With the room's scores `private`, you get only your own; with them
+         *     `off`, none.
+         */
+        get: operations["getGameScores"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/guest-pass": {
         parameters: {
             query?: never;
@@ -2572,6 +2673,187 @@ export interface components {
             intensity: number;
         };
         /**
+         * @description The room's music party games (ADR 0015). Off by default. The level
+         *     sets the defaults for everything else, and a change applies from
+         *     the next song, so a round already running finishes.
+         */
+        RoomGames: {
+            /**
+             * @description `off`: nothing. `recap`: awards when the night ends.
+             *     `ambient`: little questions you can ignore; the music never
+             *     stops. `rounds`: some songs become a round with a reveal.
+             *     `gamenight`: dedicated rounds that may pause the music, and
+             *     queue games.
+             * @default off
+             * @enum {string}
+             */
+            level: "off" | "recap" | "ambient" | "rounds" | "gamenight";
+            /**
+             * @description Each game, on or off. The response lists every game the level
+             *     allows; a game it doesn't allow stays off whatever you send.
+             */
+            enabled: {
+                [key: string]: boolean;
+            };
+            /** @description A round about every this many songs; 0 only when someone starts one. */
+            frequency: number;
+            /** @description Guests may answer. Separate from their hearts and votes. */
+            guests: boolean;
+            /**
+             * @description `private`: you see your own. `board`: a leaderboard on the big
+             *     screen.
+             * @enum {string}
+             */
+            scores: "off" | "private" | "board";
+            /** @description Rounds show on the big screen only, never as prompts on phones. */
+            tvOnly: boolean;
+            /** @description At `gamenight`, the most rounds an hour that may pause the music. */
+            breaksPerHour: number;
+        };
+        /**
+         * @description The room's games, replacing what it had. Anything left out takes
+         *     the level's default, so sending just a `level` resets the rest to
+         *     that level's.
+         */
+        RoomGamesChange: {
+            /** @enum {string} */
+            level?: "off" | "recap" | "ambient" | "rounds" | "gamenight";
+            enabled?: {
+                [key: string]: boolean;
+            };
+            frequency?: number;
+            guests?: boolean;
+            /** @enum {string} */
+            scores?: "off" | "private" | "board";
+            tvOnly?: boolean;
+            breaksPerHour?: number;
+        };
+        /**
+         * @description A game. `year`: guess the year. `liner`: covers, credits and
+         *     releases. `sample`: sample detective. `lyrics`: beat the singer.
+         *     `finish_lyric`: the music stops and you finish the line. `tune`:
+         *     name that tune. `connect`, `theme`, `bracket`: queue games.
+         * @enum {string}
+         */
+        GameKind: "year" | "liner" | "sample" | "lyrics" | "finish_lyric" | "tune" | "connect" | "theme" | "bracket";
+        /**
+         * @description A round of a game, run by the server: `announce` (the question is
+         *     up), `open` (answers in until `closesAt`), `reveal` (the answer
+         *     and everyone's results), `done` (it's over). Times are the
+         *     server's; answers open and the reveal lands with the music when
+         *     the song has a beat map. Until the reveal there's no answer in it.
+         */
+        GameRound: {
+            id: string;
+            roomId: string;
+            /** @description The song it's about. */
+            itemId: string;
+            kind: components["schemas"]["GameKind"];
+            /** @description What it asks within its game, e.g. `credit`, `first_released`. */
+            topic?: string;
+            /**
+             * @description `ambient`: a question to ignore if you like, shown quietly.
+             *     `round`: a countdown and a reveal on the big screen.
+             * @enum {string}
+             */
+            mode: "ambient" | "round";
+            /** @enum {string} */
+            state: "announce" | "open" | "reveal" | "done";
+            prompt: string;
+            /**
+             * @description How to answer. A `number` round may show `choices` too, and
+             *     takes either.
+             * @enum {string}
+             */
+            answer: "choice" | "number" | "text" | "song";
+            choices: string[];
+            /** @description Who started it; absent when the room's frequency did. */
+            startedBy?: string;
+            /** Format: date-time */
+            opensAt: string;
+            /** Format: date-time */
+            closesAt: string;
+            /**
+             * Format: date-time
+             * @description When the reveal comes down.
+             */
+            doneAt: string;
+            /** @description Who has answered so far. */
+            answered: string[];
+            /**
+             * @description What screens keep back until the reveal: `song` (title,
+             *     artists, album, artwork), `notes` (liner notes), `lyrics`. The
+             *     server leaves them out too, except for the speaker.
+             */
+            hides: ("song" | "notes" | "lyrics")[];
+            /** @description Guests may answer. */
+            guests: boolean;
+            /** @description Phones don't prompt for it; the big screen shows it. */
+            tvOnly: boolean;
+            /** @enum {string} */
+            scores: "off" | "private" | "board";
+            /** @description Roughly how hard, 0 (easy) to 1. */
+            difficulty: number;
+            /** @description The answer, from the reveal on. */
+            correct?: string;
+            /** @description The right choice, from the reveal on. */
+            correctIndex?: number;
+            /** @description A line to show with the answer, from the reveal on. */
+            reveal?: string;
+            /** @description Everyone's answers, from the reveal on, best first. */
+            results?: components["schemas"]["GameResult"][];
+        };
+        GameResult: {
+            userId: string;
+            correct: boolean;
+            points: number;
+            /** @description What they answered, as text. */
+            answer?: string;
+        };
+        StartGameRoundRequest: {
+            kind?: components["schemas"]["GameKind"];
+        };
+        /** @description The answer, whichever the round takes. */
+        GameAnswerRequest: {
+            choice?: number;
+            number?: number;
+            text?: string;
+        };
+        GameAnswer: {
+            roundId: string;
+            /**
+             * Format: date-time
+             * @description When the server got it, which is what speed is scored on.
+             */
+            at: string;
+        };
+        /** @description Tonight's game scores, best first. */
+        GameScores: {
+            roomId: string;
+            /** @enum {string} */
+            mode: "off" | "private" | "board";
+            players: components["schemas"]["GamePlayer"][];
+        };
+        GamePlayer: {
+            userId: string;
+            points: number;
+            correct: number;
+            answered: number;
+        };
+        /**
+         * @description One of the night's awards: who won it, usually for which song, and
+         *     a one-line reason ("Dropped from 128 to 70 BPM").
+         */
+        Award: {
+            /** @enum {string} */
+            kind: "deepest_cut" | "dance_floor_mvp" | "vibe_killer" | "trendsetter" | "time_traveler" | "tempo_whiplash" | "sample_snitch" | "comeback" | "opener" | "closer" | "trivia_champ";
+            title: string;
+            userId: string;
+            itemId?: string;
+            item?: components["schemas"]["QueueItem"];
+            reason: string;
+        };
+        /**
          * @description Whether people without an account may join the room by scanning a
          *     guest pass, and what they may do.
          */
@@ -2647,6 +2929,11 @@ export interface components {
             endedBy: "host" | "idle";
             plays: number;
             songOfTheNight?: components["schemas"]["SongOfTheNight"];
+            /**
+             * @description The night's awards, at most six, in rooms whose games level
+             *     isn't `off`.
+             */
+            awards: components["schemas"]["Award"][];
         };
         /** @description The night's most-hearted song. Absent if nothing got a heart. */
         SongOfTheNight: {
@@ -3447,6 +3734,10 @@ export interface components {
          *       or the guest pass changed: fetch them again.
          *     - `members.updated`: RoomMembersChanged. Someone joined a room that
          *       isn't open, asked to, or left or was removed.
+         *     - `game.round`: GameRound. A round was announced, opened, got an
+         *       answer, was revealed, or is done. Sent after hello while one is up.
+         *     - `game.scores`: GameScores. Tonight's scores, after a reveal; only
+         *       your own while the room's scores are `private`.
          *
          *     A paired display connects with its display cookie instead, to its
          *     own room only. So does a signed-in user with `display=1`: either way
@@ -3462,7 +3753,7 @@ export interface components {
          */
         RoomEvent: {
             /** @enum {string} */
-            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "room.deleted" | "reaction.sent" | "hearts.updated" | "night.ended" | "guests.updated" | "members.updated";
+            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "room.deleted" | "reaction.sent" | "hearts.updated" | "night.ended" | "guests.updated" | "members.updated" | "game.round" | "game.scores";
             /**
              * Format: int64
              * @description Queue version, on `queue.updated` only.
@@ -3873,6 +4164,8 @@ export interface components {
             seek: components["schemas"]["PermissionLevel"];
             skip: components["schemas"]["SkipPermission"];
             speaker: components["schemas"]["PermissionLevel"];
+            /** @description Who may start a game round. `owner` for a new room. */
+            startRounds: components["schemas"]["PermissionLevel"];
         };
         /** @description Permissions to change. Missing ones stay as they are (`everyone` for a new room). */
         RoomPermissionsChange: {
@@ -3880,6 +4173,7 @@ export interface components {
             seek?: components["schemas"]["PermissionLevel"];
             skip?: components["schemas"]["SkipPermission"];
             speaker?: components["schemas"]["PermissionLevel"];
+            startRounds?: components["schemas"]["PermissionLevel"];
         };
         /**
          * @description A skip vote passes once more than this percent of the room has
@@ -4044,6 +4338,7 @@ export interface components {
             autopilot: components["schemas"]["RoomAutopilot"];
             guests: components["schemas"]["RoomGuests"];
             screens: components["schemas"]["RoomScreens"];
+            games: components["schemas"]["RoomGames"];
             permissions: components["schemas"]["RoomPermissions"];
             skipVotePercent: components["schemas"]["SkipVotePercent"];
             /** Format: date-time */
@@ -4059,6 +4354,7 @@ export interface components {
             autopilot?: components["schemas"]["RoomAutopilot"];
             guests?: components["schemas"]["RoomGuests"];
             screens?: components["schemas"]["RoomScreens"];
+            games?: components["schemas"]["RoomGamesChange"];
             permissions?: components["schemas"]["RoomPermissionsChange"];
             skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };
@@ -4076,6 +4372,7 @@ export interface components {
             autopilot?: components["schemas"]["RoomAutopilot"];
             guests?: components["schemas"]["RoomGuests"];
             screens?: components["schemas"]["RoomScreens"];
+            games?: components["schemas"]["RoomGamesChange"];
             permissions?: components["schemas"]["RoomPermissionsChange"];
             skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };
@@ -6678,6 +6975,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Night"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getGameRound: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The round */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameRound"];
+                };
+            };
+            /** @description No round is up */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    startGameRound: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StartGameRoundRequest"];
+            };
+        };
+        responses: {
+            /** @description The round, announced */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameRound"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    answerGameRound: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GameAnswerRequest"];
+            };
+        };
+        responses: {
+            /** @description The answer, taken */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameAnswer"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getGameScores: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The scores */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameScores"];
                 };
             };
             default: components["responses"]["Error"];

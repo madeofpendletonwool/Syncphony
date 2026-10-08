@@ -23,6 +23,11 @@ func toNight(n nights.Night) Night {
 		Id: n.ID, RoomId: n.RoomID, StartedAt: n.StartedAt, EndedAt: n.EndedAt,
 		EndedBy: NightEndedBy(n.EndedBy), Plays: int(n.Plays), Awards: toAwards(n.Awards),
 	}
+	for i, a := range n.Awards {
+		if it, ok := n.AwardItems[a.ItemID]; ok {
+			out.Awards[i].Item = ptr(toQueueItem(it))
+		}
+	}
 	if n.Item != nil {
 		out.SongOfTheNight = &SongOfTheNight{Item: toQueueItem(*n.Item), Hearts: int(n.Hearts)}
 	}
