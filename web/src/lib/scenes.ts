@@ -83,41 +83,70 @@ function ripples(): Painter {
 }
 
 /**
- * Curtains of light hanging from the top of the screen, like the real
- * aurora: soft vertical rays whose hems wave slowly. They reach further
- * down on the bar and ripple faster when the song is loud.
+ * Curtains of light, like the real aurora: each has a bright lower hem
+ * with rays streaming up from it. Folds travel sideways along the hems
+ * and the curtains drift across the sky, faster when the song is loud.
+ * The treble flickers the rays, and each bar sends a wave of light
+ * running along the curtains.
  */
 function aurora(): Painter {
-  let phase = 0
-  const curtains: { top: number; len: number; color: keyof Colors; f: number; o: number }[] = [
-    // Back to front: a tall faint veil, the main curtain, then lower,
-    // shorter folds in the other colors, so it has depth.
-    { top: -0.02, len: 0.5, color: 'muted', f: 0.6, o: 5.1 },
-    { top: 0.05, len: 0.38, color: 'vibrant', f: 1, o: 0 },
-    { top: 0.2, len: 0.28, color: 'light', f: 1.6, o: 2.4 },
-    { top: 0.34, len: 0.22, color: 'dominant', f: 2.1, o: 3.7 },
+  let phase = Math.random() * 100
+  let drift = 0
+  let lastBar = Number.NaN
+  let sweeps: { born: number; dir: number }[] = []
+  const curtains: { hem: number; len: number; color: keyof Colors; f: number; o: number; dir: number }[] = [
+    // Back to front: a high faint veil, the main curtain, then lower
+    // folds in the other colors, so it has depth.
+    { hem: 0.3, len: 0.3, color: 'muted', f: 0.7, o: 5.1, dir: -1 },
+    { hem: 0.42, len: 0.34, color: 'vibrant', f: 1, o: 0, dir: 1 },
+    { hem: 0.55, len: 0.26, color: 'light', f: 1.4, o: 2.4, dir: -1 },
+    { hem: 0.66, len: 0.2, color: 'dominant', f: 1.9, o: 3.7, dir: 1 },
   ]
-  const COLS = 40
+  const COLS = 64
+  const SWEEP = 2200
   return (ctx, w, h, f, c) => {
-    phase += (f.dt / 1000) * (0.12 + f.energy * 0.35)
+    const dt = f.dt / 1000
+    phase += dt * (0.25 + f.energy * 0.6)
+    drift += dt * (0.015 + f.energy * 0.03)
+    const bar = Math.floor(f.beatIndex / 4)
+    if (bar !== lastBar) {
+      if (!Number.isNaN(lastBar)) sweeps.push({ born: f.now, dir: bar % 2 ? 1 : -1 })
+      lastBar = bar
+    }
+    sweeps = sweeps.filter((s) => f.now - s.born < SWEEP)
+    const treble = f.bands[3]
     const colW = w / COLS
+    ctx.globalCompositeOperation = 'lighter'
     for (const k of curtains) {
       for (let i = 0; i <= COLS; i++) {
         const x = i / COLS
-        // The hem waves; the rays' brightness shimmers along it.
-        const wave = Math.sin(x * 4 * k.f + phase + k.o) * 0.5 + Math.sin(x * 9 * k.f - phase * 1.7 + k.o) * 0.25
-        const shimmer = 0.55 + 0.45 * Math.sin(x * 23 + phase * 2.3 + k.o) ** 2
-        const top = (k.top + wave * 0.05) * h
-        const len = h * k.len * (0.75 + 0.2 * f.energy + 0.3 * f.swell) * (0.8 + 0.2 * shimmer)
-        const g = ctx.createLinearGradient(0, top, 0, top + len)
+        // Folds run along the hem rather than bobbing it.
+        const u = x + drift * k.dir
+        const hem =
+          k.hem + Math.sin(u * 5 * k.f - phase * k.dir + k.o) * 0.06 + Math.sin(u * 11 * k.f + phase * 0.6 * k.dir + k.o * 2) * 0.025
+        // Rays: tall and short ones side by side, slowly changing.
+        const ray = 0.5 + 0.5 * Math.sin(u * 37 + k.o + Math.sin(phase * 0.4 + x * 6) * 2)
+        const flicker = 1 + treble * 0.6 * Math.sin(x * 61 + f.now / 70 + k.o * 3)
+        // The bar's wave of light, running across the screen.
+        let wave = 0
+        for (const s of sweeps) {
+          const age = (f.now - s.born) / SWEEP
+          const at = s.dir > 0 ? age * 1.4 - 0.2 : 1.2 - age * 1.4
+          wave += Math.exp(-(((x - at) / 0.12) ** 2)) * (1 - age)
+        }
+        const bottom = hem * h
+        const len = h * k.len * (0.55 + 0.45 * ray)
+        const g = ctx.createLinearGradient(0, bottom, 0, bottom - len)
         g.addColorStop(0, 'transparent')
-        g.addColorStop(0.55, c[k.color])
+        g.addColorStop(0.08, c[k.color])
+        g.addColorStop(0.35, c[k.color])
         g.addColorStop(1, 'transparent')
-        ctx.globalAlpha = f.presence * shimmer * (0.3 + 0.25 * f.swell + 0.15 * f.energy)
+        ctx.globalAlpha = Math.min(1, f.presence * (0.18 + 0.2 * ray + 0.12 * f.energy + 0.5 * wave) * flicker)
         ctx.fillStyle = g
-        ctx.fillRect(i * colW - colW, top, colW * 2.2, len)
+        ctx.fillRect(i * colW - colW * 0.6, bottom - len, colW * 1.2, len + h * 0.02)
       }
     }
+    ctx.globalCompositeOperation = 'source-over'
   }
 }
 
@@ -151,19 +180,23 @@ function mesh(): Painter {
 
 /** Embers rising through the glass; they glow on the beat and quicken with energy. */
 function embers(): Painter {
-  const N = 70
-  const roles: (keyof Colors)[] = ['vibrant', 'light', 'vibrant', 'muted']
+  const N = 60
+  const roles: (keyof Colors)[] = ['vibrant', 'light', 'vibrant', 'light', 'muted']
   const ps = Array.from({ length: N }, () => ({
     x: Math.random(),
     y: Math.random(),
-    r: 0.8 + Math.random() * 1.8,
+    r: 0.6 + Math.random() * 1.2,
     s: 0.4 + Math.random() * 0.8,
     w: Math.random() * Math.PI * 2,
     hit: Math.random(),
     color: roles[Math.floor(Math.random() * roles.length)],
   }))
   return (ctx, w, h, f, c) => {
-    const rise = (f.dt / 1000) * (0.02 + f.energy * 0.09)
+    const rise = (f.dt / 1000) * (0.03 + f.energy * 0.1)
+    // The canvas is drawn small and blurred, so an ember has to be a fair
+    // glow to survive it, even on a phone.
+    const unit = Math.max(5, Math.min(w, h) * 0.014)
+    ctx.globalCompositeOperation = 'lighter'
     for (const p of ps) {
       p.y -= rise * p.s * (1 + f.swell * 0.8)
       p.w += f.dt / 1400
@@ -171,16 +204,15 @@ function embers(): Painter {
         p.y = 1.05
         p.x = Math.random()
       }
-      const x = (p.x + Math.sin(p.w) * 0.02) * w
+      const x = (p.x + Math.sin(p.w) * 0.03) * w
       const y = p.y * h
       // Some embers flare on the beat, the rest just drift.
-      const flare = p.hit > 0.55 ? f.beat * (p.hit - 0.55) * 2.2 : 0
-      ctx.globalAlpha = f.presence * Math.min(1, 0.35 + flare + f.energy * 0.2)
-      ctx.fillStyle = c[p.color]
-      ctx.beginPath()
-      ctx.arc(x, y, p.r * (1 + flare * 0.8), 0, Math.PI * 2)
-      ctx.fill()
+      const flare = p.hit > 0.45 ? f.beat * (p.hit - 0.45) * 1.8 : 0
+      const r = unit * p.r * (1 + flare * 0.9)
+      ctx.globalAlpha = f.presence * Math.min(1, 0.55 + flare + f.energy * 0.25)
+      ctx.drawImage(glow(c[p.color]), x - r * 2, y - r * 2, r * 4, r * 4)
     }
+    ctx.globalCompositeOperation = 'source-over'
   }
 }
 
@@ -383,25 +415,6 @@ function sparks(): Painter {
   let sparks = Array.from({ length: 320 }, () => make(false))
   let lastBar = Number.NaN
   let t = 0
-  // A soft glow per color, drawn once and stamped for every spark.
-  const sprites = new Map<string, HTMLCanvasElement>()
-  const sprite = (color: string) => {
-    let s = sprites.get(color)
-    if (!s) {
-      s = document.createElement('canvas')
-      s.width = s.height = 64
-      const g = s.getContext('2d')!
-      const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32)
-      grad.addColorStop(0, color)
-      grad.addColorStop(0.25, color)
-      grad.addColorStop(1, 'transparent')
-      g.fillStyle = grad
-      g.fillRect(0, 0, 64, 64)
-      if (sprites.size > 24) sprites.clear()
-      sprites.set(color, s)
-    }
-    return s
-  }
   return (ctx, w, h, f, c) => {
     const dt = f.dt / 1000
     t += dt
@@ -425,7 +438,7 @@ function sparks(): Painter {
       const flare = f.beat * (p.size > 1.4 ? 0.9 : 0.35)
       const r = m * 0.012 * p.size * (1 + flare + f.bands[0] * 0.5)
       ctx.globalAlpha = f.presence * Math.min(1, 0.25 + p.heat * 0.6 + flare)
-      ctx.drawImage(sprite(c[p.color]), p.x * w - r * 2, p.y * h - r * 2, r * 4, r * 4)
+      ctx.drawImage(glow(c[p.color]), p.x * w - r * 2, p.y * h - r * 2, r * 4, r * 4)
     }
     // Fountains thin out to the usual crowd.
     if (sparks.length > 320) sparks = sparks.filter((p, i) => i < 320 || p.heat > 0.2)
@@ -437,6 +450,26 @@ export const painters = { mesh, horizon, ripples, aurora, embers }
 
 /** The visualizer's own canvas shows, drawn sharp at full size. */
 export const showPainters = { spectrum, tunnel, rain, sparks }
+
+/** A soft glow in one color, drawn once and stamped for every particle. */
+const glows = new Map<string, HTMLCanvasElement>()
+function glow(color: string) {
+  let s = glows.get(color)
+  if (!s) {
+    s = document.createElement('canvas')
+    s.width = s.height = 64
+    const g = s.getContext('2d')!
+    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32)
+    grad.addColorStop(0, color)
+    grad.addColorStop(0.25, color)
+    grad.addColorStop(1, 'transparent')
+    g.fillStyle = grad
+    g.fillRect(0, 0, 64, 64)
+    if (glows.size > 24) glows.clear()
+    glows.set(color, s)
+  }
+  return s
+}
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath()
