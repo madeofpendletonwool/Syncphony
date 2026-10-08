@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
+import { useLoadedSrc } from '@/hooks/use-loaded-src'
 import { easeOutExpo } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
@@ -8,7 +9,9 @@ import { cn } from '@/lib/utils'
  * blurred. The palette colors are registered CSS properties, so the mesh
  * eases from one song's colors to the next; the artwork crossfades.
  */
-export function AlbumBackdrop({ src, className }: { src?: string; className?: string }) {
+export function AlbumBackdrop({ src: next, className }: { src?: string; className?: string }) {
+  // Crossfade to art that's ready, not to an empty image.
+  const src = useLoadedSrc(next)
   return (
     <div aria-hidden className={cn('pointer-events-none fixed inset-0 -z-10 overflow-hidden', className)}>
       <div className="absolute inset-0 opacity-30 dark:opacity-55">

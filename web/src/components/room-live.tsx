@@ -35,9 +35,15 @@ export function RoomLive() {
   // Signing out stops the speaker.
   useEffect(() => () => void speaker.stop(), [])
 
+  // On the next frame, so a burst of updates (a phone waking with songs'
+  // worth of events queued up) shows only the last, and none while hidden.
+  // The speaker reads the cache directly, so it keeps up in the background.
   useEffect(() => {
-    const np = playback.data && room ? toNowPlaying(room.id, playback.data, users.data) : null
-    player.set({ nowPlaying: np, commands })
+    const frame = requestAnimationFrame(() => {
+      const np = playback.data && room ? toNowPlaying(room.id, playback.data, users.data) : null
+      player.set({ nowPlaying: np, commands })
+    })
+    return () => cancelAnimationFrame(frame)
   }, [room, playback.data, users.data, commands])
 
   // Leaving the signed-in screens (signing out) empties the player.

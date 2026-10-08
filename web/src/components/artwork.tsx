@@ -1,6 +1,7 @@
 import { Music2 } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState } from 'react'
+import { useLoadedSrc } from '@/hooks/use-loaded-src'
 import { spring } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
@@ -13,7 +14,9 @@ type Props = {
 }
 
 /** Album art with a soft placeholder for missing or broken images. */
-export function Artwork({ src, alt = '', layoutId, className }: Props) {
+export function Artwork({ src: next, alt = '', layoutId, className }: Props) {
+  // Keep the old cover up until the next one has loaded: no blank flash.
+  const src = useLoadedSrc(next)
   const [failed, setFailed] = useState<string>()
   const show = src && failed !== src
 
