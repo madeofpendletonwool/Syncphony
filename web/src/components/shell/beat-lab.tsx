@@ -1,4 +1,4 @@
-import { Activity, RotateCcw, X } from 'lucide-react'
+import { Activity, RotateCcw, Sparkles, X } from 'lucide-react'
 import { Popover } from 'radix-ui'
 import { useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,7 @@ import {
   setBeatSettings,
   shiftDownbeat,
   tap,
+  visualizerOpen,
   type BeatOrigin,
   type Effect,
 } from '@/lib/beat'
@@ -150,6 +151,13 @@ function Look() {
           ))}
         </div>
         <p className="text-caption text-muted-foreground">Auto picks a backdrop that suits each song.</p>
+      </Field>
+      <Field label="Visualizer">
+        <Button variant="secondary" className="w-full" onClick={() => visualizerOpen.set(true)}>
+          <Sparkles data-icon="inline-start" />
+          Open the visualizer
+        </Button>
+        <p className="text-caption text-muted-foreground">The song's visuals, full screen. ← and → change the show.</p>
       </Field>
     </>
   )

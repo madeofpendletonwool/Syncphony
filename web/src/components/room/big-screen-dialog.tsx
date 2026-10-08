@@ -8,6 +8,7 @@ import { errorMessage } from '@/api/errors'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { BigScreenLook } from './big-screen-look'
 import { useMe } from '@/lib/auth'
 import { displaysQuery, pairDisplay, setDisplayAudio, unpairDisplay } from '@/lib/displays'
 import { easeOutExpo } from '@/lib/motion'
@@ -131,6 +132,8 @@ export function BigScreenDialog({ room, open, onOpenChange }: { room: Room; open
                 <Button asChild variant="ghost" size="sm" className="-mt-2 self-center text-muted-foreground">
                   <Link to="/tv">Or show it on this device</Link>
                 </Button>
+
+                <BigScreenLook room={room} editable={me.role === 'admin' || room.ownerId === me.id} />
 
                 {(displays.data?.length ?? 0) > 0 && (
                   <section className="flex flex-col gap-2">

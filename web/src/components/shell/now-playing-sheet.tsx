@@ -1,4 +1,4 @@
-import { ChevronDown, ListMusic, Mic2 } from 'lucide-react'
+import { ChevronDown, ListMusic, Mic2, Sparkles } from 'lucide-react'
 import { AnimatePresence, motion, useDragControls } from 'motion/react'
 import { Dialog } from 'radix-ui'
 import { useRef, useState } from 'react'
@@ -14,6 +14,7 @@ import { UserAvatar } from '@/components/user-avatar'
 import { useBeat } from '@/hooks/use-beat'
 import { usePosition } from '@/hooks/use-position'
 import { laneStyle } from '@/lib/lane'
+import { visualizerOpen } from '@/lib/beat'
 import { easeOutExpo, spring } from '@/lib/motion'
 import { formatDuration, usePlayer } from '@/lib/now-playing'
 import { AlbumBackdrop } from './album-backdrop'
@@ -81,6 +82,15 @@ export function NowPlayingSheet({ open, onOpenChange }: { open: boolean; onOpenC
                   <span aria-hidden className="absolute left-1/2 h-1.5 w-10 -translate-x-1/2 rounded-full bg-foreground/25" />
                   {np.roomId ? (
                     <div className="flex gap-2">
+                      <Button
+                        size="icon"
+                        variant="glass"
+                        aria-label="Visualizer"
+                        onClick={() => visualizerOpen.set(true)}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <Sparkles />
+                      </Button>
                       <BeatLab inline />
                       <Button
                         size="icon"

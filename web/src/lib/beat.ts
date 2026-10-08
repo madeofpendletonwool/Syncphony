@@ -46,6 +46,8 @@ export type BeatSettings = {
   intensity: number
   /** The backdrop scene, or 'auto' to pick one per song. */
   scene: string
+  /** The full-screen visualizer's show, or 'auto'. */
+  show: string
   /** Each effect's strength, 0 (off) – 2. */
   effects: Record<Effect, number>
   /** How late this device's sound is, ms: a Bluetooth speaker, say. Visuals wait for it. */
@@ -57,6 +59,7 @@ export const BEAT_DEFAULTS: BeatSettings = {
   level: 'subtle',
   intensity: 1,
   scene: 'auto',
+  show: 'auto',
   effects: { breath: 1, scene: 1, drift: 1, art: 1, glass: 1, eq: 1, lyrics: 1, waveform: 1 },
   delayMs: 0,
 }
@@ -88,6 +91,7 @@ function readSettings(): BeatSettings {
       level: s.level === 'off' ? 'off' : 'subtle',
       intensity: clamp(s.intensity, 0.5, 1.75, BEAT_DEFAULTS.intensity),
       scene: typeof s.scene === 'string' ? s.scene : BEAT_DEFAULTS.scene,
+      show: typeof s.show === 'string' ? s.show : BEAT_DEFAULTS.show,
       effects,
       delayMs: clamp(s.delayMs, -300, 600, 0),
     }
@@ -106,6 +110,9 @@ function applyEffects(s: BeatSettings) {
   for (const [k, v] of Object.entries(s.effects)) root.style.setProperty(`--fx-${k}`, String(v))
   root.toggleAttribute('data-fx-eq-off', s.effects.eq === 0)
 }
+
+/** Whether the full-screen visualizer is open in the app. */
+export const visualizerOpen = createStore(false)
 
 /** Tempo for songs with no beat map yet. */
 const DEFAULT_BPM = 120

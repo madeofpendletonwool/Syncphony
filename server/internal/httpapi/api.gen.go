@@ -639,6 +639,27 @@ func (e RoomMembersChangedChange) Valid() bool {
 	}
 }
 
+// Defines values for RoomScreensLook.
+const (
+	Auto       RoomScreensLook = "auto"
+	Stage      RoomScreensLook = "stage"
+	Visualizer RoomScreensLook = "visualizer"
+)
+
+// Valid indicates whether the value is a known member of the RoomScreensLook enum.
+func (e RoomScreensLook) Valid() bool {
+	switch e {
+	case Auto:
+		return true
+	case Stage:
+		return true
+	case Visualizer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RoomVisibility.
 const (
 	Open     RoomVisibility = "open"
@@ -1153,6 +1174,10 @@ type CreateRoomRequest struct {
 
 	// Permissions Permissions to change. Missing ones stay as they are (`everyone` for a new room).
 	Permissions *RoomPermissionsChange `json:"permissions,omitempty"`
+
+	// Screens How the room's big screens show the music (MAD-779). Set from any
+	// phone by whoever manages the room; every screen follows.
+	Screens *RoomScreens `json:"screens,omitempty"`
 
 	// SkipVotePercent A skip vote passes once more than this percent of the room has
 	// voted (not counting whoever queued the song): 50 is a majority.
@@ -2014,6 +2039,10 @@ type Room struct {
 	OwnerId     string          `json:"ownerId"`
 	Permissions RoomPermissions `json:"permissions"`
 
+	// Screens How the room's big screens show the music (MAD-779). Set from any
+	// phone by whoever manages the room; every screen follows.
+	Screens RoomScreens `json:"screens"`
+
 	// SkipVotePercent A skip vote passes once more than this percent of the room has
 	// voted (not counting whoever queued the song): 50 is a majority.
 	SkipVotePercent SkipVotePercent `json:"skipVotePercent"`
@@ -2295,6 +2324,26 @@ type RoomPermissionsChange struct {
 	// Speaker Who may do something. The room's owner always may.
 	Speaker *PermissionLevel `json:"speaker,omitempty"`
 }
+
+// RoomScreens How the room's big screens show the music (MAD-779). Set from any
+// phone by whoever manages the room; every screen follows.
+type RoomScreens struct {
+	// Intensity How strongly the screens move with the music.
+	Intensity float32 `json:"intensity"`
+
+	// Look `stage`: now playing, lyrics and what's next. `visualizer`:
+	// full-screen visuals with now playing small. `auto`: the stage,
+	// with visuals taking over for songs with no words to sing.
+	Look RoomScreensLook `json:"look"`
+
+	// Scene The visualizer's scene, or "" to pick one that suits each song.
+	Scene string `json:"scene"`
+}
+
+// RoomScreensLook `stage`: now playing, lyrics and what's next. `visualizer`:
+// full-screen visuals with now playing small. `auto`: the stage,
+// with visuals taking over for songs with no words to sing.
+type RoomScreensLook string
 
 // RoomStats defines model for RoomStats.
 type RoomStats struct {
@@ -2603,6 +2652,10 @@ type UpdateRoomRequest struct {
 
 	// Permissions Permissions to change. Missing ones stay as they are (`everyone` for a new room).
 	Permissions *RoomPermissionsChange `json:"permissions,omitempty"`
+
+	// Screens How the room's big screens show the music (MAD-779). Set from any
+	// phone by whoever manages the room; every screen follows.
+	Screens *RoomScreens `json:"screens,omitempty"`
 
 	// SkipVotePercent A skip vote passes once more than this percent of the room has
 	// voted (not counting whoever queued the song): 50 is a majority.

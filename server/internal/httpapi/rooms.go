@@ -5,6 +5,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"math"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
@@ -46,6 +47,9 @@ func (s *Server) CreateRoom(ctx context.Context, req CreateRoomRequestObject) (C
 	}
 	if a := req.Body.Autopilot; a != nil {
 		st.Autopilot = fromAutopilot(*a)
+	}
+	if sc := req.Body.Screens; sc != nil {
+		st.Screens = fromScreens(*sc)
 	}
 	if g := req.Body.Guests; g != nil {
 		st.Guests = fromGuests(*g)
@@ -94,6 +98,9 @@ func (s *Server) UpdateRoom(ctx context.Context, req UpdateRoomRequestObject) (U
 	if a := req.Body.Autopilot; a != nil {
 		u.Autopilot = ptr(fromAutopilot(*a))
 	}
+	if sc := req.Body.Screens; sc != nil {
+		u.Screens = ptr(fromScreens(*sc))
+	}
 	if g := req.Body.Guests; g != nil {
 		u.Guests = ptr(fromGuests(*g))
 	}
@@ -129,6 +136,8 @@ func toRoom(r store.Room) Room {
 	out.Matching = RoomMatching{Fallback: st.Matching.FallbackOn(), Borrow: st.Matching.Borrow}
 	out.Autopilot = RoomAutopilot{On: st.Autopilot.On, Adventure: RoomAutopilotAdventure(st.Autopilot.Adventure), Explore: new(st.Autopilot.ExploreLevel()), EnergyCurve: new(st.Autopilot.EnergyCurveOn())}
 	out.Guests = RoomGuests{Allowed: st.Guests.Allowed, MaxSongs: st.Guests.SongLimit(), CanVote: st.Guests.CanVote()}
+	sc := st.Screens.Normal()
+	out.Screens = RoomScreens{Look: RoomScreensLook(sc.Look), Scene: sc.Scene, Intensity: float32(*sc.Intensity)}
 	if out.Fairness.Weights == nil {
 		out.Fairness.Weights = map[string]int{}
 	}
@@ -141,6 +150,10 @@ func fromMatching(m RoomMatching) rooms.Matching {
 
 func fromAutopilot(a RoomAutopilot) rooms.Autopilot {
 	return rooms.Autopilot{On: a.On, Adventure: string(a.Adventure), Explore: a.Explore, EnergyCurve: a.EnergyCurve}
+}
+
+func fromScreens(s RoomScreens) rooms.Screens {
+	return rooms.Screens{Look: string(s.Look), Scene: s.Scene, Intensity: ptr(math.Round(float64(s.Intensity)*100) / 100)}
 }
 
 func fromGuests(g RoomGuests) rooms.Guests {

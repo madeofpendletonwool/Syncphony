@@ -28,3 +28,31 @@ export function useScene(): Scene {
   if (energy > 0.65 && map.bpm >= 110) return brightness > 0.5 ? pick('horizon', 'ripples') : pick('horizon', 'embers')
   return pick(...SCENES)
 }
+
+/** The big visualizer's shows (MAD-779, MAD-780). */
+export const SHOWS = ['fluid', 'spectrum', 'starfield', 'aurora', 'embers', 'horizon', 'ripples'] as const
+export type Show = (typeof SHOWS)[number]
+
+export function isShow(s: string): s is Show {
+  return (SHOWS as readonly string[]).includes(s)
+}
+
+/**
+ * The visualizer's show: `setting` if it names one, else one that suits
+ * the song playing, like the backdrop's pick.
+ */
+export function useShow(setting: string): Show {
+  const { np, map, mapKey } = useStore(beatSource)
+  if (isShow(setting)) return setting
+  const key = np?.itemId ?? np?.track.trackId
+  if (!key) return 'fluid'
+  let h = 7
+  for (const ch of key) h = (h * 33 + ch.charCodeAt(0)) | 0
+  const pick = (...from: Show[]) => from[Math.abs(h) % from.length]
+  if (!map || mapKey !== np?.itemId) return pick('fluid', 'spectrum', 'starfield')
+  const { energy } = map.features
+  if (map.bpm === 0) return pick('fluid', 'aurora')
+  if (energy < 0.4 || map.bpm < 90) return pick('fluid', 'aurora', 'embers')
+  if (energy > 0.65 && map.bpm >= 110) return pick('spectrum', 'starfield', 'horizon', 'fluid')
+  return pick(...SHOWS)
+}

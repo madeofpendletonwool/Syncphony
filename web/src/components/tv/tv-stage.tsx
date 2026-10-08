@@ -8,10 +8,13 @@ import { AutopilotMark } from '@/components/room/autopilot-badge'
 import { CrownMoment } from '@/components/room/crown-moment'
 import { AlbumBackdrop } from '@/components/shell/album-backdrop'
 import { UserAvatar } from '@/components/user-avatar'
+import { Visualizer } from '@/components/visualizer/visualizer'
 import { useAlbumPalette } from '@/hooks/use-album-palette'
 import { useBeatSync } from '@/hooks/use-beat-sync'
+import { useShow } from '@/hooks/use-scene'
 import { usePosition } from '@/hooks/use-position'
 import { autopilotReason, autopilotSource } from '@/lib/autopilot'
+import { setBeatSettings } from '@/lib/beat'
 import { guestPassQuery } from '@/lib/guests'
 import { laneStyle } from '@/lib/lane'
 import { linerCards, linerNotesQuery } from '@/lib/liner-notes'
@@ -20,7 +23,7 @@ import { easeOutExpo, spring } from '@/lib/motion'
 import { heartsQuery } from '@/lib/nights'
 import { formatDuration, type NowPlaying, type User } from '@/lib/now-playing'
 import { playbackQuery, queueArtworkUrl, toNowPlaying, type QueueItem } from '@/lib/playback'
-import { queueQuery } from '@/lib/room'
+import { queueQuery, type Room } from '@/lib/room'
 import { live, useRoomSocket } from '@/lib/room-socket'
 import { useStore } from '@/lib/store'
 import { usersQuery } from '@/lib/users'
@@ -29,6 +32,8 @@ import { FloatingReactions } from './floating-reactions'
 import { LinerCards } from './liner-cards'
 import { QrCode } from './qr-code'
 import { TvAudio } from './tv-audio'
+
+type RoomScreens = Room['screens']
 
 const UP_NEXT_SHOWN = 5
 
@@ -41,12 +46,15 @@ const UP_NEXT_SHOWN = 5
 export function TvStage({
   roomId,
   roomName,
+  screens,
   paired,
   onUnpaired,
   audio,
 }: {
   roomId: string
   roomName: string
+  /** How the room's big screens look (room settings). */
+  screens: RoomScreens
   /** A paired display, rather than a signed-in user's screen. */
   paired: boolean
   onUnpaired: () => void
@@ -65,6 +73,15 @@ export function TvStage({
   useAlbumPalette(np)
   useBeatSync(np)
   useWakeLock()
+  // Big screens move harder than phones, as hard as the room says.
+  useEffect(() => {
+    setBeatSettings({ level: 'subtle', intensity: screens.intensity, scene: 'auto' })
+  }, [screens.intensity])
+  // The visualizer takes over in its look, and in auto for songs with no words to sing.
+  const words = useQuery({ ...lyricsQuery(roomId, np?.itemId ?? ''), enabled: !!np?.itemId })
+  const wordless = words.isSuccess && (!words.data || words.data.instrumental)
+  const visualizing = !!np && (screens.look === 'visualizer' || (screens.look === 'auto' && wordless))
+  const show = useShow(screens.scene)
   const { status } = useStore(live)
 
   // Songs queued by someone who signed up after we loaded the user list.
@@ -87,8 +104,22 @@ export function TvStage({
 
   return (
     <div className="relative isolate h-dvh cursor-none overflow-hidden select-none">
-      <AlbumBackdrop src={np?.artworkUrl} />
+      <AlbumBackdrop src={np?.artworkUrl} scene={!visualizing} />
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgb(0_0_0/0.55))]" />
+      <AnimatePresence>
+        {visualizing && (
+          <motion.div
+            key="visualizer"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.6 }}
+            className="absolute inset-0"
+          >
+            <Visualizer show={show} artworkUrl={np?.artworkUrl} />
+          </motion.div>
+        )}
+      </AnimatePresence>
       <FloatingReactions users={users.data} />
       <CrownMoment roomId={roomId} variant="stage" />
 
@@ -102,19 +133,63 @@ export function TvStage({
           {audio && <TvAudio roomId={roomId} {...audio} />}
         </header>
 
-        <main className="grid min-h-0 flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)] gap-[4vw]">
-          {np ? <NowPlayingColumn np={np} /> : <QuietColumn />}
-          <section className="relative flex min-h-0 flex-col justify-center">
-            {np ? <StageWords np={np} /> : <JoinPrompt {...join} big />}
-          </section>
-        </main>
+        {visualizing && np ? (
+          <footer className="mt-auto flex items-end justify-between gap-[3vw]">
+            <VisualizerCaption np={np} />
+            <JoinPrompt {...join} />
+          </footer>
+        ) : (
+          <>
+            <main className="grid min-h-0 flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)] gap-[4vw]">
+              {np ? <NowPlayingColumn np={np} /> : <QuietColumn />}
+              <section className="relative flex min-h-0 flex-col justify-center">
+                {np ? <StageWords np={np} /> : <JoinPrompt {...join} big />}
+              </section>
+            </main>
 
-        <footer className="flex items-end justify-between gap-[3vw]">
-          <UpNext items={upNext.slice(0, UP_NEXT_SHOWN)} more={Math.max(0, upNext.length - UP_NEXT_SHOWN)} roomId={roomId} userById={userById} />
-          {np && <JoinPrompt {...join} />}
-        </footer>
+            <footer className="flex items-end justify-between gap-[3vw]">
+              <UpNext items={upNext.slice(0, UP_NEXT_SHOWN)} more={Math.max(0, upNext.length - UP_NEXT_SHOWN)} roomId={roomId} userById={userById} />
+              {np && <JoinPrompt {...join} />}
+            </footer>
+          </>
+        )}
       </div>
     </div>
+  )
+}
+
+/** What's playing, small in a corner while the visualizer has the screen. */
+function VisualizerCaption({ np }: { np: NowPlaying }) {
+  const position = usePosition(np)
+  const pct = np.track.durationMs > 0 ? (position / np.track.durationMs) * 100 : 0
+  return (
+    <AnimatePresence mode="popLayout" initial={false}>
+      <motion.div
+        key={np.itemId}
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -16 }}
+        transition={{ duration: 0.8, ease: easeOutExpo }}
+        className="glass flex max-w-[55vw] min-w-0 items-center gap-[1.5vw] rounded-[2.4vh] p-[1.2vh] pr-[2vw]"
+      >
+        <Artwork src={np.artworkUrl} alt="" className="size-[11vh] rounded-[1.6vh]" />
+        <div className="min-w-0">
+          <p className="line-clamp-1 text-[clamp(1.2rem,2.2vw,2.4rem)] leading-tight font-bold">{np.track.title}</p>
+          <p className="line-clamp-1 text-[clamp(0.95rem,1.5vw,1.6rem)] text-muted-foreground">
+            {np.track.artists.join(', ')}
+            {np.requester && (
+              <span style={laneStyle(np.requester.color)}>
+                {' · '}
+                <span className="text-(--lane)">{np.requester.displayName}</span>
+              </span>
+            )}
+          </p>
+          <div className="mt-[1vh] h-[0.5vh] w-[18vw] overflow-hidden rounded-full bg-foreground/15">
+            <div className="h-full rounded-full bg-(--pal-text) transition-[width] duration-300 ease-linear" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      </motion.div>
+    </AnimatePresence>
   )
 }
 

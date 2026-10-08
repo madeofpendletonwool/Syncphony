@@ -37,6 +37,7 @@ function PairedStage({ me }: { me: DisplayMe }) {
     <TvStage
       roomId={room.id}
       roomName={room.name}
+      screens={room.screens}
       paired
       onUnpaired={() => queryClient.setQueryData(displayMeQuery.queryKey, null)}
       audio={
@@ -63,6 +64,7 @@ function SignedInStage() {
     <TvStage
       roomId={room.id}
       roomName={room.name}
+      screens={room.screens}
       paired={false}
       onUnpaired={() => {}}
       audio={maySpeak ? { device: deviceId(), name: `${me.displayName.split(' ')[0]}'s big screen` } : undefined}

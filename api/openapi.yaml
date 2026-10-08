@@ -3354,6 +3354,33 @@ components:
             The guest expired or was removed. They're kept only so the room's
             history and recaps can show their name.
 
+    RoomScreens:
+      type: object
+      description: |
+        How the room's big screens show the music (MAD-779). Set from any
+        phone by whoever manages the room; every screen follows.
+      required: [look, scene, intensity]
+      properties:
+        look:
+          type: string
+          enum: [stage, visualizer, auto]
+          default: auto
+          description: |
+            `stage`: now playing, lyrics and what's next. `visualizer`:
+            full-screen visuals with now playing small. `auto`: the stage,
+            with visuals taking over for songs with no words to sing.
+        scene:
+          type: string
+          maxLength: 32
+          default: ""
+          description: The visualizer's scene, or "" to pick one that suits each song.
+        intensity:
+          type: number
+          minimum: 0.5
+          maximum: 2
+          default: 1.5
+          description: How strongly the screens move with the music.
+
     RoomGuests:
       type: object
       description: |
@@ -5710,7 +5737,7 @@ components:
 
     Room:
       type: object
-      required: [id, name, ownerId, visibility, approveJoins, fairnessMode, fairness, matching, autopilot, guests, permissions, skipVotePercent, createdAt]
+      required: [id, name, ownerId, visibility, approveJoins, fairnessMode, fairness, matching, autopilot, guests, screens, permissions, skipVotePercent, createdAt]
       properties:
         id:
           type: string
@@ -5733,6 +5760,8 @@ components:
           $ref: "#/components/schemas/RoomAutopilot"
         guests:
           $ref: "#/components/schemas/RoomGuests"
+        screens:
+          $ref: "#/components/schemas/RoomScreens"
         permissions:
           $ref: "#/components/schemas/RoomPermissions"
         skipVotePercent:
@@ -5763,6 +5792,8 @@ components:
           $ref: "#/components/schemas/RoomAutopilot"
         guests:
           $ref: "#/components/schemas/RoomGuests"
+        screens:
+          $ref: "#/components/schemas/RoomScreens"
         permissions:
           $ref: "#/components/schemas/RoomPermissionsChange"
         skipVotePercent:
@@ -5793,6 +5824,8 @@ components:
           $ref: "#/components/schemas/RoomAutopilot"
         guests:
           $ref: "#/components/schemas/RoomGuests"
+        screens:
+          $ref: "#/components/schemas/RoomScreens"
         permissions:
           $ref: "#/components/schemas/RoomPermissionsChange"
         skipVotePercent:

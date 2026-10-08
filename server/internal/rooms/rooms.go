@@ -109,7 +109,65 @@ type Settings struct {
 	Guests          Guests    `json:"guests"`
 	// ApproveJoins: while the room is private, someone using one of its
 	// invites asks to join, and the owner lets them in.
-	ApproveJoins bool `json:"approveJoins,omitempty"`
+	ApproveJoins bool    `json:"approveJoins,omitempty"`
+	Screens      Screens `json:"screens"`
+}
+
+// Screens is how the room's big screens show the music (MAD-779).
+type Screens struct {
+	// Look is LookStage, LookVisualizer or LookAuto. Empty means LookAuto.
+	Look string `json:"look,omitempty"`
+	// Scene is the visualizer's scene, or "" to pick one per song. Screens
+	// that don't know it pick one per song too.
+	Scene string `json:"scene,omitempty"`
+	// Intensity is how strongly the screens move with the music,
+	// MinIntensity to MaxIntensity. Nil means DefaultIntensity.
+	Intensity *float64 `json:"intensity,omitempty"`
+}
+
+// Big screen looks: now playing and lyrics, full-screen visuals, or the
+// stage with visuals taking over for songs with no words to sing.
+const (
+	LookStage      = "stage"
+	LookVisualizer = "visualizer"
+	LookAuto       = "auto"
+)
+
+// Big screen intensity.
+const (
+	MinIntensity     = 0.5
+	MaxIntensity     = 2.0
+	DefaultIntensity = 1.5
+	maxSceneLen      = 32
+)
+
+// Normal fills in the defaults.
+func (s Screens) Normal() Screens {
+	if s.Look != LookStage && s.Look != LookVisualizer {
+		s.Look = LookAuto
+	}
+	if s.Intensity == nil || *s.Intensity < MinIntensity || *s.Intensity > MaxIntensity {
+		s.Intensity = ptr(DefaultIntensity)
+	}
+	if len(s.Scene) > maxSceneLen {
+		s.Scene = ""
+	}
+	return s
+}
+
+func (s Screens) validate() error {
+	switch s.Look {
+	case "", LookStage, LookVisualizer, LookAuto:
+	default:
+		return &InvalidInputError{"a big screen's look is stage, visualizer or auto"}
+	}
+	if s.Intensity != nil && (*s.Intensity < MinIntensity || *s.Intensity > MaxIntensity) {
+		return &InvalidInputError{fmt.Sprintf("big screen intensity is %v to %v", MinIntensity, MaxIntensity)}
+	}
+	if len(s.Scene) > maxSceneLen {
+		return &InvalidInputError{"that scene name is too long"}
+	}
+	return nil
 }
 
 // Guests says whether people without an account may join the room with a
@@ -310,6 +368,7 @@ func ParseSettings(raw string) Settings {
 	if m := st.Guests.MaxSongs; m != nil && (*m < 0 || *m > MaxGuestSongs) {
 		st.Guests.MaxSongs = nil
 	}
+	st.Screens = st.Screens.Normal()
 	return st
 }
 
@@ -386,6 +445,8 @@ type Update struct {
 	// ApproveJoins, if set, is whether the owner lets in each person who
 	// uses an invite to the room while it's private.
 	ApproveJoins *bool
+	// Screens, if set, replaces how the room's big screens look.
+	Screens *Screens
 }
 
 // Update changes a room. Only its owner or an admin may. Everyone in the
@@ -436,6 +497,9 @@ func (s *Service) Update(ctx context.Context, by Actor, id string, u Update) (st
 	}
 	if u.ApproveJoins != nil {
 		st.ApproveJoins = *u.ApproveJoins
+	}
+	if u.Screens != nil {
+		st.Screens = *u.Screens
 	}
 	name, raw, err := validate(name, mode, st)
 	if err != nil {
@@ -596,6 +660,9 @@ func validate(name, mode string, st Settings) (string, string, error) {
 	st.Autopilot.Adventure = adventureFor(*st.Autopilot.Explore)
 	if m := st.Guests.MaxSongs; m != nil && (*m < 0 || *m > MaxGuestSongs) {
 		return "", "", &InvalidInputError{fmt.Sprintf("a guest may add 0 (no limit) to %d songs", MaxGuestSongs)}
+	}
+	if err := st.Screens.validate(); err != nil {
+		return "", "", err
 	}
 	st.Fairness.clean()
 	st.Version, st.Controls = SettingsVersion, ""

@@ -4,6 +4,7 @@ import type { components } from '@/api/schema.gen'
 import { invitesQuery, membersQuery } from './access'
 import { meQuery } from './auth'
 import { syncServerClock } from './clock'
+import { displayMeQuery } from './displays'
 import { guestPassQuery, guestsQuery } from './guests'
 import { crown, heartsQuery, nightsQuery, type Hearts, type Night } from './nights'
 import { newer, playbackQuery, type Playback } from './playback'
@@ -154,6 +155,8 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
     case 'room.updated': {
       const room = ev.data as Room
       queryClient.setQueryData(roomsQuery.queryKey, (rs) => rs?.map((r) => (r.id === room.id ? room : r)))
+      // A paired screen knows its room from its own record: its look follows the room's.
+      queryClient.setQueryData(displayMeQuery.queryKey, (d) => (d && d.room.id === room.id ? { ...d, room } : d))
       break
     }
     case 'room.deleted': {

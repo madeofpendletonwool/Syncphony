@@ -2483,6 +2483,30 @@ export interface components {
             ended: boolean;
         };
         /**
+         * @description How the room's big screens show the music (MAD-779). Set from any
+         *     phone by whoever manages the room; every screen follows.
+         */
+        RoomScreens: {
+            /**
+             * @description `stage`: now playing, lyrics and what's next. `visualizer`:
+             *     full-screen visuals with now playing small. `auto`: the stage,
+             *     with visuals taking over for songs with no words to sing.
+             * @default auto
+             * @enum {string}
+             */
+            look: "stage" | "visualizer" | "auto";
+            /**
+             * @description The visualizer's scene, or "" to pick one that suits each song.
+             * @default
+             */
+            scene: string;
+            /**
+             * @description How strongly the screens move with the music.
+             * @default 1.5
+             */
+            intensity: number;
+        };
+        /**
          * @description Whether people without an account may join the room by scanning a
          *     guest pass, and what they may do.
          */
@@ -3844,6 +3868,7 @@ export interface components {
             matching: components["schemas"]["RoomMatching"];
             autopilot: components["schemas"]["RoomAutopilot"];
             guests: components["schemas"]["RoomGuests"];
+            screens: components["schemas"]["RoomScreens"];
             permissions: components["schemas"]["RoomPermissions"];
             skipVotePercent: components["schemas"]["SkipVotePercent"];
             /** Format: date-time */
@@ -3858,6 +3883,7 @@ export interface components {
             matching?: components["schemas"]["RoomMatching"];
             autopilot?: components["schemas"]["RoomAutopilot"];
             guests?: components["schemas"]["RoomGuests"];
+            screens?: components["schemas"]["RoomScreens"];
             permissions?: components["schemas"]["RoomPermissionsChange"];
             skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };
@@ -3874,6 +3900,7 @@ export interface components {
             matching?: components["schemas"]["RoomMatching"];
             autopilot?: components["schemas"]["RoomAutopilot"];
             guests?: components["schemas"]["RoomGuests"];
+            screens?: components["schemas"]["RoomScreens"];
             permissions?: components["schemas"]["RoomPermissionsChange"];
             skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };
