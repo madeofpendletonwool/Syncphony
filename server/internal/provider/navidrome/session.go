@@ -183,7 +183,34 @@ func toAlbum(al album) provider.Album {
 		Year:       al.Year,
 		TrackCount: al.SongCount,
 		Artwork:    provider.ArtworkRef(al.CoverArt),
+		Kind:       albumKind(al),
 	}
+}
+
+// albumKind is a provider album kind from OpenSubsonic's release types,
+// which are MusicBrainz's. Empty if the album has none.
+func albumKind(al album) string {
+	kind := ""
+	for _, t := range al.ReleaseTypes {
+		switch strings.ToLower(t) {
+		case "compilation":
+			return provider.AlbumKindCompilation
+		case "live":
+			return provider.AlbumKindLive
+		case "album":
+			if kind == "" {
+				kind = provider.AlbumKindAlbum
+			}
+		case "single":
+			kind = provider.AlbumKindSingle
+		case "ep":
+			kind = provider.AlbumKindEP
+		}
+	}
+	if al.IsCompilation {
+		return provider.AlbumKindCompilation
+	}
+	return kind
 }
 
 func toArtist(ar artist) provider.Artist {

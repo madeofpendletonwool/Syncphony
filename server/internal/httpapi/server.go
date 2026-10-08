@@ -24,6 +24,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
+	"github.com/madeofpendletonwool/syncphony/server/internal/musicgraph"
 	"github.com/madeofpendletonwool/syncphony/server/internal/nights"
 	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
 	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
@@ -51,6 +52,9 @@ type Server struct {
 	Lyrics *lyrics.Service
 	// LinerNotes writes songs' liner notes. Nil when MusicBrainz is off.
 	LinerNotes *linernotes.Service
+	// Graph is what's known about music, for artist and genre pages.
+	// Nil when no source is on.
+	Graph *musicgraph.Service
 	// Artwork picks queued songs' covers.
 	Artwork *artwork.Service
 	// Palettes works out queued songs' artwork colors.

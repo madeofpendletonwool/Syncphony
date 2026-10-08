@@ -457,6 +457,9 @@ func toAlbumResult(a provider.Album) AlbumResult {
 	if a.Artwork != "" {
 		out.Artwork = ptr(string(a.Artwork))
 	}
+	if a.Kind != "" {
+		out.Kind = ptr(AlbumKind(a.Kind))
+	}
 	return out
 }
 

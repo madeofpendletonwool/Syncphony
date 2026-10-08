@@ -250,6 +250,9 @@ func run() error {
 		Bus: a.bus, Presence: presence,
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	}
+	if len(graph.Sources()) > 0 {
+		api.Graph = graph
+	}
 	go tick(ctx, api, nightSvc)
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api.Handler())

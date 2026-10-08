@@ -127,3 +127,24 @@ func TestSessions(t *testing.T) {
 		t.Error("sessions from nothing")
 	}
 }
+
+func TestArtistTop(t *testing.T) {
+	plays := []rooms.Played{
+		play(1, "ann", "navidrome", "song-a", "ISRC1", 0, 3, store.EndFinished, "Bowie"),
+		play(2, "bob", "spotify", "sp-a", "ISRC1", 3, 3, store.EndFinished, "Queen", "David Bowie"),
+		play(3, "ann", "navidrome", "song-b", "", 6, 3, store.EndFinished, "bowie"),
+		play(4, "ann", "navidrome", "song-a", "ISRC1", 9, 3, store.EndFinished, "Bowie"),
+		play(5, "ann", "navidrome", "song-c", "", 12, 1, store.EndSkipped, "Bowie"),
+		play(6, "ann", "navidrome", "song-d", "", 15, 3, store.EndFinished, "Abba"),
+	}
+	// Spelled any way, credited anywhere; skips don't count.
+	if got, want := tracks(stats.ArtistTop(plays, "BOWIE", 10)), "song-a×2 song-b×1"; got != want {
+		t.Errorf("Bowie's top %q, want %q", got, want)
+	}
+	if got := tracks(stats.ArtistTop(plays, "Bowie", 1)); got != "song-a×2" {
+		t.Errorf("top 1: %q", got)
+	}
+	if got := stats.ArtistTop(plays, "Nobody", 10); got == nil || len(got) != 0 {
+		t.Errorf("nobody: %v", got)
+	}
+}

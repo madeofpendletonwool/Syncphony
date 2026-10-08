@@ -254,7 +254,21 @@ func (s *session) album(a album) provider.Album {
 		Year:       year,
 		TrackCount: a.TotalTracks,
 		Artwork:    s.artworkRef(a.Images),
+		Kind:       albumKind(a.AlbumType),
 	}
+}
+
+// albumKind is a provider album kind from Spotify's album_type.
+func albumKind(t string) string {
+	switch t {
+	case "album":
+		return provider.AlbumKindAlbum
+	case "single":
+		return provider.AlbumKindSingle
+	case "compilation":
+		return provider.AlbumKindCompilation
+	}
+	return ""
 }
 
 func (s *session) playlist(pl playlist) provider.Playlist {

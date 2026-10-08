@@ -1265,6 +1265,224 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /links/{id}/artists/{artistId}/about:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: artistId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getArtistAbout
+      summary: What's known about an artist
+      description: |
+        Their bio from Wikipedia, facts, members and genres, from
+        MusicBrainz and the music knowledge layer, and the kind of each of
+        their albums the service doesn't say. Parts nobody knows are left
+        empty. The first time, it can take several seconds; then it's cached.
+      tags: [browse]
+      responses:
+        "200":
+          description: What's known about an artist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArtistAbout"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /links/{id}/artists/{artistId}/tracks:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: artistId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getArtistTracks
+      summary: An artist's top songs and appearances
+      description: |
+        Their most popular songs, from what's known about music and else
+        the service, matched onto this link, and songs on others' records
+        they're credited on.
+      tags: [browse]
+      responses:
+        "200":
+          description: An artist's top songs and appearances
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArtistTracks"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /links/{id}/artists/{artistId}/related:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: artistId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getArtistRelated
+      summary: Artists like an artist, and songs by them
+      description: |
+        Similar artists, most alike first, with `artist` set for those on
+        this link, and a few songs by each that are.
+      tags: [browse]
+      responses:
+        "200":
+          description: Artists like an artist, and songs by them
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelatedMusic"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /links/{id}/artists/{artistId}/elsewhere:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: artistId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getArtistElsewhere
+      summary: The same artist on your other services
+      description: |
+        The artist, by name, on the other links you may use.
+      tags: [browse]
+      responses:
+        "200":
+          description: The same artist on your other services
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ArtistElsewhere"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /links/{id}/artists/{artistId}/shuffle:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: artistId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getArtistShuffle
+      summary: Songs by an artist at random
+      description: |
+        Picked from across their albums.
+      tags: [browse]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        "200":
+          description: Songs by an artist at random
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrackResult"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /links/{id}/albums/{albumId}/about:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: albumId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getAlbumAbout
+      summary: What's known about an album
+      description: |
+        Its kind, first release, labels and genres from MusicBrainz, and a
+        summary from Wikipedia. 404 if MusicBrainz doesn't know it, or is off.
+      tags: [browse]
+      responses:
+        "200":
+          description: What's known about the album
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlbumAbout"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /links/{id}/genre:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getGenre
+      summary: A genre's artists, and songs by them
+      description: |
+        Its top artists, those on this link first, with a few songs by
+        each. 404 if nothing is known about it.
+      tags: [browse]
+      parameters:
+        - name: name
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: The genre
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenreDetail"
+        default:
+          $ref: "#/components/responses/Error"
+
   /links/{id}/playlists:
     parameters:
       - name: id
@@ -1596,6 +1814,42 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ListeningSession"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/artist-plays:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: getRoomArtistPlays
+      summary: An artist's songs the room played most
+      description: |
+        Songs credited to the artist, by name, that played to the end in
+        this room, most plays first.
+      tags: [history]
+      parameters:
+        - name: name
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        "200":
+          description: The artist's most played songs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrackCount"
         default:
           $ref: "#/components/responses/Error"
 
@@ -3802,6 +4056,13 @@ components:
           type: integer
         artwork:
           type: string
+        kind:
+          $ref: "#/components/schemas/AlbumKind"
+
+    AlbumKind:
+      type: string
+      description: What the service says it is. Services that can't tell an EP from a single call both singles.
+      enum: [album, single, ep, compilation, live]
 
     ArtistResult:
       type: object
@@ -4155,6 +4416,165 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AlbumResult"
+
+    ArtistAbout:
+      type: object
+      required: [name, facts, members, genres, albumKinds]
+      properties:
+        name:
+          type: string
+        mbid:
+          type: string
+        about:
+          type: string
+          description: A one-liner, like "Group from Seattle".
+        bio:
+          type: string
+          description: A short summary from Wikipedia.
+        bioUrl:
+          type: string
+          description: The Wikipedia article.
+        facts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArtistFact"
+        members:
+          type: array
+          description: A group's members, current first.
+          items:
+            $ref: "#/components/schemas/ArtistMember"
+        genres:
+          type: array
+          description: Most fitting first.
+          items:
+            type: string
+        albumKinds:
+          type: object
+          description: The kind of each of the artist's albums the service doesn't say, by album ID.
+          additionalProperties:
+            $ref: "#/components/schemas/AlbumKind"
+
+    ArtistFact:
+      type: object
+      required: [kind, text]
+      properties:
+        kind:
+          type: string
+          enum: [began, ended]
+        text:
+          type: string
+          description: '"Formed in Leeds in 1994", "Split up in 2012"...'
+
+    ArtistMember:
+      type: object
+      required: [name, current, roles]
+      properties:
+        name:
+          type: string
+        from:
+          type: integer
+          description: The year they joined.
+        to:
+          type: integer
+          description: The year they left.
+        current:
+          type: boolean
+        roles:
+          type: array
+          items:
+            type: string
+
+    ArtistTracks:
+      type: object
+      required: [top, appearsOn]
+      properties:
+        top:
+          type: array
+          description: Most popular first.
+          items:
+            $ref: "#/components/schemas/TrackResult"
+        appearsOn:
+          type: array
+          description: Songs on others' records they're credited on.
+          items:
+            $ref: "#/components/schemas/TrackResult"
+
+    RelatedArtist:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        score:
+          type: number
+          description: How alike, from 0 to 1, when known.
+        artist:
+          $ref: "#/components/schemas/ArtistResult"
+
+    RelatedMusic:
+      type: object
+      required: [artists, tracks]
+      properties:
+        artists:
+          type: array
+          items:
+            $ref: "#/components/schemas/RelatedArtist"
+        tracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrackResult"
+
+    GenreDetail:
+      type: object
+      required: [name, artists, tracks]
+      properties:
+        name:
+          type: string
+        artists:
+          type: array
+          description: Those on the link first.
+          items:
+            $ref: "#/components/schemas/RelatedArtist"
+        tracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrackResult"
+
+    ArtistElsewhere:
+      type: object
+      required: [linkId, provider, accountLabel, artist]
+      properties:
+        linkId:
+          type: string
+        provider:
+          type: string
+        accountLabel:
+          type: string
+        artist:
+          $ref: "#/components/schemas/ArtistResult"
+
+    AlbumAbout:
+      type: object
+      required: [labels, genres]
+      properties:
+        kind:
+          $ref: "#/components/schemas/AlbumKind"
+        firstReleased:
+          type: string
+          description: YYYY, YYYY-MM or YYYY-MM-DD.
+        labels:
+          type: array
+          items:
+            type: string
+        genres:
+          type: array
+          items:
+            type: string
+        about:
+          type: string
+          description: A short summary from Wikipedia.
+        aboutUrl:
+          type: string
 
     PlaylistResult:
       type: object

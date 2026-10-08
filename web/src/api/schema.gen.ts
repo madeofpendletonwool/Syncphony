@@ -1051,6 +1051,174 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/links/{id}/artists/{artistId}/about": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                artistId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * What's known about an artist
+         * @description Their bio from Wikipedia, facts, members and genres, from
+         *     MusicBrainz and the music knowledge layer, and the kind of each of
+         *     their albums the service doesn't say. Parts nobody knows are left
+         *     empty. The first time, it can take several seconds; then it's cached.
+         */
+        get: operations["getArtistAbout"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links/{id}/artists/{artistId}/tracks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                artistId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * An artist's top songs and appearances
+         * @description Their most popular songs, from what's known about music and else
+         *     the service, matched onto this link, and songs on others' records
+         *     they're credited on.
+         */
+        get: operations["getArtistTracks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links/{id}/artists/{artistId}/related": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                artistId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Artists like an artist, and songs by them
+         * @description Similar artists, most alike first, with `artist` set for those on
+         *     this link, and a few songs by each that are.
+         */
+        get: operations["getArtistRelated"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links/{id}/artists/{artistId}/elsewhere": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                artistId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * The same artist on your other services
+         * @description The artist, by name, on the other links you may use.
+         */
+        get: operations["getArtistElsewhere"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links/{id}/artists/{artistId}/shuffle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                artistId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Songs by an artist at random
+         * @description Picked from across their albums.
+         */
+        get: operations["getArtistShuffle"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links/{id}/albums/{albumId}/about": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                albumId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * What's known about an album
+         * @description Its kind, first release, labels and genres from MusicBrainz, and a
+         *     summary from Wikipedia. 404 if MusicBrainz doesn't know it, or is off.
+         */
+        get: operations["getAlbumAbout"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/links/{id}/genre": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A genre's artists, and songs by them
+         * @description Its top artists, those on this link first, with a few songs by
+         *     each. 404 if nothing is known about it.
+         */
+        get: operations["getGenre"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/links/{id}/playlists": {
         parameters: {
             query?: never;
@@ -1293,6 +1461,29 @@ export interface paths {
          *     room has been quiet for two hours.
          */
         get: operations["listSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/artist-plays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * An artist's songs the room played most
+         * @description Songs credited to the artist, by name, that played to the end in
+         *     this room, most plays first.
+         */
+        get: operations["getRoomArtistPlays"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2665,7 +2856,13 @@ export interface components {
             year?: number;
             trackCount?: number;
             artwork?: string;
+            kind?: components["schemas"]["AlbumKind"];
         };
+        /**
+         * @description What the service says it is. Services that can't tell an EP from a single call both singles.
+         * @enum {string}
+         */
+        AlbumKind: "album" | "single" | "ep" | "compilation" | "live";
         ArtistResult: {
             id: string;
             name: string;
@@ -2840,6 +3037,78 @@ export interface components {
             provider: string;
             artist: components["schemas"]["ArtistResult"];
             albums: components["schemas"]["AlbumResult"][];
+        };
+        ArtistAbout: {
+            name: string;
+            mbid?: string;
+            /** @description A one-liner, like "Group from Seattle". */
+            about?: string;
+            /** @description A short summary from Wikipedia. */
+            bio?: string;
+            /** @description The Wikipedia article. */
+            bioUrl?: string;
+            facts: components["schemas"]["ArtistFact"][];
+            /** @description A group's members, current first. */
+            members: components["schemas"]["ArtistMember"][];
+            /** @description Most fitting first. */
+            genres: string[];
+            /** @description The kind of each of the artist's albums the service doesn't say, by album ID. */
+            albumKinds: {
+                [key: string]: components["schemas"]["AlbumKind"];
+            };
+        };
+        ArtistFact: {
+            /** @enum {string} */
+            kind: "began" | "ended";
+            /** @description "Formed in Leeds in 1994", "Split up in 2012"... */
+            text: string;
+        };
+        ArtistMember: {
+            name: string;
+            /** @description The year they joined. */
+            from?: number;
+            /** @description The year they left. */
+            to?: number;
+            current: boolean;
+            roles: string[];
+        };
+        ArtistTracks: {
+            /** @description Most popular first. */
+            top: components["schemas"]["TrackResult"][];
+            /** @description Songs on others' records they're credited on. */
+            appearsOn: components["schemas"]["TrackResult"][];
+        };
+        RelatedArtist: {
+            name: string;
+            /** @description How alike, from 0 to 1, when known. */
+            score?: number;
+            artist?: components["schemas"]["ArtistResult"];
+        };
+        RelatedMusic: {
+            artists: components["schemas"]["RelatedArtist"][];
+            tracks: components["schemas"]["TrackResult"][];
+        };
+        GenreDetail: {
+            name: string;
+            /** @description Those on the link first. */
+            artists: components["schemas"]["RelatedArtist"][];
+            tracks: components["schemas"]["TrackResult"][];
+        };
+        ArtistElsewhere: {
+            linkId: string;
+            provider: string;
+            accountLabel: string;
+            artist: components["schemas"]["ArtistResult"];
+        };
+        AlbumAbout: {
+            kind?: components["schemas"]["AlbumKind"];
+            /** @description YYYY, YYYY-MM or YYYY-MM-DD. */
+            firstReleased?: string;
+            labels: string[];
+            genres: string[];
+            /** @description A short summary from Wikipedia. */
+            about?: string;
+            aboutUrl?: string;
         };
         PlaylistResult: {
             id: string;
@@ -4919,6 +5188,177 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    getArtistAbout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                artistId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What's known about an artist */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtistAbout"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getArtistTracks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                artistId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description An artist's top songs and appearances */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtistTracks"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getArtistRelated: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                artistId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Artists like an artist, and songs by them */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelatedMusic"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getArtistElsewhere: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                artistId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The same artist on your other services */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtistElsewhere"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getArtistShuffle: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+                artistId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Songs by an artist at random */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackResult"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAlbumAbout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                albumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What's known about the album */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumAbout"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getGenre: {
+        parameters: {
+            query: {
+                name: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The genre */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenreDetail"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     listPlaylists: {
         parameters: {
             query?: {
@@ -5203,6 +5643,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListeningSession"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getRoomArtistPlays: {
+        parameters: {
+            query: {
+                name: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The artist's most played songs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackCount"][];
                 };
             };
             default: components["responses"]["Error"];

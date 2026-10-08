@@ -19,6 +19,15 @@ func (q *Queries) DeleteExpiredLinerNotes(ctx context.Context, expiresAt time.Ti
 	return err
 }
 
+const deleteExpiredPageNotes = `-- name: DeleteExpiredPageNotes :exec
+DELETE FROM page_notes_cache WHERE expires_at <= ?
+`
+
+func (q *Queries) DeleteExpiredPageNotes(ctx context.Context, expiresAt time.Time) error {
+	_, err := q.db.ExecContext(ctx, deleteExpiredPageNotes, expiresAt)
+	return err
+}
+
 const getCachedLinerNotes = `-- name: GetCachedLinerNotes :one
 SELECT provider, track_id, found, notes, fetched_at, expires_at FROM liner_notes_cache WHERE provider = ? AND track_id = ? AND expires_at > ?3
 `
@@ -35,6 +44,30 @@ func (q *Queries) GetCachedLinerNotes(ctx context.Context, arg GetCachedLinerNot
 	err := row.Scan(
 		&i.Provider,
 		&i.TrackID,
+		&i.Found,
+		&i.Notes,
+		&i.FetchedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const getCachedPageNotes = `-- name: GetCachedPageNotes :one
+SELECT kind, "key", found, notes, fetched_at, expires_at FROM page_notes_cache WHERE kind = ? AND key = ? AND expires_at > ?3
+`
+
+type GetCachedPageNotesParams struct {
+	Kind string
+	Key  string
+	Now  time.Time
+}
+
+func (q *Queries) GetCachedPageNotes(ctx context.Context, arg GetCachedPageNotesParams) (PageNotesCache, error) {
+	row := q.db.QueryRowContext(ctx, getCachedPageNotes, arg.Kind, arg.Key, arg.Now)
+	var i PageNotesCache
+	err := row.Scan(
+		&i.Kind,
+		&i.Key,
 		&i.Found,
 		&i.Notes,
 		&i.FetchedAt,
@@ -63,6 +96,34 @@ func (q *Queries) PutCachedLinerNotes(ctx context.Context, arg PutCachedLinerNot
 	_, err := q.db.ExecContext(ctx, putCachedLinerNotes,
 		arg.Provider,
 		arg.TrackID,
+		arg.Found,
+		arg.Notes,
+		arg.FetchedAt,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
+const putCachedPageNotes = `-- name: PutCachedPageNotes :exec
+INSERT INTO page_notes_cache (kind, key, found, notes, fetched_at, expires_at)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT (kind, key) DO UPDATE SET
+    found = excluded.found, notes = excluded.notes, fetched_at = excluded.fetched_at, expires_at = excluded.expires_at
+`
+
+type PutCachedPageNotesParams struct {
+	Kind      string
+	Key       string
+	Found     bool
+	Notes     string
+	FetchedAt time.Time
+	ExpiresAt time.Time
+}
+
+func (q *Queries) PutCachedPageNotes(ctx context.Context, arg PutCachedPageNotesParams) error {
+	_, err := q.db.ExecContext(ctx, putCachedPageNotes,
+		arg.Kind,
+		arg.Key,
 		arg.Found,
 		arg.Notes,
 		arg.FetchedAt,

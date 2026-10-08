@@ -18,6 +18,51 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for AlbumKind.
+const (
+	AlbumKindAlbum       AlbumKind = "album"
+	AlbumKindCompilation AlbumKind = "compilation"
+	AlbumKindEp          AlbumKind = "ep"
+	AlbumKindLive        AlbumKind = "live"
+	AlbumKindSingle      AlbumKind = "single"
+)
+
+// Valid indicates whether the value is a known member of the AlbumKind enum.
+func (e AlbumKind) Valid() bool {
+	switch e {
+	case AlbumKindAlbum:
+		return true
+	case AlbumKindCompilation:
+		return true
+	case AlbumKindEp:
+		return true
+	case AlbumKindLive:
+		return true
+	case AlbumKindSingle:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ArtistFactKind.
+const (
+	ArtistFactKindBegan ArtistFactKind = "began"
+	ArtistFactKindEnded ArtistFactKind = "ended"
+)
+
+// Valid indicates whether the value is a known member of the ArtistFactKind enum.
+func (e ArtistFactKind) Valid() bool {
+	switch e {
+	case ArtistFactKindBegan:
+		return true
+	case ArtistFactKindEnded:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DisplayPairingStatusStatus.
 const (
 	Paired  DisplayPairingStatusStatus = "paired"
@@ -71,28 +116,28 @@ func (e HealthStatus) Valid() bool {
 
 // Defines values for LinerNotesFactKind.
 const (
-	Cover         LinerNotesFactKind = "cover"
-	FirstReleased LinerNotesFactKind = "first_released"
-	Live          LinerNotesFactKind = "live"
-	Origin        LinerNotesFactKind = "origin"
-	SampledBy     LinerNotesFactKind = "sampled_by"
-	Samples       LinerNotesFactKind = "samples"
+	LinerNotesFactKindCover         LinerNotesFactKind = "cover"
+	LinerNotesFactKindFirstReleased LinerNotesFactKind = "first_released"
+	LinerNotesFactKindLive          LinerNotesFactKind = "live"
+	LinerNotesFactKindOrigin        LinerNotesFactKind = "origin"
+	LinerNotesFactKindSampledBy     LinerNotesFactKind = "sampled_by"
+	LinerNotesFactKindSamples       LinerNotesFactKind = "samples"
 )
 
 // Valid indicates whether the value is a known member of the LinerNotesFactKind enum.
 func (e LinerNotesFactKind) Valid() bool {
 	switch e {
-	case Cover:
+	case LinerNotesFactKindCover:
 		return true
-	case FirstReleased:
+	case LinerNotesFactKindFirstReleased:
 		return true
-	case Live:
+	case LinerNotesFactKindLive:
 		return true
-	case Origin:
+	case LinerNotesFactKindOrigin:
 		return true
-	case SampledBy:
+	case LinerNotesFactKindSampledBy:
 		return true
-	case Samples:
+	case LinerNotesFactKindSamples:
 		return true
 	default:
 		return false
@@ -302,22 +347,22 @@ func (e PlayerReportEvent) Valid() bool {
 
 // Defines values for ProviderInfoCapabilitiesSearch.
 const (
-	Album    ProviderInfoCapabilitiesSearch = "album"
-	Artist   ProviderInfoCapabilitiesSearch = "artist"
-	Playlist ProviderInfoCapabilitiesSearch = "playlist"
-	Track    ProviderInfoCapabilitiesSearch = "track"
+	ProviderInfoCapabilitiesSearchAlbum    ProviderInfoCapabilitiesSearch = "album"
+	ProviderInfoCapabilitiesSearchArtist   ProviderInfoCapabilitiesSearch = "artist"
+	ProviderInfoCapabilitiesSearchPlaylist ProviderInfoCapabilitiesSearch = "playlist"
+	ProviderInfoCapabilitiesSearchTrack    ProviderInfoCapabilitiesSearch = "track"
 )
 
 // Valid indicates whether the value is a known member of the ProviderInfoCapabilitiesSearch enum.
 func (e ProviderInfoCapabilitiesSearch) Valid() bool {
 	switch e {
-	case Album:
+	case ProviderInfoCapabilitiesSearchAlbum:
 		return true
-	case Artist:
+	case ProviderInfoCapabilitiesSearchArtist:
 		return true
-	case Playlist:
+	case ProviderInfoCapabilitiesSearchPlaylist:
 		return true
-	case Track:
+	case ProviderInfoCapabilitiesSearchTrack:
 		return true
 	default:
 		return false
@@ -781,6 +826,21 @@ type AddToQueueRequest struct {
 	WarnDuplicates *bool `json:"warnDuplicates,omitempty"`
 }
 
+// AlbumAbout defines model for AlbumAbout.
+type AlbumAbout struct {
+	// About A short summary from Wikipedia.
+	About    *string `json:"about,omitempty"`
+	AboutUrl *string `json:"aboutUrl,omitempty"`
+
+	// FirstReleased YYYY, YYYY-MM or YYYY-MM-DD.
+	FirstReleased *string  `json:"firstReleased,omitempty"`
+	Genres        []string `json:"genres"`
+
+	// Kind What the service says it is. Services that can't tell an EP from a single call both singles.
+	Kind   *AlbumKind `json:"kind,omitempty"`
+	Labels []string   `json:"labels"`
+}
+
 // AlbumCredit defines model for AlbumCredit.
 type AlbumCredit struct {
 	Id    *string `json:"id,omitempty"`
@@ -797,14 +857,44 @@ type AlbumDetail struct {
 	Tracks []TrackResult `json:"tracks"`
 }
 
+// AlbumKind What the service says it is. Services that can't tell an EP from a single call both singles.
+type AlbumKind string
+
 // AlbumResult defines model for AlbumResult.
 type AlbumResult struct {
-	Artists    []ArtistCredit `json:"artists"`
-	Artwork    *string        `json:"artwork,omitempty"`
-	Id         string         `json:"id"`
-	Title      string         `json:"title"`
-	TrackCount *int           `json:"trackCount,omitempty"`
-	Year       *int           `json:"year,omitempty"`
+	Artists []ArtistCredit `json:"artists"`
+	Artwork *string        `json:"artwork,omitempty"`
+	Id      string         `json:"id"`
+
+	// Kind What the service says it is. Services that can't tell an EP from a single call both singles.
+	Kind       *AlbumKind `json:"kind,omitempty"`
+	Title      string     `json:"title"`
+	TrackCount *int       `json:"trackCount,omitempty"`
+	Year       *int       `json:"year,omitempty"`
+}
+
+// ArtistAbout defines model for ArtistAbout.
+type ArtistAbout struct {
+	// About A one-liner, like "Group from Seattle".
+	About *string `json:"about,omitempty"`
+
+	// AlbumKinds The kind of each of the artist's albums the service doesn't say, by album ID.
+	AlbumKinds map[string]AlbumKind `json:"albumKinds"`
+
+	// Bio A short summary from Wikipedia.
+	Bio *string `json:"bio,omitempty"`
+
+	// BioUrl The Wikipedia article.
+	BioUrl *string      `json:"bioUrl,omitempty"`
+	Facts  []ArtistFact `json:"facts"`
+
+	// Genres Most fitting first.
+	Genres []string `json:"genres"`
+	Mbid   *string  `json:"mbid,omitempty"`
+
+	// Members A group's members, current first.
+	Members []ArtistMember `json:"members"`
+	Name    string         `json:"name"`
 }
 
 // ArtistCount defines model for ArtistCount.
@@ -828,11 +918,52 @@ type ArtistDetail struct {
 	Provider string        `json:"provider"`
 }
 
+// ArtistElsewhere defines model for ArtistElsewhere.
+type ArtistElsewhere struct {
+	AccountLabel string       `json:"accountLabel"`
+	Artist       ArtistResult `json:"artist"`
+	LinkId       string       `json:"linkId"`
+	Provider     string       `json:"provider"`
+}
+
+// ArtistFact defines model for ArtistFact.
+type ArtistFact struct {
+	Kind ArtistFactKind `json:"kind"`
+
+	// Text "Formed in Leeds in 1994", "Split up in 2012"...
+	Text string `json:"text"`
+}
+
+// ArtistFactKind defines model for ArtistFact.Kind.
+type ArtistFactKind string
+
+// ArtistMember defines model for ArtistMember.
+type ArtistMember struct {
+	Current bool `json:"current"`
+
+	// From The year they joined.
+	From  *int     `json:"from,omitempty"`
+	Name  string   `json:"name"`
+	Roles []string `json:"roles"`
+
+	// To The year they left.
+	To *int `json:"to,omitempty"`
+}
+
 // ArtistResult defines model for ArtistResult.
 type ArtistResult struct {
 	Artwork *string `json:"artwork,omitempty"`
 	Id      string  `json:"id"`
 	Name    string  `json:"name"`
+}
+
+// ArtistTracks defines model for ArtistTracks.
+type ArtistTracks struct {
+	// AppearsOn Songs on others' records they're credited on.
+	AppearsOn []TrackResult `json:"appearsOn"`
+
+	// Top Most popular first.
+	Top []TrackResult `json:"top"`
 }
 
 // AutopilotPick Set when autopilot queued the song, because the queue ran dry.
@@ -1049,6 +1180,14 @@ type FinishCeremony struct {
 
 	// Name Label for a new passkey, e.g. "Pixel 9". Optional.
 	Name *string `json:"name,omitempty"`
+}
+
+// GenreDetail defines model for GenreDetail.
+type GenreDetail struct {
+	// Artists Those on the link first.
+	Artists []RelatedArtist `json:"artists"`
+	Name    string          `json:"name"`
+	Tracks  []TrackResult   `json:"tracks"`
 }
 
 // Guest defines model for Guest.
@@ -1731,6 +1870,21 @@ type ReactionEmoji string
 type ReactionRequest struct {
 	// Emoji The reactions a room can send.
 	Emoji ReactionEmoji `json:"emoji"`
+}
+
+// RelatedArtist defines model for RelatedArtist.
+type RelatedArtist struct {
+	Artist *ArtistResult `json:"artist,omitempty"`
+	Name   string        `json:"name"`
+
+	// Score How alike, from 0 to 1, when known.
+	Score *float32 `json:"score,omitempty"`
+}
+
+// RelatedMusic defines model for RelatedMusic.
+type RelatedMusic struct {
+	Artists []RelatedArtist `json:"artists"`
+	Tracks  []TrackResult   `json:"tracks"`
 }
 
 // RelinkRequest defines model for RelinkRequest.
@@ -2515,12 +2669,22 @@ type CompleteOAuthLinkParams struct {
 	Error *string `form:"error,omitempty" json:"error,omitempty"`
 }
 
+// GetArtistShuffleParams defines parameters for GetArtistShuffle.
+type GetArtistShuffleParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // GetLinkArtworkParams defines parameters for GetLinkArtwork.
 type GetLinkArtworkParams struct {
 	Ref string `form:"ref" json:"ref"`
 
 	// Size Wanted width in pixels; a hint.
 	Size *int `form:"size,omitempty" json:"size,omitempty"`
+}
+
+// GetGenreParams defines parameters for GetGenre.
+type GetGenreParams struct {
+	Name string `form:"name" json:"name"`
 }
 
 // ListPlaylistsParams defines parameters for ListPlaylists.
@@ -2543,6 +2707,12 @@ type RenamePasskeyJSONBody struct {
 // GetRandomTracksParams defines parameters for GetRandomTracks.
 type GetRandomTracksParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetRoomArtistPlaysParams defines parameters for GetRoomArtistPlays.
+type GetRoomArtistPlaysParams struct {
+	Name  string `form:"name" json:"name"`
+	Limit *int   `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetHistoryParams defines parameters for GetHistory.
@@ -2842,15 +3012,36 @@ type ServerInterface interface {
 	// GetAlbum An album and its tracks, through one of your links or a shared one
 	// (GET /links/{id}/albums/{albumId})
 	GetAlbum(w http.ResponseWriter, r *http.Request, id string, albumId string)
+	// GetAlbumAbout What's known about an album
+	// (GET /links/{id}/albums/{albumId}/about)
+	GetAlbumAbout(w http.ResponseWriter, r *http.Request, id string, albumId string)
 	// GetArtist An artist and their albums, through one of your links or a shared one
 	// (GET /links/{id}/artists/{artistId})
 	GetArtist(w http.ResponseWriter, r *http.Request, id string, artistId string)
+	// GetArtistAbout What's known about an artist
+	// (GET /links/{id}/artists/{artistId}/about)
+	GetArtistAbout(w http.ResponseWriter, r *http.Request, id string, artistId string)
+	// GetArtistElsewhere The same artist on your other services
+	// (GET /links/{id}/artists/{artistId}/elsewhere)
+	GetArtistElsewhere(w http.ResponseWriter, r *http.Request, id string, artistId string)
+	// GetArtistRelated Artists like an artist, and songs by them
+	// (GET /links/{id}/artists/{artistId}/related)
+	GetArtistRelated(w http.ResponseWriter, r *http.Request, id string, artistId string)
+	// GetArtistShuffle Songs by an artist at random
+	// (GET /links/{id}/artists/{artistId}/shuffle)
+	GetArtistShuffle(w http.ResponseWriter, r *http.Request, id string, artistId string, params GetArtistShuffleParams)
+	// GetArtistTracks An artist's top songs and appearances
+	// (GET /links/{id}/artists/{artistId}/tracks)
+	GetArtistTracks(w http.ResponseWriter, r *http.Request, id string, artistId string)
 	// GetLinkArtwork An image from one of your links or a shared one
 	// (GET /links/{id}/artwork)
 	GetLinkArtwork(w http.ResponseWriter, r *http.Request, id string, params GetLinkArtworkParams)
 	// GetCollection Shortcuts into the library of one of your links or a shared one
 	// (GET /links/{id}/collection)
 	GetCollection(w http.ResponseWriter, r *http.Request, id string)
+	// GetGenre A genre's artists, and songs by them
+	// (GET /links/{id}/genre)
+	GetGenre(w http.ResponseWriter, r *http.Request, id string, params GetGenreParams)
 	// ListPlaylists The playlists of one of your links or a shared one
 	// (GET /links/{id}/playlists)
 	ListPlaylists(w http.ResponseWriter, r *http.Request, id string, params ListPlaylistsParams)
@@ -2956,6 +3147,9 @@ type ServerInterface interface {
 	// JoinRoomAsAdmin Join a room you can't otherwise open (admins)
 	// (POST /rooms/{roomId}/admin-join)
 	JoinRoomAsAdmin(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// GetRoomArtistPlays An artist's songs the room played most
+	// (GET /rooms/{roomId}/artist-plays)
+	GetRoomArtistPlays(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetRoomArtistPlaysParams)
 	// ListDisplays The room's paired displays
 	// (GET /rooms/{roomId}/displays)
 	ListDisplays(w http.ResponseWriter, r *http.Request, roomId RoomId)
@@ -3781,6 +3975,41 @@ func (siw *ServerInterfaceWrapper) GetAlbum(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// GetAlbumAbout operation middleware
+func (siw *ServerInterfaceWrapper) GetAlbumAbout(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "albumId" -------------
+	var albumId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "albumId", r.PathValue("albumId"), &albumId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "albumId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAlbumAbout(w, r, id, albumId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetArtist operation middleware
 func (siw *ServerInterfaceWrapper) GetArtist(w http.ResponseWriter, r *http.Request) {
 
@@ -3807,6 +4036,197 @@ func (siw *ServerInterfaceWrapper) GetArtist(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetArtist(w, r, id, artistId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetArtistAbout operation middleware
+func (siw *ServerInterfaceWrapper) GetArtistAbout(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "artistId" -------------
+	var artistId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "artistId", r.PathValue("artistId"), &artistId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "artistId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetArtistAbout(w, r, id, artistId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetArtistElsewhere operation middleware
+func (siw *ServerInterfaceWrapper) GetArtistElsewhere(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "artistId" -------------
+	var artistId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "artistId", r.PathValue("artistId"), &artistId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "artistId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetArtistElsewhere(w, r, id, artistId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetArtistRelated operation middleware
+func (siw *ServerInterfaceWrapper) GetArtistRelated(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "artistId" -------------
+	var artistId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "artistId", r.PathValue("artistId"), &artistId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "artistId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetArtistRelated(w, r, id, artistId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetArtistShuffle operation middleware
+func (siw *ServerInterfaceWrapper) GetArtistShuffle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "artistId" -------------
+	var artistId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "artistId", r.PathValue("artistId"), &artistId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "artistId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetArtistShuffleParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetArtistShuffle(w, r, id, artistId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetArtistTracks operation middleware
+func (siw *ServerInterfaceWrapper) GetArtistTracks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "artistId" -------------
+	var artistId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "artistId", r.PathValue("artistId"), &artistId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "artistId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetArtistTracks(w, r, id, artistId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3888,6 +4308,48 @@ func (siw *ServerInterfaceWrapper) GetCollection(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCollection(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetGenre operation middleware
+func (siw *ServerInterfaceWrapper) GetGenre(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetGenreParams
+
+	// ------------- Required query parameter "name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "name", r.URL.Query(), &params.Name, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "name"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGenre(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4651,6 +5113,61 @@ func (siw *ServerInterfaceWrapper) JoinRoomAsAdmin(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.JoinRoomAsAdmin(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRoomArtistPlays operation middleware
+func (siw *ServerInterfaceWrapper) GetRoomArtistPlays(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetRoomArtistPlaysParams
+
+	// ------------- Required query parameter "name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "name", r.URL.Query(), &params.Name, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "name"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRoomArtistPlays(w, r, roomId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6627,6 +7144,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/albums/{albumId}", wrapper.GetAlbum)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/tracks/{trackId}/lyrics", wrapper.GetTrackLyrics)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artists/{artistId}", wrapper.GetArtist)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artists/{artistId}/about", wrapper.GetArtistAbout)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artists/{artistId}/tracks", wrapper.GetArtistTracks)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artists/{artistId}/related", wrapper.GetArtistRelated)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artists/{artistId}/elsewhere", wrapper.GetArtistElsewhere)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artists/{artistId}/shuffle", wrapper.GetArtistShuffle)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/albums/{albumId}/about", wrapper.GetAlbumAbout)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/genre", wrapper.GetGenre)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/playlists", wrapper.ListPlaylists)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/playlists/{playlistId}/tracks", wrapper.GetPlaylistTracks)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/random-tracks", wrapper.GetRandomTracks)
@@ -6638,6 +7162,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/lane", wrapper.ClearLane)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/stats", wrapper.GetRoomStats)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/sessions", wrapper.ListSessions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/artist-plays", wrapper.GetRoomArtistPlays)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/history", wrapper.GetHistory)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/suggestions", wrapper.GetSuggestions)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}", wrapper.RemoveQueueItem)
@@ -7947,6 +8472,46 @@ func (response GetAlbumdefaultJSONResponse) VisitGetAlbumResponse(w http.Respons
 	return err
 }
 
+type GetAlbumAboutRequestObject struct {
+	Id      string `json:"id"`
+	AlbumId string `json:"albumId"`
+}
+
+type GetAlbumAboutResponseObject interface {
+	VisitGetAlbumAboutResponse(w http.ResponseWriter) error
+}
+
+type GetAlbumAbout200JSONResponse AlbumAbout
+
+func (response GetAlbumAbout200JSONResponse) VisitGetAlbumAboutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAlbumAboutdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetAlbumAboutdefaultJSONResponse) VisitGetAlbumAboutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetArtistRequestObject struct {
 	Id       string `json:"id"`
 	ArtistId string `json:"artistId"`
@@ -7976,6 +8541,207 @@ type GetArtistdefaultJSONResponse struct {
 }
 
 func (response GetArtistdefaultJSONResponse) VisitGetArtistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetArtistAboutRequestObject struct {
+	Id       string `json:"id"`
+	ArtistId string `json:"artistId"`
+}
+
+type GetArtistAboutResponseObject interface {
+	VisitGetArtistAboutResponse(w http.ResponseWriter) error
+}
+
+type GetArtistAbout200JSONResponse ArtistAbout
+
+func (response GetArtistAbout200JSONResponse) VisitGetArtistAboutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetArtistAboutdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetArtistAboutdefaultJSONResponse) VisitGetArtistAboutResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetArtistElsewhereRequestObject struct {
+	Id       string `json:"id"`
+	ArtistId string `json:"artistId"`
+}
+
+type GetArtistElsewhereResponseObject interface {
+	VisitGetArtistElsewhereResponse(w http.ResponseWriter) error
+}
+
+type GetArtistElsewhere200JSONResponse []ArtistElsewhere
+
+func (response GetArtistElsewhere200JSONResponse) VisitGetArtistElsewhereResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetArtistElsewheredefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetArtistElsewheredefaultJSONResponse) VisitGetArtistElsewhereResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetArtistRelatedRequestObject struct {
+	Id       string `json:"id"`
+	ArtistId string `json:"artistId"`
+}
+
+type GetArtistRelatedResponseObject interface {
+	VisitGetArtistRelatedResponse(w http.ResponseWriter) error
+}
+
+type GetArtistRelated200JSONResponse RelatedMusic
+
+func (response GetArtistRelated200JSONResponse) VisitGetArtistRelatedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetArtistRelateddefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetArtistRelateddefaultJSONResponse) VisitGetArtistRelatedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetArtistShuffleRequestObject struct {
+	Id       string `json:"id"`
+	ArtistId string `json:"artistId"`
+	Params   GetArtistShuffleParams
+}
+
+type GetArtistShuffleResponseObject interface {
+	VisitGetArtistShuffleResponse(w http.ResponseWriter) error
+}
+
+type GetArtistShuffle200JSONResponse []TrackResult
+
+func (response GetArtistShuffle200JSONResponse) VisitGetArtistShuffleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetArtistShuffledefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetArtistShuffledefaultJSONResponse) VisitGetArtistShuffleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetArtistTracksRequestObject struct {
+	Id       string `json:"id"`
+	ArtistId string `json:"artistId"`
+}
+
+type GetArtistTracksResponseObject interface {
+	VisitGetArtistTracksResponse(w http.ResponseWriter) error
+}
+
+type GetArtistTracks200JSONResponse ArtistTracks
+
+func (response GetArtistTracks200JSONResponse) VisitGetArtistTracksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetArtistTracksdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetArtistTracksdefaultJSONResponse) VisitGetArtistTracksResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -8062,6 +8828,46 @@ type GetCollectiondefaultJSONResponse struct {
 }
 
 func (response GetCollectiondefaultJSONResponse) VisitGetCollectionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGenreRequestObject struct {
+	Id     string `json:"id"`
+	Params GetGenreParams
+}
+
+type GetGenreResponseObject interface {
+	VisitGetGenreResponse(w http.ResponseWriter) error
+}
+
+type GetGenre200JSONResponse GenreDetail
+
+func (response GetGenre200JSONResponse) VisitGetGenreResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGenredefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetGenredefaultJSONResponse) VisitGetGenreResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -9392,6 +10198,46 @@ type JoinRoomAsAdmindefaultJSONResponse struct {
 }
 
 func (response JoinRoomAsAdmindefaultJSONResponse) VisitJoinRoomAsAdminResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoomArtistPlaysRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Params GetRoomArtistPlaysParams
+}
+
+type GetRoomArtistPlaysResponseObject interface {
+	VisitGetRoomArtistPlaysResponse(w http.ResponseWriter) error
+}
+
+type GetRoomArtistPlays200JSONResponse []TrackCount
+
+func (response GetRoomArtistPlays200JSONResponse) VisitGetRoomArtistPlaysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoomArtistPlaysdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetRoomArtistPlaysdefaultJSONResponse) VisitGetRoomArtistPlaysResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -11616,15 +12462,36 @@ type StrictServerInterface interface {
 	// GetAlbum An album and its tracks, through one of your links or a shared one
 	// (GET /links/{id}/albums/{albumId})
 	GetAlbum(ctx context.Context, request GetAlbumRequestObject) (GetAlbumResponseObject, error)
+	// GetAlbumAbout What's known about an album
+	// (GET /links/{id}/albums/{albumId}/about)
+	GetAlbumAbout(ctx context.Context, request GetAlbumAboutRequestObject) (GetAlbumAboutResponseObject, error)
 	// GetArtist An artist and their albums, through one of your links or a shared one
 	// (GET /links/{id}/artists/{artistId})
 	GetArtist(ctx context.Context, request GetArtistRequestObject) (GetArtistResponseObject, error)
+	// GetArtistAbout What's known about an artist
+	// (GET /links/{id}/artists/{artistId}/about)
+	GetArtistAbout(ctx context.Context, request GetArtistAboutRequestObject) (GetArtistAboutResponseObject, error)
+	// GetArtistElsewhere The same artist on your other services
+	// (GET /links/{id}/artists/{artistId}/elsewhere)
+	GetArtistElsewhere(ctx context.Context, request GetArtistElsewhereRequestObject) (GetArtistElsewhereResponseObject, error)
+	// GetArtistRelated Artists like an artist, and songs by them
+	// (GET /links/{id}/artists/{artistId}/related)
+	GetArtistRelated(ctx context.Context, request GetArtistRelatedRequestObject) (GetArtistRelatedResponseObject, error)
+	// GetArtistShuffle Songs by an artist at random
+	// (GET /links/{id}/artists/{artistId}/shuffle)
+	GetArtistShuffle(ctx context.Context, request GetArtistShuffleRequestObject) (GetArtistShuffleResponseObject, error)
+	// GetArtistTracks An artist's top songs and appearances
+	// (GET /links/{id}/artists/{artistId}/tracks)
+	GetArtistTracks(ctx context.Context, request GetArtistTracksRequestObject) (GetArtistTracksResponseObject, error)
 	// GetLinkArtwork An image from one of your links or a shared one
 	// (GET /links/{id}/artwork)
 	GetLinkArtwork(ctx context.Context, request GetLinkArtworkRequestObject) (GetLinkArtworkResponseObject, error)
 	// GetCollection Shortcuts into the library of one of your links or a shared one
 	// (GET /links/{id}/collection)
 	GetCollection(ctx context.Context, request GetCollectionRequestObject) (GetCollectionResponseObject, error)
+	// GetGenre A genre's artists, and songs by them
+	// (GET /links/{id}/genre)
+	GetGenre(ctx context.Context, request GetGenreRequestObject) (GetGenreResponseObject, error)
 	// ListPlaylists The playlists of one of your links or a shared one
 	// (GET /links/{id}/playlists)
 	ListPlaylists(ctx context.Context, request ListPlaylistsRequestObject) (ListPlaylistsResponseObject, error)
@@ -11730,6 +12597,9 @@ type StrictServerInterface interface {
 	// JoinRoomAsAdmin Join a room you can't otherwise open (admins)
 	// (POST /rooms/{roomId}/admin-join)
 	JoinRoomAsAdmin(ctx context.Context, request JoinRoomAsAdminRequestObject) (JoinRoomAsAdminResponseObject, error)
+	// GetRoomArtistPlays An artist's songs the room played most
+	// (GET /rooms/{roomId}/artist-plays)
+	GetRoomArtistPlays(ctx context.Context, request GetRoomArtistPlaysRequestObject) (GetRoomArtistPlaysResponseObject, error)
 	// ListDisplays The room's paired displays
 	// (GET /rooms/{roomId}/displays)
 	ListDisplays(ctx context.Context, request ListDisplaysRequestObject) (ListDisplaysResponseObject, error)
@@ -12824,6 +13694,33 @@ func (sh *strictHandler) GetAlbum(w http.ResponseWriter, r *http.Request, id str
 	}
 }
 
+// GetAlbumAbout operation middleware
+func (sh *strictHandler) GetAlbumAbout(w http.ResponseWriter, r *http.Request, id string, albumId string) {
+	var request GetAlbumAboutRequestObject
+
+	request.Id = id
+	request.AlbumId = albumId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAlbumAbout(ctx, request.(GetAlbumAboutRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAlbumAbout")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAlbumAboutResponseObject); ok {
+		if err := validResponse.VisitGetAlbumAboutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetArtist operation middleware
 func (sh *strictHandler) GetArtist(w http.ResponseWriter, r *http.Request, id string, artistId string) {
 	var request GetArtistRequestObject
@@ -12844,6 +13741,142 @@ func (sh *strictHandler) GetArtist(w http.ResponseWriter, r *http.Request, id st
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetArtistResponseObject); ok {
 		if err := validResponse.VisitGetArtistResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetArtistAbout operation middleware
+func (sh *strictHandler) GetArtistAbout(w http.ResponseWriter, r *http.Request, id string, artistId string) {
+	var request GetArtistAboutRequestObject
+
+	request.Id = id
+	request.ArtistId = artistId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetArtistAbout(ctx, request.(GetArtistAboutRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetArtistAbout")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetArtistAboutResponseObject); ok {
+		if err := validResponse.VisitGetArtistAboutResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetArtistElsewhere operation middleware
+func (sh *strictHandler) GetArtistElsewhere(w http.ResponseWriter, r *http.Request, id string, artistId string) {
+	var request GetArtistElsewhereRequestObject
+
+	request.Id = id
+	request.ArtistId = artistId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetArtistElsewhere(ctx, request.(GetArtistElsewhereRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetArtistElsewhere")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetArtistElsewhereResponseObject); ok {
+		if err := validResponse.VisitGetArtistElsewhereResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetArtistRelated operation middleware
+func (sh *strictHandler) GetArtistRelated(w http.ResponseWriter, r *http.Request, id string, artistId string) {
+	var request GetArtistRelatedRequestObject
+
+	request.Id = id
+	request.ArtistId = artistId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetArtistRelated(ctx, request.(GetArtistRelatedRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetArtistRelated")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetArtistRelatedResponseObject); ok {
+		if err := validResponse.VisitGetArtistRelatedResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetArtistShuffle operation middleware
+func (sh *strictHandler) GetArtistShuffle(w http.ResponseWriter, r *http.Request, id string, artistId string, params GetArtistShuffleParams) {
+	var request GetArtistShuffleRequestObject
+
+	request.Id = id
+	request.ArtistId = artistId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetArtistShuffle(ctx, request.(GetArtistShuffleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetArtistShuffle")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetArtistShuffleResponseObject); ok {
+		if err := validResponse.VisitGetArtistShuffleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetArtistTracks operation middleware
+func (sh *strictHandler) GetArtistTracks(w http.ResponseWriter, r *http.Request, id string, artistId string) {
+	var request GetArtistTracksRequestObject
+
+	request.Id = id
+	request.ArtistId = artistId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetArtistTracks(ctx, request.(GetArtistTracksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetArtistTracks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetArtistTracksResponseObject); ok {
+		if err := validResponse.VisitGetArtistTracksResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -12897,6 +13930,33 @@ func (sh *strictHandler) GetCollection(w http.ResponseWriter, r *http.Request, i
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCollectionResponseObject); ok {
 		if err := validResponse.VisitGetCollectionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetGenre operation middleware
+func (sh *strictHandler) GetGenre(w http.ResponseWriter, r *http.Request, id string, params GetGenreParams) {
+	var request GetGenreRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGenre(ctx, request.(GetGenreRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGenre")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGenreResponseObject); ok {
+		if err := validResponse.VisitGetGenreResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -13851,6 +14911,33 @@ func (sh *strictHandler) JoinRoomAsAdmin(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(JoinRoomAsAdminResponseObject); ok {
 		if err := validResponse.VisitJoinRoomAsAdminResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRoomArtistPlays operation middleware
+func (sh *strictHandler) GetRoomArtistPlays(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetRoomArtistPlaysParams) {
+	var request GetRoomArtistPlaysRequestObject
+
+	request.RoomId = roomId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRoomArtistPlays(ctx, request.(GetRoomArtistPlaysRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRoomArtistPlays")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRoomArtistPlaysResponseObject); ok {
+		if err := validResponse.VisitGetRoomArtistPlaysResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

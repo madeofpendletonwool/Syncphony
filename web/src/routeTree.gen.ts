@@ -23,6 +23,7 @@ import { Route as AppAuthedHistoryRouteImport } from './routes/_app/_authed/hist
 import { Route as AppAuthedMeRouteImport } from './routes/_app/_authed/me'
 import { Route as AppAuthedRoomRouteImport } from './routes/_app/_authed/room'
 import { Route as AppAuthedSearchRouteImport } from './routes/_app/_authed/search'
+import { Route as AppAuthedGenreLinkIdRouteImport } from './routes/_app/_authed/genre.$linkId'
 import { Route as AppAuthedSettingsPeopleRouteImport } from './routes/_app/_authed/settings.people'
 import { Route as AppAuthedSettingsProfileRouteImport } from './routes/_app/_authed/settings.profile'
 import { Route as AppAuthedSettingsSecurityRouteImport } from './routes/_app/_authed/settings.security'
@@ -100,6 +101,11 @@ const AppAuthedSearchRoute = AppAuthedSearchRouteImport.update({
   path: '/search',
   getParentRoute: () => AppAuthedRoute,
 } as any)
+const AppAuthedGenreLinkIdRoute = AppAuthedGenreLinkIdRouteImport.update({
+  id: '/genre/$linkId',
+  path: '/genre/$linkId',
+  getParentRoute: () => AppAuthedRoute,
+} as any)
 const AppAuthedSettingsPeopleRoute = AppAuthedSettingsPeopleRouteImport.update({
   id: '/settings/people',
   path: '/settings/people',
@@ -160,6 +166,7 @@ export interface FileRoutesByFullPath {
   '/me': typeof AppAuthedMeRoute
   '/room': typeof AppAuthedRoomRoute
   '/search': typeof AppAuthedSearchRoute
+  '/genre/$linkId': typeof AppAuthedGenreLinkIdRoute
   '/settings/people': typeof AppAuthedSettingsPeopleRoute
   '/settings/profile': typeof AppAuthedSettingsProfileRoute
   '/settings/security': typeof AppAuthedSettingsSecurityRoute
@@ -182,6 +189,7 @@ export interface FileRoutesByTo {
   '/me': typeof AppAuthedMeRoute
   '/room': typeof AppAuthedRoomRoute
   '/search': typeof AppAuthedSearchRoute
+  '/genre/$linkId': typeof AppAuthedGenreLinkIdRoute
   '/settings/people': typeof AppAuthedSettingsPeopleRoute
   '/settings/profile': typeof AppAuthedSettingsProfileRoute
   '/settings/security': typeof AppAuthedSettingsSecurityRoute
@@ -207,6 +215,7 @@ export interface FileRoutesById {
   '/_app/_authed/room': typeof AppAuthedRoomRoute
   '/_app/_authed/search': typeof AppAuthedSearchRoute
   '/_app/_authed/': typeof AppAuthedIndexRoute
+  '/_app/_authed/genre/$linkId': typeof AppAuthedGenreLinkIdRoute
   '/_app/_authed/settings/people': typeof AppAuthedSettingsPeopleRoute
   '/_app/_authed/settings/profile': typeof AppAuthedSettingsProfileRoute
   '/_app/_authed/settings/security': typeof AppAuthedSettingsSecurityRoute
@@ -231,6 +240,7 @@ export interface FileRouteTypes {
     | '/me'
     | '/room'
     | '/search'
+    | '/genre/$linkId'
     | '/settings/people'
     | '/settings/profile'
     | '/settings/security'
@@ -253,6 +263,7 @@ export interface FileRouteTypes {
     | '/me'
     | '/room'
     | '/search'
+    | '/genre/$linkId'
     | '/settings/people'
     | '/settings/profile'
     | '/settings/security'
@@ -277,6 +288,7 @@ export interface FileRouteTypes {
     | '/_app/_authed/room'
     | '/_app/_authed/search'
     | '/_app/_authed/'
+    | '/_app/_authed/genre/$linkId'
     | '/_app/_authed/settings/people'
     | '/_app/_authed/settings/profile'
     | '/_app/_authed/settings/security'
@@ -397,6 +409,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAuthedSearchRouteImport
       parentRoute: typeof AppAuthedRoute
     }
+    '/_app/_authed/genre/$linkId': {
+      id: '/_app/_authed/genre/$linkId'
+      path: '/genre/$linkId'
+      fullPath: '/genre/$linkId'
+      preLoaderRoute: typeof AppAuthedGenreLinkIdRouteImport
+      parentRoute: typeof AppAuthedRoute
+    }
     '/_app/_authed/settings/people': {
       id: '/_app/_authed/settings/people'
       path: '/settings/people'
@@ -462,6 +481,7 @@ interface AppAuthedRouteChildren {
   AppAuthedRoomRoute: typeof AppAuthedRoomRoute
   AppAuthedSearchRoute: typeof AppAuthedSearchRoute
   AppAuthedIndexRoute: typeof AppAuthedIndexRoute
+  AppAuthedGenreLinkIdRoute: typeof AppAuthedGenreLinkIdRoute
   AppAuthedSettingsPeopleRoute: typeof AppAuthedSettingsPeopleRoute
   AppAuthedSettingsProfileRoute: typeof AppAuthedSettingsProfileRoute
   AppAuthedSettingsSecurityRoute: typeof AppAuthedSettingsSecurityRoute
@@ -478,6 +498,7 @@ const AppAuthedRouteChildren: AppAuthedRouteChildren = {
   AppAuthedRoomRoute: AppAuthedRoomRoute,
   AppAuthedSearchRoute: AppAuthedSearchRoute,
   AppAuthedIndexRoute: AppAuthedIndexRoute,
+  AppAuthedGenreLinkIdRoute: AppAuthedGenreLinkIdRoute,
   AppAuthedSettingsPeopleRoute: AppAuthedSettingsPeopleRoute,
   AppAuthedSettingsProfileRoute: AppAuthedSettingsProfileRoute,
   AppAuthedSettingsSecurityRoute: AppAuthedSettingsSecurityRoute,

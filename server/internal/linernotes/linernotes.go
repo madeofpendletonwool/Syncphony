@@ -233,7 +233,8 @@ func (s *Service) put(ctx context.Context, ref provider.TrackRef, n *Notes, sure
 
 // Sweep deletes expired cache entries.
 func (s *Service) Sweep(ctx context.Context) error {
-	return s.db.DeleteExpiredLinerNotes(ctx, s.opts.Now())
+	now := s.opts.Now()
+	return errors.Join(s.db.DeleteExpiredLinerNotes(ctx, now), s.db.DeleteExpiredPageNotes(ctx, now))
 }
 
 // --- Writing the notes -------------------------------------------------------
