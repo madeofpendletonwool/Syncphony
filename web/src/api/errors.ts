@@ -76,6 +76,11 @@ const messages: Record<string, string> = {
   guests_off: "This room doesn't let guests join. Its owner can turn that on in room settings.",
   not_tonight: 'Hearts are for songs playing tonight.',
   nothing_played: 'Nothing has played since the last night ended.',
+  games_off: 'Games are off in this room. Its owner can turn them on in room settings.',
+  round_running: 'A round is already going.',
+  round_closed: 'Too late: that round has closed.',
+  no_question: "There's nothing to ask about this song yet. Try the next one.",
+  hidden_for_round: "That's hidden until the round's reveal.",
 }
 
 /** A sentence to show the user for an error from the API or the browser. */

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Artwork } from '@/components/artwork'
 import { LyricsView } from '@/components/lyrics/lyrics-view'
 import { AutopilotMark } from '@/components/room/autopilot-badge'
+import { RoundStage } from '@/components/games/round-stage'
 import { CrownMoment } from '@/components/room/crown-moment'
 import { AlbumBackdrop } from '@/components/shell/album-backdrop'
 import { Waveform } from '@/components/shell/waveform'
@@ -18,6 +19,7 @@ import { usePosition } from '@/hooks/use-position'
 import { useWakeLock } from '@/hooks/use-wake-lock'
 import { autopilotReason, autopilotSource } from '@/lib/autopilot'
 import { setBeatSettings } from '@/lib/beat'
+import { useHidden } from '@/lib/games'
 import { guestPassQuery } from '@/lib/guests'
 import { laneStyle } from '@/lib/lane'
 import { linerCards, linerNotesQuery } from '@/lib/liner-notes'
@@ -70,7 +72,7 @@ export function TvStage({
   commands?: PlayerCommands
 }) {
   const queryClient = useQueryClient()
-  useRoomSocket(roomId, { display: true, onSessionEnded: paired ? onUnpaired : undefined })
+  useRoomSocket(roomId, { display: true, onSessionEnded: paired ? onUnpaired : undefined, device: audio?.device })
   const playback = useQuery(playbackQuery(roomId))
   const queue = useQuery(queueQuery(roomId))
   const users = useQuery(usersQuery)
@@ -144,6 +146,7 @@ export function TvStage({
         onShowSetting={setShowPick}
       />
       <CrownMoment roomId={roomId} variant="stage" />
+      <RoundStage roomId={roomId} />
 
       <div className="burn-in-drift flex h-full flex-col gap-[3vh] px-[4vw] pt-[4vh] pb-[3.5vh]">
         <header className="flex items-center justify-between gap-6">
@@ -290,9 +293,11 @@ function NowPlayingColumn({ np }: { np: NowPlaying }) {
 function StageWords({ np }: { np: NowPlaying }) {
   const roomId = np.roomId ?? ''
   const itemId = np.itemId ?? ''
-  const lyrics = useQuery({ ...lyricsQuery(roomId, itemId), enabled: !!itemId })
-  const notes = useQuery({ ...linerNotesQuery(roomId, itemId), enabled: !!itemId })
-  const cards = useMemo(() => (notes.data ? linerCards(notes.data) : []), [notes.data])
+  const hidden = useHidden(roomId, itemId)
+  const lyrics = useQuery({ ...lyricsQuery(roomId, itemId), enabled: !!itemId && !hidden.lyrics })
+  const notes = useQuery({ ...linerNotesQuery(roomId, itemId), enabled: !!itemId && !hidden.notes && !hidden.song })
+  // A round about the song keeps its notes off the screen until the reveal.
+  const cards = useMemo(() => (notes.data && !hidden.notes && !hidden.song ? linerCards(notes.data) : []), [notes.data, hidden.notes, hidden.song])
   const [offset] = useLyricsOffset(offsetKey(np.track))
   const position = usePosition(np)
 

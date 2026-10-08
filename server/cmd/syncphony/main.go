@@ -24,6 +24,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/backup"
 	"github.com/madeofpendletonwool/syncphony/server/internal/config"
 	"github.com/madeofpendletonwool/syncphony/server/internal/dj"
+	"github.com/madeofpendletonwool/syncphony/server/internal/games"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
@@ -302,11 +303,34 @@ func run() error {
 		onUpdate(r)
 		pilot.RoomUpdated(r)
 	}
+	// Party games (ADR 0015) follow the same playback and queue changes.
+	gameSvc := games.New(db, a.bus, roomSvc, games.Config{})
+	gameSvc.Facts = &games.Sources{DB: db, LinerNotes: notes, Lyrics: lyricsSvc, Graph: graph}
+	gameSvc.OnHide = func(ctx context.Context, roomID string) {
+		// Everyone gets the song again, with it left out or put back.
+		if np, err := player.NowPlaying(ctx, roomID); err == nil {
+			roomSvc.PublishNowPlaying(np)
+		}
+		if _, err := roomSvc.QueueChanged(ctx, roomID); err != nil {
+			slog.Warn("games: resending the queue", "room", roomID, "err", err)
+		}
+	}
+	defer gameSvc.Close()
+	onChange2, onDelete := queueSvc.OnChange, roomSvc.OnDelete
+	queueSvc.OnChange = func(roomID string) {
+		onChange2(roomID)
+		gameSvc.QueueChanged(roomID)
+	}
+	roomSvc.OnDelete = func(roomID string) {
+		onDelete(roomID)
+		gameSvc.RoomDeleted(roomID)
+	}
 	nightSvc := nights.New(db, a.bus)
+	nightSvc.Awards = gameSvc.Awards
 	go a.backups.Run(ctx)
 	api := &httpapi.Server{
 		Version: version, StartedAt: time.Now().UTC(), Admin: admin.New(db), Backups: a.backups, Auth: accounts, Links: a.links, Lyrics: lyricsSvc, LinerNotes: notes, Artwork: art, Palettes: palettes, BeatMaps: beatMaps,
-		Rooms: roomSvc, Queue: queueSvc, Playback: player, Nights: nightSvc, Suggest: suggestions, Autopilot: pilot,
+		Rooms: roomSvc, Queue: queueSvc, Playback: player, Nights: nightSvc, Games: gameSvc, Suggest: suggestions, Autopilot: pilot,
 		Bus: a.bus, Presence: presence,
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	}

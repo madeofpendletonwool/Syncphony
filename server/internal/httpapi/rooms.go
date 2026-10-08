@@ -54,6 +54,9 @@ func (s *Server) CreateRoom(ctx context.Context, req CreateRoomRequestObject) (C
 	if g := req.Body.Guests; g != nil {
 		st.Guests = fromGuests(*g)
 	}
+	if g := req.Body.Games; g != nil {
+		st.Games = fromRoomGames(*g)
+	}
 	var mode string
 	if req.Body.FairnessMode != nil {
 		mode = string(*req.Body.FairnessMode)
@@ -104,6 +107,9 @@ func (s *Server) UpdateRoom(ctx context.Context, req UpdateRoomRequestObject) (U
 	if g := req.Body.Guests; g != nil {
 		u.Guests = ptr(fromGuests(*g))
 	}
+	if g := req.Body.Games; g != nil {
+		u.Games = ptr(fromRoomGames(*g))
+	}
 	u.ApproveJoins = req.Body.ApproveJoins
 	if v := req.Body.Visibility; v != nil {
 		u.Visibility = ptr(string(*v))
@@ -126,6 +132,7 @@ func toRoom(r store.Room) Room {
 		Permissions: RoomPermissions{
 			PlayPause: PermissionLevel(p.PlayPause), Seek: PermissionLevel(p.Seek),
 			Skip: SkipPermission(p.Skip), Speaker: PermissionLevel(p.Speaker),
+			StartRounds: PermissionLevel(p.StartRounds),
 		},
 		SkipVotePercent: *st.SkipVotePercent, CreatedAt: r.CreatedAt,
 		Fairness: RoomFairness{
@@ -138,6 +145,7 @@ func toRoom(r store.Room) Room {
 	out.Guests = RoomGuests{Allowed: st.Guests.Allowed, MaxSongs: st.Guests.SongLimit(), CanVote: st.Guests.CanVote()}
 	sc := st.Screens.Normal()
 	out.Screens = RoomScreens{Look: RoomScreensLook(sc.Look), Scene: sc.Scene, Intensity: float32(*sc.Intensity)}
+	out.Games = toRoomGames(st.Games)
 	if out.Fairness.Weights == nil {
 		out.Fairness.Weights = map[string]int{}
 	}
@@ -177,7 +185,7 @@ func fromPermissionsChange(c *RoomPermissionsChange) rooms.Permissions {
 		}
 		return string(*v)
 	}
-	p.PlayPause, p.Seek, p.Speaker = str(c.PlayPause), str(c.Seek), str(c.Speaker)
+	p.PlayPause, p.Seek, p.Speaker, p.StartRounds = str(c.PlayPause), str(c.Seek), str(c.Speaker), str(c.StartRounds)
 	if c.Skip != nil {
 		p.Skip = string(*c.Skip)
 	}

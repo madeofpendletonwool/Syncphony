@@ -41,6 +41,24 @@ type Notes struct {
 	Artist  *Artist  `json:"artist,omitempty"`
 	Credits []Credit `json:"credits"`
 	Facts   []Fact   `json:"facts"`
+	// CoverOf is the song this one covers, if it's a cover. Samples and
+	// SampledBy are the songs it samples and those that sample it. The
+	// facts say the same in words; these are for trivia (package quiz).
+	CoverOf   *Work     `json:"coverOf,omitempty"`
+	Samples   []SongRef `json:"samples,omitempty"`
+	SampledBy []SongRef `json:"sampledBy,omitempty"`
+}
+
+// Work is a song as written, with its writers.
+type Work struct {
+	Title   string   `json:"title"`
+	Writers []string `json:"writers,omitempty"`
+}
+
+// SongRef names another recording.
+type SongRef struct {
+	Title  string `json:"title"`
+	Artist string `json:"artist,omitempty"`
 }
 
 // Release is where the song came out.
@@ -264,15 +282,20 @@ func write(ids musicbrainz.IDs, d musicbrainz.Details) Notes {
 				text += ", written by " + list(names)
 			}
 			n.Facts = append(n.Facts, Fact{Kind: FactCover, Text: text})
+			if n.CoverOf == nil {
+				n.CoverOf = &Work{Title: w.Title, Writers: writerNames(w.Writers)}
+			}
 		case slices.Contains(w.Attributes, "live"):
 			n.Facts = append(n.Facts, Fact{Kind: FactLive, Text: "A live recording of “" + w.Title + "”"})
 		}
 	}
 	for _, r := range d.Samples[:min(len(d.Samples), maxSampleFacts)] {
 		n.Facts = append(n.Facts, Fact{Kind: FactSamples, Text: "Samples " + ref(r)})
+		n.Samples = append(n.Samples, SongRef{Title: r.Title, Artist: r.Artist})
 	}
 	for _, r := range d.SampledBy[:min(len(d.SampledBy), maxSampleFacts)] {
 		n.Facts = append(n.Facts, Fact{Kind: FactSampledBy, Text: "Sampled in " + ref(r)})
+		n.SampledBy = append(n.SampledBy, SongRef{Title: r.Title, Artist: r.Artist})
 	}
 	// On a compilation or a reissue, when it first came out.
 	if d.Release != nil && n.Year > 0 && year(d.Release.Date) > n.Year {

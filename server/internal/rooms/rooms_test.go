@@ -45,17 +45,17 @@ func TestParseSettings(t *testing.T) {
 		want    rooms.Permissions
 		percent int
 	}{
-		{`{}`, rooms.Permissions{PlayPause: "everyone", Seek: "everyone", Skip: "everyone", Speaker: "everyone"}, 50},
-		{`not json`, rooms.Permissions{PlayPause: "everyone", Seek: "everyone", Skip: "everyone", Speaker: "everyone"}, 50},
+		{`{}`, rooms.Permissions{PlayPause: "everyone", Seek: "everyone", Skip: "everyone", Speaker: "everyone", StartRounds: "owner"}, 50},
+		{`not json`, rooms.Permissions{PlayPause: "everyone", Seek: "everyone", Skip: "everyone", Speaker: "everyone", StartRounds: "owner"}, 50},
 		// Rooms from before permissions had one setting for everything.
-		{`{"controls":"owner"}`, rooms.Permissions{PlayPause: "owner", Seek: "owner", Skip: "owner", Speaker: "owner"}, 50},
+		{`{"controls":"owner"}`, rooms.Permissions{PlayPause: "owner", Seek: "owner", Skip: "owner", Speaker: "owner", StartRounds: "owner"}, 50},
 		{
 			`{"controls":"owner","permissions":{"skip":"vote","seek":"everyone"},"skipVotePercent":66}`,
-			rooms.Permissions{PlayPause: "owner", Seek: "everyone", Skip: "vote", Speaker: "owner"},
+			rooms.Permissions{PlayPause: "owner", Seek: "everyone", Skip: "vote", Speaker: "owner", StartRounds: "owner"},
 			66,
 		},
-		{`{"permissions":{"playPause":"vote"},"skipVotePercent":100}`, rooms.Permissions{PlayPause: "everyone", Seek: "everyone", Skip: "everyone", Speaker: "everyone"}, 50},
-		{`{"skipVotePercent":0}`, rooms.Permissions{PlayPause: "everyone", Seek: "everyone", Skip: "everyone", Speaker: "everyone"}, 0},
+		{`{"permissions":{"playPause":"vote"},"skipVotePercent":100}`, rooms.Permissions{PlayPause: "everyone", Seek: "everyone", Skip: "everyone", Speaker: "everyone", StartRounds: "owner"}, 50},
+		{`{"skipVotePercent":0}`, rooms.Permissions{PlayPause: "everyone", Seek: "everyone", Skip: "everyone", Speaker: "everyone", StartRounds: "owner"}, 0},
 	} {
 		st := rooms.ParseSettings(tc.raw)
 		if st.Permissions != tc.want || *st.SkipVotePercent != tc.percent || st.Controls != "" {
@@ -230,7 +230,7 @@ func TestSettingsVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(r.Settings, `"version":1`) {
+	if !strings.Contains(r.Settings, `"version":2`) {
 		t.Errorf("saved settings %s", r.Settings)
 	}
 }

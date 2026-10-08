@@ -20,6 +20,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/artcache"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
+	"github.com/madeofpendletonwool/syncphony/server/internal/quiz"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 )
 
@@ -325,6 +326,9 @@ func (s *Server) GetLinkArtwork(ctx context.Context, req GetLinkArtworkRequestOb
 // whoever queued it, so the whole room sees it. When that's missing, or
 // smaller than asked for, the Cover Art Archive's is used if it's bigger.
 func (s *Server) GetQueueItemArtwork(ctx context.Context, req GetQueueItemArtworkRequestObject) (GetQueueItemArtworkResponseObject, error) {
+	if s.hidden(req.RoomId, req.ItemId, quiz.HideSong) {
+		return nil, ErrHiddenForRound
+	}
 	it, err := s.Queue.Item(ctx, req.RoomId, req.ItemId)
 	if err != nil {
 		return nil, err

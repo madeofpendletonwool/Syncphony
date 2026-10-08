@@ -23,6 +23,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
 	"github.com/madeofpendletonwool/syncphony/server/internal/backup"
+	"github.com/madeofpendletonwool/syncphony/server/internal/games"
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
@@ -72,6 +73,8 @@ type Server struct {
 	Playback *playback.Engine
 	// Nights hearts songs and crowns each night's song of the night.
 	Nights *nights.Service
+	// Games runs the rooms' party games. Nil turns them off.
+	Games *games.Engine
 	// Suggest finds songs to keep a room's vibe going.
 	Suggest *suggest.Service
 	// Autopilot keeps rooms' music going; admins can see what its DJ has
@@ -325,7 +328,10 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var invalidHeart *nights.InvalidInputError
 	var invalidAdmin *admin.InvalidInputError
 	var invalidBackup *backup.InvalidInputError
+	var invalidGame *games.InvalidInputError
 	switch {
+	case errors.As(err, &invalidGame):
+		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidGame.Error())
 	case errors.As(err, &invalidBackup):
 		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidBackup.Error())
 	case errors.As(err, &invalidAdmin):
@@ -398,6 +404,14 @@ var errorCodes = []struct {
 	{nights.ErrNotHost, http.StatusForbidden, "forbidden"},
 	{nights.ErrNotTonight, http.StatusConflict, "not_tonight"},
 	{nights.ErrNothingPlayed, http.StatusConflict, "nothing_played"},
+	{games.ErrNoRound, http.StatusConflict, "round_closed"},
+	{games.ErrRoundRunning, http.StatusConflict, "round_running"},
+	{games.ErrForbidden, http.StatusForbidden, "forbidden"},
+	{games.ErrGamesOff, http.StatusConflict, "games_off"},
+	{games.ErrGuestsCantPlay, http.StatusForbidden, "forbidden"},
+	{games.ErrNothingPlaying, http.StatusConflict, "nothing_playing"},
+	{games.ErrNoQuestion, http.StatusConflict, "no_question"},
+	{ErrHiddenForRound, http.StatusConflict, "hidden_for_round"},
 
 	{links.ErrUnknownProvider, http.StatusNotFound, "unknown_provider"},
 	{links.ErrNotFound, http.StatusNotFound, "not_found"},

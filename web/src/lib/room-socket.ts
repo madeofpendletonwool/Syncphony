@@ -5,12 +5,14 @@ import { invitesQuery, membersQuery } from './access'
 import { meQuery } from './auth'
 import { syncServerClock } from './clock'
 import { displayMeQuery } from './displays'
+import { gameRoundQuery, gameScoresQuery, type GameRound, type GameScores } from './games'
 import { guestPassQuery, guestsQuery } from './guests'
 import { crown, heartsQuery, nightsQuery, type Hearts, type Night } from './nights'
 import { newer, playbackQuery, type Playback } from './playback'
 import { addReaction, type Reaction } from './reactions'
 import { leaveRoom, queueQuery, roomsQuery, type QueueSnapshot, type Room } from './room'
 import { linksQuery, usableLinksQuery } from './services'
+import { deviceId } from './speaker'
 import { createStore } from './store'
 import { toast } from './toast'
 import { usersQuery } from './users'
@@ -38,6 +40,8 @@ type SocketOptions = {
   display?: boolean
   /** The session (or the display's pairing) ended. Default: signs out. */
   onSessionEnded?: () => void
+  /** The device ID this screen plays the room as, if not this browser's (a paired display's). */
+  device?: string
 }
 
 /**
@@ -45,7 +49,7 @@ type SocketOptions = {
  * every event lands in the query cache, so screens just read queries.
  * Reconnects with backoff and resumes from the last queue version.
  */
-export function useRoomSocket(roomId: string | undefined, { display = false, onSessionEnded }: SocketOptions = {}) {
+export function useRoomSocket(roomId: string | undefined, { display = false, onSessionEnded, device }: SocketOptions = {}) {
   const ended = useRef(onSessionEnded)
   useEffect(() => {
     ended.current = onSessionEnded
@@ -67,6 +71,8 @@ export function useRoomSocket(roomId: string | undefined, { display = false, onS
       const query = new URLSearchParams()
       if (version !== undefined) query.set('since', String(version))
       if (display) query.set('display', '1')
+      // The speaker sees what a game round hides: its lock screen shows the song anyway.
+      query.set('device', device ?? deviceId())
       const qs = query.toString()
       const url = `${proto}://${location.host}/ws/rooms/${encodeURIComponent(roomId)}${qs ? `?${qs}` : ''}`
       const sock = new WebSocket(url)
@@ -116,7 +122,7 @@ export function useRoomSocket(roomId: string | undefined, { display = false, onS
       window.removeEventListener('online', wake)
       ws?.close()
     }
-  }, [roomId, display, queryClient])
+  }, [roomId, display, device, queryClient])
 }
 
 function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
@@ -179,6 +185,20 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
       void queryClient.invalidateQueries({ queryKey: ['sessions', roomId] })
       break
     }
+    case 'game.round': {
+      const round = ev.data as GameRound
+      queryClient.setQueryData(gameRoundQuery(roomId).queryKey, round.state === 'done' ? null : round)
+      // Lyrics and liner notes asked for while the round hid them come back now.
+      if (round.state === 'reveal') {
+        for (const key of [['lyrics', roomId, round.itemId], ['liner-notes', roomId, round.itemId]]) {
+          if (queryClient.getQueryState(key)?.status === 'error') void queryClient.invalidateQueries({ queryKey: key })
+        }
+      }
+      break
+    }
+    case 'game.scores':
+      queryClient.setQueryData(gameScoresQuery(roomId).queryKey, ev.data as GameScores)
+      break
     case 'guests.updated':
       void queryClient.invalidateQueries({ queryKey: guestPassQuery(roomId).queryKey })
       void queryClient.invalidateQueries({ queryKey: guestsQuery(roomId).queryKey })

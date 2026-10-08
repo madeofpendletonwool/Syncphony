@@ -72,6 +72,26 @@ type DjRoom struct {
 	UpdatedAt     time.Time
 }
 
+type GameAnswer struct {
+	RoundID    string
+	UserID     string
+	Answer     string
+	Correct    bool
+	Points     int64
+	AnsweredAt time.Time
+}
+
+type GameRound struct {
+	ID          string
+	RoomID      string
+	QueueItemID sql.NullString
+	Kind        string
+	Question    string
+	StartedBy   sql.NullString
+	StartedAt   time.Time
+	RevealedAt  time.Time
+}
+
 type Guest struct {
 	UserID    string
 	RoomID    string
@@ -172,6 +192,7 @@ type Night struct {
 	Plays       int64
 	QueueItemID sql.NullString
 	Hearts      int64
+	Awards      string
 }
 
 type PageNotesCache struct {

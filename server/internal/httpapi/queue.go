@@ -15,7 +15,7 @@ func (s *Server) GetQueue(ctx context.Context, req GetQueueRequestObject) (GetQu
 	if err != nil {
 		return nil, err
 	}
-	return GetQueue200JSONResponse(toQueueSnapshot(snap)), nil
+	return GetQueue200JSONResponse(s.queueFor(snap, false)), nil
 }
 
 // AddToQueue adds songs to the end of the caller's lane.
@@ -41,7 +41,7 @@ func (s *Server) AddToQueue(ctx context.Context, req AddToQueueRequestObject) (A
 	if err != nil {
 		return nil, err
 	}
-	return AddToQueue200JSONResponse(toQueueSnapshot(snap)), nil
+	return AddToQueue200JSONResponse(s.queueFor(snap, false)), nil
 }
 
 // MoveQueueItem moves one of the caller's songs within their lane.
@@ -50,7 +50,7 @@ func (s *Server) MoveQueueItem(ctx context.Context, req MoveQueueItemRequestObje
 	if err != nil {
 		return nil, err
 	}
-	return MoveQueueItem200JSONResponse(toQueueSnapshot(snap)), nil
+	return MoveQueueItem200JSONResponse(s.queueFor(snap, false)), nil
 }
 
 // RemoveQueueItem removes a queued song.
@@ -59,7 +59,7 @@ func (s *Server) RemoveQueueItem(ctx context.Context, req RemoveQueueItemRequest
 	if err != nil {
 		return nil, err
 	}
-	return RemoveQueueItem200JSONResponse(toQueueSnapshot(snap)), nil
+	return RemoveQueueItem200JSONResponse(s.queueFor(snap, false)), nil
 }
 
 // RestoreQueueItems puts songs removed moments ago back where they were.
@@ -68,7 +68,7 @@ func (s *Server) RestoreQueueItems(ctx context.Context, req RestoreQueueItemsReq
 	if err != nil {
 		return nil, err
 	}
-	return RestoreQueueItems200JSONResponse(toQueueSnapshot(snap)), nil
+	return RestoreQueueItems200JSONResponse(s.queueFor(snap, false)), nil
 }
 
 // ClearLane removes all of the caller's waiting songs.
@@ -80,5 +80,5 @@ func (s *Server) ClearLane(ctx context.Context, req ClearLaneRequestObject) (Cle
 	if removed == nil {
 		removed = []string{}
 	}
-	return ClearLane200JSONResponse{Queue: toQueueSnapshot(snap), Removed: removed}, nil
+	return ClearLane200JSONResponse{Queue: s.queueFor(snap, false), Removed: removed}, nil
 }

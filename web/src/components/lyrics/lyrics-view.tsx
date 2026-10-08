@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { Mic2, Minus, Music4, Plus, RotateCcw } from 'lucide-react'
+import { Dices, Mic2, Minus, Music4, Plus, RotateCcw } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useBeat } from '@/hooks/use-beat'
+import { useHidden } from '@/lib/games'
 import { easeOutExpo } from '@/lib/motion'
 import {
   activeLine,
@@ -48,11 +49,14 @@ const lineClass: Record<Variant, string> = {
  */
 export function LyricsView({ np, variant = 'panel', onSeek, className }: Props) {
   const { roomId, itemId } = np
-  const lyrics = useQuery({ ...lyricsQuery(roomId ?? '', itemId ?? ''), enabled: !!roomId && !!itemId })
+  // A round about the words keeps them back until its reveal.
+  const hidden = useHidden(roomId, itemId).lyrics
+  const lyrics = useQuery({ ...lyricsQuery(roomId ?? '', itemId ?? ''), enabled: !!roomId && !!itemId && !hidden })
   const key = offsetKey(np.track)
   const [offset] = useLyricsOffset(key)
 
   if (!roomId || !itemId) return <LyricsEmpty variant={variant} title="No lyrics here" />
+  if (hidden) return <LyricsEmpty variant={variant} icon={Dices} title="Hidden for the round" body="The words are back after the reveal." />
   if (lyrics.isPending) return <LyricsSkeleton variant={variant} className={className} />
   if (lyrics.isError) return <LyricsEmpty variant={variant} title="Couldn't load the lyrics" body="Try again in a moment." />
   const l = lyrics.data

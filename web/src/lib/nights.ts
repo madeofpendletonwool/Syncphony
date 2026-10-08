@@ -39,11 +39,11 @@ export const CROWN_MS = 20_000
 
 let clear: ReturnType<typeof setTimeout> | undefined
 
-/** Puts a night that just ended on screen, for a while. */
+/** Puts a night that just ended on screen, for a while: longer with awards to read. */
 export function crown(n: Night) {
   crowning.set(n)
   clearTimeout(clear)
-  clear = setTimeout(() => crowning.set(null), CROWN_MS)
+  clear = setTimeout(() => crowning.set(null), n.awards.length > 0 ? CROWN_MS * 2 : CROWN_MS)
 }
 
 export function dismissCrown() {

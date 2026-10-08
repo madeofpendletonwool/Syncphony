@@ -2588,6 +2588,118 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /rooms/{roomId}/games/round:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: getGameRound
+      summary: The room's game round, if one is up
+      description: |
+        The round on screen now (see ADR 0015), the same as the latest
+        `game.round` event. Until the reveal it carries no answer. 204 when
+        no round is up.
+      tags: [games]
+      security:
+        - session: []
+        - display: []
+      responses:
+        "200":
+          description: The round
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameRound"
+        "204":
+          description: No round is up
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/games/rounds:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    post:
+      operationId: startGameRound
+      summary: Start a round about the song that's playing
+      description: |
+        Who may is the room's `startRounds` permission; admins always may.
+        `games_off` (409) if the room's games level doesn't run rounds,
+        `round_running` (409) if one is up, `nothing_playing` (409) with
+        nothing playing, and `no_question` (409) if there's nothing to ask
+        about this song yet.
+      tags: [games]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartGameRoundRequest"
+      responses:
+        "201":
+          description: The round, announced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameRound"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/games/rounds/{roundId}/answers:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: roundId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: answerGameRound
+      summary: Answer the open round
+      description: |
+        One answer per person per round; send again to change it until the
+        round closes. Answers are timed by when the server gets them: the
+        sooner a right answer, the more it scores. `round_closed` (409) if
+        the round isn't open; `forbidden` for a guest in a room where
+        guests don't play.
+      tags: [games]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GameAnswerRequest"
+      responses:
+        "200":
+          description: The answer, taken
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameAnswer"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/games/scores:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: getGameScores
+      summary: Tonight's game scores
+      description: |
+        Everyone's points since the room's last night ended, best first.
+        With the room's scores `private`, you get only your own; with them
+        `off`, none.
+      tags: [games]
+      security:
+        - session: []
+        - display: []
+      responses:
+        "200":
+          description: The scores
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameScores"
+        default:
+          $ref: "#/components/responses/Error"
+
   /rooms/{roomId}/guest-pass:
     parameters:
       - $ref: "#/components/parameters/RoomId"
@@ -3492,6 +3604,283 @@ components:
           default: 1.5
           description: How strongly the screens move with the music.
 
+    RoomGames:
+      type: object
+      description: |
+        The room's music party games (ADR 0015). Off by default. The level
+        sets the defaults for everything else, and a change applies from
+        the next song, so a round already running finishes.
+      required: [level, enabled, frequency, guests, scores, tvOnly, breaksPerHour]
+      properties:
+        level:
+          type: string
+          enum: ["off", recap, ambient, rounds, gamenight]
+          default: "off"
+          description: |
+            `off`: nothing. `recap`: awards when the night ends.
+            `ambient`: little questions you can ignore; the music never
+            stops. `rounds`: some songs become a round with a reveal.
+            `gamenight`: dedicated rounds that may pause the music, and
+            queue games.
+        enabled:
+          type: object
+          description: |
+            Each game, on or off. The response lists every game the level
+            allows; a game it doesn't allow stays off whatever you send.
+          additionalProperties:
+            type: boolean
+        frequency:
+          type: integer
+          minimum: 0
+          maximum: 20
+          description: A round about every this many songs; 0 only when someone starts one.
+        guests:
+          type: boolean
+          description: Guests may answer. Separate from their hearts and votes.
+        scores:
+          type: string
+          enum: ["off", private, board]
+          description: |
+            `private`: you see your own. `board`: a leaderboard on the big
+            screen.
+        tvOnly:
+          type: boolean
+          description: Rounds show on the big screen only, never as prompts on phones.
+        breaksPerHour:
+          type: integer
+          minimum: 0
+          maximum: 12
+          description: At `gamenight`, the most rounds an hour that may pause the music.
+
+    RoomGamesChange:
+      type: object
+      description: |
+        The room's games, replacing what it had. Anything left out takes
+        the level's default, so sending just a `level` resets the rest to
+        that level's.
+      properties:
+        level:
+          type: string
+          enum: ["off", recap, ambient, rounds, gamenight]
+        enabled:
+          type: object
+          additionalProperties:
+            type: boolean
+        frequency:
+          type: integer
+          minimum: 0
+          maximum: 20
+        guests:
+          type: boolean
+        scores:
+          type: string
+          enum: ["off", private, board]
+        tvOnly:
+          type: boolean
+        breaksPerHour:
+          type: integer
+          minimum: 0
+          maximum: 12
+
+    GameKind:
+      type: string
+      enum: [year, liner, sample, lyrics, finish_lyric, tune, connect, theme, bracket]
+      description: |
+        A game. `year`: guess the year. `liner`: covers, credits and
+        releases. `sample`: sample detective. `lyrics`: beat the singer.
+        `finish_lyric`: the music stops and you finish the line. `tune`:
+        name that tune. `connect`, `theme`, `bracket`: queue games.
+
+    GameRound:
+      type: object
+      description: |
+        A round of a game, run by the server: `announce` (the question is
+        up), `open` (answers in until `closesAt`), `reveal` (the answer
+        and everyone's results), `done` (it's over). Times are the
+        server's; answers open and the reveal lands with the music when
+        the song has a beat map. Until the reveal there's no answer in it.
+      required: [id, roomId, itemId, kind, mode, state, prompt, answer, choices, opensAt, closesAt, doneAt, answered, hides, guests, tvOnly, scores, difficulty]
+      properties:
+        id:
+          type: string
+        roomId:
+          type: string
+        itemId:
+          type: string
+          description: The song it's about.
+        kind:
+          $ref: "#/components/schemas/GameKind"
+        topic:
+          type: string
+          description: What it asks within its game, e.g. `credit`, `first_released`.
+        mode:
+          type: string
+          enum: [ambient, round]
+          description: |
+            `ambient`: a question to ignore if you like, shown quietly.
+            `round`: a countdown and a reveal on the big screen.
+        state:
+          type: string
+          enum: [announce, open, reveal, done]
+        prompt:
+          type: string
+        answer:
+          type: string
+          enum: [choice, number, text, song]
+          description: |
+            How to answer. A `number` round may show `choices` too, and
+            takes either.
+        choices:
+          type: array
+          items:
+            type: string
+        startedBy:
+          type: string
+          description: Who started it; absent when the room's frequency did.
+        opensAt:
+          type: string
+          format: date-time
+        closesAt:
+          type: string
+          format: date-time
+        doneAt:
+          type: string
+          format: date-time
+          description: When the reveal comes down.
+        answered:
+          type: array
+          description: Who has answered so far.
+          items:
+            type: string
+        hides:
+          type: array
+          description: |
+            What screens keep back until the reveal: `song` (title,
+            artists, album, artwork), `notes` (liner notes), `lyrics`. The
+            server leaves them out too, except for the speaker.
+          items:
+            type: string
+            enum: [song, notes, lyrics]
+        guests:
+          type: boolean
+          description: Guests may answer.
+        tvOnly:
+          type: boolean
+          description: Phones don't prompt for it; the big screen shows it.
+        scores:
+          type: string
+          enum: ["off", private, board]
+        difficulty:
+          type: number
+          description: Roughly how hard, 0 (easy) to 1.
+        correct:
+          type: string
+          description: The answer, from the reveal on.
+        correctIndex:
+          type: integer
+          description: The right choice, from the reveal on.
+        reveal:
+          type: string
+          description: A line to show with the answer, from the reveal on.
+        results:
+          type: array
+          description: Everyone's answers, from the reveal on, best first.
+          items:
+            $ref: "#/components/schemas/GameResult"
+
+    GameResult:
+      type: object
+      required: [userId, correct, points]
+      properties:
+        userId:
+          type: string
+        correct:
+          type: boolean
+        points:
+          type: integer
+        answer:
+          type: string
+          description: What they answered, as text.
+
+    StartGameRoundRequest:
+      type: object
+      properties:
+        kind:
+          $ref: "#/components/schemas/GameKind"
+
+    GameAnswerRequest:
+      type: object
+      description: The answer, whichever the round takes.
+      properties:
+        choice:
+          type: integer
+          minimum: 0
+        number:
+          type: integer
+        text:
+          type: string
+          maxLength: 200
+
+    GameAnswer:
+      type: object
+      required: [roundId, at]
+      properties:
+        roundId:
+          type: string
+        at:
+          type: string
+          format: date-time
+          description: When the server got it, which is what speed is scored on.
+
+    GameScores:
+      type: object
+      description: Tonight's game scores, best first.
+      required: [roomId, mode, players]
+      properties:
+        roomId:
+          type: string
+        mode:
+          type: string
+          enum: ["off", private, board]
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/GamePlayer"
+
+    GamePlayer:
+      type: object
+      required: [userId, points, correct, answered]
+      properties:
+        userId:
+          type: string
+        points:
+          type: integer
+        correct:
+          type: integer
+        answered:
+          type: integer
+
+    Award:
+      type: object
+      description: |
+        One of the night's awards: who won it, usually for which song, and
+        a one-line reason ("Dropped from 128 to 70 BPM").
+      required: [kind, title, userId, reason]
+      properties:
+        kind:
+          type: string
+          enum: [deepest_cut, dance_floor_mvp, vibe_killer, trendsetter, time_traveler, tempo_whiplash, sample_snitch, comeback, opener, closer, trivia_champ]
+        title:
+          type: string
+        userId:
+          type: string
+        itemId:
+          type: string
+        item:
+          $ref: "#/components/schemas/QueueItem"
+        reason:
+          type: string
+
     RoomGuests:
       type: object
       description: |
@@ -3600,7 +3989,7 @@ components:
       description: |
         A night in the room: from its first song until the host ended it or
         the room went quiet. Fed into recaps.
-      required: [id, roomId, startedAt, endedAt, endedBy, plays]
+      required: [id, roomId, startedAt, endedAt, endedBy, plays, awards]
       properties:
         id:
           type: string
@@ -3619,6 +4008,13 @@ components:
           type: integer
         songOfTheNight:
           $ref: "#/components/schemas/SongOfTheNight"
+        awards:
+          type: array
+          description: |
+            The night's awards, at most six, in rooms whose games level
+            isn't `off`.
+          items:
+            $ref: "#/components/schemas/Award"
 
     SongOfTheNight:
       type: object
@@ -5138,6 +5534,10 @@ components:
           or the guest pass changed: fetch them again.
         - `members.updated`: RoomMembersChanged. Someone joined a room that
           isn't open, asked to, or left or was removed.
+        - `game.round`: GameRound. A round was announced, opened, got an
+          answer, was revealed, or is done. Sent after hello while one is up.
+        - `game.scores`: GameScores. Tonight's scores, after a reveal; only
+          your own while the room's scores are `private`.
 
         A paired display connects with its display cookie instead, to its
         own room only. So does a signed-in user with `display=1`: either way
@@ -5154,7 +5554,7 @@ components:
       properties:
         type:
           type: string
-          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated, room.deleted, reaction.sent, hearts.updated, night.ended, guests.updated, members.updated]
+          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated, room.deleted, reaction.sent, hearts.updated, night.ended, guests.updated, members.updated, game.round, game.scores]
         version:
           type: integer
           format: int64
@@ -5776,7 +6176,7 @@ components:
 
     RoomPermissions:
       type: object
-      required: [playPause, seek, skip, speaker]
+      required: [playPause, seek, skip, speaker, startRounds]
       properties:
         playPause:
           $ref: "#/components/schemas/PermissionLevel"
@@ -5786,6 +6186,10 @@ components:
           $ref: "#/components/schemas/SkipPermission"
         speaker:
           $ref: "#/components/schemas/PermissionLevel"
+        startRounds:
+          allOf:
+            - $ref: "#/components/schemas/PermissionLevel"
+          description: Who may start a game round. `owner` for a new room.
 
     RoomPermissionsChange:
       type: object
@@ -5798,6 +6202,8 @@ components:
         skip:
           $ref: "#/components/schemas/SkipPermission"
         speaker:
+          $ref: "#/components/schemas/PermissionLevel"
+        startRounds:
           $ref: "#/components/schemas/PermissionLevel"
 
     SkipVotePercent:
@@ -6011,7 +6417,7 @@ components:
 
     Room:
       type: object
-      required: [id, name, ownerId, visibility, approveJoins, fairnessMode, fairness, matching, autopilot, guests, screens, permissions, skipVotePercent, createdAt]
+      required: [id, name, ownerId, visibility, approveJoins, fairnessMode, fairness, matching, autopilot, guests, screens, games, permissions, skipVotePercent, createdAt]
       properties:
         id:
           type: string
@@ -6036,6 +6442,8 @@ components:
           $ref: "#/components/schemas/RoomGuests"
         screens:
           $ref: "#/components/schemas/RoomScreens"
+        games:
+          $ref: "#/components/schemas/RoomGames"
         permissions:
           $ref: "#/components/schemas/RoomPermissions"
         skipVotePercent:
@@ -6068,6 +6476,8 @@ components:
           $ref: "#/components/schemas/RoomGuests"
         screens:
           $ref: "#/components/schemas/RoomScreens"
+        games:
+          $ref: "#/components/schemas/RoomGamesChange"
         permissions:
           $ref: "#/components/schemas/RoomPermissionsChange"
         skipVotePercent:
@@ -6100,6 +6510,8 @@ components:
           $ref: "#/components/schemas/RoomGuests"
         screens:
           $ref: "#/components/schemas/RoomScreens"
+        games:
+          $ref: "#/components/schemas/RoomGamesChange"
         permissions:
           $ref: "#/components/schemas/RoomPermissionsChange"
         skipVotePercent:

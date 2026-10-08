@@ -42,7 +42,7 @@ describe('lanePositionAt', () => {
 describe('permissions', () => {
   const room = (skip: 'everyone' | 'vote' | 'owner', rest: 'everyone' | 'owner' = 'everyone') => ({
     ownerId: 'o',
-    permissions: { playPause: rest, seek: 'owner' as const, skip, speaker: rest },
+    permissions: { playPause: rest, seek: 'owner' as const, skip, speaker: rest, startRounds: 'owner' as const },
   })
   it('checks each permission on its own', () => {
     expect(can(room('owner'), 'x', 'playPause')).toBe(true)

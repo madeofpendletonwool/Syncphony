@@ -20,7 +20,7 @@ func TestRoomsAPI(t *testing.T) {
 	var room httpapi.Room
 	alice.want(http.StatusCreated, "POST", "/rooms", httpapi.CreateRoomRequest{Name: " Living room "}).decode(t, &room)
 	if room.Name != "Living room" || room.OwnerId != me(t, alice).Id || room.FairnessMode != "round_robin" ||
-		room.Permissions != (httpapi.RoomPermissions{PlayPause: "everyone", Seek: "everyone", Skip: "everyone", Speaker: "everyone"}) || room.SkipVotePercent != 50 {
+		room.Permissions != (httpapi.RoomPermissions{PlayPause: "everyone", Seek: "everyone", Skip: "everyone", Speaker: "everyone", StartRounds: "owner"}) || room.SkipVotePercent != 50 {
 		t.Fatalf("created: %+v", room)
 	}
 	var list []httpapi.Room
@@ -36,7 +36,7 @@ func TestRoomsAPI(t *testing.T) {
 	alice.want(http.StatusOK, "PATCH", "/rooms/"+room.Id, httpapi.UpdateRoomRequest{
 		Permissions: &httpapi.RoomPermissionsChange{Speaker: &owner, Skip: &vote}, SkipVotePercent: ptr(66), FairnessMode: &fifo,
 	}).decode(t, &room)
-	if room.Permissions != (httpapi.RoomPermissions{PlayPause: "everyone", Seek: "everyone", Skip: "vote", Speaker: "owner"}) ||
+	if room.Permissions != (httpapi.RoomPermissions{PlayPause: "everyone", Seek: "everyone", Skip: "vote", Speaker: "owner", StartRounds: "owner"}) ||
 		room.SkipVotePercent != 66 || room.FairnessMode != "fifo" || room.Name != "Living room" {
 		t.Fatalf("updated: %+v", room)
 	}

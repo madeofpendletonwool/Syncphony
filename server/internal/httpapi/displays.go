@@ -40,6 +40,8 @@ var displayOps = map[string]bool{
 	"GetQueueItemLinerNotes": true,
 	"GetHearts":              true,
 	"GetGuestPass":           true,
+	"GetGameRound":           true,
+	"GetGameScores":          true,
 	// Playing the room's audio, for displays with audio on (audioOps).
 	"ClaimPlayer":     true,
 	"ReleasePlayer":   true,
@@ -89,6 +91,10 @@ func displayRoom(req any) (roomID string, ok bool) {
 	case GetHeartsRequestObject:
 		return r.RoomId, true
 	case GetGuestPassRequestObject:
+		return r.RoomId, true
+	case GetGameRoundRequestObject:
+		return r.RoomId, true
+	case GetGameScoresRequestObject:
 		return r.RoomId, true
 	case ClaimPlayerRequestObject:
 		return r.RoomId, true

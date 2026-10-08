@@ -63,6 +63,51 @@ func (e ArtistFactKind) Valid() bool {
 	}
 }
 
+// Defines values for AwardKind.
+const (
+	Closer        AwardKind = "closer"
+	Comeback      AwardKind = "comeback"
+	DanceFloorMvp AwardKind = "dance_floor_mvp"
+	DeepestCut    AwardKind = "deepest_cut"
+	Opener        AwardKind = "opener"
+	SampleSnitch  AwardKind = "sample_snitch"
+	TempoWhiplash AwardKind = "tempo_whiplash"
+	TimeTraveler  AwardKind = "time_traveler"
+	Trendsetter   AwardKind = "trendsetter"
+	TriviaChamp   AwardKind = "trivia_champ"
+	VibeKiller    AwardKind = "vibe_killer"
+)
+
+// Valid indicates whether the value is a known member of the AwardKind enum.
+func (e AwardKind) Valid() bool {
+	switch e {
+	case Closer:
+		return true
+	case Comeback:
+		return true
+	case DanceFloorMvp:
+		return true
+	case DeepestCut:
+		return true
+	case Opener:
+		return true
+	case SampleSnitch:
+		return true
+	case TempoWhiplash:
+		return true
+	case TimeTraveler:
+		return true
+	case Trendsetter:
+		return true
+	case TriviaChamp:
+		return true
+	case VibeKiller:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BackupKind.
 const (
 	Manual     BackupKind = "manual"
@@ -89,25 +134,25 @@ func (e BackupKind) Valid() bool {
 
 // Defines values for BackupScheduleFrequency.
 const (
-	Daily  BackupScheduleFrequency = "daily"
-	N12h   BackupScheduleFrequency = "12h"
-	N6h    BackupScheduleFrequency = "6h"
-	Off    BackupScheduleFrequency = "off"
-	Weekly BackupScheduleFrequency = "weekly"
+	BackupScheduleFrequencyDaily  BackupScheduleFrequency = "daily"
+	BackupScheduleFrequencyN12h   BackupScheduleFrequency = "12h"
+	BackupScheduleFrequencyN6h    BackupScheduleFrequency = "6h"
+	BackupScheduleFrequencyOff    BackupScheduleFrequency = "off"
+	BackupScheduleFrequencyWeekly BackupScheduleFrequency = "weekly"
 )
 
 // Valid indicates whether the value is a known member of the BackupScheduleFrequency enum.
 func (e BackupScheduleFrequency) Valid() bool {
 	switch e {
-	case Daily:
+	case BackupScheduleFrequencyDaily:
 		return true
-	case N12h:
+	case BackupScheduleFrequencyN12h:
 		return true
-	case N6h:
+	case BackupScheduleFrequencyN6h:
 		return true
-	case Off:
+	case BackupScheduleFrequencyOff:
 		return true
-	case Weekly:
+	case BackupScheduleFrequencyWeekly:
 		return true
 	default:
 		return false
@@ -144,6 +189,174 @@ func (e FairnessMode) Valid() bool {
 	case Fifo:
 		return true
 	case RoundRobin:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GameKind.
+const (
+	GameKindBracket     GameKind = "bracket"
+	GameKindConnect     GameKind = "connect"
+	GameKindFinishLyric GameKind = "finish_lyric"
+	GameKindLiner       GameKind = "liner"
+	GameKindLyrics      GameKind = "lyrics"
+	GameKindSample      GameKind = "sample"
+	GameKindTheme       GameKind = "theme"
+	GameKindTune        GameKind = "tune"
+	GameKindYear        GameKind = "year"
+)
+
+// Valid indicates whether the value is a known member of the GameKind enum.
+func (e GameKind) Valid() bool {
+	switch e {
+	case GameKindBracket:
+		return true
+	case GameKindConnect:
+		return true
+	case GameKindFinishLyric:
+		return true
+	case GameKindLiner:
+		return true
+	case GameKindLyrics:
+		return true
+	case GameKindSample:
+		return true
+	case GameKindTheme:
+		return true
+	case GameKindTune:
+		return true
+	case GameKindYear:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GameRoundAnswer.
+const (
+	GameRoundAnswerChoice GameRoundAnswer = "choice"
+	GameRoundAnswerNumber GameRoundAnswer = "number"
+	GameRoundAnswerSong   GameRoundAnswer = "song"
+	GameRoundAnswerText   GameRoundAnswer = "text"
+)
+
+// Valid indicates whether the value is a known member of the GameRoundAnswer enum.
+func (e GameRoundAnswer) Valid() bool {
+	switch e {
+	case GameRoundAnswerChoice:
+		return true
+	case GameRoundAnswerNumber:
+		return true
+	case GameRoundAnswerSong:
+		return true
+	case GameRoundAnswerText:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GameRoundHides.
+const (
+	GameRoundHidesLyrics GameRoundHides = "lyrics"
+	GameRoundHidesNotes  GameRoundHides = "notes"
+	GameRoundHidesSong   GameRoundHides = "song"
+)
+
+// Valid indicates whether the value is a known member of the GameRoundHides enum.
+func (e GameRoundHides) Valid() bool {
+	switch e {
+	case GameRoundHidesLyrics:
+		return true
+	case GameRoundHidesNotes:
+		return true
+	case GameRoundHidesSong:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GameRoundMode.
+const (
+	GameRoundModeAmbient GameRoundMode = "ambient"
+	GameRoundModeRound   GameRoundMode = "round"
+)
+
+// Valid indicates whether the value is a known member of the GameRoundMode enum.
+func (e GameRoundMode) Valid() bool {
+	switch e {
+	case GameRoundModeAmbient:
+		return true
+	case GameRoundModeRound:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GameRoundScores.
+const (
+	GameRoundScoresBoard   GameRoundScores = "board"
+	GameRoundScoresOff     GameRoundScores = "off"
+	GameRoundScoresPrivate GameRoundScores = "private"
+)
+
+// Valid indicates whether the value is a known member of the GameRoundScores enum.
+func (e GameRoundScores) Valid() bool {
+	switch e {
+	case GameRoundScoresBoard:
+		return true
+	case GameRoundScoresOff:
+		return true
+	case GameRoundScoresPrivate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GameRoundState.
+const (
+	GameRoundStateAnnounce GameRoundState = "announce"
+	GameRoundStateDone     GameRoundState = "done"
+	GameRoundStateOpen     GameRoundState = "open"
+	GameRoundStateReveal   GameRoundState = "reveal"
+)
+
+// Valid indicates whether the value is a known member of the GameRoundState enum.
+func (e GameRoundState) Valid() bool {
+	switch e {
+	case GameRoundStateAnnounce:
+		return true
+	case GameRoundStateDone:
+		return true
+	case GameRoundStateOpen:
+		return true
+	case GameRoundStateReveal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GameScoresMode.
+const (
+	GameScoresModeBoard   GameScoresMode = "board"
+	GameScoresModeOff     GameScoresMode = "off"
+	GameScoresModePrivate GameScoresMode = "private"
+)
+
+// Valid indicates whether the value is a known member of the GameScoresMode enum.
+func (e GameScoresMode) Valid() bool {
+	switch e {
+	case GameScoresModeBoard:
+		return true
+	case GameScoresModeOff:
+		return true
+	case GameScoresModePrivate:
 		return true
 	default:
 		return false
@@ -197,19 +410,19 @@ func (e LinerNotesFactKind) Valid() bool {
 
 // Defines values for LinkFieldKind.
 const (
-	Secret LinkFieldKind = "secret"
-	Text   LinkFieldKind = "text"
-	Url    LinkFieldKind = "url"
+	LinkFieldKindSecret LinkFieldKind = "secret"
+	LinkFieldKindText   LinkFieldKind = "text"
+	LinkFieldKindUrl    LinkFieldKind = "url"
 )
 
 // Valid indicates whether the value is a known member of the LinkFieldKind enum.
 func (e LinkFieldKind) Valid() bool {
 	switch e {
-	case Secret:
+	case LinkFieldKindSecret:
 		return true
-	case Text:
+	case LinkFieldKindText:
 		return true
-	case Url:
+	case LinkFieldKindUrl:
 		return true
 	default:
 		return false
@@ -572,6 +785,8 @@ func (e RoomAutopilotAdventure) Valid() bool {
 
 // Defines values for RoomEventType.
 const (
+	RoomEventTypeGameRound         RoomEventType = "game.round"
+	RoomEventTypeGameScores        RoomEventType = "game.scores"
 	RoomEventTypeGuestsUpdated     RoomEventType = "guests.updated"
 	RoomEventTypeHeartsUpdated     RoomEventType = "hearts.updated"
 	RoomEventTypeHello             RoomEventType = "hello"
@@ -591,6 +806,10 @@ const (
 // Valid indicates whether the value is a known member of the RoomEventType enum.
 func (e RoomEventType) Valid() bool {
 	switch e {
+	case RoomEventTypeGameRound:
+		return true
+	case RoomEventTypeGameScores:
+		return true
 	case RoomEventTypeGuestsUpdated:
 		return true
 	case RoomEventTypeHeartsUpdated:
@@ -618,6 +837,102 @@ func (e RoomEventType) Valid() bool {
 	case RoomEventTypeRoomDeleted:
 		return true
 	case RoomEventTypeRoomUpdated:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoomGamesLevel.
+const (
+	RoomGamesLevelAmbient   RoomGamesLevel = "ambient"
+	RoomGamesLevelGamenight RoomGamesLevel = "gamenight"
+	RoomGamesLevelOff       RoomGamesLevel = "off"
+	RoomGamesLevelRecap     RoomGamesLevel = "recap"
+	RoomGamesLevelRounds    RoomGamesLevel = "rounds"
+)
+
+// Valid indicates whether the value is a known member of the RoomGamesLevel enum.
+func (e RoomGamesLevel) Valid() bool {
+	switch e {
+	case RoomGamesLevelAmbient:
+		return true
+	case RoomGamesLevelGamenight:
+		return true
+	case RoomGamesLevelOff:
+		return true
+	case RoomGamesLevelRecap:
+		return true
+	case RoomGamesLevelRounds:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoomGamesScores.
+const (
+	RoomGamesScoresBoard   RoomGamesScores = "board"
+	RoomGamesScoresOff     RoomGamesScores = "off"
+	RoomGamesScoresPrivate RoomGamesScores = "private"
+)
+
+// Valid indicates whether the value is a known member of the RoomGamesScores enum.
+func (e RoomGamesScores) Valid() bool {
+	switch e {
+	case RoomGamesScoresBoard:
+		return true
+	case RoomGamesScoresOff:
+		return true
+	case RoomGamesScoresPrivate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoomGamesChangeLevel.
+const (
+	RoomGamesChangeLevelAmbient   RoomGamesChangeLevel = "ambient"
+	RoomGamesChangeLevelGamenight RoomGamesChangeLevel = "gamenight"
+	RoomGamesChangeLevelOff       RoomGamesChangeLevel = "off"
+	RoomGamesChangeLevelRecap     RoomGamesChangeLevel = "recap"
+	RoomGamesChangeLevelRounds    RoomGamesChangeLevel = "rounds"
+)
+
+// Valid indicates whether the value is a known member of the RoomGamesChangeLevel enum.
+func (e RoomGamesChangeLevel) Valid() bool {
+	switch e {
+	case RoomGamesChangeLevelAmbient:
+		return true
+	case RoomGamesChangeLevelGamenight:
+		return true
+	case RoomGamesChangeLevelOff:
+		return true
+	case RoomGamesChangeLevelRecap:
+		return true
+	case RoomGamesChangeLevelRounds:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoomGamesChangeScores.
+const (
+	RoomGamesChangeScoresBoard   RoomGamesChangeScores = "board"
+	RoomGamesChangeScoresOff     RoomGamesChangeScores = "off"
+	RoomGamesChangeScoresPrivate RoomGamesChangeScores = "private"
+)
+
+// Valid indicates whether the value is a known member of the RoomGamesChangeScores enum.
+func (e RoomGamesChangeScores) Valid() bool {
+	switch e {
+	case RoomGamesChangeScoresBoard:
+		return true
+	case RoomGamesChangeScoresOff:
+		return true
+	case RoomGamesChangeScoresPrivate:
 		return true
 	default:
 		return false
@@ -725,19 +1040,19 @@ func (e RoomScreensLook) Valid() bool {
 
 // Defines values for RoomVisibility.
 const (
-	Open     RoomVisibility = "open"
-	Private  RoomVisibility = "private"
-	Unlisted RoomVisibility = "unlisted"
+	RoomVisibilityOpen     RoomVisibility = "open"
+	RoomVisibilityPrivate  RoomVisibility = "private"
+	RoomVisibilityUnlisted RoomVisibility = "unlisted"
 )
 
 // Valid indicates whether the value is a known member of the RoomVisibility enum.
 func (e RoomVisibility) Valid() bool {
 	switch e {
-	case Open:
+	case RoomVisibilityOpen:
 		return true
-	case Private:
+	case RoomVisibilityPrivate:
 		return true
-	case Unlisted:
+	case RoomVisibilityUnlisted:
 		return true
 	default:
 		return false
@@ -1070,6 +1385,20 @@ type AutopilotPick struct {
 	Source *string `json:"source,omitempty"`
 }
 
+// Award One of the night's awards: who won it, usually for which song, and
+// a one-line reason ("Dropped from 128 to 70 BPM").
+type Award struct {
+	Item   *QueueItem `json:"item,omitempty"`
+	ItemId *string    `json:"itemId,omitempty"`
+	Kind   AwardKind  `json:"kind"`
+	Reason string     `json:"reason"`
+	Title  string     `json:"title"`
+	UserId string     `json:"userId"`
+}
+
+// AwardKind defines model for Award.Kind.
+type AwardKind string
+
 // Backup defines model for Backup.
 type Backup struct {
 	Bytes     int64     `json:"bytes"`
@@ -1295,6 +1624,11 @@ type CreateRoomRequest struct {
 	Fairness     *RoomFairness `json:"fairness,omitempty"`
 	FairnessMode *FairnessMode `json:"fairnessMode,omitempty"`
 
+	// Games The room's games, replacing what it had. Anything left out takes
+	// the level's default, so sending just a `level` resets the rest to
+	// that level's.
+	Games *RoomGamesChange `json:"games,omitempty"`
+
 	// Guests Whether people without an account may join the room by scanning a
 	// guest pass, and what they may do.
 	Guests *RoomGuests `json:"guests,omitempty"`
@@ -1393,6 +1727,140 @@ type FinishCeremony struct {
 	// Name Label for a new passkey, e.g. "Pixel 9". Optional.
 	Name *string `json:"name,omitempty"`
 }
+
+// GameAnswer defines model for GameAnswer.
+type GameAnswer struct {
+	// At When the server got it, which is what speed is scored on.
+	At      time.Time `json:"at"`
+	RoundId string    `json:"roundId"`
+}
+
+// GameAnswerRequest The answer, whichever the round takes.
+type GameAnswerRequest struct {
+	Choice *int    `json:"choice,omitempty"`
+	Number *int    `json:"number,omitempty"`
+	Text   *string `json:"text,omitempty"`
+}
+
+// GameKind A game. `year`: guess the year. `liner`: covers, credits and
+// releases. `sample`: sample detective. `lyrics`: beat the singer.
+// `finish_lyric`: the music stops and you finish the line. `tune`:
+// name that tune. `connect`, `theme`, `bracket`: queue games.
+type GameKind string
+
+// GamePlayer defines model for GamePlayer.
+type GamePlayer struct {
+	Answered int    `json:"answered"`
+	Correct  int    `json:"correct"`
+	Points   int    `json:"points"`
+	UserId   string `json:"userId"`
+}
+
+// GameResult defines model for GameResult.
+type GameResult struct {
+	// Answer What they answered, as text.
+	Answer  *string `json:"answer,omitempty"`
+	Correct bool    `json:"correct"`
+	Points  int     `json:"points"`
+	UserId  string  `json:"userId"`
+}
+
+// GameRound A round of a game, run by the server: `announce` (the question is
+// up), `open` (answers in until `closesAt`), `reveal` (the answer
+// and everyone's results), `done` (it's over). Times are the
+// server's; answers open and the reveal lands with the music when
+// the song has a beat map. Until the reveal there's no answer in it.
+type GameRound struct {
+	// Answer How to answer. A `number` round may show `choices` too, and
+	// takes either.
+	Answer GameRoundAnswer `json:"answer"`
+
+	// Answered Who has answered so far.
+	Answered []string  `json:"answered"`
+	Choices  []string  `json:"choices"`
+	ClosesAt time.Time `json:"closesAt"`
+
+	// Correct The answer, from the reveal on.
+	Correct *string `json:"correct,omitempty"`
+
+	// CorrectIndex The right choice, from the reveal on.
+	CorrectIndex *int `json:"correctIndex,omitempty"`
+
+	// Difficulty Roughly how hard, 0 (easy) to 1.
+	Difficulty float32 `json:"difficulty"`
+
+	// DoneAt When the reveal comes down.
+	DoneAt time.Time `json:"doneAt"`
+
+	// Guests Guests may answer.
+	Guests bool `json:"guests"`
+
+	// Hides What screens keep back until the reveal: `song` (title,
+	// artists, album, artwork), `notes` (liner notes), `lyrics`. The
+	// server leaves them out too, except for the speaker.
+	Hides []GameRoundHides `json:"hides"`
+	Id    string           `json:"id"`
+
+	// ItemId The song it's about.
+	ItemId string `json:"itemId"`
+
+	// Kind A game. `year`: guess the year. `liner`: covers, credits and
+	// releases. `sample`: sample detective. `lyrics`: beat the singer.
+	// `finish_lyric`: the music stops and you finish the line. `tune`:
+	// name that tune. `connect`, `theme`, `bracket`: queue games.
+	Kind GameKind `json:"kind"`
+
+	// Mode `ambient`: a question to ignore if you like, shown quietly.
+	// `round`: a countdown and a reveal on the big screen.
+	Mode    GameRoundMode `json:"mode"`
+	OpensAt time.Time     `json:"opensAt"`
+	Prompt  string        `json:"prompt"`
+
+	// Results Everyone's answers, from the reveal on, best first.
+	Results *[]GameResult `json:"results,omitempty"`
+
+	// Reveal A line to show with the answer, from the reveal on.
+	Reveal *string         `json:"reveal,omitempty"`
+	RoomId string          `json:"roomId"`
+	Scores GameRoundScores `json:"scores"`
+
+	// StartedBy Who started it; absent when the room's frequency did.
+	StartedBy *string        `json:"startedBy,omitempty"`
+	State     GameRoundState `json:"state"`
+
+	// Topic What it asks within its game, e.g. `credit`, `first_released`.
+	Topic *string `json:"topic,omitempty"`
+
+	// TvOnly Phones don't prompt for it; the big screen shows it.
+	TvOnly bool `json:"tvOnly"`
+}
+
+// GameRoundAnswer How to answer. A `number` round may show `choices` too, and
+// takes either.
+type GameRoundAnswer string
+
+// GameRoundHides defines model for GameRound.Hides.
+type GameRoundHides string
+
+// GameRoundMode `ambient`: a question to ignore if you like, shown quietly.
+// `round`: a countdown and a reveal on the big screen.
+type GameRoundMode string
+
+// GameRoundScores defines model for GameRound.Scores.
+type GameRoundScores string
+
+// GameRoundState defines model for GameRound.State.
+type GameRoundState string
+
+// GameScores Tonight's game scores, best first.
+type GameScores struct {
+	Mode    GameScoresMode `json:"mode"`
+	Players []GamePlayer   `json:"players"`
+	RoomId  string         `json:"roomId"`
+}
+
+// GameScoresMode defines model for GameScores.Mode.
+type GameScoresMode string
 
 // GenreDetail defines model for GenreDetail.
 type GenreDetail struct {
@@ -1672,6 +2140,9 @@ type MoveQueueItemRequest struct {
 // Night A night in the room: from its first song until the host ended it or
 // the room went quiet. Fed into recaps.
 type Night struct {
+	// Awards The night's awards, at most six, in rooms whose games level
+	// isn't `off`.
+	Awards  []Award      `json:"awards"`
 	EndedAt time.Time    `json:"endedAt"`
 	EndedBy NightEndedBy `json:"endedBy"`
 	Id      string       `json:"id"`
@@ -2232,6 +2703,11 @@ type Room struct {
 	Fairness     RoomFairness `json:"fairness"`
 	FairnessMode FairnessMode `json:"fairnessMode"`
 
+	// Games The room's music party games (ADR 0015). Off by default. The level
+	// sets the defaults for everything else, and a change applies from
+	// the next song, so a round already running finishes.
+	Games RoomGames `json:"games"`
+
 	// Guests Whether people without an account may join the room by scanning a
 	// guest pass, and what they may do.
 	Guests RoomGuests `json:"guests"`
@@ -2339,6 +2815,10 @@ type RoomAutopilotAdventure string
 //     or the guest pass changed: fetch them again.
 //   - `members.updated`: RoomMembersChanged. Someone joined a room that
 //     isn't open, asked to, or left or was removed.
+//   - `game.round`: GameRound. A round was announced, opened, got an
+//     answer, was revealed, or is done. Sent after hello while one is up.
+//   - `game.scores`: GameScores. Tonight's scores, after a reveal; only
+//     your own while the room's scores are `private`.
 //
 // A paired display connects with its display cookie instead, to its
 // own room only. So does a signed-in user with `display=1`: either way
@@ -2381,6 +2861,68 @@ type RoomFairness struct {
 	// Weights Songs per turn (2 to 4) by user ID, in round robin. Everyone else gets 1.
 	Weights map[string]int `json:"weights"`
 }
+
+// RoomGames The room's music party games (ADR 0015). Off by default. The level
+// sets the defaults for everything else, and a change applies from
+// the next song, so a round already running finishes.
+type RoomGames struct {
+	// BreaksPerHour At `gamenight`, the most rounds an hour that may pause the music.
+	BreaksPerHour int `json:"breaksPerHour"`
+
+	// Enabled Each game, on or off. The response lists every game the level
+	// allows; a game it doesn't allow stays off whatever you send.
+	Enabled map[string]bool `json:"enabled"`
+
+	// Frequency A round about every this many songs; 0 only when someone starts one.
+	Frequency int `json:"frequency"`
+
+	// Guests Guests may answer. Separate from their hearts and votes.
+	Guests bool `json:"guests"`
+
+	// Level `off`: nothing. `recap`: awards when the night ends.
+	// `ambient`: little questions you can ignore; the music never
+	// stops. `rounds`: some songs become a round with a reveal.
+	// `gamenight`: dedicated rounds that may pause the music, and
+	// queue games.
+	Level RoomGamesLevel `json:"level"`
+
+	// Scores `private`: you see your own. `board`: a leaderboard on the big
+	// screen.
+	Scores RoomGamesScores `json:"scores"`
+
+	// TvOnly Rounds show on the big screen only, never as prompts on phones.
+	TvOnly bool `json:"tvOnly"`
+}
+
+// RoomGamesLevel `off`: nothing. `recap`: awards when the night ends.
+// `ambient`: little questions you can ignore; the music never
+// stops. `rounds`: some songs become a round with a reveal.
+// `gamenight`: dedicated rounds that may pause the music, and
+// queue games.
+type RoomGamesLevel string
+
+// RoomGamesScores `private`: you see your own. `board`: a leaderboard on the big
+// screen.
+type RoomGamesScores string
+
+// RoomGamesChange The room's games, replacing what it had. Anything left out takes
+// the level's default, so sending just a `level` resets the rest to
+// that level's.
+type RoomGamesChange struct {
+	BreaksPerHour *int                   `json:"breaksPerHour,omitempty"`
+	Enabled       *map[string]bool       `json:"enabled,omitempty"`
+	Frequency     *int                   `json:"frequency,omitempty"`
+	Guests        *bool                  `json:"guests,omitempty"`
+	Level         *RoomGamesChangeLevel  `json:"level,omitempty"`
+	Scores        *RoomGamesChangeScores `json:"scores,omitempty"`
+	TvOnly        *bool                  `json:"tvOnly,omitempty"`
+}
+
+// RoomGamesChangeLevel defines model for RoomGamesChange.Level.
+type RoomGamesChangeLevel string
+
+// RoomGamesChangeScores defines model for RoomGamesChange.Scores.
+type RoomGamesChangeScores string
 
 // RoomGuests Whether people without an account may join the room by scanning a
 // guest pass, and what they may do.
@@ -2511,6 +3053,9 @@ type RoomPermissions struct {
 
 	// Speaker Who may do something. The room's owner always may.
 	Speaker PermissionLevel `json:"speaker"`
+
+	// StartRounds Who may start a game round. `owner` for a new room.
+	StartRounds PermissionLevel `json:"startRounds"`
 }
 
 // RoomPermissionsChange Permissions to change. Missing ones stay as they are (`everyone` for a new room).
@@ -2527,6 +3072,9 @@ type RoomPermissionsChange struct {
 
 	// Speaker Who may do something. The room's owner always may.
 	Speaker *PermissionLevel `json:"speaker,omitempty"`
+
+	// StartRounds Who may do something. The room's owner always may.
+	StartRounds *PermissionLevel `json:"startRounds,omitempty"`
 }
 
 // RoomScreens How the room's big screens show the music (MAD-779). Set from any
@@ -2724,6 +3272,15 @@ type SongOfTheNight struct {
 	Item   QueueItem `json:"item"`
 }
 
+// StartGameRoundRequest defines model for StartGameRoundRequest.
+type StartGameRoundRequest struct {
+	// Kind A game. `year`: guess the year. `liner`: covers, credits and
+	// releases. `sample`: sample detective. `lyrics`: beat the singer.
+	// `finish_lyric`: the music stops and you finish the line. `tune`:
+	// name that tune. `connect`, `theme`, `bracket`: queue games.
+	Kind *GameKind `json:"kind,omitempty"`
+}
+
 // Suggestion A song to queue, and the room's song it's like.
 type Suggestion struct {
 	// Because The song a suggestion is like.
@@ -2845,6 +3402,11 @@ type UpdateRoomRequest struct {
 	// robin, `weights` give some people more songs per turn.
 	Fairness     *RoomFairness `json:"fairness,omitempty"`
 	FairnessMode *FairnessMode `json:"fairnessMode,omitempty"`
+
+	// Games The room's games, replacing what it had. Anything left out takes
+	// the level's default, so sending just a `level` resets the rest to
+	// that level's.
+	Games *RoomGamesChange `json:"games,omitempty"`
 
 	// Guests Whether people without an account may join the room by scanning a
 	// guest pass, and what they may do.
@@ -3197,6 +3759,12 @@ type PairDisplayJSONRequestBody = PairDisplayRequest
 // UpdateDisplayJSONRequestBody defines body for UpdateDisplay for application/json ContentType.
 type UpdateDisplayJSONRequestBody = UpdateDisplayRequest
 
+// StartGameRoundJSONRequestBody defines body for StartGameRound for application/json ContentType.
+type StartGameRoundJSONRequestBody = StartGameRoundRequest
+
+// AnswerGameRoundJSONRequestBody defines body for AnswerGameRound for application/json ContentType.
+type AnswerGameRoundJSONRequestBody = GameAnswerRequest
+
 // CreateGuestPassJSONRequestBody defines body for CreateGuestPass for application/json ContentType.
 type CreateGuestPassJSONRequestBody = CreateGuestPassRequest
 
@@ -3505,6 +4073,18 @@ type ServerInterface interface {
 	// UpdateDisplay Turn a display's audio on or off
 	// (PATCH /rooms/{roomId}/displays/{displayId})
 	UpdateDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId, displayId string)
+	// GetGameRound The room's game round, if one is up
+	// (GET /rooms/{roomId}/games/round)
+	GetGameRound(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// StartGameRound Start a round about the song that's playing
+	// (POST /rooms/{roomId}/games/rounds)
+	StartGameRound(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// AnswerGameRound Answer the open round
+	// (POST /rooms/{roomId}/games/rounds/{roundId}/answers)
+	AnswerGameRound(w http.ResponseWriter, r *http.Request, roomId RoomId, roundId string)
+	// GetGameScores Tonight's game scores
+	// (GET /rooms/{roomId}/games/scores)
+	GetGameScores(w http.ResponseWriter, r *http.Request, roomId RoomId)
 	// RevokeGuestPass Revoke the room's guest pass
 	// (DELETE /rooms/{roomId}/guest-pass)
 	RevokeGuestPass(w http.ResponseWriter, r *http.Request, roomId RoomId)
@@ -5753,6 +6333,119 @@ func (siw *ServerInterfaceWrapper) UpdateDisplay(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetGameRound operation middleware
+func (siw *ServerInterfaceWrapper) GetGameRound(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGameRound(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartGameRound operation middleware
+func (siw *ServerInterfaceWrapper) StartGameRound(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartGameRound(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AnswerGameRound operation middleware
+func (siw *ServerInterfaceWrapper) AnswerGameRound(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "roundId" -------------
+	var roundId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roundId", r.PathValue("roundId"), &roundId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roundId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AnswerGameRound(w, r, roomId, roundId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetGameScores operation middleware
+func (siw *ServerInterfaceWrapper) GetGameScores(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGameScores(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RevokeGuestPass operation middleware
 func (siw *ServerInterfaceWrapper) RevokeGuestPass(w http.ResponseWriter, r *http.Request) {
 
@@ -7682,6 +8375,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/hearts", wrapper.HeartSong)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/nights", wrapper.ListNights)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/nights", wrapper.EndNight)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/games/round", wrapper.GetGameRound)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/games/rounds", wrapper.StartGameRound)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/games/rounds/{roundId}/answers", wrapper.AnswerGameRound)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/games/scores", wrapper.GetGameScores)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/guest-pass", wrapper.RevokeGuestPass)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/guest-pass", wrapper.GetGuestPass)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/guest-pass", wrapper.CreateGuestPass)
@@ -11125,6 +11822,173 @@ func (response UpdateDisplaydefaultJSONResponse) VisitUpdateDisplayResponse(w ht
 	return err
 }
 
+type GetGameRoundRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type GetGameRoundResponseObject interface {
+	VisitGetGameRoundResponse(w http.ResponseWriter) error
+}
+
+type GetGameRound200JSONResponse GameRound
+
+func (response GetGameRound200JSONResponse) VisitGetGameRoundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGameRound204Response struct {
+}
+
+func (response GetGameRound204Response) VisitGetGameRoundResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetGameRounddefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetGameRounddefaultJSONResponse) VisitGetGameRoundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartGameRoundRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Body   *StartGameRoundJSONRequestBody
+}
+
+type StartGameRoundResponseObject interface {
+	VisitStartGameRoundResponse(w http.ResponseWriter) error
+}
+
+type StartGameRound201JSONResponse GameRound
+
+func (response StartGameRound201JSONResponse) VisitStartGameRoundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartGameRounddefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response StartGameRounddefaultJSONResponse) VisitStartGameRoundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AnswerGameRoundRequestObject struct {
+	RoomId  RoomId `json:"roomId"`
+	RoundId string `json:"roundId"`
+	Body    *AnswerGameRoundJSONRequestBody
+}
+
+type AnswerGameRoundResponseObject interface {
+	VisitAnswerGameRoundResponse(w http.ResponseWriter) error
+}
+
+type AnswerGameRound200JSONResponse GameAnswer
+
+func (response AnswerGameRound200JSONResponse) VisitAnswerGameRoundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AnswerGameRounddefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response AnswerGameRounddefaultJSONResponse) VisitAnswerGameRoundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGameScoresRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type GetGameScoresResponseObject interface {
+	VisitGetGameScoresResponse(w http.ResponseWriter) error
+}
+
+type GetGameScores200JSONResponse GameScores
+
+func (response GetGameScores200JSONResponse) VisitGetGameScoresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGameScoresdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetGameScoresdefaultJSONResponse) VisitGetGameScoresResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RevokeGuestPassRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 }
@@ -13392,6 +14256,18 @@ type StrictServerInterface interface {
 	// UpdateDisplay Turn a display's audio on or off
 	// (PATCH /rooms/{roomId}/displays/{displayId})
 	UpdateDisplay(ctx context.Context, request UpdateDisplayRequestObject) (UpdateDisplayResponseObject, error)
+	// GetGameRound The room's game round, if one is up
+	// (GET /rooms/{roomId}/games/round)
+	GetGameRound(ctx context.Context, request GetGameRoundRequestObject) (GetGameRoundResponseObject, error)
+	// StartGameRound Start a round about the song that's playing
+	// (POST /rooms/{roomId}/games/rounds)
+	StartGameRound(ctx context.Context, request StartGameRoundRequestObject) (StartGameRoundResponseObject, error)
+	// AnswerGameRound Answer the open round
+	// (POST /rooms/{roomId}/games/rounds/{roundId}/answers)
+	AnswerGameRound(ctx context.Context, request AnswerGameRoundRequestObject) (AnswerGameRoundResponseObject, error)
+	// GetGameScores Tonight's game scores
+	// (GET /rooms/{roomId}/games/scores)
+	GetGameScores(ctx context.Context, request GetGameScoresRequestObject) (GetGameScoresResponseObject, error)
 	// RevokeGuestPass Revoke the room's guest pass
 	// (DELETE /rooms/{roomId}/guest-pass)
 	RevokeGuestPass(ctx context.Context, request RevokeGuestPassRequestObject) (RevokeGuestPassResponseObject, error)
@@ -16003,6 +16879,128 @@ func (sh *strictHandler) UpdateDisplay(w http.ResponseWriter, r *http.Request, r
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateDisplayResponseObject); ok {
 		if err := validResponse.VisitUpdateDisplayResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetGameRound operation middleware
+func (sh *strictHandler) GetGameRound(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request GetGameRoundRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGameRound(ctx, request.(GetGameRoundRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGameRound")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGameRoundResponseObject); ok {
+		if err := validResponse.VisitGetGameRoundResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartGameRound operation middleware
+func (sh *strictHandler) StartGameRound(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request StartGameRoundRequestObject
+
+	request.RoomId = roomId
+
+	var body StartGameRoundJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartGameRound(ctx, request.(StartGameRoundRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartGameRound")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartGameRoundResponseObject); ok {
+		if err := validResponse.VisitStartGameRoundResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AnswerGameRound operation middleware
+func (sh *strictHandler) AnswerGameRound(w http.ResponseWriter, r *http.Request, roomId RoomId, roundId string) {
+	var request AnswerGameRoundRequestObject
+
+	request.RoomId = roomId
+	request.RoundId = roundId
+
+	var body AnswerGameRoundJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AnswerGameRound(ctx, request.(AnswerGameRoundRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AnswerGameRound")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AnswerGameRoundResponseObject); ok {
+		if err := validResponse.VisitAnswerGameRoundResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetGameScores operation middleware
+func (sh *strictHandler) GetGameScores(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request GetGameScoresRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGameScores(ctx, request.(GetGameScoresRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGameScores")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGameScoresResponseObject); ok {
+		if err := validResponse.VisitGetGameScoresResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

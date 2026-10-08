@@ -3,6 +3,7 @@ import { Crown, Heart, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo } from 'react'
 import { Artwork } from '@/components/artwork'
+import { AwardsList } from '@/components/games/awards-list'
 import { RequeueButton } from '@/components/room/requeue-button'
 import { Button } from '@/components/ui/button'
 import { UserAvatar } from '@/components/user-avatar'
@@ -81,7 +82,14 @@ function Moment({ night, variant }: { night: Night; variant: 'phone' | 'stage' }
               src={art}
               className={cn(
                 'shadow-[0_30px_100px_-20px_rgb(251_191_36/0.55)] ring-2 ring-amber-300/60',
-                stage ? 'size-[38vh] rounded-[3vh]' : 'size-44 rounded-2xl',
+                // With awards to show, the song makes room for them.
+                stage
+                  ? night.awards.length > 0
+                    ? 'size-[22vh] rounded-[2.4vh]'
+                    : 'size-[38vh] rounded-[3vh]'
+                  : night.awards.length > 0
+                    ? 'size-28 rounded-2xl'
+                    : 'size-44 rounded-2xl',
               )}
             />
             <div className="min-w-0">
@@ -109,6 +117,13 @@ function Moment({ night, variant }: { night: Night; variant: 'phone' | 'stage' }
           <p className={cn('max-w-[32ch] text-white/75', stage ? 'text-[clamp(1.1rem,2vw,2.2rem)]' : 'text-sm')}>
             {night.plays} {night.plays === 1 ? 'song' : 'songs'} tonight. Heart your favorites next time to crown a song of the night.
           </p>
+        )}
+        {night.awards.length > 0 && (
+          <AwardsList
+            awards={night.awards}
+            variant={stage ? 'stage' : 'list'}
+            className={stage ? 'mt-[2vh] w-[80vw]' : 'max-h-56 w-full overflow-y-auto text-white'}
+          />
         )}
       </motion.div>
     </motion.div>

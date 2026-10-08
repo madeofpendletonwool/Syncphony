@@ -11,11 +11,13 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"slices"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/awards"
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/stats"
@@ -56,10 +58,28 @@ type Hearts struct {
 }
 
 // Night is a night that ended, with its song of the night (Item, if any
-// song got a heart). Published as realtime.NightEnded.
+// song got a heart) and its awards. Published as realtime.NightEnded.
 type Night struct {
 	store.Night
-	Item *store.QueueItem
+	Item   *store.QueueItem
+	Awards []awards.Award
+	// AwardItems are the songs the awards are for, by item ID.
+	AwardItems map[string]store.QueueItem
+}
+
+// awardItems reads the songs a night's awards are for. Songs since
+// deleted are left out.
+func awardItems(ctx context.Context, q *store.Queries, as []awards.Award) map[string]store.QueueItem {
+	out := map[string]store.QueueItem{}
+	for _, a := range as {
+		if a.ItemID == "" {
+			continue
+		}
+		if it, err := q.GetQueueItem(ctx, a.ItemID); err == nil {
+			out[a.ItemID] = it
+		}
+	}
+	return out
 }
 
 // Service hearts songs and ends nights.
@@ -68,6 +88,9 @@ type Service struct {
 	bus realtime.Bus
 	// Now is the clock. Default store.Now.
 	Now func() time.Time
+	// Awards, if set, hands out a night's awards as it ends (package
+	// games). Nil gives none.
+	Awards func(ctx context.Context, n store.Night) ([]awards.Award, error)
 }
 
 // New returns a Service.
@@ -219,6 +242,22 @@ func (s *Service) end(ctx context.Context, roomID, by string, at time.Time) (Nig
 	if err != nil || out.ID == "" {
 		return Night{}, false, err
 	}
+	// After the night is kept: awards read the night's songs, and a
+	// failure mustn't lose the night.
+	if s.Awards != nil {
+		as, err := s.Awards(ctx, out.Night)
+		if err != nil {
+			slog.Warn("nights: handing out awards", "room", roomID, "err", err)
+		} else if len(as) > 0 {
+			raw, _ := json.Marshal(as)
+			if err := s.db.SetNightAwards(ctx, store.SetNightAwardsParams{Awards: string(raw), ID: out.ID}); err != nil {
+				slog.Warn("nights: keeping awards", "room", roomID, "err", err)
+			} else {
+				out.Awards, out.Night.Awards = as, string(raw)
+				out.AwardItems = awardItems(ctx, s.db.Queries, as)
+			}
+		}
+	}
 	s.bus.Publish(realtime.RoomTopic(roomID), realtime.Event{Type: realtime.NightEnded, Data: out})
 	return out, true, nil
 }
@@ -314,6 +353,8 @@ func (s *Service) List(ctx context.Context, roomID string, limit int) ([]Night, 
 	out := make([]Night, len(rows))
 	for i, r := range rows {
 		out[i] = Night{Night: r}
+		_ = json.Unmarshal([]byte(r.Awards), &out[i].Awards)
+		out[i].AwardItems = awardItems(ctx, s.db.Queries, out[i].Awards)
 		if r.QueueItemID.Valid {
 			it, err := s.db.GetQueueItem(ctx, r.QueueItemID.String)
 			if err != nil {

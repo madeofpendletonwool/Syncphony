@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Clock, Crown, Disc3, Heart, SkipForward } from 'lucide-react'
 import { motion } from 'motion/react'
 import type { ReactNode } from 'react'
+import { AwardsList } from '@/components/games/awards-list'
 import { QueueRow } from '@/components/room/queue-row'
 import { RequeueButton } from '@/components/room/requeue-button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -65,6 +66,13 @@ export function StatsView({ roomId, range, recap, night }: { roomId: string; ran
               </>
             }
           />
+        </motion.section>
+      )}
+
+      {recap && night && night.awards.length > 0 && (
+        <motion.section variants={fadeUp} className="glass flex flex-col rounded-3xl p-1.5">
+          <Caption>Awards</Caption>
+          <AwardsList awards={night.awards} />
         </motion.section>
       )}
 

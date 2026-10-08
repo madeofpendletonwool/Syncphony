@@ -48,6 +48,11 @@ const (
 	// MembersUpdated carries rooms.MembersChanged: someone joined a room
 	// that isn't open, asked to, or left or was removed.
 	MembersUpdated = "members.updated"
+	// GameRound carries a game round whenever it changes: announced, open
+	// for answers (and as answers come in), revealed, done.
+	GameRound = "game.round"
+	// GameScores carries the night's game scores, after each reveal.
+	GameScores = "game.scores"
 )
 
 // Event is something that happened. Data holds domain values (store rows,

@@ -65,6 +65,10 @@ var guestOps = map[string]bool{
 	"ControlPlayback": true,
 	"SendReaction":    true,
 	"GetHearts":       true,
+	// Games, when the room lets guests play (the games engine checks).
+	"GetGameRound":    true,
+	"AnswerGameRound": true,
+	"GetGameScores":   true,
 	"HeartSong":       true,
 	"UnheartSong":     true,
 	"GetHistory":      true,

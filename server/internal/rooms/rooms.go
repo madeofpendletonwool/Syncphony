@@ -43,6 +43,9 @@ type Service struct {
 	OnUpdate func(store.Room)
 	// OnDelete, if set, is called after a room is deleted.
 	OnDelete func(roomID string)
+	// OnNowPlaying, if set, is called with each playback state published.
+	// The playback engine holds the room's lock, so it mustn't block.
+	OnNowPlaying func(NowPlaying)
 }
 
 // Actor is who's changing a room. The room's owner and admins may.
@@ -78,6 +81,8 @@ type Permissions struct {
 	Skip string `json:"skip"`
 	// Speaker is who may become the room's speaker: Everyone or Owner.
 	Speaker string `json:"speaker"`
+	// StartRounds is who may start a game round: Everyone or Owner.
+	StartRounds string `json:"startRounds"`
 }
 
 // DefaultSkipVotePercent makes a skip vote need a majority.
@@ -88,7 +93,9 @@ const DefaultSkipVotePercent = 50
 //
 //   - 0: before versions. Controls was the only permission.
 //   - 1: Permissions, fairness, matching, autopilot and guests.
-const SettingsVersion = 1
+//   - 2: Games, and the StartRounds permission (Owner by default, since
+//     rooms before it had no games to start).
+const SettingsVersion = 2
 
 // Settings are a room's options, stored as JSON in rooms.settings. Add new
 // options here, with defaults that keep how rooms behaved before.
@@ -111,6 +118,7 @@ type Settings struct {
 	// invites asks to join, and the owner lets them in.
 	ApproveJoins bool    `json:"approveJoins,omitempty"`
 	Screens      Screens `json:"screens"`
+	Games        Games   `json:"games"`
 }
 
 // Screens is how the room's big screens show the music (MAD-779).
@@ -351,6 +359,9 @@ func ParseSettings(raw string) Settings {
 	if p.Skip != Everyone && p.Skip != Owner && p.Skip != Vote {
 		p.Skip = fallback
 	}
+	if p.StartRounds != Everyone && p.StartRounds != Owner {
+		p.StartRounds = Owner
+	}
 	if st.SkipVotePercent == nil || *st.SkipVotePercent < 0 || *st.SkipVotePercent > 99 {
 		st.SkipVotePercent = ptr(DefaultSkipVotePercent)
 	}
@@ -369,6 +380,9 @@ func ParseSettings(raw string) Settings {
 		st.Guests.MaxSongs = nil
 	}
 	st.Screens = st.Screens.Normal()
+	if st.Games.validate() != nil {
+		st.Games = Games{}
+	}
 	return st
 }
 
@@ -447,6 +461,9 @@ type Update struct {
 	ApproveJoins *bool
 	// Screens, if set, replaces how the room's big screens look.
 	Screens *Screens
+	// Games, if set, replaces the room's games options. The games engine
+	// reads them as each song starts, so a round already running finishes.
+	Games *Games
 }
 
 // Update changes a room. Only its owner or an admin may. Everyone in the
@@ -474,6 +491,7 @@ func (s *Service) Update(ctx context.Context, by Actor, id string, u Update) (st
 		{&st.Permissions.Seek, u.Permissions.Seek},
 		{&st.Permissions.Skip, u.Permissions.Skip},
 		{&st.Permissions.Speaker, u.Permissions.Speaker},
+		{&st.Permissions.StartRounds, u.Permissions.StartRounds},
 	} {
 		if f.from != "" {
 			*f.to = f.from
@@ -500,6 +518,9 @@ func (s *Service) Update(ctx context.Context, by Actor, id string, u Update) (st
 	}
 	if u.Screens != nil {
 		st.Screens = *u.Screens
+	}
+	if u.Games != nil {
+		st.Games = *u.Games
 	}
 	name, raw, err := validate(name, mode, st)
 	if err != nil {
@@ -627,9 +648,12 @@ func validate(name, mode string, st Settings) (string, string, error) {
 			*level = Everyone
 		}
 	}
-	for _, level := range []string{p.PlayPause, p.Seek, p.Speaker} {
+	if p.StartRounds == "" {
+		p.StartRounds = Owner
+	}
+	for _, level := range []string{p.PlayPause, p.Seek, p.Speaker, p.StartRounds} {
 		if level != Everyone && level != Owner {
-			return "", "", &InvalidInputError{"play/pause, seek and speaker permissions are everyone or owner"}
+			return "", "", &InvalidInputError{"play/pause, seek, speaker and start rounds permissions are everyone or owner"}
 		}
 	}
 	if p.Skip != Everyone && p.Skip != Owner && p.Skip != Vote {
@@ -664,6 +688,10 @@ func validate(name, mode string, st Settings) (string, string, error) {
 	if err := st.Screens.validate(); err != nil {
 		return "", "", err
 	}
+	if err := st.Games.validate(); err != nil {
+		return "", "", err
+	}
+	st.Games.clean()
 	st.Fairness.clean()
 	st.Version, st.Controls = SettingsVersion, ""
 	raw, err := json.Marshal(st)
@@ -959,6 +987,9 @@ func (s *Service) QueueChanged(ctx context.Context, id string) (QueueSnapshot, e
 // PublishNowPlaying pushes a room's playback state to everyone in it.
 func (s *Service) PublishNowPlaying(np NowPlaying) {
 	s.bus.Publish(realtime.RoomTopic(np.RoomID), realtime.Event{Type: realtime.NowPlayingUpdated, Data: np})
+	if s.OnNowPlaying != nil {
+		s.OnNowPlaying(np)
+	}
 }
 
 // PublishNotice pushes a notice to everyone in a room.

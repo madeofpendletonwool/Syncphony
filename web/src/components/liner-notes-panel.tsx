@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { BookOpen, ExternalLink, Sparkles } from 'lucide-react'
+import { BookOpen, Dices, ExternalLink, Sparkles } from 'lucide-react'
 import { motion } from 'motion/react'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useHidden } from '@/lib/games'
 import { linerNotesQuery, releaseLine, type LinerNotesFact } from '@/lib/liner-notes'
 import { fadeUp, stagger } from '@/lib/motion'
 import type { NowPlaying } from '@/lib/now-playing'
@@ -22,7 +23,21 @@ const factIcon: Record<LinerNotesFact['kind'], string> = {
  */
 export function LinerNotesPanel({ np, className }: { np: NowPlaying; className?: string }) {
   const { roomId, itemId } = np
-  const notes = useQuery({ ...linerNotesQuery(roomId ?? '', itemId ?? ''), enabled: !!roomId && !!itemId })
+  // A round about the song keeps its notes back until the reveal.
+  const hidden = useHidden(roomId, itemId)
+  const notes = useQuery({ ...linerNotesQuery(roomId ?? '', itemId ?? ''), enabled: !!roomId && !!itemId && !hidden.notes && !hidden.song })
+
+  if (hidden.notes || hidden.song) {
+    return (
+      <div className={cn('flex flex-col items-center gap-2 py-10 text-center', className)}>
+        <span className="grid size-12 place-items-center rounded-2xl bg-(--pal-text)/12 text-(--pal-text)">
+          <Dices className="size-6" />
+        </span>
+        <p className="text-headline">Hidden for the round</p>
+        <p className="text-sm text-muted-foreground">The liner notes are back after the reveal.</p>
+      </div>
+    )
+  }
 
   if (notes.isPending && roomId && itemId) {
     return (

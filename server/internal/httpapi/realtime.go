@@ -17,6 +17,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
+	"github.com/madeofpendletonwool/syncphony/server/internal/games"
 	"github.com/madeofpendletonwool/syncphony/server/internal/nights"
 	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
@@ -47,7 +48,7 @@ func (s *Server) RoomSocket() http.Handler {
 		if c, err := r.Cookie(SessionCookie); err == nil {
 			token = c.Value
 		}
-		rc := &roomConn{s: s, token: token, display: r.URL.Query().Get("display") == "1"}
+		rc := &roomConn{s: s, token: token, display: r.URL.Query().Get("display") == "1", device: r.URL.Query().Get("device")}
 		if sess, err := s.Auth.Authenticate(ctx, token); err == nil {
 			// A guest may watch their own room only.
 			if sess.Guest != nil && sess.Guest.RoomID != r.PathValue("id") {
@@ -121,6 +122,17 @@ type roomConn struct {
 	room                   store.Room
 	// sent is the last queue version the client has.
 	sent int64
+	// device is the client's device ID, if it said; player is the room's
+	// speaker, as of the last playback state sent. The speaker sees what
+	// a game round hides: its lock screen shows the song anyway.
+	device string
+	player *rooms.Player
+}
+
+// speaker reports whether the connection is the room's speaker.
+func (rc *roomConn) speaker() bool {
+	p := rc.player
+	return p != nil && rc.device != "" && p.DeviceID == rc.device && (rc.paired || p.UserID == rc.user.ID)
 }
 
 func (rc *roomConn) serve(ctx context.Context) {
@@ -249,6 +261,11 @@ func (rc *roomConn) hello(ctx context.Context) error {
 	if err := rc.write(ctx, realtime.Hello, 0, hello); err != nil {
 		return err
 	}
+	np, err := s.Playback.NowPlaying(ctx, rc.room.ID)
+	if err != nil {
+		return err
+	}
+	rc.player = np.Player
 	snap, err := s.Rooms.QueueSnapshot(ctx, rc.room.ID)
 	if err != nil {
 		return err
@@ -259,11 +276,28 @@ func (rc *roomConn) hello(ctx context.Context) error {
 	if err := rc.send(ctx, realtime.Event{Type: realtime.QueueUpdated, Version: snap.Version, Data: snap}); err != nil {
 		return err
 	}
-	np, err := s.Playback.NowPlaying(ctx, rc.room.ID)
-	if err != nil {
+	if err := rc.send(ctx, realtime.Event{Type: realtime.NowPlayingUpdated, Data: np}); err != nil {
 		return err
 	}
-	return rc.send(ctx, realtime.Event{Type: realtime.NowPlayingUpdated, Data: np})
+	return rc.helloGames(ctx)
+}
+
+// helloGames sends the round that's up, and tonight's scores.
+func (rc *roomConn) helloGames(ctx context.Context) error {
+	g := rc.s.Games
+	if g == nil {
+		return nil
+	}
+	if rd, ok := g.Current(rc.room.ID); ok {
+		if err := rc.send(ctx, realtime.Event{Type: realtime.GameRound, Data: rd}); err != nil {
+			return err
+		}
+	}
+	sc, err := g.Scores(ctx, rc.room.ID)
+	if err != nil || sc.Mode == rooms.ScoresOff || len(sc.Players) == 0 {
+		return err
+	}
+	return rc.send(ctx, realtime.Event{Type: realtime.GameScores, Data: sc})
 }
 
 // send converts a bus event to its API form and writes it.
@@ -277,9 +311,14 @@ func (rc *roomConn) send(ctx context.Context, e realtime.Event) error {
 			return nil
 		}
 		rc.sent = d.Version
-		data = toQueueSnapshot(d)
+		data = rc.s.queueFor(d, rc.speaker())
 	case rooms.NowPlaying:
-		data = toNowPlaying(d)
+		rc.player = d.Player
+		data = rc.s.nowPlayingFor(d, rc.speaker())
+	case games.Round:
+		data = toGameRound(d)
+	case games.Scores:
+		data = toGameScores(d, rc.user.ID)
 	case rooms.Notice:
 		n := PlaybackNotice{RoomId: d.RoomID, Message: d.Message}
 		if d.ItemID != "" {
