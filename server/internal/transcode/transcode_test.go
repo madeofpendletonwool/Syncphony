@@ -235,3 +235,39 @@ func TestFFmpegReportsFailure(t *testing.T) {
 		t.Fatal("transcoding garbage succeeded")
 	}
 }
+
+func TestFFmpegClips(t *testing.T) {
+	ff := transcode.FFmpeg{}
+	if !ff.Available() {
+		t.Skip("ffmpeg not installed")
+	}
+	a, err := streamer(t).Stream(t.Context(), "t01", provider.StreamOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	clips, err := ff.Clips(t.Context(), a, transcode.MP3, 128, []transcode.Cut{
+		{Start: 5 * time.Second, Length: time.Second},
+		{Start: 5 * time.Second, Length: 4 * time.Second},
+		{Start: 18 * time.Second, Length: 10 * time.Second},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 3 {
+		t.Fatalf("%d clips", len(clips))
+	}
+	// Constant bitrate: four seconds is about four times one. No tags.
+	one, four := len(clips[0]), len(clips[1])
+	if one < 1000 || four < 3*one || four > 5*one {
+		t.Fatalf("1s clip %d bytes, 4s clip %d", one, four)
+	}
+	for _, c := range clips[:2] {
+		if bytes.HasPrefix(c, []byte("ID3")) || c[0] != 0xFF || c[1]&0xE0 != 0xE0 {
+			t.Fatalf("not untagged MP3: % x", c[:4])
+		}
+	}
+	// Running past the end (the song is 20s): short.
+	if len(clips[2]) < one || len(clips[2]) > four {
+		t.Fatalf("a clip running past the end has %d bytes", len(clips[2]))
+	}
+}

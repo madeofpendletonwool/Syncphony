@@ -164,6 +164,9 @@ const (
 	TopicSampledBy   = "sampled_by"
 	TopicBlanks      = "blanks"
 	TopicNextLine    = "next_line"
+	TopicTune        = "tune"
+	TopicIntro       = "intro"
+	TopicOutro       = "outro"
 )
 
 // Question is one question about a song.
@@ -182,6 +185,9 @@ type Question struct {
 	CorrectIndex int
 	// Accept are other answers that count, for AnswerText.
 	Accept []string `json:",omitempty"`
+	// Half are answers that score half, for AnswerSong: the artist,
+	// when it's the title that's asked.
+	Half []string `json:",omitempty"`
 	// Tolerance is how far off a number may be and still score some.
 	Tolerance int `json:",omitempty"`
 	// Min and Max bound a number answer: the ends of the year slider.
@@ -211,7 +217,9 @@ type Question struct {
 const choices = 4
 
 // Ready are the games a song can carry. Queue games (connect, theme,
-// bracket) aren't about one song, so they're never here.
+// bracket) aren't about one song, so they're never here. Name that tune
+// is about another song than the one playing: a song is ready for it if
+// it can be the tune.
 func Ready(f Facts) []string {
 	var out []string
 	if f.Year > 0 {
@@ -229,7 +237,7 @@ func Ready(f Facts) []string {
 	if len(lyricCues(f.Lyrics, 0)) > 0 {
 		out = append(out, rooms.GameFinishLyric)
 	}
-	if len(f.Sections) >= 2 && f.DurationMs >= 60_000 {
+	if Tuneable(f) {
 		out = append(out, rooms.GameTune)
 	}
 	return out

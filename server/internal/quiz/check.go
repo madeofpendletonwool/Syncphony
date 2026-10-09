@@ -48,6 +48,11 @@ func Check(q Question, r Response) (correct bool, closeness float64) {
 				return true, 1
 			}
 		}
+		for _, half := range q.Half {
+			if Matches(r.Text, half) {
+				return false, 0.5
+			}
+		}
 		switch {
 		case len(q.Blanks) > 0:
 			return blanksRight(r.Text, q.Blanks)

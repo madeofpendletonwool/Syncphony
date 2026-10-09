@@ -42,6 +42,7 @@ var (
 	ErrGuestsCantPlay = errors.New("guests can't answer in this room")
 	ErrNothingPlaying = errors.New("nothing's playing to ask about")
 	ErrNoQuestion     = errors.New("there's nothing to ask about this song yet")
+	ErrAnswered       = errors.New("you've answered this one")
 )
 
 // InvalidInputError is an answer of the wrong kind.
@@ -80,6 +81,8 @@ type Config struct {
 	// LyricLead is how long before its line beat the singer shows the
 	// line with words blanked. Default 8s.
 	LyricLead time.Duration
+	// Tune times name that tune; zero values take its defaults.
+	Tune TuneConfig
 	// Now is the clock. Default store.Now.
 	Now func() time.Time
 	// Seed seeds the engine's choices, for tests. 0 is random.
@@ -99,8 +102,12 @@ type Engine struct {
 	// playing song, so screens can be sent it again without (or with) it.
 	OnHide func(ctx context.Context, roomID string)
 	// Music pauses and resumes the music for rounds that stop it (finish
-	// the lyric). Nil runs none of them.
+	// the lyric, name that tune). Nil runs none of them.
 	Music Music
+	// Clips cuts songs' clips, and Tunes finds songs to cut them from, for
+	// name that tune. Nil runs none.
+	Clips Clips
+	Tunes Tunes
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -144,6 +151,13 @@ type room struct {
 	songs int
 	// starting is set while a round is being made, so two aren't.
 	starting bool
+	// tune is the next name that tune, cut ahead; preparing is set while
+	// it's being found. tuned are the songs lately used as tunes.
+	tune      *prepared
+	preparing bool
+	tuned     []string
+	// set is the set of tunes running, if one is.
+	set *Set
 }
 
 // Round is a round of a game.
@@ -168,6 +182,39 @@ type Round struct {
 	Answers map[string]*Answer
 	// Breaks is set when the round stops the music while answers are open.
 	Breaks bool
+	// Resume plays the music on from ResumeAt once the round's over: at
+	// its reveal, or when it's done if ResumeOnDone (after a tune's reveal
+	// clip, or a set's last tune).
+	Resume       bool
+	ResumeAt     time.Duration
+	ResumeOnDone bool
+	// Clips are a tune's clips, longer each time, and RevealClip the one
+	// played at its reveal. Shown is how many of Clips are out so far: a
+	// clip's ID goes to screens only once it's time to play it.
+	Clips      []Clip
+	RevealClip *Clip
+	Shown      int
+	// Tune is the song a tune round is about: not the one playing.
+	Tune *provider.Track
+	// Set is the set of tunes it's part of, if any.
+	Set *Set
+}
+
+// Clip is one of a round's clips: Length of the song, played At.
+type Clip struct {
+	ID     string
+	Length time.Duration
+	At     time.Time
+}
+
+// ClipsOut are a round's clips screens may have now: those whose time has
+// come, and from the reveal on, the reveal clip.
+func (rd Round) ClipsOut() []Clip {
+	out := slices.Clone(rd.Clips[:min(rd.Shown, len(rd.Clips))])
+	if rd.RevealClip != nil && (rd.State == StateReveal || rd.State == StateDone) {
+		out = append(out, *rd.RevealClip)
+	}
+	return out
 }
 
 // Answer is someone's answer to a round.
@@ -201,6 +248,7 @@ func New(db *store.Store, bus realtime.Bus, rs *rooms.Service, cfg Config) *Engi
 	if cfg.LyricLead == 0 {
 		cfg.LyricLead = 8 * time.Second
 	}
+	cfg.Tune = cfg.Tune.withDefaults()
 	if cfg.Now == nil {
 		cfg.Now = store.Now
 	}
@@ -288,6 +336,7 @@ func (e *Engine) NowPlaying(np rooms.NowPlaying) {
 		return
 	}
 	r.songs++
+	e.prepare(np.RoomID, r)
 	if r.round == nil && !r.starting {
 		id := np.RoomID
 		r.starting = true
@@ -323,7 +372,7 @@ func (e *Engine) auto(ctx context.Context, roomID string) (*Round, error) {
 	if !due || np.Item == nil {
 		return nil, nil
 	}
-	rd, err := e.make(ctx, roomID, *np.Item, g, "", "")
+	rd, err := e.makeRound(ctx, roomID, *np.Item, g, "", "", nil)
 	if errors.Is(err, ErrNoQuestion) {
 		return nil, nil // the next song may do
 	}
@@ -332,7 +381,8 @@ func (e *Engine) auto(ctx context.Context, roomID string) (*Round, error) {
 
 // Start starts a round now, of a kind or ("") any the song can carry. Who
 // may is set by the room's Start rounds permission; admins always may.
-func (e *Engine) Start(ctx context.Context, roomID string, by store.User, kind string) (*Round, error) {
+// set > 0 starts a set of that many tunes (SetSizes), back to back.
+func (e *Engine) Start(ctx context.Context, roomID string, by store.User, kind string, set int) (*Round, error) {
 	row, err := e.rooms.Get(ctx, roomID)
 	if err != nil {
 		return nil, err
@@ -343,6 +393,17 @@ func (e *Engine) Start(ctx context.Context, roomID string, by store.User, kind s
 	}
 	if by.Role != store.RoleAdmin && !rooms.Allowed(st.Permissions.StartRounds, row.OwnerID, by.ID) {
 		return nil, ErrForbidden
+	}
+	if set > 0 {
+		if kind == "" {
+			kind = rooms.GameTune
+		}
+		if kind != rooms.GameTune {
+			return nil, &InvalidInputError{"only name that tune runs in sets"}
+		}
+		if !slices.Contains(SetSizes, set) {
+			return nil, &InvalidInputError{"a set is 5 or 10 tunes"}
+		}
 	}
 	if kind != "" && !st.Games.On(kind) {
 		return nil, &InvalidInputError{"that game is off in this room"}
@@ -361,37 +422,55 @@ func (e *Engine) Start(ctx context.Context, roomID string, by store.User, kind s
 	r.starting = true
 	e.mu.Unlock()
 	defer e.doneStarting(roomID)
-	return e.make(ctx, roomID, *np.Item, st.Games, by.ID, kind)
+	var s *Set
+	if set > 0 {
+		s = &Set{ID: store.NewID(), Size: set, StartedBy: by.ID, Points: map[string]int{}}
+	}
+	return e.makeRound(ctx, roomID, *np.Item, st.Games, by.ID, kind, s)
 }
 
-// make makes a round about the playing song and starts it.
-func (e *Engine) make(ctx context.Context, roomID string, it store.QueueItem, g rooms.Games, by, kind string) (*Round, error) {
+// makeRound makes a round about the playing song, or for name that tune
+// a song cut ahead, and starts it. It returns a copy: the round itself
+// moves on under mu. A round in a set (of tunes) goes on the
+// set's break; the set's first takes one from the hour's budget.
+func (e *Engine) makeRound(ctx context.Context, roomID string, it store.QueueItem, g rooms.Games, by, kind string, set *Set) (*Round, error) {
 	if e.Facts == nil {
 		return nil, ErrNoQuestion
 	}
 	f, err := e.song(ctx, it)
-	if err != nil {
-		return nil, err
+	var ready []string
+	if err == nil {
+		ready = quiz.Ready(f)
 	}
 	kinds := g.Kinds()
 	if kind != "" {
 		kinds = []string{kind}
 	}
-	ready := quiz.Ready(f)
-	breaks := e.breaksLeft(ctx, roomID, g)
+	breaks := (set != nil && set.Number > 0) || e.breaksLeft(ctx, roomID, g)
+	tune := e.readyTune(roomID)
 	kinds = slices.DeleteFunc(kinds, func(k string) bool {
-		if !slices.Contains(ready, k) {
+		if k == rooms.GameTune {
+			// About a song cut ahead, so it needs its clips, a speaker to
+			// play them, and a break.
+			return tune == nil || e.Music == nil || !breaks
+		}
+		if !slices.Contains(ready, k) || set != nil {
 			return true
 		}
 		// Games that stop the music need a player and the hour's budget.
-		// Name that tune waits for clips (stage 3); queue games aren't
-		// about one song.
-		return k == rooms.GameTune || (slices.Contains(rooms.GameBreaks, k) && (e.Music == nil || !breaks))
+		// Queue games aren't about one song.
+		return slices.Contains(rooms.GameBreaks, k) && (e.Music == nil || !breaks)
 	})
 	if len(kinds) == 0 {
 		return nil, ErrNoQuestion
 	}
-	pool := e.Facts.Pool(ctx, roomID, it, f)
+	var pool, tunePool quiz.Pool
+	if len(ready) > 0 {
+		pool = e.Facts.Pool(ctx, roomID, it, f)
+	}
+	if tune != nil && slices.Contains(kinds, rooms.GameTune) {
+		tunePool = e.Facts.Pool(ctx, roomID, tune.item, tune.facts)
+	}
 	pool.ThisYear = e.cfg.Now().Year()
 
 	e.mu.Lock()
@@ -424,6 +503,19 @@ func (e *Engine) make(ctx context.Context, roomID string, it store.QueueItem, g 
 		mode = ModeAmbient
 	}
 	for _, k := range kinds {
+		if k == rooms.GameTune {
+			if r.tune != tune {
+				continue // used meanwhile
+			}
+			q, ok := quiz.NameTune(tune.facts, tunePool, g.TuneOf().Typed, tune.spot, e.rng)
+			if !ok {
+				r.tune = nil // its pool won't grow; find another
+				e.prepare(roomID, r)
+				continue
+			}
+			out := snapshot(e.tuneRound(roomID, r, tune, q, g, by, set, now))
+			return &out, nil
+		}
 		// A lyric question is about a line far enough ahead to show it in time.
 		pool.AfterMs = (position(r.np, now) + e.lead(k) + time.Second).Milliseconds()
 		q, ok := quiz.Ask(k, f, pool, e.rng)
@@ -440,6 +532,10 @@ func (e *Engine) make(ctx context.Context, roomID string, it store.QueueItem, g 
 			Guests: g.GuestsAnswer(), TVOnly: g.TVOnly, Scores: g.ScoreMode(), Answers: map[string]*Answer{},
 			Breaks: slices.Contains(rooms.GameBreaks, k),
 		}
+		if rd.Breaks {
+			// The music comes back on the line, as the answer.
+			rd.Resume, rd.ResumeAt = true, time.Duration(q.AtMs)*time.Millisecond
+		}
 		r.round, r.songs = rd, 0
 		if start.After(now) {
 			// Wait, unseen, until it's time to show the line.
@@ -450,7 +546,8 @@ func (e *Engine) make(ctx context.Context, roomID string, it store.QueueItem, g 
 		}
 		e.at(rd, opens, StateAnnounce, func() { e.open(rd) })
 		e.at(rd, closes, StateOpen, func() { e.reveal(rd) })
-		return rd, nil
+		out := snapshot(rd)
+		return &out, nil
 	}
 	return nil, ErrNoQuestion
 }
@@ -600,6 +697,22 @@ func (e *Engine) at(rd *Round, t time.Time, state string, fn func()) {
 // of round. The caller holds mu.
 func (e *Engine) open(rd *Round) {
 	rd.State = StateOpen
+	if len(rd.Clips) > 0 {
+		rd.Shown = 1
+	}
+	if rd.Breaks && rd.ResumeOnDone {
+		// A tune picks the music up again where it stopped, if it was
+		// playing; a set's tunes, where its first stopped it, and only
+		// after its last.
+		r := e.byRoom[rd.RoomID]
+		resume, at := r.np.State == "playing", position(r.np, e.cfg.Now())
+		if s := rd.Set; s != nil && s.Number > 1 {
+			resume, at = s.resume, s.resumeAt
+		} else if s := r.set; s != nil && rd.Set != nil && s.ID == rd.Set.ID {
+			s.resume, s.resumeAt = resume, at
+		}
+		rd.Resume, rd.ResumeAt = resume && (rd.Set == nil || rd.Set.Number >= rd.Set.Size), at
+	}
 	e.publish(rd)
 	if rd.Breaks && e.Music != nil {
 		e.background(func(ctx context.Context) {
@@ -620,20 +733,25 @@ func (e *Engine) reveal(rd *Round) {
 	}
 	rd.State = StateReveal
 	e.hide(rd)
+	rd.Shown = len(rd.Clips)
 	for _, a := range rd.Answers {
 		a.Correct, a.Closeness = quiz.Check(rd.Question, a.Response)
-		a.Points = Points(a.Closeness, a.At, rd.OpensAt, rd.ClosesAt)
+		if len(rd.Clips) > 0 {
+			a.Points = TunePoints(a.Closeness, a.At, rd.Clips)
+		} else {
+			a.Points = Points(a.Closeness, a.At, rd.OpensAt, rd.ClosesAt)
+		}
 	}
 	closest(rd)
+	if s := e.byRoom[rd.RoomID].set; s != nil && rd.Set != nil && s.ID == rd.Set.ID {
+		for _, a := range rd.Answers {
+			s.Points[a.UserID] += a.Points
+		}
+		rd.Set = s.snapshot()
+	}
 	e.publish(rd)
-	if rd.Breaks && e.Music != nil {
-		// The music comes back on the line, as the answer.
-		at := time.Duration(rd.Question.AtMs) * time.Millisecond
-		e.background(func(ctx context.Context) {
-			if err := e.Music.Resume(ctx, rd.RoomID, rd.ItemID, at); err != nil {
-				slog.Warn("games: resuming the music", "room", rd.RoomID, "err", err)
-			}
-		})
+	if !rd.ResumeOnDone {
+		e.resume(rd)
 	}
 	e.at(rd, rd.DoneAt, StateReveal, func() { e.done(rd) })
 	// Keep it, then send the night's scores. In the background: it's I/O,
@@ -665,11 +783,36 @@ func (e *Engine) hide(rd *Round) {
 	e.background(func(ctx context.Context) { e.OnHide(ctx, rd.RoomID) })
 }
 
-// done takes a round down. The caller holds mu.
+// resume plays the music on after a round that stopped it. The caller
+// holds mu.
+func (e *Engine) resume(rd *Round) {
+	if !rd.Breaks || !rd.Resume || e.Music == nil {
+		return
+	}
+	e.background(func(ctx context.Context) {
+		if err := e.Music.Resume(ctx, rd.RoomID, rd.ItemID, rd.ResumeAt); err != nil {
+			slog.Warn("games: resuming the music", "room", rd.RoomID, "err", err)
+		}
+	})
+}
+
+// done takes a round down: then a set plays its next tune, or the music
+// comes back. The caller holds mu.
 func (e *Engine) done(rd *Round) {
 	rd.State = StateDone
 	e.publish(rd)
-	e.byRoom[rd.RoomID].round = nil
+	r := e.byRoom[rd.RoomID]
+	r.round = nil
+	if s := r.set; s != nil && rd.Set != nil && rd.Set.ID == s.ID {
+		if s.Number < s.Size && idOf(r.np.Item) == rd.ItemID {
+			e.nextTune(rd.RoomID, r, s, rd)
+			return
+		}
+		r.set = nil
+	}
+	if rd.ResumeOnDone {
+		e.resume(rd)
+	}
 }
 
 // Bonuses on a number answer: exactly right, and nearest in the room.
@@ -739,7 +882,7 @@ func (e *Engine) save(ctx context.Context, rd Round, answers []Answer) error {
 	return e.db.Tx(ctx, func(tx *store.Queries) error {
 		err := tx.CreateGameRound(ctx, store.CreateGameRoundParams{
 			ID: rd.ID, RoomID: rd.RoomID, QueueItemID: nullString(rd.ItemID), Kind: rd.Kind, Question: string(q),
-			StartedBy: nullString(rd.StartedBy), StartedAt: rd.StartedAt, RevealedAt: rd.ClosesAt,
+			StartedBy: nullString(rd.StartedBy), StartedAt: rd.StartedAt, RevealedAt: rd.ClosesAt, SetID: nullString(setID(rd)),
 		})
 		if err != nil {
 			return err
@@ -778,6 +921,10 @@ func (e *Engine) Answer(_ context.Context, roomID, roundID string, by store.User
 		return Answer{}, err
 	}
 	_, again := rd.Answers[by.ID]
+	if again && rd.Kind == rooms.GameTune {
+		// The clip gets longer: no waiting to change a guess.
+		return Answer{}, ErrAnswered
+	}
 	a := &Answer{UserID: by.ID, Response: resp, At: now}
 	rd.Answers[by.ID] = a
 	if !again {
@@ -858,6 +1005,8 @@ func (e *Engine) publish(rd *Round) {
 // snapshot copies a round, so it can leave the lock.
 func snapshot(rd *Round) Round {
 	out := *rd
+	out.Clips = slices.Clone(rd.Clips)
+	out.Set = rd.Set.snapshot()
 	out.Answers = make(map[string]*Answer, len(rd.Answers))
 	for k, a := range rd.Answers {
 		c := *a

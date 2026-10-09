@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Check, ChevronDown, Crown, Dices, History, LogOut, MonitorPlay, Play, Plus, QrCode, Settings2, Sparkles, Speaker, Users } from 'lucide-react'
+import { AudioLines, Check, ChevronDown, Crown, Dices, History, LogOut, MonitorPlay, Play, Plus, QrCode, Settings2, Sparkles, Speaker, Users } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { DropdownMenu } from 'radix-ui'
 import { useEffect, useState, type ReactNode } from 'react'
@@ -35,7 +35,7 @@ import { useMe } from '@/lib/auth'
 import { isMine } from '@/lib/autopilot'
 import { laneStyle } from '@/lib/lane'
 import { fadeUp, spring, stagger } from '@/lib/motion'
-import { plays, startRound } from '@/lib/games'
+import { plays, SET_SIZES, startRound, tunesOn } from '@/lib/games'
 import { endNight } from '@/lib/nights'
 import { formatDuration, usePlayer, type User } from '@/lib/now-playing'
 import { can, playbackQuery, songsBeforeYours, type QueueItem } from '@/lib/playback'
@@ -228,6 +228,17 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
               <span className="flex-1">Start a round</span>
             </DropdownMenu.Item>
           )}
+          {!guest && tunesOn(room.games) && (host || can(room, me.id, 'startRounds')) &&
+            SET_SIZES.map((n) => (
+              <DropdownMenu.Item
+                key={n}
+                onSelect={() => startRound(room.id, 'tune', n).catch((e: unknown) => toast({ message: errorMessage(e), tone: 'error' }))}
+                className={menuItem}
+              >
+                <AudioLines className="size-4 text-muted-foreground" />
+                <span className="flex-1">Name that tune: {n} in a row</span>
+              </DropdownMenu.Item>
+            ))}
           {host && (
             <DropdownMenu.Item
               onSelect={() => endNight(room.id).catch((e: unknown) => toast({ message: errorMessage(e), tone: 'error' }))}

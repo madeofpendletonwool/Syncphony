@@ -22,6 +22,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
 	"github.com/madeofpendletonwool/syncphony/server/internal/backup"
+	"github.com/madeofpendletonwool/syncphony/server/internal/clips"
 	"github.com/madeofpendletonwool/syncphony/server/internal/config"
 	"github.com/madeofpendletonwool/syncphony/server/internal/dj"
 	"github.com/madeofpendletonwool/syncphony/server/internal/games"
@@ -305,8 +306,33 @@ func run() error {
 	}
 	// Party games (ADR 0015) follow the same playback and queue changes.
 	gameSvc := games.New(db, a.bus, roomSvc, games.Config{})
-	gameSvc.Facts = &games.Sources{DB: db, LinerNotes: notes, Lyrics: lyricsSvc, Graph: graph}
+	gameSources := &games.Sources{
+		DB: db, LinerNotes: notes, Lyrics: lyricsSvc, Graph: graph, Providers: a.links,
+		// Name that tune's new songs are the DJ's picks for the whole room.
+		New: func(ctx context.Context, roomID string) ([]provider.Track, error) {
+			row, err := roomSvc.Get(ctx, roomID)
+			if err != nil {
+				return nil, err
+			}
+			picks, err := suggestions.Suggest(ctx, suggest.Query{RoomID: roomID, UserID: row.OwnerID, Scope: suggest.ScopeGroup, Limit: 12})
+			ts := make([]provider.Track, 0, len(picks))
+			for _, p := range picks {
+				ts = append(ts, p.Track)
+			}
+			return ts, err
+		},
+	}
+	gameSvc.Facts = gameSources
 	gameSvc.Music = player
+	// Name that tune's clips are cut with ffmpeg (MAD-792).
+	var clipSvc *clips.Service
+	if ffmpegAvailable() {
+		clipSvc = clips.New(a.links, transcode.FFmpeg{}, clips.Config{})
+		defer clipSvc.Close()
+		gameSvc.Clips, gameSvc.Tunes = clipSvc, gameSources
+	} else {
+		slog.Warn("ffmpeg not found: no name that tune, which needs song clips")
+	}
 	gameSvc.OnHide = func(ctx context.Context, roomID string) {
 		// Everyone gets the song again, with it left out or put back.
 		if np, err := player.NowPlaying(ctx, roomID); err == nil {
@@ -331,7 +357,7 @@ func run() error {
 	go a.backups.Run(ctx)
 	api := &httpapi.Server{
 		Version: version, StartedAt: time.Now().UTC(), Admin: admin.New(db), Backups: a.backups, Auth: accounts, Links: a.links, Lyrics: lyricsSvc, LinerNotes: notes, Artwork: art, Palettes: palettes, BeatMaps: beatMaps,
-		Rooms: roomSvc, Queue: queueSvc, Playback: player, Nights: nightSvc, Games: gameSvc, Suggest: suggestions, Autopilot: pilot,
+		Rooms: roomSvc, Queue: queueSvc, Playback: player, Nights: nightSvc, Games: gameSvc, Clips: clipSvc, Suggest: suggestions, Autopilot: pilot,
 		Bus: a.bus, Presence: presence,
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	}

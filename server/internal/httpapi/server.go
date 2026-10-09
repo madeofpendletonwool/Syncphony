@@ -23,6 +23,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
 	"github.com/madeofpendletonwool/syncphony/server/internal/backup"
+	"github.com/madeofpendletonwool/syncphony/server/internal/clips"
 	"github.com/madeofpendletonwool/syncphony/server/internal/games"
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
@@ -75,6 +76,8 @@ type Server struct {
 	Nights *nights.Service
 	// Games runs the rooms' party games. Nil turns them off.
 	Games *games.Engine
+	// Clips serves the games' song clips. Nil serves none.
+	Clips *clips.Service
 	// Suggest finds songs to keep a room's vibe going.
 	Suggest *suggest.Service
 	// Autopilot keeps rooms' music going; admins can see what its DJ has
@@ -411,6 +414,7 @@ var errorCodes = []struct {
 	{games.ErrGuestsCantPlay, http.StatusForbidden, "forbidden"},
 	{games.ErrNothingPlaying, http.StatusConflict, "nothing_playing"},
 	{games.ErrNoQuestion, http.StatusConflict, "no_question"},
+	{games.ErrAnswered, http.StatusConflict, "already_answered"},
 	{ErrHiddenForRound, http.StatusConflict, "hidden_for_round"},
 
 	{links.ErrUnknownProvider, http.StatusNotFound, "unknown_provider"},

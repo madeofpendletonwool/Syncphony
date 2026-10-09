@@ -1,5 +1,23 @@
 import { describe, expect, it } from 'vitest'
-import { HIDDEN_LINE, hiddenLineAt, hides, isOpen, lineParts, maskLine, plays, remaining, roundArtworkUrl, secondsUntil, splitPrompt, streakOf, type GameRound } from './games'
+import {
+  clipNumber,
+  HIDDEN_LINE,
+  hiddenLineAt,
+  hides,
+  isOpen,
+  lineParts,
+  maskLine,
+  plays,
+  remaining,
+  roundArtworkUrl,
+  secondsUntil,
+  setStandings,
+  splitPrompt,
+  streakOf,
+  tunesOn,
+  type GameRound,
+  type RoomGames,
+} from './games'
 
 const at = (s: number) => new Date(Date.UTC(2026, 9, 8, 20, 0, s)).toISOString()
 const ms = (s: number) => Date.parse(at(s))
@@ -87,5 +105,43 @@ describe('games', () => {
     const scores = { roomId: 'room', mode: 'board' as const, players: [{ userId: 'me', points: 1, correct: 1, answered: 1, streak: 3, bestStreak: 4 }] }
     expect(streakOf(scores, 'me')).toEqual({ streak: 3, best: 4 })
     expect(streakOf(scores, 'you')).toEqual({ streak: 0, best: 0 })
+  })
+
+  it('follows a tune’s clips, and its set', () => {
+    const clip = (id: string, reveal = false) => ({ id, lengthMs: 1000, at: at(10), reveal })
+    expect(clipNumber(round({ kind: 'tune' }))).toBe(0)
+    expect(clipNumber(round({ kind: 'tune', clips: [clip('a'), clip('b')] }))).toBe(2)
+    expect(clipNumber(round({ kind: 'tune', state: 'reveal', clips: [clip('a'), clip('b'), clip('c'), clip('r', true)] }))).toBe(3)
+    expect(roundArtworkUrl(round({ tune: { title: 'Atomic', hasArtwork: true } }))).toBe('/api/rooms/room/games/rounds/r1/artwork?size=300')
+
+    expect(setStandings(round())).toBeUndefined()
+    const board = [
+      { userId: 'ann', points: 1800 },
+      { userId: 'bob', points: 1800 },
+      { userId: 'cat', points: 600 },
+    ]
+    const mid = setStandings(round({ state: 'reveal', set: { id: 's', number: 4, size: 5, board } }))
+    expect(mid?.over).toBe(false)
+    expect(mid?.winners).toEqual([])
+    // A tie at the top: both win.
+    expect(setStandings(round({ state: 'reveal', set: { id: 's', number: 5, size: 5, board } }))?.winners).toEqual(['ann', 'bob'])
+    expect(setStandings(round({ state: 'reveal', set: { id: 's', number: 5, size: 5, board: [] } }))?.winners).toEqual([])
+  })
+
+  it('offers sets only at game night with the tune on', () => {
+    const games = (over: Partial<RoomGames>): RoomGames => ({
+      level: 'gamenight',
+      enabled: { tune: true },
+      frequency: 2,
+      guests: true,
+      scores: 'board',
+      tvOnly: false,
+      breaksPerHour: 4,
+      tune: { from: 'tonight', typed: false, clip: 'chorus' },
+      ...over,
+    })
+    expect(tunesOn(games({}))).toBe(true)
+    expect(tunesOn(games({ enabled: { tune: false } }))).toBe(false)
+    expect(tunesOn(games({ level: 'rounds', enabled: {} }))).toBe(false)
   })
 })

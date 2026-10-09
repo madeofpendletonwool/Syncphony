@@ -40,6 +40,42 @@ export const GAMES: Record<GameKind, { label: string; hint: string }> = {
   bracket: { label: 'Bracket battles', hint: 'Songs face off, the room picks' },
 }
 
+/** Where name that tune's songs come from. */
+export const TUNE_FROM: { id: RoomGames['tune']['from']; label: string; hint: string }[] = [
+  { id: 'tonight', label: 'Tonight', hint: 'Songs the room has played tonight' },
+  { id: 'favorites', label: 'Favorites', hint: 'The room’s favorites, from every night' },
+  { id: 'new', label: 'New', hint: 'Songs the room has never played, by artists it likes' },
+]
+
+/** Where in a song name that tune's clips come from. */
+export const TUNE_CLIP: { id: RoomGames['tune']['clip']; label: string; hint: string }[] = [
+  { id: 'chorus', label: 'Chorus', hint: 'The loudest part, usually the chorus' },
+  { id: 'intro', label: 'Intro', hint: 'The first seconds: harder' },
+  { id: 'outro', label: 'Outro', hint: 'How it ends: harder still' },
+]
+
+/** How many tunes a set can have. */
+export const SET_SIZES = [5, 10] as const
+
+/** Whether a host can start a set of tunes in this room. */
+export function tunesOn(games: RoomGames) {
+  return games.level === 'gamenight' && !!games.enabled.tune
+}
+
+/** Which of a tune round's clips is playing, from 1; 0 before the first. */
+export function clipNumber(round: GameRound) {
+  return (round.clips ?? []).filter((c) => !c.reveal).length
+}
+
+/** The set's board, with the winner (or winners, when tied) once it's over. */
+export function setStandings(round: GameRound) {
+  const set = round.set
+  if (!set) return undefined
+  const top = set.board[0]?.points ?? 0
+  const over = set.number >= set.size && (round.state === 'reveal' || round.state === 'done')
+  return { ...set, over, winners: over && top > 0 ? set.board.filter((p) => p.points === top).map((p) => p.userId) : [] }
+}
+
 /** Whether a level runs rounds (rather than nothing, or just awards). */
 export function plays(level: GameLevel) {
   return level === 'ambient' || level === 'rounds' || level === 'gamenight'
@@ -61,8 +97,8 @@ export const gameScoresQuery = (roomId: string) =>
     staleTime: Infinity,
   })
 
-export function startRound(roomId: string, kind?: GameKind) {
-  return unwrap(api.POST('/rooms/{roomId}/games/rounds', { params: { path: { roomId } }, body: kind ? { kind } : {} }))
+export function startRound(roomId: string, kind?: GameKind, set?: (typeof SET_SIZES)[number]) {
+  return unwrap(api.POST('/rooms/{roomId}/games/rounds', { params: { path: { roomId } }, body: { ...(kind && { kind }), ...(set && { set }) } }))
 }
 
 export type GameAnswer = components['schemas']['GameAnswerRequest']
@@ -165,9 +201,9 @@ export function splitPrompt(prompt: string) {
 
 // --- Reveals ----------------------------------------------------------------
 
-/** The cover of a round's other song (a sample's), from its reveal on. */
+/** The cover of a round's other song (a sample's) or its tune, from its reveal on. */
 export function roundArtworkUrl(round: GameRound, size = 300) {
-  if (!round.other?.hasArtwork) return undefined
+  if (!round.other?.hasArtwork && !round.tune?.hasArtwork) return undefined
   return `/api/rooms/${encodeURIComponent(round.roomId)}/games/rounds/${encodeURIComponent(round.id)}/artwork?size=${size}`
 }
 

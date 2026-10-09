@@ -27,6 +27,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
 	"github.com/madeofpendletonwool/syncphony/server/internal/avatar"
 	"github.com/madeofpendletonwool/syncphony/server/internal/backup"
+	"github.com/madeofpendletonwool/syncphony/server/internal/clips"
 	"github.com/madeofpendletonwool/syncphony/server/internal/dj"
 	"github.com/madeofpendletonwool/syncphony/server/internal/games"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
@@ -45,6 +46,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 	"github.com/madeofpendletonwool/syncphony/server/internal/suggest"
+	"github.com/madeofpendletonwool/syncphony/server/internal/transcode"
 	"github.com/madeofpendletonwool/syncphony/server/internal/vault"
 )
 
@@ -146,6 +148,10 @@ func newEnv(t *testing.T) *env {
 		Version: "test", StartedAt: e.clock(), Admin: e.server, Backups: e.backups, Auth: e.svc, Links: e.links, Lyrics: ly, LinerNotes: notes, Artwork: art, Palettes: e.palettes, BeatMaps: beatMaps, Rooms: e.rooms, Queue: qs, Playback: e.playback, Nights: e.nights, Games: e.games, Bus: e.bus, Presence: presence,
 		Suggest: suggest.New(db, e.rooms, e.links), Autopilot: pilot,
 		BaseURL: e.base, PingEvery: 50 * time.Millisecond,
+	}
+	if ff := (transcode.FFmpeg{}); ff.Available() {
+		api.Clips = clips.New(e.links, ff, clips.Config{})
+		t.Cleanup(api.Clips.Close)
 	}
 	e.api = api
 	mux := http.NewServeMux()

@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, Check, Dices, Disc3, Flame, Pause, Trophy } from 'lucide-react'
+import { ArrowRight, AudioLines, Check, Crown, Dices, Disc3, Flame, Pause, Trophy } from 'lucide-react'
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { UserAvatar } from '@/components/user-avatar'
 import { useServerNow } from '@/hooks/use-server-now'
-import { GAMES, gameRoundQuery, gameScoresQuery, remaining, roundArtworkUrl, splitPrompt, type GameRound } from '@/lib/games'
+import { clipNumber, GAMES, gameRoundQuery, gameScoresQuery, remaining, roundArtworkUrl, setStandings, splitPrompt, type GameRound } from '@/lib/games'
 import { laneStyle } from '@/lib/lane'
 import { easeOutExpo, spring } from '@/lib/motion'
 import { usersQuery } from '@/lib/users'
@@ -44,7 +44,9 @@ function Panel({ round }: { round: GameRound }) {
       <Question round={round} big />
       {round.choices.length > 0 && <Choices round={round} big />}
       {isYear(round) && (revealed ? <Timeline round={round} /> : <YearRange round={round} />)}
+      {round.kind === 'tune' && !revealed && <ClipMeter round={round} />}
       {revealed && round.other && <Covers round={round} />}
+      {revealed && round.tune && <TuneReveal round={round} />}
       {revealed ? <Reveal round={round} /> : <Answered round={round} />}
     </motion.div>
   )
@@ -80,6 +82,11 @@ function Header({ round }: { round: GameRound }) {
       <span className="text-[clamp(0.9rem,1.3vw,1.4rem)] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
         {GAMES[round.kind].label}
       </span>
+      {round.set && (
+        <span className="rounded-full bg-foreground/8 px-[0.8vw] py-[0.3vh] text-[clamp(0.8rem,1.1vw,1.2rem)] font-semibold tabular-nums">
+          Tune {round.set.number} of {round.set.size}
+        </span>
+      )}
       <span className="ml-auto flex items-center gap-[0.8vw] text-[clamp(1rem,1.6vw,1.7rem)] font-semibold tabular-nums">
         {round.stopsMusic && round.state === 'open' && (
           <span className="flex items-center gap-[0.4vw] text-primary">
@@ -215,6 +222,50 @@ function Timeline({ round }: { round: GameRound }) {
   )
 }
 
+/**
+ * Name that tune while it plays: a bar for each clip, as long as the clip,
+ * lit as it plays. The sooner you name it, the more it scores.
+ */
+function ClipMeter({ round }: { round: GameRound }) {
+  const n = clipNumber(round)
+  // The clips double each time: 1s, 2s, 4s.
+  const widths = [1, 2, 4]
+  return (
+    <div className="flex items-center gap-[1.2vw]">
+      <AudioLines className={cn('size-[4vh] shrink-0 text-primary', round.state === 'open' && 'animate-pulse')} />
+      <div className="flex flex-1 items-center gap-[0.8vw]">
+        {widths.map((w, i) => (
+          <motion.span
+            key={i}
+            animate={{ opacity: i < n ? 1 : 0.25, scaleY: i === n - 1 ? 1.4 : 1 }}
+            transition={spring}
+            style={{ flexGrow: w }}
+            className={cn('h-[1.4vh] rounded-full', i < n ? 'bg-primary' : 'bg-foreground/30')}
+          />
+        ))}
+      </div>
+      <span className="text-[clamp(0.9rem,1.3vw,1.4rem)] text-muted-foreground">
+        {round.state === 'announce' ? 'Listen closely' : `Clip ${n}: ${['a second', 'two seconds', 'four seconds'][n - 1] ?? 'last chance'}`}
+      </span>
+    </div>
+  )
+}
+
+/** Name that tune's reveal: the song, with its cover, as the clip plays on. */
+function TuneReveal({ round }: { round: GameRound }) {
+  const tune = round.tune!
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.92 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.7, ease: easeOutExpo }}
+      className="flex justify-center"
+    >
+      <Cover src={roundArtworkUrl(round)} title={tune.title} artist={tune.artist} />
+    </motion.div>
+  )
+}
+
 /** Sample detective's reveal: the two songs' covers, side by side. */
 function Covers({ round }: { round: GameRound }) {
   const other = round.other!
@@ -339,7 +390,9 @@ function Reveal({ round }: { round: GameRound }) {
   const users = useQuery(usersQuery).data
   const scores = useQuery({ ...gameScoresQuery(round.roomId), enabled: round.scores === 'board' }).data
   const results = (round.results ?? []).filter((r) => r.points > 0).slice(0, 5)
-  const board = round.scores === 'board' ? (scores?.players ?? []).slice(0, 5) : []
+  const set = setStandings(round)
+  // A set shows its own board, between tunes and at the end.
+  const board = set ? set.board.slice(0, 5) : round.scores === 'board' ? (scores?.players ?? []).slice(0, 5) : []
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -370,7 +423,7 @@ function Reveal({ round }: { round: GameRound }) {
       {board.length > 0 && (
         <ol className="flex flex-col gap-[0.8vh]">
           <li className="flex items-center gap-[0.6vw] text-[clamp(0.8rem,1.1vw,1.15rem)] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
-            <Trophy className="size-[2.4vh]" /> Tonight
+            <Trophy className="size-[2.4vh]" /> {set ? (set.over ? 'The set' : `After ${set.number} of ${set.size}`) : 'Tonight'}
           </li>
           {round.topic === 'higher_lower' && scores?.best && (
             <li className="flex items-center gap-[0.6vw] text-[clamp(0.85rem,1.2vw,1.3rem)] text-muted-foreground">
@@ -384,7 +437,10 @@ function Reveal({ round }: { round: GameRound }) {
               <motion.li key={p.userId} layout transition={spring} style={laneStyle(u?.color)} className="flex items-center gap-[0.8vw]">
                 <span className="w-[2vw] text-[clamp(0.9rem,1.3vw,1.4rem)] font-bold text-muted-foreground tabular-nums">{i + 1}</span>
                 {u && <UserAvatar user={u} className="size-[4vh] text-[1.5vh]" />}
-                <span className="min-w-0 flex-1 truncate text-[clamp(0.9rem,1.3vw,1.4rem)] font-semibold">{u?.displayName ?? 'Someone'}</span>
+                <span className="flex min-w-0 flex-1 items-center gap-[0.4vw] truncate text-[clamp(0.9rem,1.3vw,1.4rem)] font-semibold">
+                  {u?.displayName ?? 'Someone'}
+                  {set?.winners.includes(p.userId) && <Crown className="size-[2.6vh] shrink-0 text-primary" aria-label="Won the set" />}
+                </span>
                 <span className="text-[clamp(0.9rem,1.3vw,1.4rem)] text-(--lane) tabular-nums">{p.points.toLocaleString()}</span>
               </motion.li>
             )

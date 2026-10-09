@@ -3,7 +3,19 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { GAMES, LEVELS, plays, setGamesMuted, useGamesMuted, type GameKind, type GamesChange, type RoomGames } from '@/lib/games'
+import {
+  GAMES,
+  LEVELS,
+  plays,
+  setGamesMuted,
+  TUNE_CLIP,
+  TUNE_FROM,
+  tunesOn,
+  useGamesMuted,
+  type GameKind,
+  type GamesChange,
+  type RoomGames,
+} from '@/lib/games'
 import { easeOutExpo } from '@/lib/motion'
 import type { Room } from '@/lib/room'
 import { cn } from '@/lib/utils'
@@ -157,6 +169,45 @@ export function GamesSettings({
                       ))}
                     </ToggleGroup>
                   </Field>
+                )}
+                {tunesOn(g) && (
+                  <div className="flex flex-col gap-4 rounded-2xl bg-muted/50 p-3">
+                    <p className="text-sm font-semibold">{GAMES.tune.label}</p>
+                    <Field label="Songs from" hint={TUNE_FROM.find((f) => f.id === g.tune.from)?.hint}>
+                      <ToggleGroup
+                        type="single"
+                        value={g.tune.from}
+                        onValueChange={(v) => v && tune({ tune: { ...g.tune, from: v as RoomGames['tune']['from'] } })}
+                        aria-label="Name that tune’s songs"
+                      >
+                        {TUNE_FROM.map((f) => (
+                          <ToggleGroupItem key={f.id} value={f.id}>
+                            {f.label}
+                          </ToggleGroupItem>
+                        ))}
+                      </ToggleGroup>
+                    </Field>
+                    <Field label="Clips from" hint={TUNE_CLIP.find((c) => c.id === g.tune.clip)?.hint}>
+                      <ToggleGroup
+                        type="single"
+                        value={g.tune.clip}
+                        onValueChange={(v) => v && tune({ tune: { ...g.tune, clip: v as RoomGames['tune']['clip'] } })}
+                        aria-label="Where the clips come from"
+                      >
+                        {TUNE_CLIP.map((c) => (
+                          <ToggleGroupItem key={c.id} value={c.id}>
+                            {c.label}
+                          </ToggleGroupItem>
+                        ))}
+                      </ToggleGroup>
+                    </Field>
+                    <Toggle
+                      label="Hard mode"
+                      hint="Type the title instead of picking it. The artist alone scores half"
+                      checked={g.tune.typed}
+                      onChange={(typed) => tune({ tune: { ...g.tune, typed } })}
+                    />
+                  </div>
                 )}
               </motion.div>
             )}

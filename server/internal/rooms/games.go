@@ -31,6 +31,62 @@ type Games struct {
 	// BreaksPerHour is, at Game night, the most rounds an hour that may
 	// pause the music: 0 to MaxBreaksPerHour. Nil is DefaultBreaksPerHour.
 	BreaksPerHour *int `json:"breaksPerHour,omitempty"`
+	// Tune sets up name that tune. Nil takes the defaults.
+	Tune *Tune `json:"tune,omitempty"`
+}
+
+// Tune sets up name that tune (MAD-793).
+type Tune struct {
+	// From is where the tunes come from: TuneTonight, TuneFavorites or
+	// TuneNew. Empty is TuneTonight.
+	From string `json:"from,omitempty"`
+	// Typed is hard mode: type the title instead of picking it.
+	Typed bool `json:"typed,omitempty"`
+	// Clip is where in the song the clips come from: ClipChorus, ClipIntro
+	// or ClipOutro. Empty is ClipChorus.
+	Clip string `json:"clip,omitempty"`
+}
+
+// Where name that tune's songs come from.
+const (
+	// TuneTonight: songs the room played tonight.
+	TuneTonight = "tonight"
+	// TuneFavorites: the room's favorites over every night.
+	TuneFavorites = "favorites"
+	// TuneNew: songs the room has never played, by artists it likes,
+	// from the DJ's candidates.
+	TuneNew = "new"
+)
+
+// TuneSources are where tunes may come from, in order.
+var TuneSources = []string{TuneTonight, TuneFavorites, TuneNew}
+
+// Where in a song name that tune's clips come from.
+const (
+	// ClipChorus: the song's loudest section, usually a chorus.
+	ClipChorus = "chorus"
+	// ClipIntro: its first seconds.
+	ClipIntro = "intro"
+	// ClipOutro: its last seconds.
+	ClipOutro = "outro"
+)
+
+// ClipSpots are where clips may come from, in order.
+var ClipSpots = []string{ClipChorus, ClipIntro, ClipOutro}
+
+// TuneOf is name that tune's setup, with the defaults filled in.
+func (g Games) TuneOf() Tune {
+	var t Tune
+	if g.Tune != nil {
+		t = *g.Tune
+	}
+	if t.From == "" {
+		t.From = TuneTonight
+	}
+	if t.Clip == "" {
+		t.Clip = ClipChorus
+	}
+	return t
 }
 
 // Game levels, from nothing to a full game night.
@@ -221,6 +277,14 @@ func (g Games) validate() error {
 	if b := g.BreaksPerHour; b != nil && (*b < 0 || *b > MaxBreaksPerHour) {
 		return &InvalidInputError{fmt.Sprintf("breaks per hour are 0 to %d", MaxBreaksPerHour)}
 	}
+	if t := g.Tune; t != nil {
+		if t.From != "" && !slices.Contains(TuneSources, t.From) {
+			return &InvalidInputError{"name that tune's songs are from tonight, favorites or new"}
+		}
+		if t.Clip != "" && !slices.Contains(ClipSpots, t.Clip) {
+			return &InvalidInputError{"name that tune's clips are from the chorus, intro or outro"}
+		}
+	}
 	return nil
 }
 
@@ -235,5 +299,16 @@ func (g *Games) clean() {
 	})
 	if len(g.Enabled) == 0 {
 		g.Enabled = nil
+	}
+	if t := g.Tune; t != nil {
+		if t.From == TuneTonight {
+			t.From = ""
+		}
+		if t.Clip == ClipChorus {
+			t.Clip = ""
+		}
+		if *t == (Tune{}) {
+			g.Tune = nil
+		}
 	}
 }

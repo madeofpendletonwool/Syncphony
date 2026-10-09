@@ -81,10 +81,54 @@ func TestGamesSettings(t *testing.T) {
 		{Level: rooms.GamesRounds, Frequency: new(-1)},
 		{Level: rooms.GamesRounds, Scores: "loud"},
 		{Level: rooms.GamesNight, BreaksPerHour: new(99)},
+		{Level: rooms.GamesNight, Tune: &rooms.Tune{From: "radio"}},
+		{Level: rooms.GamesNight, Tune: &rooms.Tune{Clip: "bridge"}},
 	} {
 		var invalid *rooms.InvalidInputError
 		if _, err := s.Update(t.Context(), rooms.Actor{UserID: "ann"}, r.ID, rooms.Update{Games: &bad}); !errors.As(err, &invalid) {
 			t.Errorf("%+v: %v", bad, err)
 		}
+	}
+}
+
+func TestTuneSettings(t *testing.T) {
+	if got := (rooms.Games{}).TuneOf(); got != (rooms.Tune{From: rooms.TuneTonight, Clip: rooms.ClipChorus}) {
+		t.Errorf("defaults %+v", got)
+	}
+	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.CreateUser(t.Context(), store.CreateUserParams{ID: "ann", Username: "ann", DisplayName: "Ann", Role: store.RoleMember, CreatedAt: store.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	s := rooms.New(db, realtime.NewLocal())
+	r, err := s.Create(t.Context(), "ann", "Party", "", rooms.Settings{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err = s.Update(t.Context(), rooms.Actor{UserID: "ann"}, r.ID, rooms.Update{
+		Games: &rooms.Games{Level: rooms.GamesNight, Tune: &rooms.Tune{From: rooms.TuneFavorites, Typed: true, Clip: rooms.ClipChorus}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := rooms.ParseSettings(r.Settings).Games
+	if got := g.TuneOf(); got != (rooms.Tune{From: rooms.TuneFavorites, Typed: true, Clip: rooms.ClipChorus}) {
+		t.Errorf("after update %+v", got)
+	}
+	// The default clip spot isn't kept, so it follows a later default.
+	if g.Tune.Clip != "" {
+		t.Errorf("kept %+v", g.Tune)
+	}
+	r, err = s.Update(t.Context(), rooms.Actor{UserID: "ann"}, r.ID, rooms.Update{
+		Games: &rooms.Games{Level: rooms.GamesNight, Tune: &rooms.Tune{From: rooms.TuneTonight}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := rooms.ParseSettings(r.Settings).Games; g.Tune != nil {
+		t.Errorf("all defaults, kept %+v", g.Tune)
 	}
 }

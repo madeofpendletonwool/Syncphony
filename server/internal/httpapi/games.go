@@ -6,11 +6,15 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"net/http"
 	"slices"
 	"strconv"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/artcache"
+
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/awards"
+	"github.com/madeofpendletonwool/syncphony/server/internal/clips"
 	"github.com/madeofpendletonwool/syncphony/server/internal/games"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/quiz"
@@ -44,10 +48,14 @@ func (s *Server) StartGameRound(ctx context.Context, req StartGameRoundRequestOb
 		return nil, games.ErrGamesOff
 	}
 	var kind string
+	var set int
 	if req.Body != nil && req.Body.Kind != nil {
 		kind = string(*req.Body.Kind)
 	}
-	rd, err := s.Games.Start(ctx, req.RoomId, u, kind)
+	if req.Body != nil && req.Body.Set != nil {
+		set = int(*req.Body.Set)
+	}
+	rd, err := s.Games.Start(ctx, req.RoomId, u, kind, set)
 	if err != nil {
 		return nil, err
 	}
@@ -71,25 +79,59 @@ func (s *Server) AnswerGameRound(ctx context.Context, req AnswerGameRoundRequest
 	return AnswerGameRound200JSONResponse{RoundId: req.RoundId, At: a.At}, nil
 }
 
-// GetGameRoundArtwork returns the cover of the round's other song, from
-// its reveal on.
+// GetGameRoundArtwork returns the cover of the round's other song, or its
+// tune, from its reveal on.
 func (s *Server) GetGameRoundArtwork(ctx context.Context, req GetGameRoundArtworkRequestObject) (GetGameRoundArtworkResponseObject, error) {
 	if s.Games == nil || s.Artwork == nil {
 		return nil, provider.ErrNotFound
 	}
 	rd, ok := s.Games.Current(req.RoomId)
-	if !ok || rd.ID != req.RoundId || (rd.State != games.StateReveal && rd.State != games.StateDone) || rd.Question.Other == nil {
+	if !ok || rd.ID != req.RoundId || (rd.State != games.StateReveal && rd.State != games.StateDone) || (rd.Question.Other == nil && rd.Tune == nil) {
 		return nil, provider.ErrNotFound
 	}
 	px := 0
 	if req.Params.Size != nil {
 		px = *req.Params.Size
 	}
-	img, err := s.Artwork.ForRecording(ctx, rd.Question.Other.ID, px)
+	var img artcache.Image
+	var err error
+	if rd.Tune != nil {
+		img, err = s.Artwork.ForTrack(ctx, *rd.Tune, px)
+	} else {
+		img, err = s.Artwork.ForRecording(ctx, rd.Question.Other.ID, px)
+	}
 	if err != nil {
 		return nil, err
 	}
 	return imageResponse(img), nil
+}
+
+// GetGameClip returns one of a round's clips.
+func (s *Server) GetGameClip(ctx context.Context, req GetGameClipRequestObject) (GetGameClipResponseObject, error) {
+	if s.Clips == nil {
+		return nil, provider.ErrNotFound
+	}
+	c, err := s.Clips.Get(ctx, req.RoomId, req.ClipId)
+	if errors.Is(err, clips.ErrNotFound) {
+		return nil, provider.ErrNotFound
+	} else if err != nil {
+		return nil, err
+	}
+	return clipResponse{c}, nil
+}
+
+// clipResponse writes a clip. It may be cached by the browser that asked,
+// for the round, but never by anyone else: the song's someone's.
+type clipResponse struct{ c clips.Clip }
+
+func (r clipResponse) VisitGetGameClipResponse(w http.ResponseWriter) error {
+	h := w.Header()
+	h.Set("Content-Type", r.c.ContentType)
+	h.Set("Content-Length", strconv.Itoa(len(r.c.Data)))
+	h.Set("Cache-Control", "private, max-age=600")
+	w.WriteHeader(http.StatusOK)
+	_, err := w.Write(r.c.Data)
+	return err
 }
 
 // GetGameScores returns tonight's scores, as far as the caller may see them.
@@ -121,6 +163,16 @@ func (s *Server) toGameRound(rd games.Round) GameRound {
 	if out.Choices == nil {
 		out.Choices = []string{}
 	}
+	if len(rd.Clips) > 0 {
+		cs := []GameClip{}
+		for _, c := range rd.ClipsOut() {
+			cs = append(cs, GameClip{Id: c.ID, LengthMs: c.Length.Milliseconds(), At: c.At, Reveal: rd.RevealClip != nil && c.ID == rd.RevealClip.ID})
+		}
+		out.Clips = &cs
+	}
+	if st := rd.Set; st != nil {
+		out.Set = &GameSet{Id: st.ID, Number: st.Number, Size: st.Size, Board: setBoard(st)}
+	}
 	for _, h := range q.Hides {
 		out.Hides = append(out.Hides, GameRoundHides(h))
 	}
@@ -140,6 +192,12 @@ func (s *Server) toGameRound(rd games.Round) GameRound {
 	if o := q.Other; o != nil {
 		out.Other = &GameSong{Title: o.Title, Artist: nonEmpty(o.Artist), HasArtwork: o.ID != "" && s.Artwork != nil}
 	}
+	if t := rd.Tune; t != nil {
+		out.Tune = &GameSong{Title: t.Title, HasArtwork: s.Artwork != nil}
+		if len(t.Artists) > 0 {
+			out.Tune.Artist = &t.Artists[0].Name
+		}
+	}
 	if q.Answer == quiz.AnswerChoice || len(q.Choices) > 0 {
 		out.CorrectIndex = &q.CorrectIndex
 	}
@@ -152,6 +210,18 @@ func (s *Server) toGameRound(rd games.Round) GameRound {
 		})
 	}
 	out.Results = &results
+	return out
+}
+
+// setBoard is a set's points so far, best first.
+func setBoard(st *games.Set) []GameSetPlayer {
+	out := make([]GameSetPlayer, 0, len(st.Points))
+	for u, p := range st.Points {
+		out = append(out, GameSetPlayer{UserId: u, Points: p})
+	}
+	slices.SortFunc(out, func(a, b GameSetPlayer) int {
+		return cmp.Or(cmp.Compare(b.Points, a.Points), cmp.Compare(a.UserId, b.UserId))
+	})
 	return out
 }
 
@@ -190,6 +260,8 @@ func toRoomGames(g rooms.Games) RoomGames {
 		Level: RoomGamesLevel(g.LevelOf()), Enabled: map[string]bool{}, Frequency: g.Every(), Guests: g.GuestsAnswer(),
 		Scores: RoomGamesScores(g.ScoreMode()), TvOnly: g.TVOnly, BreaksPerHour: rooms.DefaultBreaksPerHour,
 	}
+	t := g.TuneOf()
+	out.Tune = RoomGamesTune{From: RoomGamesTuneFrom(t.From), Typed: t.Typed, Clip: RoomGamesTuneClip(t.Clip)}
 	// Shown whatever the level; it only applies at Game night.
 	if g.BreaksPerHour != nil {
 		out.BreaksPerHour = *g.BreaksPerHour
@@ -220,6 +292,18 @@ func fromRoomGames(c RoomGamesChange) rooms.Games {
 	}
 	if c.TvOnly != nil {
 		g.TVOnly = *c.TvOnly
+	}
+	if t := c.Tune; t != nil {
+		g.Tune = &rooms.Tune{}
+		if t.From != nil {
+			g.Tune.From = string(*t.From)
+		}
+		if t.Clip != nil {
+			g.Tune.Clip = string(*t.Clip)
+		}
+		if t.Typed != nil {
+			g.Tune.Typed = *t.Typed
+		}
 	}
 	return g
 }

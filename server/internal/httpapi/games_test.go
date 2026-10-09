@@ -5,12 +5,15 @@ package httpapi_test
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/clips"
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
 	"github.com/madeofpendletonwool/syncphony/server/internal/quiz"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
+	"github.com/madeofpendletonwool/syncphony/server/internal/transcode"
 )
 
 // fakeFacts knows every song came out in 1977.
@@ -101,5 +104,49 @@ func TestGamesAPI(t *testing.T) {
 	}
 	if scores.Mode != "board" || len(scores.Players) != 1 || scores.Players[0].Points < 500 {
 		t.Fatalf("scores: %+v", scores)
+	}
+}
+
+func TestGameClipsAPI(t *testing.T) {
+	e := newEnv(t)
+	if e.api.Clips == nil {
+		t.Skip("ffmpeg not installed")
+	}
+	alice := e.admin()
+	bob := e.member(alice, "bob")
+	var room, other httpapi.Room
+	alice.want(http.StatusCreated, "POST", "/rooms", httpapi.CreateRoomRequest{Name: "Party"}).decode(t, &room)
+	bob.want(http.StatusCreated, "POST", "/rooms", httpapi.CreateRoomRequest{Name: "Bob's"}).decode(t, &other)
+	base := "/rooms/" + room.Id
+
+	// Name that tune's setup round-trips, defaults filled in.
+	night := httpapi.RoomGamesChangeLevel("gamenight")
+	from, clip, typed := httpapi.RoomGamesTuneChangeFrom("favorites"), httpapi.RoomGamesTuneChangeClip("outro"), true
+	alice.want(http.StatusOK, "PATCH", base, httpapi.UpdateRoomRequest{Games: &httpapi.RoomGamesChange{
+		Level: &night, Tune: &httpapi.RoomGamesTuneChange{From: &from, Clip: &clip, Typed: &typed},
+	}}).decode(t, &room)
+	if tune := room.Games.Tune; tune.From != "favorites" || tune.Clip != "outro" || !tune.Typed {
+		t.Fatalf("tune settings: %+v", tune)
+	}
+	alice.want(http.StatusOK, "PATCH", base, httpapi.UpdateRoomRequest{Games: &httpapi.RoomGamesChange{Level: &night}}).decode(t, &room)
+	if tune := room.Games.Tune; tune.From != "tonight" || tune.Clip != "chorus" || tune.Typed {
+		t.Fatalf("default tune settings: %+v", tune)
+	}
+	if r := alice.do("POST", base+"/games/rounds", map[string]any{"kind": "year", "set": 5}); r.status != http.StatusBadRequest {
+		t.Fatalf("a set of years: %d %s", r.status, r.body)
+	}
+
+	link := linkFake(t, alice)
+	ids := e.api.Clips.Cut(room.Id, clips.Song{LinkID: link, TrackID: "t01"}, []transcode.Cut{{Start: 5 * time.Second, Length: 2 * time.Second}})
+	r := alice.do("GET", base+"/games/clips/"+ids[0], nil)
+	if r.status != http.StatusOK || r.header.Get("Content-Type") != "audio/mpeg" || len(r.body) < 1000 || !strings.HasPrefix(r.header.Get("Cache-Control"), "private") {
+		t.Fatalf("the clip: %d %v, %d bytes", r.status, r.header, len(r.body))
+	}
+	// Another room's clips aren't there.
+	if r := bob.do("GET", "/rooms/"+other.Id+"/games/clips/"+ids[0], nil); r.status != http.StatusNotFound {
+		t.Fatalf("from another room: %d %s", r.status, r.body)
+	}
+	if r := alice.do("GET", base+"/games/clips/nope", nil); r.status != http.StatusNotFound {
+		t.Fatalf("no such clip: %d %s", r.status, r.body)
 	}
 }

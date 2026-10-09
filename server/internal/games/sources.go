@@ -3,16 +3,20 @@
 package games
 
 import (
+	"cmp"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math/rand/v2"
 	"slices"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/analysis"
+	"github.com/madeofpendletonwool/syncphony/server/internal/clips"
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
 	"github.com/madeofpendletonwool/syncphony/server/internal/musicgraph"
@@ -29,11 +33,25 @@ type Sources struct {
 	LinerNotes *linernotes.Service
 	Lyrics     *lyrics.Service
 	Graph      *musicgraph.Service
+	// Providers say which services stream, for name that tune's clips.
+	// Nil finds no tunes.
+	Providers Providers
+	// New finds songs a room has never played, by artists it likes (the
+	// DJ's picks), for name that tune. Nil finds none.
+	New func(ctx context.Context, roomID string) ([]provider.Track, error)
 	// Now is the clock. Default store.Now.
 	Now func() time.Time
 }
 
-var _ Facts = (*Sources)(nil)
+// Providers looks providers up. links.Service is one.
+type Providers interface {
+	Provider(id string) (provider.Provider, error)
+}
+
+var (
+	_ Facts = (*Sources)(nil)
+	_ Tunes = (*Sources)(nil)
+)
 
 func (s *Sources) now() time.Time {
 	if s.Now != nil {
@@ -261,6 +279,146 @@ func cmpOr(a, b string) string {
 		return a
 	}
 	return b
+}
+
+// --- Tunes ---------------------------------------------------------------
+
+// How far finding tunes looks: tonight's songs, the room's songs over
+// every night, and the favorites drawn from them.
+const (
+	tunesTonight   = 60
+	tunesEver      = 1000
+	tunesFavorites = 30
+)
+
+// Tunes implements Tunes: songs from where the room's settings say, then,
+// if there are none, from the other places in turn. Only songs whose
+// service streams (or that play through a stand-in that does).
+func (s *Sources) Tunes(ctx context.Context, roomID, from string) ([]Tune, error) {
+	if s.DB == nil || s.Providers == nil {
+		return nil, nil
+	}
+	order := append([]string{from}, slices.DeleteFunc(slices.Clone(rooms.TuneSources), func(f string) bool { return f == from })...)
+	for _, f := range order {
+		var items []store.QueueItem
+		var err error
+		switch f {
+		case rooms.TuneTonight:
+			items, err = s.tonight(ctx, roomID)
+		case rooms.TuneFavorites:
+			items, err = s.favorites(ctx, roomID)
+		case rooms.TuneNew:
+			items, err = s.newSongs(ctx, roomID)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if out := s.streamable(items); len(out) > 0 {
+			return out, nil
+		}
+	}
+	return nil, nil
+}
+
+// tonight are the songs the room played tonight, shuffled.
+func (s *Sources) tonight(ctx context.Context, roomID string) ([]store.QueueItem, error) {
+	since := time.Time{}
+	if last, err := s.DB.LastNight(ctx, roomID); err == nil {
+		since = last.EndedAt
+	} else if !store.IsNotFound(err) {
+		return nil, err
+	}
+	plays, err := s.DB.PlaysSince(ctx, store.PlaysSinceParams{RoomID: roomID, Since: since, Limit: tunesTonight})
+	if err != nil {
+		return nil, err
+	}
+	var out []store.QueueItem
+	for _, pl := range plays {
+		if it, err := s.DB.GetQueueItem(ctx, pl.QueueItemID); err == nil {
+			out = append(out, it)
+		}
+	}
+	rand.Shuffle(len(out), func(i, j int) { out[i], out[j] = out[j], out[i] }) //nolint:gosec // picking songs, not secrets
+	return out, nil
+}
+
+// favorites are the songs the room loved most over every night: played
+// through most, and hearted (a heart counts as two plays). The top ones
+// are shuffled, so a set isn't always the same.
+func (s *Sources) favorites(ctx context.Context, roomID string) ([]store.QueueItem, error) {
+	rows, err := s.DB.FavoriteItems(ctx, store.FavoriteItemsParams{RoomID: roomID, Limit: tunesEver})
+	if err != nil {
+		return nil, err
+	}
+	score := map[string]int64{}
+	latest := map[string]store.QueueItem{}
+	var keys []string
+	for _, r := range rows {
+		k := key(r.QueueItem)
+		if _, ok := latest[k]; !ok {
+			latest[k] = r.QueueItem
+			keys = append(keys, k)
+		}
+		score[k] += 1 + 2*r.Hearts
+	}
+	slices.SortStableFunc(keys, func(a, b string) int { return cmp.Compare(score[b], score[a]) })
+	keys = keys[:min(len(keys), tunesFavorites)]
+	rand.Shuffle(len(keys), func(i, j int) { keys[i], keys[j] = keys[j], keys[i] }) //nolint:gosec // as above
+	out := make([]store.QueueItem, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, latest[k])
+	}
+	return out, nil
+}
+
+// newSongs are songs the room has never played, by artists it likes.
+func (s *Sources) newSongs(ctx context.Context, roomID string) ([]store.QueueItem, error) {
+	if s.New == nil {
+		return nil, nil
+	}
+	ts, err := s.New(ctx, roomID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]store.QueueItem, 0, len(ts))
+	for _, t := range ts {
+		b, err := json.Marshal(t)
+		if err != nil {
+			continue
+		}
+		out = append(out, store.QueueItem{
+			RoomID: roomID, Provider: t.Ref.Provider, LinkID: sql.NullString{String: t.Ref.LinkID, Valid: t.Ref.LinkID != ""},
+			TrackID: t.Ref.ID, Metadata: string(b),
+		})
+	}
+	return out, nil
+}
+
+// streamable are the items that can be clipped, once each.
+func (s *Sources) streamable(items []store.QueueItem) []Tune {
+	seen := map[string]bool{}
+	var out []Tune
+	for _, it := range items {
+		k := key(it)
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		p, linkID, trackID := it.Provider, it.LinkID.String, it.TrackID
+		if it.ViaLinkID.Valid {
+			// A remote service's song with a stand-in that streams.
+			p, linkID, trackID = it.ViaProvider.String, it.ViaLinkID.String, it.ViaTrackID.String
+		}
+		if linkID == "" {
+			continue
+		}
+		prov, err := s.Providers.Provider(p)
+		if err != nil || prov.Info().Capabilities.Playback != provider.PlaybackStream {
+			continue
+		}
+		out = append(out, Tune{Item: it, Song: clips.Song{LinkID: linkID, TrackID: trackID}})
+	}
+	return out
 }
 
 // --- Readiness -----------------------------------------------------------

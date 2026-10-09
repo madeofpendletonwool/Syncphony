@@ -217,7 +217,7 @@ func TestStart(t *testing.T) {
 	g.Frequency = new(0) // only when someone starts one
 	f := setup(t, g)
 	ctx := t.Context()
-	if _, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, ""); !errors.Is(err, games.ErrNothingPlaying) {
+	if _, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, "", 0); !errors.Is(err, games.ErrNothingPlaying) {
 		t.Errorf("nothing playing: %v", err)
 	}
 	f.play(0)
@@ -225,13 +225,13 @@ func TestStart(t *testing.T) {
 	if _, ok := f.engine.Current(f.room.ID); ok {
 		t.Fatal("a round started by itself")
 	}
-	if _, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "bob"}, ""); !errors.Is(err, games.ErrForbidden) {
+	if _, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "bob"}, "", 0); !errors.Is(err, games.ErrForbidden) {
 		t.Errorf("bob started one: %v", err)
 	}
-	if _, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "bob", Role: store.RoleAdmin}, ""); err != nil {
+	if _, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "bob", Role: store.RoleAdmin}, "", 0); err != nil {
 		t.Errorf("an admin: %v", err)
 	}
-	if _, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, ""); !errors.Is(err, games.ErrRoundRunning) {
+	if _, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, "", 0); !errors.Is(err, games.ErrRoundRunning) {
 		t.Errorf("a second round: %v", err)
 	}
 	// The song changes: the round about it is revealed at once.
@@ -277,7 +277,7 @@ func TestHigherOrLower(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	// Guess the year or higher or lower, at random: start rounds until it's the latter.
 	for range 12 {
-		rd, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, rooms.GameYear)
+		rd, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, rooms.GameYear, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -353,7 +353,7 @@ func TestBeatTheSingerWaitsForItsLine(t *testing.T) {
 	f.engine.Facts = byTrack{"bob": lyrics}
 	f.play(0)
 	time.Sleep(20 * time.Millisecond)
-	rd, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, rooms.GameLyrics)
+	rd, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, rooms.GameLyrics, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -390,12 +390,12 @@ func TestPendingRoundGoesWithItsSong(t *testing.T) {
 	f.engine.Facts = byTrack{"bob": lyrics}
 	f.play(0)
 	time.Sleep(20 * time.Millisecond)
-	if _, err := f.engine.Start(t.Context(), f.room.ID, store.User{ID: "ann"}, rooms.GameLyrics); err != nil {
+	if _, err := f.engine.Start(t.Context(), f.room.ID, store.User{ID: "ann"}, rooms.GameLyrics, 0); err != nil {
 		t.Fatal(err)
 	}
 	f.play(1)
 	time.Sleep(20 * time.Millisecond)
-	if _, err := f.engine.Start(t.Context(), f.room.ID, store.User{ID: "ann"}, ""); errors.Is(err, games.ErrRoundRunning) {
+	if _, err := f.engine.Start(t.Context(), f.room.ID, store.User{ID: "ann"}, "", 0); errors.Is(err, games.ErrRoundRunning) {
 		t.Error("the skipped song's round is still running")
 	}
 }
@@ -411,11 +411,11 @@ func TestFinishTheLyricStopsTheMusic(t *testing.T) {
 	f.play(0)
 	time.Sleep(20 * time.Millisecond)
 	// Without a way to stop the music, there's no such round.
-	if _, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, rooms.GameFinishLyric); !errors.Is(err, games.ErrNoQuestion) {
+	if _, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, rooms.GameFinishLyric, 0); !errors.Is(err, games.ErrNoQuestion) {
 		t.Fatalf("no music: %v", err)
 	}
 	f.engine.Music = m
-	rd, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, rooms.GameFinishLyric)
+	rd, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, rooms.GameFinishLyric, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -431,7 +431,7 @@ func TestFinishTheLyricStopsTheMusic(t *testing.T) {
 		t.Errorf("music %v, resumed at %v", got, m.resume)
 	}
 	// One break an hour, and it's had it.
-	if _, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, rooms.GameFinishLyric); !errors.Is(err, games.ErrNoQuestion) {
+	if _, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, rooms.GameFinishLyric, 0); !errors.Is(err, games.ErrNoQuestion) {
 		t.Errorf("a second break: %v", err)
 	}
 }
@@ -443,7 +443,7 @@ func TestGamesOff(t *testing.T) {
 	if _, ok := f.engine.Current(f.room.ID); ok {
 		t.Error("a round in a room with games off")
 	}
-	if _, err := f.engine.Start(t.Context(), f.room.ID, store.User{ID: "ann"}, ""); !errors.Is(err, games.ErrGamesOff) {
+	if _, err := f.engine.Start(t.Context(), f.room.ID, store.User{ID: "ann"}, "", 0); !errors.Is(err, games.ErrGamesOff) {
 		t.Errorf("%v", err)
 	}
 }
