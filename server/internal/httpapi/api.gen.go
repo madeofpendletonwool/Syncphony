@@ -716,34 +716,34 @@ func (e QueueItemState) Valid() bool {
 
 // Defines values for ReactionEmoji.
 const (
-	Empty ReactionEmoji = "🔥"
-	N1    ReactionEmoji = "❤️"
-	N2    ReactionEmoji = "🙌"
-	N3    ReactionEmoji = "😂"
-	N4    ReactionEmoji = "💃"
-	N5    ReactionEmoji = "🎉"
-	N6    ReactionEmoji = "😮"
-	N7    ReactionEmoji = "👏"
+	ReactionEmojiEmpty ReactionEmoji = "🔥"
+	ReactionEmojiN1    ReactionEmoji = "❤️"
+	ReactionEmojiN2    ReactionEmoji = "🙌"
+	ReactionEmojiN3    ReactionEmoji = "😂"
+	ReactionEmojiN4    ReactionEmoji = "💃"
+	ReactionEmojiN5    ReactionEmoji = "🎉"
+	ReactionEmojiN6    ReactionEmoji = "😮"
+	ReactionEmojiN7    ReactionEmoji = "👏"
 )
 
 // Valid indicates whether the value is a known member of the ReactionEmoji enum.
 func (e ReactionEmoji) Valid() bool {
 	switch e {
-	case Empty:
+	case ReactionEmojiEmpty:
 		return true
-	case N1:
+	case ReactionEmojiN1:
 		return true
-	case N2:
+	case ReactionEmojiN2:
 		return true
-	case N3:
+	case ReactionEmojiN3:
 		return true
-	case N4:
+	case ReactionEmojiN4:
 		return true
-	case N5:
+	case ReactionEmojiN5:
 		return true
-	case N6:
+	case ReactionEmojiN6:
 		return true
-	case N7:
+	case ReactionEmojiN7:
 		return true
 	default:
 		return false
@@ -942,6 +942,90 @@ func (e RoomGamesChangeScores) Valid() bool {
 	}
 }
 
+// Defines values for RoomGamesTuneClip.
+const (
+	RoomGamesTuneClipChorus RoomGamesTuneClip = "chorus"
+	RoomGamesTuneClipIntro  RoomGamesTuneClip = "intro"
+	RoomGamesTuneClipOutro  RoomGamesTuneClip = "outro"
+)
+
+// Valid indicates whether the value is a known member of the RoomGamesTuneClip enum.
+func (e RoomGamesTuneClip) Valid() bool {
+	switch e {
+	case RoomGamesTuneClipChorus:
+		return true
+	case RoomGamesTuneClipIntro:
+		return true
+	case RoomGamesTuneClipOutro:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoomGamesTuneFrom.
+const (
+	RoomGamesTuneFromFavorites RoomGamesTuneFrom = "favorites"
+	RoomGamesTuneFromNew       RoomGamesTuneFrom = "new"
+	RoomGamesTuneFromTonight   RoomGamesTuneFrom = "tonight"
+)
+
+// Valid indicates whether the value is a known member of the RoomGamesTuneFrom enum.
+func (e RoomGamesTuneFrom) Valid() bool {
+	switch e {
+	case RoomGamesTuneFromFavorites:
+		return true
+	case RoomGamesTuneFromNew:
+		return true
+	case RoomGamesTuneFromTonight:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoomGamesTuneChangeClip.
+const (
+	RoomGamesTuneChangeClipChorus RoomGamesTuneChangeClip = "chorus"
+	RoomGamesTuneChangeClipIntro  RoomGamesTuneChangeClip = "intro"
+	RoomGamesTuneChangeClipOutro  RoomGamesTuneChangeClip = "outro"
+)
+
+// Valid indicates whether the value is a known member of the RoomGamesTuneChangeClip enum.
+func (e RoomGamesTuneChangeClip) Valid() bool {
+	switch e {
+	case RoomGamesTuneChangeClipChorus:
+		return true
+	case RoomGamesTuneChangeClipIntro:
+		return true
+	case RoomGamesTuneChangeClipOutro:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoomGamesTuneChangeFrom.
+const (
+	RoomGamesTuneChangeFromFavorites RoomGamesTuneChangeFrom = "favorites"
+	RoomGamesTuneChangeFromNew       RoomGamesTuneChangeFrom = "new"
+	RoomGamesTuneChangeFromTonight   RoomGamesTuneChangeFrom = "tonight"
+)
+
+// Valid indicates whether the value is a known member of the RoomGamesTuneChangeFrom enum.
+func (e RoomGamesTuneChangeFrom) Valid() bool {
+	switch e {
+	case RoomGamesTuneChangeFromFavorites:
+		return true
+	case RoomGamesTuneChangeFromNew:
+		return true
+	case RoomGamesTuneChangeFromTonight:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RoomInvitePreviewStatus.
 const (
 	RoomInvitePreviewStatusMember  RoomInvitePreviewStatus = "member"
@@ -1098,6 +1182,24 @@ func (e SkipPermission) Valid() bool {
 	case SkipPermissionOwner:
 		return true
 	case SkipPermissionVote:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StartGameRoundRequestSet.
+const (
+	StartGameRoundRequestSetN10 StartGameRoundRequestSet = 10
+	StartGameRoundRequestSetN5  StartGameRoundRequestSet = 5
+)
+
+// Valid indicates whether the value is a known member of the StartGameRoundRequestSet enum.
+func (e StartGameRoundRequestSet) Valid() bool {
+	switch e {
+	case StartGameRoundRequestSetN10:
+		return true
+	case StartGameRoundRequestSetN5:
 		return true
 	default:
 		return false
@@ -1745,6 +1847,19 @@ type GameAnswerRequest struct {
 	Text   *string `json:"text,omitempty"`
 }
 
+// GameClip defines model for GameClip.
+type GameClip struct {
+	// At When it plays, by the server's clock.
+	At time.Time `json:"at"`
+
+	// Id Opaque. Fetch it from the room's `games/clips` endpoint.
+	Id       string `json:"id"`
+	LengthMs int64  `json:"lengthMs"`
+
+	// Reveal It's the reveal's clip, from the same spot but longer.
+	Reveal bool `json:"reveal"`
+}
+
 // GameKind A game. `year`: guess the year. `liner`: covers, credits and
 // releases. `sample`: sample detective. `lyrics`: beat the singer.
 // `finish_lyric`: the music stops and you finish the line. `tune`:
@@ -1789,7 +1904,7 @@ type GameResult struct {
 // the song has a beat map. Until the reveal there's no answer in it.
 type GameRound struct {
 	// Answer How to answer. A `number` round may show `choices` too, and
-	// takes either.
+	// takes either. `song` is a song's title, typed.
 	Answer GameRoundAnswer `json:"answer"`
 
 	// Answered Who has answered so far.
@@ -1797,9 +1912,14 @@ type GameRound struct {
 
 	// AtMs When in the song the round's lyric line is sung. With `line`
 	// in `hides`, screens keep that line back until the reveal.
-	AtMs     *int64    `json:"atMs,omitempty"`
-	Choices  []string  `json:"choices"`
-	ClosesAt time.Time `json:"closesAt"`
+	AtMs    *int64   `json:"atMs,omitempty"`
+	Choices []string `json:"choices"`
+
+	// Clips A name that tune round's clips, longer each time: each is
+	// listed once it's time to play it, and the reveal's from the
+	// reveal on. Devices playing the room play each as it appears.
+	Clips    *[]GameClip `json:"clips,omitempty"`
+	ClosesAt time.Time   `json:"closesAt"`
 
 	// Correct The answer, from the reveal on.
 	Correct *string `json:"correct,omitempty"`
@@ -1849,7 +1969,8 @@ type GameRound struct {
 	OpensAt time.Time     `json:"opensAt"`
 
 	// Other The other song in a sample detective round, from the reveal on:
-	// what this one samples, or what samples it.
+	// what this one samples, or what samples it. For name that tune, the
+	// tune.
 	Other  *GameSong `json:"other,omitempty"`
 	Prompt string    `json:"prompt"`
 
@@ -1861,23 +1982,34 @@ type GameRound struct {
 	RoomId string          `json:"roomId"`
 	Scores GameRoundScores `json:"scores"`
 
+	// Set A set of tunes a host started, run back to back with the music
+	// stopped. Its board is everyone's points in the set so far, best
+	// first: after the last tune, the winner's on top.
+	Set *GameSet `json:"set,omitempty"`
+
 	// StartedBy Who started it; absent when the room's frequency did.
 	StartedBy *string        `json:"startedBy,omitempty"`
 	State     GameRoundState `json:"state"`
 
-	// StopsMusic The music stops while answers are open (finish the lyric) and
-	// comes back at the reveal, on the line.
+	// StopsMusic The music stops while answers are open (finish the lyric, name
+	// that tune). It comes back at the reveal, on the line, or after
+	// a tune's reveal clip, where it stopped.
 	StopsMusic bool `json:"stopsMusic"`
 
 	// Topic What it asks within its game, e.g. `credit`, `first_released`.
 	Topic *string `json:"topic,omitempty"`
+
+	// Tune The other song in a sample detective round, from the reveal on:
+	// what this one samples, or what samples it. For name that tune, the
+	// tune.
+	Tune *GameSong `json:"tune,omitempty"`
 
 	// TvOnly Phones don't prompt for it; the big screen shows it.
 	TvOnly bool `json:"tvOnly"`
 }
 
 // GameRoundAnswer How to answer. A `number` round may show `choices` too, and
-// takes either.
+// takes either. `song` is a song's title, typed.
 type GameRoundAnswer string
 
 // GameRoundHides defines model for GameRound.Hides.
@@ -1905,8 +2037,27 @@ type GameScores struct {
 // GameScoresMode defines model for GameScores.Mode.
 type GameScoresMode string
 
+// GameSet A set of tunes a host started, run back to back with the music
+// stopped. Its board is everyone's points in the set so far, best
+// first: after the last tune, the winner's on top.
+type GameSet struct {
+	Board []GameSetPlayer `json:"board"`
+	Id    string          `json:"id"`
+
+	// Number Which tune of the set this is, from 1.
+	Number int `json:"number"`
+	Size   int `json:"size"`
+}
+
+// GameSetPlayer defines model for GameSetPlayer.
+type GameSetPlayer struct {
+	Points int    `json:"points"`
+	UserId string `json:"userId"`
+}
+
 // GameSong The other song in a sample detective round, from the reveal on:
-// what this one samples, or what samples it.
+// what this one samples, or what samples it. For name that tune, the
+// tune.
 type GameSong struct {
 	Artist *string `json:"artist,omitempty"`
 
@@ -2925,7 +3076,8 @@ type RoomFairness struct {
 // sets the defaults for everything else, and a change applies from
 // the next song, so a round already running finishes.
 type RoomGames struct {
-	// BreaksPerHour At `gamenight`, the most rounds an hour that may pause the music.
+	// BreaksPerHour At `gamenight`, the most rounds an hour that may pause the
+	// music. A set of tunes counts as one.
 	BreaksPerHour int `json:"breaksPerHour"`
 
 	// Enabled Each game, on or off. The response lists every game the level
@@ -2948,6 +3100,9 @@ type RoomGames struct {
 	// Scores `private`: you see your own. `board`: a leaderboard on the big
 	// screen.
 	Scores RoomGamesScores `json:"scores"`
+
+	// Tune How name that tune plays.
+	Tune RoomGamesTune `json:"tune"`
 
 	// TvOnly Rounds show on the big screen only, never as prompts on phones.
 	TvOnly bool `json:"tvOnly"`
@@ -2974,7 +3129,10 @@ type RoomGamesChange struct {
 	Guests        *bool                  `json:"guests,omitempty"`
 	Level         *RoomGamesChangeLevel  `json:"level,omitempty"`
 	Scores        *RoomGamesChangeScores `json:"scores,omitempty"`
-	TvOnly        *bool                  `json:"tvOnly,omitempty"`
+
+	// Tune How name that tune plays. Anything left out is the default.
+	Tune   *RoomGamesTuneChange `json:"tune,omitempty"`
+	TvOnly *bool                `json:"tvOnly,omitempty"`
 }
 
 // RoomGamesChangeLevel defines model for RoomGamesChange.Level.
@@ -2982,6 +3140,46 @@ type RoomGamesChangeLevel string
 
 // RoomGamesChangeScores defines model for RoomGamesChange.Scores.
 type RoomGamesChangeScores string
+
+// RoomGamesTune How name that tune plays.
+type RoomGamesTune struct {
+	// Clip Where the clips come from: the song's loudest section (usually
+	// a chorus), its intro, or its last seconds.
+	Clip RoomGamesTuneClip `json:"clip"`
+
+	// From Where the tunes come from: `tonight`'s songs, the room's
+	// `favorites` over every night, or `new` songs it's never played
+	// by artists it likes (the DJ's picks). When there are none
+	// there, the others in turn.
+	From RoomGamesTuneFrom `json:"from"`
+
+	// Typed Hard mode: type the title instead of picking it. The artist
+	// alone scores half.
+	Typed bool `json:"typed"`
+}
+
+// RoomGamesTuneClip Where the clips come from: the song's loudest section (usually
+// a chorus), its intro, or its last seconds.
+type RoomGamesTuneClip string
+
+// RoomGamesTuneFrom Where the tunes come from: `tonight`'s songs, the room's
+// `favorites` over every night, or `new` songs it's never played
+// by artists it likes (the DJ's picks). When there are none
+// there, the others in turn.
+type RoomGamesTuneFrom string
+
+// RoomGamesTuneChange How name that tune plays. Anything left out is the default.
+type RoomGamesTuneChange struct {
+	Clip  *RoomGamesTuneChangeClip `json:"clip,omitempty"`
+	From  *RoomGamesTuneChangeFrom `json:"from,omitempty"`
+	Typed *bool                    `json:"typed,omitempty"`
+}
+
+// RoomGamesTuneChangeClip defines model for RoomGamesTuneChange.Clip.
+type RoomGamesTuneChangeClip string
+
+// RoomGamesTuneChangeFrom defines model for RoomGamesTuneChange.From.
+type RoomGamesTuneChangeFrom string
 
 // RoomGuests Whether people without an account may join the room by scanning a
 // guest pass, and what they may do.
@@ -3338,7 +3536,13 @@ type StartGameRoundRequest struct {
 	// `finish_lyric`: the music stops and you finish the line. `tune`:
 	// name that tune. `connect`, `theme`, `bracket`: queue games.
 	Kind *GameKind `json:"kind,omitempty"`
+
+	// Set Start a set of this many tunes (`tune` only).
+	Set *StartGameRoundRequestSet `json:"set,omitempty"`
 }
+
+// StartGameRoundRequestSet Start a set of this many tunes (`tune` only).
+type StartGameRoundRequestSet int
 
 // Suggestion A song to queue, and the room's song it's like.
 type Suggestion struct {
@@ -4138,6 +4342,9 @@ type ServerInterface interface {
 	// UpdateDisplay Turn a display's audio on or off
 	// (PATCH /rooms/{roomId}/displays/{displayId})
 	UpdateDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId, displayId string)
+	// GetGameClip A clip of a song, for a round
+	// (GET /rooms/{roomId}/games/clips/{clipId})
+	GetGameClip(w http.ResponseWriter, r *http.Request, roomId RoomId, clipId string)
 	// GetGameRound The room's game round, if one is up
 	// (GET /rooms/{roomId}/games/round)
 	GetGameRound(w http.ResponseWriter, r *http.Request, roomId RoomId)
@@ -6401,6 +6608,41 @@ func (siw *ServerInterfaceWrapper) UpdateDisplay(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetGameClip operation middleware
+func (siw *ServerInterfaceWrapper) GetGameClip(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "clipId" -------------
+	var clipId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "clipId", r.PathValue("clipId"), &clipId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "clipId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGameClip(w, r, roomId, clipId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetGameRound operation middleware
 func (siw *ServerInterfaceWrapper) GetGameRound(w http.ResponseWriter, r *http.Request) {
 
@@ -8498,6 +8740,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/games/rounds", wrapper.StartGameRound)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/games/rounds/{roundId}/answers", wrapper.AnswerGameRound)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/games/rounds/{roundId}/artwork", wrapper.GetGameRoundArtwork)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/games/clips/{clipId}", wrapper.GetGameClip)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/games/scores", wrapper.GetGameScores)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/guest-pass", wrapper.RevokeGuestPass)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/guest-pass", wrapper.GetGuestPass)
@@ -11942,6 +12185,52 @@ func (response UpdateDisplaydefaultJSONResponse) VisitUpdateDisplayResponse(w ht
 	return err
 }
 
+type GetGameClipRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	ClipId string `json:"clipId"`
+}
+
+type GetGameClipResponseObject interface {
+	VisitGetGameClipResponse(w http.ResponseWriter) error
+}
+
+type GetGameClip200AudiompegResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetGameClip200AudiompegResponse) VisitGetGameClipResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "audio/mpeg")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetGameClipdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetGameClipdefaultJSONResponse) VisitGetGameClipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetGameRoundRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 }
@@ -14424,6 +14713,9 @@ type StrictServerInterface interface {
 	// UpdateDisplay Turn a display's audio on or off
 	// (PATCH /rooms/{roomId}/displays/{displayId})
 	UpdateDisplay(ctx context.Context, request UpdateDisplayRequestObject) (UpdateDisplayResponseObject, error)
+	// GetGameClip A clip of a song, for a round
+	// (GET /rooms/{roomId}/games/clips/{clipId})
+	GetGameClip(ctx context.Context, request GetGameClipRequestObject) (GetGameClipResponseObject, error)
 	// GetGameRound The room's game round, if one is up
 	// (GET /rooms/{roomId}/games/round)
 	GetGameRound(ctx context.Context, request GetGameRoundRequestObject) (GetGameRoundResponseObject, error)
@@ -17050,6 +17342,33 @@ func (sh *strictHandler) UpdateDisplay(w http.ResponseWriter, r *http.Request, r
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateDisplayResponseObject); ok {
 		if err := validResponse.VisitUpdateDisplayResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetGameClip operation middleware
+func (sh *strictHandler) GetGameClip(w http.ResponseWriter, r *http.Request, roomId RoomId, clipId string) {
+	var request GetGameClipRequestObject
+
+	request.RoomId = roomId
+	request.ClipId = clipId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGameClip(ctx, request.(GetGameClipRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGameClip")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGameClipResponseObject); ok {
+		if err := validResponse.VisitGetGameClipResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

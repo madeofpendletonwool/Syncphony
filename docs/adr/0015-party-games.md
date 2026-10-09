@@ -2,7 +2,7 @@
 
 - **Status:** accepted
 - **Date:** 2026-10-08
-- **Issue:** MAD-783 (stage 1: MAD-784, MAD-785, MAD-786, MAD-787; stage 2: MAD-788, MAD-789, MAD-790, MAD-791)
+- **Issue:** MAD-783 (stage 1: MAD-784, MAD-785, MAD-786, MAD-787; stage 2: MAD-788, MAD-789, MAD-790, MAD-791; stage 3: MAD-792, MAD-793)
 
 ## Context
 
@@ -25,7 +25,7 @@ The engine reads the settings as each song starts, so a level change applies fro
 - **Scoring.** A right answer scores 500, plus up to 500 more for speed. A near miss on a number scores a share of that. Finished rounds and answers are kept (`game_rounds`, `game_answers`), and the night's scores are everyone's points since the room's last night ended. They go out as `game.scores` after each reveal: everyone's on a `board`, your own when `private`, none when `off`.
 - **Hiding the answer.** A question says what it hides until the reveal: the song (title, artists, album, artwork), its liner notes, or its lyrics. The WebSocket sends `nowplaying.updated` and `queue.updated` with a "Mystery song" to everyone but the speaker. The speaker is the connection whose `device` matches the room's player, because its lock screen shows the song anyway. REST snapshots and the item's artwork, lyrics and liner-notes endpoints refuse with `hidden_for_round` too. When a round starts or stops hiding the song, the room is sent its playback and queue again.
 
-Games that pause the music (finish the lyric, name that tune) are only allowed at Game night and count toward the breaks per hour. Finish the lyric runs from stage 2; name that tune waits for clips (stage 3). Queue games aren't about one song, so they're never ready from a song's facts.
+Games that pause the music (finish the lyric, name that tune) are only allowed at Game night and count toward the breaks per hour. Finish the lyric runs from stage 2, name that tune from stage 3. Queue games aren't about one song, so they're never ready from a song's facts.
 
 ### The question kit is pure
 
@@ -57,10 +57,21 @@ Each game is still a round kind with its question from `quiz`; stage 2 gives the
 - **Hiding one line.** Lyric games hide `line`, not all the lyrics: the lyrics endpoint blanks that line, everywhere it's sung, until the reveal, and the web app does the same for lyrics it already had.
 - **Matching** evens out how lyrics are sung and typed: "do not" and "don't", "runnin'" and "running", "'cause" and "because" are the same.
 
+### Stage 3: clips and name that tune
+
+- **Clips are cut on the server** (package `clips`), from the same stream the speaker plays, with ffmpeg (`transcode.Clipper`). One pass over the song makes every clip a round needs: the audio is split and each copy trimmed (`atrim`), faded in and out over 50 ms, and written as MP3 with no tags. Clips live in memory for 20 minutes under random IDs, served at `GET /rooms/{id}/games/clips/{clipId}` to the room only, so neither the URL, the file nor its tags name the song. Without ffmpeg there's no name that tune.
+- **Where a clip starts** is pure (`quiz.ClipStart`): the beat map's loudest section, usually a chorus, not 0:00, since intros are often silence or too hard; a third of the way in without a map. It lands on the next bar when there's one nearby. The room can pick the intro (from the first bar) or the outro (ending 4 s before the song does) instead.
+- **Only songs that stream** can be clipped: a remote service's song (Spotify Connect playing on its own device) is left out, unless it played through a stand-in that streams.
+- **Name that tune** plays a clip of another song than the one playing: 1 s, then 2 s, then 4 s, 5 s apart, with 8 s after the last. The music stops as answers open (`Break`). A clip's ID only goes out when it's time to play it, and each device playing the room (the speaker, and listeners) plays it as it appears. One answer each, no changes: a right one scores 1000 on the first clip, 800 on the second, 600 after. As choices, the wrong answers are songs by similar artists, so they sound right; typed (hard mode), the title matches fuzzily and the artist alone scores half. The reveal shows the tune's cover (the round's `artwork`) and plays 8 s more from the same spot; then the music comes back where it stopped, if it was playing.
+- **Tunes come from** tonight's songs, the room's favorites over every night (played through, and hearted, twice as much), or songs it's never played by artists it likes (the DJ's picks through `suggest`), as the room sets; if there are none there, the others in turn. The engine finds each room's next tune as songs start and cuts its clips then, so a tune round never waits on a stream and is never offered until its clips are cut and the room has a speaker. Songs used as tunes don't come back soon.
+- **A set** is 5 or 10 tunes a host starts, back to back with the music stopped and the set's board up for a few seconds after each reveal; after the last, the winner tops it, and the music comes back. The set counts once toward the breaks per hour (`game_rounds.set_id`). It ends early if the song changes, or the next tune's clips aren't ready in 20 s.
+- **Sample reveal clips** wait for finding the sampled song on one of the room's services: MusicBrainz names it, but nothing in the room may stream it.
+
 ## Consequences
 
 - Rounds live in memory: a restart drops a round in progress, but kept rounds and scores survive.
 - Hiding is cooperative on clients that already fetched the lyrics or notes before the round began. The server stops new fetches, and the web app hides them while a round asks.
 - Facts are only as good as MusicBrainz, LRCLIB and the graph's sources. Songs they don't know simply aren't asked about.
-- Stage 1 built the shared engine and kit; stage 2 gave the trivia games their own questions, timing and reveals, and taught the engine to stop the music. Stages 3–4 add clips (name that tune) and queue games.
+- Stage 1 built the shared engine and kit; stage 2 gave the trivia games their own questions, timing and reveals, and taught the engine to stop the music; stage 3 cut clips for name that tune. Stage 4 adds queue games.
+- Clips are in memory: a restart drops them, and the next tune is cut again. A clip is a few tens of kilobytes, and a room keeps about one tune's worth ahead.
 - Higher or lower needs the previous song's facts, so it only appears when they're cached: songs are worked out a few ahead as they're queued.

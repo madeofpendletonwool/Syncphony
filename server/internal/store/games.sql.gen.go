@@ -13,7 +13,7 @@ import (
 )
 
 const countGameRoundsSince = `-- name: CountGameRoundsSince :one
-SELECT count(*) FROM game_rounds
+SELECT count(DISTINCT coalesce(set_id, id)) FROM game_rounds
 WHERE room_id = ?1 AND started_at >= ?2 AND kind IN (/*SLICE:kinds*/?)
 `
 
@@ -24,7 +24,7 @@ type CountGameRoundsSinceParams struct {
 }
 
 // CountGameRoundsSince counts a room's rounds of some kinds since a
-// time, for the breaks-per-hour budget.
+// time, for the breaks-per-hour budget. A set of tunes counts once.
 func (q *Queries) CountGameRoundsSince(ctx context.Context, arg CountGameRoundsSinceParams) (int64, error) {
 	query := countGameRoundsSince
 	var queryParams []interface{}
@@ -71,8 +71,8 @@ func (q *Queries) CreateGameAnswer(ctx context.Context, arg CreateGameAnswerPara
 }
 
 const createGameRound = `-- name: CreateGameRound :exec
-INSERT INTO game_rounds (id, room_id, queue_item_id, kind, question, started_by, started_at, revealed_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO game_rounds (id, room_id, queue_item_id, kind, question, started_by, started_at, revealed_at, set_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateGameRoundParams struct {
@@ -84,6 +84,7 @@ type CreateGameRoundParams struct {
 	StartedBy   sql.NullString
 	StartedAt   time.Time
 	RevealedAt  time.Time
+	SetID       sql.NullString
 }
 
 func (q *Queries) CreateGameRound(ctx context.Context, arg CreateGameRoundParams) error {
@@ -96,8 +97,76 @@ func (q *Queries) CreateGameRound(ctx context.Context, arg CreateGameRoundParams
 		arg.StartedBy,
 		arg.StartedAt,
 		arg.RevealedAt,
+		arg.SetID,
 	)
 	return err
+}
+
+const favoriteItems = `-- name: FavoriteItems :many
+SELECT queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at, queue_items.via_provider, queue_items.via_link_id, queue_items.via_track_id, queue_items.palette, queue_items.autopilot, queue_items.removed_by, queue_items.resume_at,
+       CAST((SELECT count(*) FROM hearts WHERE hearts.queue_item_id = queue_items.id) AS INTEGER) AS hearts
+FROM queue_items
+WHERE queue_items.room_id = ?1 AND EXISTS (
+    SELECT 1 FROM play_history
+    WHERE play_history.queue_item_id = queue_items.id AND play_history.end_reason = 'finished'
+)
+ORDER BY queue_items.added_at DESC
+LIMIT ?2
+`
+
+type FavoriteItemsParams struct {
+	RoomID string
+	Limit  int64
+}
+
+type FavoriteItemsRow struct {
+	QueueItem QueueItem
+	Hearts    int64
+}
+
+// FavoriteItems lists a room's songs that played through, newest first,
+// with their hearts: what name that tune draws the room's favorites from.
+func (q *Queries) FavoriteItems(ctx context.Context, arg FavoriteItemsParams) ([]FavoriteItemsRow, error) {
+	rows, err := q.db.QueryContext(ctx, favoriteItems, arg.RoomID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FavoriteItemsRow{}
+	for rows.Next() {
+		var i FavoriteItemsRow
+		if err := rows.Scan(
+			&i.QueueItem.ID,
+			&i.QueueItem.RoomID,
+			&i.QueueItem.AddedBy,
+			&i.QueueItem.Provider,
+			&i.QueueItem.LinkID,
+			&i.QueueItem.TrackID,
+			&i.QueueItem.Metadata,
+			&i.QueueItem.State,
+			&i.QueueItem.LanePosition,
+			&i.QueueItem.AddedAt,
+			&i.QueueItem.UpdatedAt,
+			&i.QueueItem.ViaProvider,
+			&i.QueueItem.ViaLinkID,
+			&i.QueueItem.ViaTrackID,
+			&i.QueueItem.Palette,
+			&i.QueueItem.Autopilot,
+			&i.QueueItem.RemovedBy,
+			&i.QueueItem.ResumeAt,
+			&i.Hearts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const gameScoresSince = `-- name: GameScoresSince :many

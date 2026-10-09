@@ -74,6 +74,7 @@ var displayRequests = map[string]any{
 	"GetGameRound":           GetGameRoundRequestObject{},
 	"GetGameRoundArtwork":    GetGameRoundArtworkRequestObject{},
 	"GetGameScores":          GetGameScoresRequestObject{},
+	"GetGameClip":            GetGameClipRequestObject{},
 	"GetRoom":                GetRoomRequestObject{},
 	"GetQueue":               GetQueueRequestObject{},
 	"ControlPlayback":        ControlPlaybackRequestObject{},

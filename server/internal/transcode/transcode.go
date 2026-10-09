@@ -12,7 +12,10 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -170,6 +173,82 @@ func (f FFmpeg) Transcode(ctx context.Context, src *provider.AudioStream, to For
 		Length:      -1,
 		Size:        -1,
 	}, nil
+}
+
+// Cut is a clip of a song: Length of it from Start.
+type Cut struct {
+	Start, Length time.Duration
+}
+
+// Clip limits: the longest clip, and the fade at each end so a clip
+// doesn't click in or out.
+const (
+	MaxClip  = 30 * time.Second
+	ClipFade = 50 * time.Millisecond
+)
+
+// Clipper cuts short clips of a song, for game rounds (MAD-792).
+type Clipper interface {
+	// Clips cuts each of cuts from src in format f at kbps, faded in and
+	// out, with no tags: nothing in a clip names the song. It reads src
+	// once and takes ownership of its Body. Cuts must start inside the
+	// song; one that runs past its end comes back short.
+	Clips(ctx context.Context, src *provider.AudioStream, f Format, kbps int, cuts []Cut) ([][]byte, error)
+}
+
+// Clips implements Clipper. Every cut comes from one pass over src: the
+// song is split, then each copy trimmed, so it's read once however many
+// clips it makes. Each goes to its own file in a temporary directory.
+func (f FFmpeg) Clips(ctx context.Context, src *provider.AudioStream, to Format, kbps int, cuts []Cut) ([][]byte, error) {
+	defer src.Body.Close()
+	if len(cuts) == 0 {
+		return nil, nil
+	}
+	dir, err := os.MkdirTemp("", "syncphony-clips-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+	var graph strings.Builder
+	fmt.Fprintf(&graph, "[0:a]asplit=%d", len(cuts))
+	for i := range cuts {
+		fmt.Fprintf(&graph, "[s%d]", i)
+	}
+	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-i", "pipe:0"}
+	var outs []string
+	for i, c := range cuts {
+		length := min(max(c.Length, ClipFade*2), MaxClip)
+		fade := ClipFade.Seconds()
+		// Trimmed in the filter, so the fade out is timed from the clip's
+		// own start.
+		fmt.Fprintf(&graph, ";[s%d]atrim=start=%.3f:duration=%.3f,asetpts=PTS-STARTPTS,afade=t=in:d=%.3f,afade=t=out:st=%.3f:d=%.3f[o%d]",
+			i, max(c.Start, 0).Seconds(), length.Seconds(), fade, length.Seconds()-fade, fade, i)
+		out := filepath.Join(dir, fmt.Sprintf("%d.%s", i, to.container))
+		outs = append(outs, out)
+		args = append(args, "-map", fmt.Sprintf("[o%d]", i),
+			"-map_metadata", "-1", "-fflags", "+bitexact", "-c:a", to.codec, "-b:a", fmt.Sprintf("%dk", kbps))
+		if to.container == "mp3" {
+			args = append(args, "-id3v2_version", "0")
+		}
+		args = append(args, "-f", to.container, out)
+	}
+	args = slices.Insert(args, 6, "-filter_complex", graph.String())
+	// The binary comes from server config and the arguments from Targets
+	// and durations.
+	cmd := exec.CommandContext(ctx, f.path(), args...) //nolint:gosec // see above
+	cmd.Stdin = src.Body
+	stderr := &limitedBuffer{max: 4 << 10}
+	cmd.Stderr = stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("transcode: ffmpeg clips: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	clips := make([][]byte, len(outs))
+	for i, out := range outs {
+		if clips[i], err = os.ReadFile(out); err != nil { //nolint:gosec // our own temporary file
+			return nil, err
+		}
+	}
+	return clips, nil
 }
 
 // process is ffmpeg's output. Reading to EOF reports ffmpeg's exit status;

@@ -2625,7 +2625,9 @@ paths:
         `games_off` (409) if the room's games level doesn't run rounds,
         `round_running` (409) if one is up, `nothing_playing` (409) with
         nothing playing, and `no_question` (409) if there's nothing to ask
-        about this song yet.
+        about this song yet. Name that tune needs its clips cut and a
+        speaker to play them, so it's `no_question` until they are. With
+        `set`, it starts a set of that many tunes, back to back.
       tags: [games]
       requestBody:
         content:
@@ -2658,7 +2660,8 @@ paths:
         round closes. Answers are timed by when the server gets them: the
         sooner a right answer, the more it scores. `round_closed` (409) if
         the round isn't open; `forbidden` for a guest in a room where
-        guests don't play.
+        guests don't play. Name that tune takes one answer and no changes:
+        `already_answered` (409) for a second.
       tags: [games]
       requestBody:
         required: true
@@ -2690,8 +2693,9 @@ paths:
       description: |
         The cover of the round's `other` song (what a sample detective
         round's song samples, or is sampled in), from the Cover Art
-        Archive. Only while the round is up and from its reveal on, so it
-        never gives the answer away. 404 if there's none.
+        Archive, or of a name that tune round's `tune`. Only while the
+        round is up and from its reveal on, so it never gives the answer
+        away. 404 if there's none.
       tags: [games]
       parameters:
         - name: size
@@ -2709,6 +2713,39 @@ paths:
           description: The image
           content:
             image/*:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/games/clips/{clipId}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: clipId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getGameClip
+      summary: A clip of a song, for a round
+      description: |
+        A short clip a round plays (name that tune): MP3, faded in and
+        out, with no tags. Its ID is opaque, so neither the URL nor the
+        file names the song, and a round only lists a clip once it's time
+        to play it. The speaker plays it over the stopped song; listeners
+        elsewhere play it too. Clips are kept for a few minutes. 404 if
+        it's not the room's, or has gone.
+      tags: [games]
+      security:
+        - session: []
+        - display: []
+      responses:
+        "200":
+          description: The clip
+          content:
+            audio/mpeg:
               schema:
                 type: string
                 format: binary
@@ -3649,7 +3686,7 @@ components:
         The room's music party games (ADR 0015). Off by default. The level
         sets the defaults for everything else, and a change applies from
         the next song, so a round already running finishes.
-      required: [level, enabled, frequency, guests, scores, tvOnly, breaksPerHour]
+      required: [level, enabled, frequency, guests, scores, tvOnly, breaksPerHour, tune]
       properties:
         level:
           type: string
@@ -3689,7 +3726,38 @@ components:
           type: integer
           minimum: 0
           maximum: 12
-          description: At `gamenight`, the most rounds an hour that may pause the music.
+          description: |
+            At `gamenight`, the most rounds an hour that may pause the
+            music. A set of tunes counts as one.
+        tune:
+          $ref: "#/components/schemas/RoomGamesTune"
+
+    RoomGamesTune:
+      type: object
+      description: How name that tune plays.
+      required: [from, typed, clip]
+      properties:
+        from:
+          type: string
+          enum: [tonight, favorites, new]
+          default: tonight
+          description: |
+            Where the tunes come from: `tonight`'s songs, the room's
+            `favorites` over every night, or `new` songs it's never played
+            by artists it likes (the DJ's picks). When there are none
+            there, the others in turn.
+        typed:
+          type: boolean
+          description: |
+            Hard mode: type the title instead of picking it. The artist
+            alone scores half.
+        clip:
+          type: string
+          enum: [chorus, intro, outro]
+          default: chorus
+          description: |
+            Where the clips come from: the song's loudest section (usually
+            a chorus), its intro, or its last seconds.
 
     RoomGamesChange:
       type: object
@@ -3720,6 +3788,21 @@ components:
           type: integer
           minimum: 0
           maximum: 12
+        tune:
+          $ref: "#/components/schemas/RoomGamesTuneChange"
+
+    RoomGamesTuneChange:
+      type: object
+      description: How name that tune plays. Anything left out is the default.
+      properties:
+        from:
+          type: string
+          enum: [tonight, favorites, new]
+        typed:
+          type: boolean
+        clip:
+          type: string
+          enum: [chorus, intro, outro]
 
     GameKind:
       type: string
@@ -3768,7 +3851,7 @@ components:
           enum: [choice, number, text, song]
           description: |
             How to answer. A `number` round may show `choices` too, and
-            takes either.
+            takes either. `song` is a song's title, typed.
         choices:
           type: array
           items:
@@ -3790,8 +3873,21 @@ components:
         stopsMusic:
           type: boolean
           description: |
-            The music stops while answers are open (finish the lyric) and
-            comes back at the reveal, on the line.
+            The music stops while answers are open (finish the lyric, name
+            that tune). It comes back at the reveal, on the line, or after
+            a tune's reveal clip, where it stopped.
+        clips:
+          type: array
+          description: |
+            A name that tune round's clips, longer each time: each is
+            listed once it's time to play it, and the reveal's from the
+            reveal on. Devices playing the room play each as it appears.
+          items:
+            $ref: "#/components/schemas/GameClip"
+        set:
+          $ref: "#/components/schemas/GameSet"
+        tune:
+          $ref: "#/components/schemas/GameSong"
         startedBy:
           type: string
           description: Who started it; absent when the room's frequency did.
@@ -3854,11 +3950,59 @@ components:
           items:
             $ref: "#/components/schemas/GameResult"
 
+    GameClip:
+      type: object
+      required: [id, lengthMs, at, reveal]
+      properties:
+        id:
+          type: string
+          description: Opaque. Fetch it from the room's `games/clips` endpoint.
+        lengthMs:
+          type: integer
+          format: int64
+        at:
+          type: string
+          format: date-time
+          description: When it plays, by the server's clock.
+        reveal:
+          type: boolean
+          description: It's the reveal's clip, from the same spot but longer.
+
+    GameSet:
+      type: object
+      description: |
+        A set of tunes a host started, run back to back with the music
+        stopped. Its board is everyone's points in the set so far, best
+        first: after the last tune, the winner's on top.
+      required: [id, number, size, board]
+      properties:
+        id:
+          type: string
+        number:
+          type: integer
+          description: Which tune of the set this is, from 1.
+        size:
+          type: integer
+        board:
+          type: array
+          items:
+            $ref: "#/components/schemas/GameSetPlayer"
+
+    GameSetPlayer:
+      type: object
+      required: [userId, points]
+      properties:
+        userId:
+          type: string
+        points:
+          type: integer
+
     GameSong:
       type: object
       description: |
         The other song in a sample detective round, from the reveal on:
-        what this one samples, or what samples it.
+        what this one samples, or what samples it. For name that tune, the
+        tune.
       required: [title, hasArtwork]
       properties:
         title:
@@ -3897,6 +4041,10 @@ components:
       properties:
         kind:
           $ref: "#/components/schemas/GameKind"
+        set:
+          type: integer
+          enum: [5, 10]
+          description: Start a set of this many tunes (`tune` only).
 
     GameAnswerRequest:
       type: object

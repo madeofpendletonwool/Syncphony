@@ -90,6 +90,7 @@ type GameRound struct {
 	StartedBy   sql.NullString
 	StartedAt   time.Time
 	RevealedAt  time.Time
+	SetID       sql.NullString
 }
 
 type Guest struct {
