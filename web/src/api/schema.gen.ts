@@ -1880,6 +1880,33 @@ export interface paths {
         patch: operations["updateDisplay"];
         trace?: never;
     };
+    "/rooms/{roomId}/displays/pairing/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                code: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * What kind of screen is behind a pairing code
+         * @description For whoever is typing in the code a screen shows, before they pair
+         *     it: what the screen says it is (a Syncphony box, say) and what it
+         *     would like to be called, so the pairing form starts with the right
+         *     defaults. The person's choices stay final. `pairing_invalid` if no
+         *     display is showing the code; wrong codes are rate limited.
+         */
+        get: operations["lookupDisplayPairing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/display/pairing": {
         parameters: {
             query?: never;
@@ -1899,7 +1926,9 @@ export interface paths {
          * Start pairing this device as a display
          * @description Returns a short code for the display to show, and sets a pairing
          *     cookie. Poll `GET /display/pairing` until someone in a room types the
-         *     code in. Codes last 10 minutes.
+         *     code in. Codes last 10 minutes. A screen may say what it is: a
+         *     Syncphony box (ADR 0016) pairs as `kind: "box"` with the name it was
+         *     configured with.
          */
         post: operations["beginDisplayPairing"];
         delete?: never;
@@ -3963,10 +3992,29 @@ export interface components {
         PairDisplayRequest: {
             /** @description The code the display shows. Case, spaces and dashes don't matter. */
             code: string;
-            /** @description What to call it. Default "TV". */
+            /** @description What to call it. Defaults to the name the screen suggested, or "TV". */
             name?: string;
             /** @description Let it play the room's audio too. Default false. */
             audio?: boolean;
+        };
+        /** @description What a screen says about itself as it starts pairing. */
+        BeginDisplayPairingRequest: {
+            /**
+             * @description A Syncphony box (ADR 0016), rather than an ordinary screen. Default `screen`.
+             * @enum {string}
+             */
+            kind?: "screen" | "box";
+            /** @description What it would like to be called — a box's configured name. Used when whoever pairs it doesn't choose one. */
+            suggestedName?: string;
+        };
+        DisplayPairingInfo: {
+            /**
+             * @description What the screen waiting behind the code says it is.
+             * @enum {string}
+             */
+            kind: "screen" | "box";
+            /** @description The name the screen suggested, if it did. */
+            suggestedName?: string;
         };
         UpdateDisplayRequest: {
             audio: boolean;
@@ -7280,6 +7328,30 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    lookupDisplayPairing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pending pairing */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisplayPairingInfo"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     pollDisplayPairing: {
         parameters: {
             query?: never;
@@ -7308,7 +7380,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BeginDisplayPairingRequest"];
+            };
+        };
         responses: {
             /** @description A code to show */
             201: {

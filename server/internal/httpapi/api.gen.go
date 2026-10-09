@@ -162,6 +162,42 @@ func (e BackupScheduleFrequency) Valid() bool {
 	}
 }
 
+// Defines values for BeginDisplayPairingRequestKind.
+const (
+	BeginDisplayPairingRequestKindBox    BeginDisplayPairingRequestKind = "box"
+	BeginDisplayPairingRequestKindScreen BeginDisplayPairingRequestKind = "screen"
+)
+
+// Valid indicates whether the value is a known member of the BeginDisplayPairingRequestKind enum.
+func (e BeginDisplayPairingRequestKind) Valid() bool {
+	switch e {
+	case BeginDisplayPairingRequestKindBox:
+		return true
+	case BeginDisplayPairingRequestKindScreen:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DisplayPairingInfoKind.
+const (
+	DisplayPairingInfoKindBox    DisplayPairingInfoKind = "box"
+	DisplayPairingInfoKindScreen DisplayPairingInfoKind = "screen"
+)
+
+// Valid indicates whether the value is a known member of the DisplayPairingInfoKind enum.
+func (e DisplayPairingInfoKind) Valid() bool {
+	switch e {
+	case DisplayPairingInfoKindBox:
+		return true
+	case DisplayPairingInfoKindScreen:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DisplayPairingStatusStatus.
 const (
 	DisplayPairingStatusStatusPaired  DisplayPairingStatusStatus = "paired"
@@ -1814,6 +1850,18 @@ type BeatMapSection struct {
 	StartMs int64   `json:"startMs"`
 }
 
+// BeginDisplayPairingRequest What a screen says about itself as it starts pairing.
+type BeginDisplayPairingRequest struct {
+	// Kind A Syncphony box (ADR 0016), rather than an ordinary screen. Default `screen`.
+	Kind *BeginDisplayPairingRequestKind `json:"kind,omitempty"`
+
+	// SuggestedName What it would like to be called — a box's configured name. Used when whoever pairs it doesn't choose one.
+	SuggestedName *string `json:"suggestedName,omitempty"`
+}
+
+// BeginDisplayPairingRequestKind A Syncphony box (ADR 0016), rather than an ordinary screen. Default `screen`.
+type BeginDisplayPairingRequestKind string
+
 // BeginOAuthLinkRequest Set `provider` to link a new account, or `linkId` to re-link one. For
 // providers that pair first, set only `pairingId`, the approved pairing.
 type BeginOAuthLinkRequest struct {
@@ -1977,6 +2025,18 @@ type DisplayPairing struct {
 	Code      string    `json:"code"`
 	ExpiresAt time.Time `json:"expiresAt"`
 }
+
+// DisplayPairingInfo defines model for DisplayPairingInfo.
+type DisplayPairingInfo struct {
+	// Kind What the screen waiting behind the code says it is.
+	Kind DisplayPairingInfoKind `json:"kind"`
+
+	// SuggestedName The name the screen suggested, if it did.
+	SuggestedName *string `json:"suggestedName,omitempty"`
+}
+
+// DisplayPairingInfoKind What the screen waiting behind the code says it is.
+type DisplayPairingInfoKind string
 
 // DisplayPairingStatus defines model for DisplayPairingStatus.
 type DisplayPairingStatus struct {
@@ -2755,7 +2815,7 @@ type PairDisplayRequest struct {
 	// Code The code the display shows. Case, spaces and dashes don't matter.
 	Code string `json:"code"`
 
-	// Name What to call it. Default "TV".
+	// Name What to call it. Defaults to the name the screen suggested, or "TV".
 	Name *string `json:"name,omitempty"`
 }
 
@@ -4383,6 +4443,9 @@ type BeginPasskeySignupJSONRequestBody = PasskeySignupRequest
 // FinishPasskeySignupJSONRequestBody defines body for FinishPasskeySignup for application/json ContentType.
 type FinishPasskeySignupJSONRequestBody = FinishCeremony
 
+// BeginDisplayPairingJSONRequestBody defines body for BeginDisplayPairing for application/json ContentType.
+type BeginDisplayPairingJSONRequestBody = BeginDisplayPairingRequest
+
 // JoinAsGuestJSONRequestBody defines body for JoinAsGuest for application/json ContentType.
 type JoinAsGuestJSONRequestBody = JoinAsGuestRequest
 
@@ -4751,6 +4814,9 @@ type ServerInterface interface {
 	// PairDisplay Pair a display with the room
 	// (POST /rooms/{roomId}/displays)
 	PairDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// LookupDisplayPairing What kind of screen is behind a pairing code
+	// (GET /rooms/{roomId}/displays/pairing/{code})
+	LookupDisplayPairing(w http.ResponseWriter, r *http.Request, roomId RoomId, code string)
 	// UnpairDisplay Unpair a display
 	// (DELETE /rooms/{roomId}/displays/{displayId})
 	UnpairDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId, displayId string)
@@ -6962,6 +7028,41 @@ func (siw *ServerInterfaceWrapper) PairDisplay(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PairDisplay(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LookupDisplayPairing operation middleware
+func (siw *ServerInterfaceWrapper) LookupDisplayPairing(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "code" -------------
+	var code string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", r.PathValue("code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LookupDisplayPairing(w, r, roomId, code)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9361,6 +9462,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/displays", wrapper.PairDisplay)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/displays/{displayId}", wrapper.UnpairDisplay)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/rooms/{roomId}/displays/{displayId}", wrapper.UpdateDisplay)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/displays/pairing/{code}", wrapper.LookupDisplayPairing)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/display/pairing", wrapper.PollDisplayPairing)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/display/pairing", wrapper.BeginDisplayPairing)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/display", wrapper.LeaveDisplay)
@@ -10309,6 +10411,7 @@ func (response PollDisplayPairingdefaultJSONResponse) VisitPollDisplayPairingRes
 }
 
 type BeginDisplayPairingRequestObject struct {
+	Body *BeginDisplayPairingJSONRequestBody
 }
 
 type BeginDisplayPairingResponseObject interface {
@@ -12739,6 +12842,46 @@ type PairDisplaydefaultJSONResponse struct {
 }
 
 func (response PairDisplaydefaultJSONResponse) VisitPairDisplayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupDisplayPairingRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Code   string `json:"code"`
+}
+
+type LookupDisplayPairingResponseObject interface {
+	VisitLookupDisplayPairingResponse(w http.ResponseWriter) error
+}
+
+type LookupDisplayPairing200JSONResponse DisplayPairingInfo
+
+func (response LookupDisplayPairing200JSONResponse) VisitLookupDisplayPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupDisplayPairingdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response LookupDisplayPairingdefaultJSONResponse) VisitLookupDisplayPairingResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -15588,6 +15731,9 @@ type StrictServerInterface interface {
 	// PairDisplay Pair a display with the room
 	// (POST /rooms/{roomId}/displays)
 	PairDisplay(ctx context.Context, request PairDisplayRequestObject) (PairDisplayResponseObject, error)
+	// LookupDisplayPairing What kind of screen is behind a pairing code
+	// (GET /rooms/{roomId}/displays/pairing/{code})
+	LookupDisplayPairing(ctx context.Context, request LookupDisplayPairingRequestObject) (LookupDisplayPairingResponseObject, error)
 	// UnpairDisplay Unpair a display
 	// (DELETE /rooms/{roomId}/displays/{displayId})
 	UnpairDisplay(ctx context.Context, request UnpairDisplayRequestObject) (UnpairDisplayResponseObject, error)
@@ -16433,6 +16579,16 @@ func (sh *strictHandler) PollDisplayPairing(w http.ResponseWriter, r *http.Reque
 // BeginDisplayPairing operation middleware
 func (sh *strictHandler) BeginDisplayPairing(w http.ResponseWriter, r *http.Request) {
 	var request BeginDisplayPairingRequestObject
+
+	var body BeginDisplayPairingJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.BeginDisplayPairing(ctx, request.(BeginDisplayPairingRequestObject))
@@ -18180,6 +18336,33 @@ func (sh *strictHandler) PairDisplay(w http.ResponseWriter, r *http.Request, roo
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PairDisplayResponseObject); ok {
 		if err := validResponse.VisitPairDisplayResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LookupDisplayPairing operation middleware
+func (sh *strictHandler) LookupDisplayPairing(w http.ResponseWriter, r *http.Request, roomId RoomId, code string) {
+	var request LookupDisplayPairingRequestObject
+
+	request.RoomId = roomId
+	request.Code = code
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LookupDisplayPairing(ctx, request.(LookupDisplayPairingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LookupDisplayPairing")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LookupDisplayPairingResponseObject); ok {
+		if err := validResponse.VisitLookupDisplayPairingResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

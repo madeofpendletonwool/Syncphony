@@ -134,6 +134,66 @@ func TestDisplayPairing(t *testing.T) {
 	}
 }
 
+// A box says what it is when it starts pairing (ADR 0016), so whoever
+// types the code in pairs it with the right defaults: its name, and audio
+// on — their choices still final.
+func TestDisplayPairingBox(t *testing.T) {
+	e := newEnv(t)
+	alice := e.admin()
+	room := e.room(t, me(t, alice).Id)
+
+	// An ordinary screen says nothing.
+	tv := e.client()
+	var plain httpapi.DisplayPairing
+	tv.want(http.StatusCreated, "POST", "/display/pairing", nil).decode(t, &plain)
+	var info httpapi.DisplayPairingInfo
+	alice.want(http.StatusOK, "GET", "/rooms/"+room.ID+"/displays/pairing/"+plain.Code, nil).decode(t, &info)
+	if info.Kind != httpapi.DisplayPairingInfoKindScreen || info.SuggestedName != nil {
+		t.Fatalf("plain pairing: %+v", info)
+	}
+
+	// A box says what it is, and what it wants to be called.
+	box := e.client()
+	var p httpapi.DisplayPairing
+	box.want(http.StatusCreated, "POST", "/display/pairing", httpapi.BeginDisplayPairingRequest{
+		Kind: ptr(httpapi.BeginDisplayPairingRequestKindBox), SuggestedName: ptr("Living room TV"),
+	}).decode(t, &p)
+	// Typed in as people would: lowercase, with a space.
+	alice.want(http.StatusOK, "GET", "/rooms/"+room.ID+"/displays/pairing/"+strings.ToLower(p.Code[:3]+" "+p.Code[3:]), nil).decode(t, &info)
+	if info.Kind != httpapi.DisplayPairingInfoKindBox || info.SuggestedName == nil || *info.SuggestedName != "Living room TV" {
+		t.Fatalf("box pairing: %+v", info)
+	}
+	if r := alice.do("GET", "/rooms/"+room.ID+"/displays/pairing/ZZZZZZ", nil); r.status != http.StatusNotFound || r.code() != "pairing_invalid" {
+		t.Fatalf("wrong code: %d %s", r.status, r.body)
+	}
+
+	// Pairing without a name takes the box's; the person's audio choice is final.
+	var d httpapi.Display
+	alice.want(http.StatusCreated, "POST", "/rooms/"+room.ID+"/displays", httpapi.PairDisplayRequest{Code: p.Code, Audio: ptr(false)}).decode(t, &d)
+	if d.Name != "Living room TV" || d.Audio {
+		t.Fatalf("paired box: %+v", d)
+	}
+	// A name they choose beats the box's.
+	var named httpapi.Display
+	alice.want(http.StatusCreated, "POST", "/rooms/"+room.ID+"/displays", httpapi.PairDisplayRequest{
+		Code: plain.Code, Name: ptr("Projector"), Audio: ptr(true),
+	}).decode(t, &named)
+	if named.Name != "Projector" || !named.Audio {
+		t.Fatalf("named display: %+v", named)
+	}
+	// A screen that suggested nothing is still just "TV".
+	last := e.client()
+	var none httpapi.DisplayPairing
+	last.want(http.StatusCreated, "POST", "/display/pairing", httpapi.BeginDisplayPairingRequest{
+		Kind: ptr(httpapi.BeginDisplayPairingRequestKindBox),
+	}).decode(t, &none)
+	var unnamed httpapi.Display
+	alice.want(http.StatusCreated, "POST", "/rooms/"+room.ID+"/displays", httpapi.PairDisplayRequest{Code: none.Code}).decode(t, &unnamed)
+	if unnamed.Name != "TV" {
+		t.Fatalf("unnamed box: %+v", unnamed)
+	}
+}
+
 func TestDisplaySocketAndReactions(t *testing.T) {
 	e := newEnv(t)
 	alice := e.admin()

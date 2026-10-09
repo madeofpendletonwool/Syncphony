@@ -18,9 +18,11 @@ const AUDIO_KEY = 'syncphony-tv-audio'
  * has taken over in the meantime. If the browser still wants a press,
  * the button comes back. Opening the big screen on a device that's
  * already the speaker carries on playing. It has a speaker's buttons
- * too: play, pause and skip.
+ * too: play, pause and skip. A box (ADR 0016) starts without the press:
+ * its Chromium allows autoplay, and if play() still rejects, the button
+ * is the fallback.
  */
-export function TvAudio({ roomId, device, name, onStopped, canPlayPause = true, canSkip = true }: {
+export function TvAudio({ roomId, device, name, onStopped, canPlayPause = true, canSkip = true, autoStart = false }: {
   roomId: string
   /** Who the server knows this screen as: its display ID, or this browser's device ID. */
   device: string
@@ -30,6 +32,8 @@ export function TvAudio({ roomId, device, name, onStopped, canPlayPause = true, 
   /** Whether to offer play and pause, and skip. The server has the last word. */
   canPlayPause?: boolean
   canSkip?: boolean
+  /** A box plays by itself the first time, not just after a reload. */
+  autoStart?: boolean
 }) {
   const queryClient = useQueryClient()
   const state = useStore(speakerState)
@@ -50,15 +54,17 @@ export function TvAudio({ roomId, device, name, onStopped, canPlayPause = true, 
   }, [queryClient, roomId])
   useEffect(() => speaker.apply(playback.data), [playback.data])
 
-  // Pick up where it left off after a reload, unless someone else is playing the room now.
+  // Pick up where it left off after a reload, unless someone else is
+  // playing the room now. A box skips the flag: its Chromium needs no
+  // press, so it also starts the first time.
   const resumed = useRef(false)
   useEffect(() => {
     if (resumed.current || !playback.data) return
     resumed.current = true
     if (speaker.active) return
     const player = playback.data.player
-    if (readFlag() && (!player || player.deviceId === device)) void speaker.start(roomId, name, device)
-  }, [playback.data, roomId, name, device])
+    if ((readFlag() || autoStart) && (!player || player.deviceId === device)) void speaker.start(roomId, name, device)
+  }, [playback.data, roomId, name, device, autoStart])
 
   // Stopped from elsewhere: let the page check whether it may still play.
   const was = useRef(here)

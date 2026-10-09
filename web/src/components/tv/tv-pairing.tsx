@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { ApiError } from '@/api/errors'
 import { AlbumBackdrop } from '@/components/shell/album-backdrop'
+import { boxName, isBox } from '@/lib/box'
 import { beginPairing, displayMeQuery, formatPairingCode, pollPairing } from '@/lib/displays'
 import { easeOutExpo } from '@/lib/motion'
 import { QrCode } from './qr-code'
@@ -24,7 +25,9 @@ export function TvPairing() {
     let timer: ReturnType<typeof setTimeout> | undefined
     const start = async () => {
       try {
-        const p = await beginPairing()
+        // A box says what it is, and what it was named, so whoever types the
+        // code in pairs it with the right defaults (ADR 0016).
+        const p = await beginPairing(isBox() ? { kind: 'box', suggestedName: boxName() } : undefined)
         if (stopped) return
         setCode(p.code)
         setFailed(false)

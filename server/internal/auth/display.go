@@ -46,10 +46,23 @@ var (
 	ErrTooManyPairings = errors.New("too many displays are waiting to pair; try again in a few minutes")
 )
 
+// DisplayKind is what a screen says it is when it starts pairing.
+type DisplayKind string
+
+const (
+	// DisplayScreen is an ordinary TV, projector or tablet at /tv.
+	DisplayScreen DisplayKind = "screen"
+	// DisplayBox is a Syncphony box (ADR 0016): a Pi running /tv as a kiosk.
+	DisplayBox DisplayKind = "box"
+)
+
 // pairing is a display waiting for its code to be typed in.
 type pairing struct {
 	code    string
 	expires time.Time
+	// What the display said about itself when it began.
+	kind          DisplayKind
+	suggestedName string
 	// Set once paired, until the display collects them.
 	token   string
 	display *store.Display
@@ -108,13 +121,30 @@ type DisplayPairing struct {
 	Expires time.Time
 	// Begun is when the pairing started, by the server's clock.
 	Begun time.Time
+	// What the display said about itself: a box, say, and its name.
+	Kind          DisplayKind
+	SuggestedName string
 	// Token and Display are set once it's paired. The token is handed out once.
 	Token   string
 	Display *store.Display
 }
 
-// BeginDisplayPairing makes a code for a display to show.
-func (s *Service) BeginDisplayPairing() (DisplayPairing, error) {
+// BeginDisplayPairing makes a code for a display to show. A box says so,
+// with the name it was configured with (ADR 0016), so whoever types the
+// code in pairs it with the right defaults.
+func (s *Service) BeginDisplayPairing(kind DisplayKind, suggestedName string) (DisplayPairing, error) {
+	switch kind {
+	case "", DisplayScreen, DisplayBox:
+	default:
+		return DisplayPairing{}, invalid("kind", "must be screen or box")
+	}
+	suggestedName = strings.TrimSpace(suggestedName)
+	if utf8.RuneCountInString(suggestedName) > maxDisplayName {
+		return DisplayPairing{}, invalid("suggestedName", "must be at most %d characters", maxDisplayName)
+	}
+	if kind == "" {
+		kind = DisplayScreen
+	}
 	now := s.now()
 	p := s.pairings
 	p.mu.Lock()
@@ -128,10 +158,30 @@ func (s *Service) BeginDisplayPairing() (DisplayPairing, error) {
 		code = newPairingCode()
 	}
 	secret, _ := newToken()
-	pr := &pairing{code: code, expires: now.Add(pairingTTL)}
+	pr := &pairing{code: code, expires: now.Add(pairingTTL), kind: kind, suggestedName: suggestedName}
 	p.bySecret[secret] = pr
 	p.byCode[code] = secret
-	return DisplayPairing{Secret: secret, Code: code, Expires: pr.expires, Begun: now}, nil
+	return DisplayPairing{Secret: secret, Code: code, Expires: pr.expires, Begun: now, Kind: kind, SuggestedName: suggestedName}, nil
+}
+
+// LookupDisplayPairing tells whoever is typing in a code what kind of
+// screen waits behind it, so they can pair it with the right defaults.
+// Wrong codes count against them, like pairing's.
+func (s *Service) LookupDisplayPairing(u store.User, code string) (DisplayPairing, error) {
+	if d, ok := s.pairFails.blocked(u.ID); ok {
+		return DisplayPairing{}, &RateLimitError{RetryAfter: d}
+	}
+	code = NormalizePairingCode(code)
+	now := s.now()
+	p := s.pairings
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	pr := p.bySecret[p.byCode[code]]
+	if pr == nil || pr.token != "" || !now.Before(pr.expires) {
+		s.pairFails.fail(u.ID)
+		return DisplayPairing{}, ErrPairingInvalid
+	}
+	return DisplayPairing{Kind: pr.kind, SuggestedName: pr.suggestedName}, nil
 }
 
 // PollDisplayPairing reports on a display's pairing. Once it's paired, the
@@ -158,16 +208,14 @@ func (s *Service) PollDisplayPairing(secret string) (DisplayPairing, error) {
 
 // PairDisplay pairs the display showing code with a room, on u's say-so.
 // With audio, it may also be the room's speaker. The caller checks the
-// room exists and u may use it. Wrong codes count against u, so codes
+// room exists and u may use it. A name they didn't choose comes from what
+// the display suggested, or "TV". Wrong codes count against u, so codes
 // can't be guessed.
 func (s *Service) PairDisplay(ctx context.Context, u store.User, roomID, code, name string, audio bool) (store.Display, error) {
 	if d, ok := s.pairFails.blocked(u.ID); ok {
 		return store.Display{}, &RateLimitError{RetryAfter: d}
 	}
 	name = strings.TrimSpace(name)
-	if name == "" {
-		name = "TV"
-	}
 	if utf8.RuneCountInString(name) > maxDisplayName {
 		return store.Display{}, invalid("name", "must be at most %d characters", maxDisplayName)
 	}
@@ -180,6 +228,12 @@ func (s *Service) PairDisplay(ctx context.Context, u store.User, roomID, code, n
 	if pr == nil || pr.token != "" || !now.Before(pr.expires) {
 		s.pairFails.fail(u.ID)
 		return store.Display{}, ErrPairingInvalid
+	}
+	if name == "" {
+		name = pr.suggestedName
+	}
+	if name == "" {
+		name = "TV"
 	}
 	token, hash := newToken()
 	d, err := s.db.CreateDisplay(ctx, store.CreateDisplayParams{

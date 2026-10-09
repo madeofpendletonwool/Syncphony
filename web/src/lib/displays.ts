@@ -8,11 +8,20 @@ import type { components } from '@/api/schema.gen'
 
 export type Display = components['schemas']['Display']
 export type DisplayMe = components['schemas']['DisplayMe']
+export type DisplayPairingInfo = components['schemas']['DisplayPairingInfo']
 
 export const displaysQuery = (roomId: string) =>
   queryOptions({
     queryKey: ['displays', roomId],
     queryFn: () => unwrap(api.GET('/rooms/{roomId}/displays', { params: { path: { roomId } } })),
+  })
+
+/** While someone types in a code: what kind of screen waits behind it, so they pair it with the right defaults. */
+export const displayPairingLookupQuery = (roomId: string, code: string) =>
+  queryOptions({
+    queryKey: ['display-pairing', roomId, code],
+    queryFn: () => unwrap(api.GET('/rooms/{roomId}/displays/pairing/{code}', { params: { path: { roomId, code } } })),
+    staleTime: 60_000,
   })
 
 /** This device as a paired display, or null if it isn't one. */
@@ -44,8 +53,9 @@ export function unpairDisplay(roomId: string, displayId: string) {
   return unwrap(api.DELETE('/rooms/{roomId}/displays/{displayId}', { params: { path: { roomId, displayId } } }))
 }
 
-export function beginPairing() {
-  return unwrap(api.POST('/display/pairing'))
+/** A box says what it is, and what it would like to be called (ADR 0016). */
+export function beginPairing(about?: components['schemas']['BeginDisplayPairingRequest']) {
+  return unwrap(api.POST('/display/pairing', about ? { body: about } : {}))
 }
 
 export function pollPairing() {

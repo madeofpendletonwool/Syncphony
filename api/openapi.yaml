@@ -2417,6 +2417,36 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /rooms/{roomId}/displays/pairing/{code}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: code
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 16
+    get:
+      operationId: lookupDisplayPairing
+      summary: What kind of screen is behind a pairing code
+      description: |
+        For whoever is typing in the code a screen shows, before they pair
+        it: what the screen says it is (a Syncphony box, say) and what it
+        would like to be called, so the pairing form starts with the right
+        defaults. The person's choices stay final. `pairing_invalid` if no
+        display is showing the code; wrong codes are rate limited.
+      tags: [displays]
+      responses:
+        "200":
+          description: The pending pairing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisplayPairingInfo"
+        default:
+          $ref: "#/components/responses/Error"
+
   /display/pairing:
     post:
       operationId: beginDisplayPairing
@@ -2424,9 +2454,16 @@ paths:
       description: |
         Returns a short code for the display to show, and sets a pairing
         cookie. Poll `GET /display/pairing` until someone in a room types the
-        code in. Codes last 10 minutes.
+        code in. Codes last 10 minutes. A screen may say what it is: a
+        Syncphony box (ADR 0016) pairs as `kind: "box"` with the name it was
+        configured with.
       tags: [displays]
       security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BeginDisplayPairingRequest"
       responses:
         "201":
           description: A code to show
@@ -5723,11 +5760,36 @@ components:
           maxLength: 16
         name:
           type: string
-          description: What to call it. Default "TV".
+          description: What to call it. Defaults to the name the screen suggested, or "TV".
           maxLength: 40
         audio:
           type: boolean
           description: Let it play the room's audio too. Default false.
+
+    BeginDisplayPairingRequest:
+      type: object
+      description: What a screen says about itself as it starts pairing.
+      properties:
+        kind:
+          type: string
+          enum: [screen, box]
+          description: A Syncphony box (ADR 0016), rather than an ordinary screen. Default `screen`.
+        suggestedName:
+          type: string
+          description: What it would like to be called — a box's configured name. Used when whoever pairs it doesn't choose one.
+          maxLength: 40
+
+    DisplayPairingInfo:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [screen, box]
+          description: What the screen waiting behind the code says it is.
+        suggestedName:
+          type: string
+          description: The name the screen suggested, if it did.
 
     UpdateDisplayRequest:
       type: object
