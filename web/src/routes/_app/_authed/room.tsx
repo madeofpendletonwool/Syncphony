@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { AudioLines, Check, ChevronDown, Crown, Dices, History, LogOut, MonitorPlay, Play, Plus, QrCode, Settings2, Sparkles, Speaker, Users } from 'lucide-react'
+import { AudioLines, Check, ChevronDown, Crown, Dices, History, LogOut, MonitorPlay, Play, Plus, QrCode, Settings2, Sparkles, Speaker, Swords, Users } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { DropdownMenu } from 'radix-ui'
 import { useEffect, useState, type ReactNode } from 'react'
@@ -8,6 +8,7 @@ import { errorMessage } from '@/api/errors'
 import { Artwork } from '@/components/artwork'
 import { PageHeader } from '@/components/page-header'
 import { AutopilotBadge } from '@/components/room/autopilot-badge'
+import { QueueGameDialog } from '@/components/games/queue-game-dialog'
 import { BigScreenDialog } from '@/components/room/big-screen-dialog'
 import { GuestsDialog } from '@/components/room/guests-dialog'
 import { HeartButton } from '@/components/room/heart-button'
@@ -37,6 +38,7 @@ import { laneStyle } from '@/lib/lane'
 import { fadeUp, spring, stagger } from '@/lib/motion'
 import { plays, SET_SIZES, startRound, tunesOn } from '@/lib/games'
 import { endNight } from '@/lib/nights'
+import { queueGamesOn } from '@/lib/queue-games'
 import { formatDuration, usePlayer, type User } from '@/lib/now-playing'
 import { can, playbackQuery, songsBeforeYours, type QueueItem } from '@/lib/playback'
 import { chooseRoom, leaveRoom, queueQuery, useCurrentRoom, type Room as RoomInfo } from '@/lib/room'
@@ -166,6 +168,7 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
   const [bigScreen, setBigScreen] = useState(false)
   const [guests, setGuests] = useState(false)
   const [membersOpen, setMembersOpen] = useState(false)
+  const [queueGames, setQueueGames] = useState(false)
   const guest = !!me.guest
   const v = visibility(room.visibility)
   const host = me.role === 'admin' || room.ownerId === me.id
@@ -239,6 +242,12 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
                 <span className="flex-1">Name that tune: {n} in a row</span>
               </DropdownMenu.Item>
             ))}
+          {!guest && queueGamesOn(room.games).length > 0 && (host || can(room, me.id, 'startRounds')) && (
+            <DropdownMenu.Item onSelect={() => setQueueGames(true)} className={menuItem}>
+              <Swords className="size-4 text-muted-foreground" />
+              <span className="flex-1">Queue games…</span>
+            </DropdownMenu.Item>
+          )}
           {host && (
             <DropdownMenu.Item
               onSelect={() => endNight(room.id).catch((e: unknown) => toast({ message: errorMessage(e), tone: 'error' }))}
@@ -278,6 +287,7 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
       />
       <MembersDialog room={room} open={membersOpen} onOpenChange={setMembersOpen} />
       <BigScreenDialog room={room} open={bigScreen} onOpenChange={setBigScreen} />
+      <QueueGameDialog room={room} open={queueGames} onOpenChange={setQueueGames} />
       <GuestsDialog room={room} open={guests} onOpenChange={setGuests} />
       <div className="min-w-0">
         <h1 className="text-display">{title}</h1>

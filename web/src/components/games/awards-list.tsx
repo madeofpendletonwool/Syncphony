@@ -19,6 +19,7 @@ const ICONS: Record<Award['kind'], string> = {
   opener: '🎬',
   closer: '🌙',
   trivia_champ: '🧠',
+  bracket_champ: '🏆',
 }
 
 /**

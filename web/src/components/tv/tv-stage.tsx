@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Artwork } from '@/components/artwork'
 import { LyricsView } from '@/components/lyrics/lyrics-view'
 import { AutopilotMark } from '@/components/room/autopilot-badge'
+import { QueueGameStage } from '@/components/games/queue-game-stage'
 import { RoundStage } from '@/components/games/round-stage'
 import { CrownMoment } from '@/components/room/crown-moment'
 import { AlbumBackdrop } from '@/components/shell/album-backdrop'
@@ -147,6 +148,7 @@ export function TvStage({
       />
       <CrownMoment roomId={roomId} variant="stage" />
       <RoundStage roomId={roomId} />
+      <QueueGameStage roomId={roomId} />
 
       <div className="burn-in-drift flex h-full flex-col gap-[3vh] px-[4vw] pt-[4vh] pb-[3.5vh]">
         <header className="flex items-center justify-between gap-6">
