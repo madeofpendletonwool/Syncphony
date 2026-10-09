@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Check, Dices, Flame, LoaderCircle, Minus, Pause, Plus, Send, Speaker, VolumeX, X } from 'lucide-react'
+import { AudioLines, Check, Dices, Flame, LoaderCircle, Minus, Pause, Plus, Send, Speaker, VolumeX, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { errorMessage } from '@/api/errors'
@@ -9,13 +9,16 @@ import { Slider } from '@/components/ui/slider'
 import { useMe } from '@/lib/auth'
 import {
   answerRound,
+  clipNumber,
   GAMES,
   gameRoundQuery,
   gameScoresQuery,
   isOpen,
   myAnswers,
   rememberAnswer,
+  roundArtworkUrl,
   setGamesMuted,
+  setStandings,
   splitPrompt,
   streakOf,
   useGamesMuted,
@@ -28,6 +31,7 @@ import { useCurrentRoom } from '@/lib/room'
 import { speakerState } from '@/lib/speaker'
 import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
+import { usersQuery } from '@/lib/users'
 import { useServerNow } from '@/hooks/use-server-now'
 import { Countdown } from './countdown'
 import { RoundLine } from './round-line'
@@ -131,6 +135,11 @@ function Sheet({ roomId, round, onFold, onDismiss }: { roomId: string; round: Ga
       <header className="flex items-center gap-2">
         <Dices className="size-4 text-primary" />
         <span className="text-caption font-semibold tracking-wide text-muted-foreground uppercase">{GAMES[round.kind].label}</span>
+        {round.set && (
+          <span className="text-caption text-muted-foreground tabular-nums">
+            {round.set.number} of {round.set.size}
+          </span>
+        )}
         <span className="ml-auto">
           <Countdown round={round} now={now} />
         </span>
@@ -141,11 +150,16 @@ function Sheet({ roomId, round, onFold, onDismiss }: { roomId: string; round: Ga
 
       <Prompt round={round} />
 
-      {round.stopsMusic && round.state === 'open' && (
-        <p className="flex items-center gap-2 rounded-xl bg-primary/12 px-3 py-2 text-caption font-medium text-primary">
-          <Pause className="size-3.5 shrink-0" />
-          The music’s stopped. It comes back on the line.
-        </p>
+      {round.kind === 'tune' && !revealed ? (
+        <Listening round={round} />
+      ) : (
+        round.stopsMusic &&
+        round.state === 'open' && (
+          <p className="flex items-center gap-2 rounded-xl bg-primary/12 px-3 py-2 text-caption font-medium text-primary">
+            <Pause className="size-3.5 shrink-0" />
+            The music’s stopped. It comes back on the line.
+          </p>
+        )
       )}
 
       {speaking && !revealed && (
@@ -176,6 +190,7 @@ function Sheet({ roomId, round, onFold, onDismiss }: { roomId: string; round: Ga
           transition={{ duration: 0.5, ease: easeOutExpo }}
           className="flex flex-col gap-1 rounded-2xl bg-muted/60 px-3 py-2.5"
         >
+          {round.tune && <TuneCover round={round} />}
           <p className="text-sm font-semibold">{round.reveal ?? round.correct}</p>
           {round.detail && <p className="text-caption text-muted-foreground">{round.detail}</p>}
           {result ? (
@@ -186,6 +201,7 @@ function Sheet({ roomId, round, onFold, onDismiss }: { roomId: string; round: Ga
             mine === undefined && canPlay && <p className="text-caption text-muted-foreground">You sat this one out</p>
           )}
           {round.topic === 'higher_lower' && <Streak roomId={roomId} userId={me.id} />}
+          {round.set && <SetLine round={round} userId={me.id} />}
         </motion.div>
       )}
 
@@ -207,6 +223,51 @@ function Sheet({ roomId, round, onFold, onDismiss }: { roomId: string; round: Ga
       </footer>
     </motion.section>
   )
+}
+
+/** Name that tune: which clip is playing, before the reveal. */
+function Listening({ round }: { round: GameRound }) {
+  const n = clipNumber(round)
+  return (
+    <p className="flex items-center gap-2 rounded-xl bg-primary/12 px-3 py-2 text-caption font-medium text-primary">
+      <AudioLines className={cn('size-3.5 shrink-0', round.state === 'open' && 'animate-pulse')} />
+      {round.state === 'announce' ? 'Listen closely: the music stops for a clip' : `Clip ${n}: sooner scores more, one guess each`}
+    </p>
+  )
+}
+
+/** The tune's cover, at the reveal. */
+function TuneCover({ round }: { round: GameRound }) {
+  const [failed, setFailed] = useState(false)
+  const src = roundArtworkUrl(round, 160)
+  if (!src || failed) return null
+  return <img src={src} alt="" onError={() => setFailed(true)} className="mb-1 size-16 rounded-xl object-cover shadow-float" />
+}
+
+/** Where you stand in the set, and its winner once it's over. */
+function SetLine({ round, userId }: { round: GameRound; userId: string }) {
+  const users = useQuery(usersQuery).data
+  const set = setStandings(round)
+  if (!set) return null
+  const place = set.board.findIndex((p) => p.userId === userId)
+  const name = (id: string) => (id === userId ? 'You' : (users?.find((u) => u.id === id)?.displayName ?? 'Someone'))
+  if (set.over) {
+    return (
+      <p className="text-caption font-medium">
+        {set.winners.length === 0 ? 'Nobody got one. Rematch?' : `${set.winners.map(name).join(' and ')} won the set!`}
+      </p>
+    )
+  }
+  return (
+    <p className="text-caption text-muted-foreground tabular-nums">
+      {place < 0 ? `Tune ${set.number} of ${set.size}` : `${ordinal(place + 1)} in the set · ${set.board[place].points.toLocaleString()}`}
+    </p>
+  )
+}
+
+function ordinal(n: number) {
+  const s = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th')
+  return `${n}${s}`
 }
 
 type Result = NonNullable<GameRound['results']>[number]
@@ -258,6 +319,8 @@ function Answer({
   pending: boolean
   onAnswer: (a: GameAnswer) => void
 }) {
+  // Name that tune takes one guess, no changes.
+  const locked = round.kind === 'tune' && mine !== undefined
   // Choices, for choice rounds and number rounds shown as choices.
   if (round.choices.length > 0) {
     return (
@@ -269,7 +332,7 @@ function Answer({
             <button
               key={i}
               type="button"
-              disabled={!open || pending}
+              disabled={!open || pending || locked}
               aria-pressed={picked}
               onClick={() => onAnswer({ choice: i })}
               className={cn(
@@ -292,7 +355,7 @@ function Answer({
   if (round.answer === 'number' && round.min !== undefined && round.max !== undefined) {
     return <YearSlider round={round} mine={mine} open={open} pending={pending} onAnswer={onAnswer} />
   }
-  return <TypedAnswer round={round} mine={mine} open={open} pending={pending} onAnswer={onAnswer} />
+  return <TypedAnswer round={round} mine={mine} open={open && !locked} pending={pending} onAnswer={onAnswer} />
 }
 
 /** Guess the year: a slider across the decades, nudged a year at a time. */
@@ -341,6 +404,12 @@ function YearSlider({
   )
 }
 
+const PLACEHOLDERS: Partial<Record<GameRound['kind'], string>> = {
+  lyrics: 'The missing words',
+  finish_lyric: 'How does it go on?',
+  tune: 'The song’s title',
+}
+
 function TypedAnswer({
   round,
   mine,
@@ -369,7 +438,7 @@ function TypedAnswer({
         value={draft}
         onChange={(e) => setDraft(number ? e.target.value.replace(/\D/g, '').slice(0, 4) : e.target.value)}
         inputMode={number ? 'numeric' : 'text'}
-        placeholder={number ? 'Year' : round.kind === 'lyrics' ? 'The missing words' : round.kind === 'finish_lyric' ? 'How does it go on?' : 'Your answer'}
+        placeholder={number ? 'Year' : (PLACEHOLDERS[round.kind] ?? 'Your answer')}
         maxLength={number ? 4 : 200}
         autoComplete="off"
         autoCapitalize="off"

@@ -2029,7 +2029,9 @@ export interface paths {
          *     `games_off` (409) if the room's games level doesn't run rounds,
          *     `round_running` (409) if one is up, `nothing_playing` (409) with
          *     nothing playing, and `no_question` (409) if there's nothing to ask
-         *     about this song yet.
+         *     about this song yet. Name that tune needs its clips cut and a
+         *     speaker to play them, so it's `no_question` until they are. With
+         *     `set`, it starts a set of that many tunes, back to back.
          */
         post: operations["startGameRound"];
         delete?: never;
@@ -2056,7 +2058,8 @@ export interface paths {
          *     round closes. Answers are timed by when the server gets them: the
          *     sooner a right answer, the more it scores. `round_closed` (409) if
          *     the round isn't open; `forbidden` for a guest in a room where
-         *     guests don't play.
+         *     guests don't play. Name that tune takes one answer and no changes:
+         *     `already_answered` (409) for a second.
          */
         post: operations["answerGameRound"];
         delete?: never;
@@ -2079,10 +2082,39 @@ export interface paths {
          * The cover of a round's other song
          * @description The cover of the round's `other` song (what a sample detective
          *     round's song samples, or is sampled in), from the Cover Art
-         *     Archive. Only while the round is up and from its reveal on, so it
-         *     never gives the answer away. 404 if there's none.
+         *     Archive, or of a name that tune round's `tune`. Only while the
+         *     round is up and from its reveal on, so it never gives the answer
+         *     away. 404 if there's none.
          */
         get: operations["getGameRoundArtwork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/games/clips/{clipId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                clipId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A clip of a song, for a round
+         * @description A short clip a round plays (name that tune): MP3, faded in and
+         *     out, with no tags. Its ID is opaque, so neither the URL nor the
+         *     file names the song, and a round only lists a clip once it's time
+         *     to play it. The speaker plays it over the stopped song; listeners
+         *     elsewhere play it too. Clips are kept for a few minutes. 404 if
+         *     it's not the room's, or has gone.
+         */
+        get: operations["getGameClip"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2733,8 +2765,36 @@ export interface components {
             scores: "off" | "private" | "board";
             /** @description Rounds show on the big screen only, never as prompts on phones. */
             tvOnly: boolean;
-            /** @description At `gamenight`, the most rounds an hour that may pause the music. */
+            /**
+             * @description At `gamenight`, the most rounds an hour that may pause the
+             *     music. A set of tunes counts as one.
+             */
             breaksPerHour: number;
+            tune: components["schemas"]["RoomGamesTune"];
+        };
+        /** @description How name that tune plays. */
+        RoomGamesTune: {
+            /**
+             * @description Where the tunes come from: `tonight`'s songs, the room's
+             *     `favorites` over every night, or `new` songs it's never played
+             *     by artists it likes (the DJ's picks). When there are none
+             *     there, the others in turn.
+             * @default tonight
+             * @enum {string}
+             */
+            from: "tonight" | "favorites" | "new";
+            /**
+             * @description Hard mode: type the title instead of picking it. The artist
+             *     alone scores half.
+             */
+            typed: boolean;
+            /**
+             * @description Where the clips come from: the song's loudest section (usually
+             *     a chorus), its intro, or its last seconds.
+             * @default chorus
+             * @enum {string}
+             */
+            clip: "chorus" | "intro" | "outro";
         };
         /**
          * @description The room's games, replacing what it had. Anything left out takes
@@ -2753,6 +2813,15 @@ export interface components {
             scores?: "off" | "private" | "board";
             tvOnly?: boolean;
             breaksPerHour?: number;
+            tune?: components["schemas"]["RoomGamesTuneChange"];
+        };
+        /** @description How name that tune plays. Anything left out is the default. */
+        RoomGamesTuneChange: {
+            /** @enum {string} */
+            from?: "tonight" | "favorites" | "new";
+            typed?: boolean;
+            /** @enum {string} */
+            clip?: "chorus" | "intro" | "outro";
         };
         /**
          * @description A game. `year`: guess the year. `liner`: covers, credits and
@@ -2788,7 +2857,7 @@ export interface components {
             prompt: string;
             /**
              * @description How to answer. A `number` round may show `choices` too, and
-             *     takes either.
+             *     takes either. `song` is a song's title, typed.
              * @enum {string}
              */
             answer: "choice" | "number" | "text" | "song";
@@ -2807,10 +2876,19 @@ export interface components {
              */
             atMs?: number;
             /**
-             * @description The music stops while answers are open (finish the lyric) and
-             *     comes back at the reveal, on the line.
+             * @description The music stops while answers are open (finish the lyric, name
+             *     that tune). It comes back at the reveal, on the line, or after
+             *     a tune's reveal clip, where it stopped.
              */
             stopsMusic: boolean;
+            /**
+             * @description A name that tune round's clips, longer each time: each is
+             *     listed once it's time to play it, and the reveal's from the
+             *     reveal on. Devices playing the room play each as it appears.
+             */
+            clips?: components["schemas"]["GameClip"][];
+            set?: components["schemas"]["GameSet"];
+            tune?: components["schemas"]["GameSong"];
             /** @description Who started it; absent when the room's frequency did. */
             startedBy?: string;
             /** Format: date-time */
@@ -2854,9 +2932,39 @@ export interface components {
             /** @description Everyone's answers, from the reveal on, best first. */
             results?: components["schemas"]["GameResult"][];
         };
+        GameClip: {
+            /** @description Opaque. Fetch it from the room's `games/clips` endpoint. */
+            id: string;
+            /** Format: int64 */
+            lengthMs: number;
+            /**
+             * Format: date-time
+             * @description When it plays, by the server's clock.
+             */
+            at: string;
+            /** @description It's the reveal's clip, from the same spot but longer. */
+            reveal: boolean;
+        };
+        /**
+         * @description A set of tunes a host started, run back to back with the music
+         *     stopped. Its board is everyone's points in the set so far, best
+         *     first: after the last tune, the winner's on top.
+         */
+        GameSet: {
+            id: string;
+            /** @description Which tune of the set this is, from 1. */
+            number: number;
+            size: number;
+            board: components["schemas"]["GameSetPlayer"][];
+        };
+        GameSetPlayer: {
+            userId: string;
+            points: number;
+        };
         /**
          * @description The other song in a sample detective round, from the reveal on:
-         *     what this one samples, or what samples it.
+         *     what this one samples, or what samples it. For name that tune, the
+         *     tune.
          */
         GameSong: {
             title: string;
@@ -2881,6 +2989,11 @@ export interface components {
         };
         StartGameRoundRequest: {
             kind?: components["schemas"]["GameKind"];
+            /**
+             * @description Start a set of this many tunes (`tune` only).
+             * @enum {integer}
+             */
+            set?: 5 | 10;
         };
         /** @description The answer, whichever the round takes. */
         GameAnswerRequest: {
@@ -7166,6 +7279,30 @@ export interface operations {
                 };
                 content: {
                     "image/*": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getGameClip: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                clipId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The clip */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/mpeg": string;
                 };
             };
             default: components["responses"]["Error"];

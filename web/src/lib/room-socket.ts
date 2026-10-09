@@ -5,6 +5,7 @@ import { invitesQuery, membersQuery } from './access'
 import { meQuery } from './auth'
 import { syncServerClock } from './clock'
 import { displayMeQuery } from './displays'
+import { playRoundClips } from './game-clips'
 import { gameRoundQuery, gameScoresQuery, type GameRound, type GameScores } from './games'
 import { guestPassQuery, guestsQuery } from './guests'
 import { crown, heartsQuery, nightsQuery, type Hearts, type Night } from './nights'
@@ -188,6 +189,7 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
     case 'game.round': {
       const round = ev.data as GameRound
       queryClient.setQueryData(gameRoundQuery(roomId).queryKey, round.state === 'done' ? null : round)
+      playRoundClips(round)
       // Lyrics and liner notes asked for while the round hid them come back now.
       if (round.state === 'reveal') {
         for (const key of [['lyrics', roomId, round.itemId], ['liner-notes', roomId, round.itemId]]) {
