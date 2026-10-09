@@ -44,3 +44,6 @@ SELECT * FROM nights WHERE room_id = ? ORDER BY ended_at DESC, id DESC LIMIT ?;
 
 -- name: SetNightAwards :exec
 UPDATE nights SET awards = ? WHERE id = ?;
+
+-- name: SetNightBracket :exec
+UPDATE nights SET bracket = ? WHERE id = ?;

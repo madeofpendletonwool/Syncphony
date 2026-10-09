@@ -23,9 +23,10 @@ ORDER BY added_by, lane_position, added_at;
 -- name: GetPlaying :one
 SELECT * FROM queue_items WHERE room_id = ? AND state = 'playing';
 
--- SetQueueItemState also ends a song's place at the front of the queue.
+-- SetQueueItemState also ends a song's place at the front of the queue,
+-- and a game's hold on it.
 -- name: SetQueueItemState :exec
-UPDATE queue_items SET state = ?, resume_at = NULL, updated_at = ? WHERE id = ?;
+UPDATE queue_items SET state = ?, resume_at = NULL, front_at = NULL, game_held = FALSE, updated_at = ? WHERE id = ?;
 
 -- ResumeQueueItem puts the playing song back at the front of the queue,
 -- when someone goes back to the song before it.
@@ -182,3 +183,18 @@ SELECT * FROM queue_items
 WHERE room_id = ? AND autopilot IS NOT NULL
 ORDER BY added_at DESC, id DESC
 LIMIT ?;
+
+-- HoldQueueItem holds a waiting song out of the play order for a game, or
+-- lets it back in.
+-- name: HoldQueueItem :exec
+UPDATE queue_items SET game_held = ?, front_at = NULL, updated_at = ? WHERE id = ? AND state = 'queued';
+
+-- FrontQueueItem plays a waiting song a game held, or any, before the fair
+-- order: the earliest front_at first.
+-- name: FrontQueueItem :exec
+UPDATE queue_items SET game_held = FALSE, front_at = ?, updated_at = ? WHERE id = ? AND state = 'queued';
+
+-- ReleaseGameHolds lets every held song back into the play order: games
+-- live in memory, so after a restart nothing holds them.
+-- name: ReleaseGameHolds :exec
+UPDATE queue_items SET game_held = FALSE WHERE game_held;

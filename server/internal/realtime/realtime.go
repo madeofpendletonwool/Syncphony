@@ -53,6 +53,9 @@ const (
 	GameRound = "game.round"
 	// GameScores carries the night's game scores, after each reveal.
 	GameScores = "game.scores"
+	// GameQueue carries a queue game (connect the artists, a theme round,
+	// a bracket) whenever it changes.
+	GameQueue = "game.queue"
 )
 
 // Event is something that happened. Data holds domain values (store rows,

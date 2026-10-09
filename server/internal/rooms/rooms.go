@@ -915,8 +915,19 @@ func SnapshotTx(ctx context.Context, q *store.Queries, id string) (QueueSnapshot
 	slices.SortFunc(resumed, func(a, b store.QueueItem) int {
 		return cmp.Or(b.ResumeAt.Time.Compare(a.ResumeAt.Time), cmp.Compare(a.ID, b.ID))
 	})
+	// Then songs a game put at the front (a theme round's block, a bracket
+	// match), the oldest first. Songs a game holds wait out of the order.
+	var fronted []store.QueueItem
+	for _, it := range items {
+		if it.State == store.ItemQueued && !it.ResumeAt.Valid && it.FrontAt.Valid {
+			fronted = append(fronted, it)
+		}
+	}
+	slices.SortFunc(fronted, func(a, b store.QueueItem) int {
+		return cmp.Or(a.FrontAt.Time.Compare(b.FrontAt.Time), cmp.Compare(a.ID, b.ID))
+	})
 	upNext := make([]string, 0, len(items))
-	for _, it := range resumed {
+	for _, it := range slices.Concat(resumed, fronted) {
 		upNext = append(upNext, it.ID)
 	}
 	for _, it := range order {
@@ -926,7 +937,7 @@ func SnapshotTx(ctx context.Context, q *store.Queries, id string) (QueueSnapshot
 	// the order autopilot added them, so a member's song always goes first.
 	var autopilot []store.QueueItem
 	for _, it := range items {
-		if it.State == store.ItemQueued && it.IsAutopilot() && !it.ResumeAt.Valid {
+		if it.State == store.ItemQueued && it.IsAutopilot() && !it.ResumeAt.Valid && !it.FrontAt.Valid && !it.GameHeld {
 			autopilot = append(autopilot, it)
 		}
 	}
@@ -942,11 +953,11 @@ func SnapshotTx(ctx context.Context, q *store.Queries, id string) (QueueSnapshot
 // fairnessState builds the fairness engine's input from the upcoming items
 // (lanes in order, as ListUpcoming returns them) and each user's last play.
 // Autopilot songs are nobody's turn, so the engine doesn't see them, and
-// nor does it see songs put back at the front.
+// nor does it see songs put back or put at the front, or held for a game.
 func fairnessState(items []store.QueueItem, history []store.LastPlayedByUserRow) fairness.State {
 	s := fairness.State{Lanes: map[string][]fairness.Item{}, LastPlayed: map[string]time.Time{}}
 	for _, it := range items {
-		if it.IsAutopilot() || (it.State == store.ItemQueued && it.ResumeAt.Valid) {
+		if it.IsAutopilot() || (it.State == store.ItemQueued && (it.ResumeAt.Valid || it.FrontAt.Valid || it.GameHeld)) {
 			continue
 		}
 		switch it.State {

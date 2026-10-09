@@ -194,6 +194,7 @@ type Night struct {
 	QueueItemID sql.NullString
 	Hearts      int64
 	Awards      string
+	Bracket     string
 }
 
 type PageNotesCache struct {
@@ -233,6 +234,8 @@ type QueueItem struct {
 	Autopilot    sql.NullString
 	RemovedBy    sql.NullString
 	ResumeAt     sql.NullTime
+	GameHeld     bool
+	FrontAt      sql.NullTime
 }
 
 type ResetLink struct {

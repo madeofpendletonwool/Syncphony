@@ -106,7 +106,7 @@ func (q *Queries) ListDJAffinities(ctx context.Context, roomID string) ([]DjAffi
 }
 
 const nightsAfter = `-- name: NightsAfter :many
-SELECT id, room_id, started_at, ended_at, ended_by, plays, queue_item_id, hearts, awards FROM nights WHERE room_id = ?1 AND ended_at > ?2
+SELECT id, room_id, started_at, ended_at, ended_by, plays, queue_item_id, hearts, awards, bracket FROM nights WHERE room_id = ?1 AND ended_at > ?2
 ORDER BY ended_at DESC, id DESC LIMIT ?3
 `
 
@@ -137,6 +137,7 @@ func (q *Queries) NightsAfter(ctx context.Context, arg NightsAfterParams) ([]Nig
 			&i.QueueItemID,
 			&i.Hearts,
 			&i.Awards,
+			&i.Bracket,
 		); err != nil {
 			return nil, err
 		}

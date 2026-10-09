@@ -35,6 +35,9 @@ const (
 	Opener        = "opener"
 	Closer        = "closer"
 	TriviaChamp   = "trivia_champ"
+	// BracketChamp won the night's bracket battle. Package games hands it
+	// out, beside the rest.
+	BracketChamp = "bracket_champ"
 )
 
 // Titles are the awards' names, by kind.
@@ -50,6 +53,7 @@ var Titles = map[string]string{
 	Opener:        "The Opener",
 	Closer:        "The Closer",
 	TriviaChamp:   "Trivia Champ",
+	BracketChamp:  "Bracket Champion",
 }
 
 // Limits.

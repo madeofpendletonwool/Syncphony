@@ -683,3 +683,71 @@ func queuedItem(ctx context.Context, q *store.Queries, roomID, itemID string) (s
 	}
 	return it, nil
 }
+
+// Hold holds waiting songs out of the play order for a game (a theme
+// round's or a bracket's entries), or with held false lets them back in
+// where they were. Songs no longer waiting are left alone.
+func (s *Service) Hold(ctx context.Context, roomID string, itemIDs []string, held bool) error {
+	_, err := s.Change(ctx, roomID, func(q *store.Queries, _ store.Room) error {
+		now := s.Now()
+		for _, id := range itemIDs {
+			if err := q.HoldQueueItem(ctx, store.HoldQueueItemParams{GameHeld: held, UpdatedAt: now, ID: id}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return err
+}
+
+// PlayNext puts waiting songs at the front of the queue, in the order
+// given, after any already there: a theme round's block, or a bracket
+// match's two songs, back to back.
+func (s *Service) PlayNext(ctx context.Context, roomID string, itemIDs []string) error {
+	_, err := s.Change(ctx, roomID, func(q *store.Queries, _ store.Room) error {
+		now := s.Now()
+		for i, id := range itemIDs {
+			at := sql.NullTime{Time: now.Add(time.Duration(i) * time.Millisecond), Valid: true}
+			if err := q.FrontQueueItem(ctx, store.FrontQueueItemParams{FrontAt: at, UpdatedAt: now, ID: id}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return err
+}
+
+// ReleaseHolds lets every song a game held back into the play order.
+// Games live in memory, so the server does this as it starts.
+func (s *Service) ReleaseHolds(ctx context.Context) error {
+	return s.db.ReleaseGameHolds(ctx)
+}
+
+// Again queues one of a room's songs again, as it was, by whoever queued
+// it, held out of the play order: a game playing it again (a bracket's
+// winner, in its next match). The room's repeat window doesn't apply: the
+// game asked for it. It returns the new item's ID.
+func (s *Service) Again(ctx context.Context, roomID, itemID string) (string, error) {
+	id := store.NewID()
+	_, err := s.Change(ctx, roomID, func(q *store.Queries, _ store.Room) error {
+		it, err := q.GetQueueItem(ctx, itemID)
+		if store.IsNotFound(err) || (err == nil && it.RoomID != roomID) {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		pos, err := q.NextLanePosition(ctx, store.NextLanePositionParams{RoomID: roomID, AddedBy: it.AddedBy})
+		if err != nil {
+			return err
+		}
+		now := s.Now()
+		if _, err := q.AddQueueItem(ctx, store.AddQueueItemParams{
+			ID: id, RoomID: roomID, AddedBy: it.AddedBy, Provider: it.Provider, LinkID: it.LinkID, TrackID: it.TrackID,
+			Metadata: it.Metadata, LanePosition: pos, Now: now,
+		}); err != nil {
+			return err
+		}
+		return q.HoldQueueItem(ctx, store.HoldQueueItemParams{GameHeld: true, UpdatedAt: now, ID: id})
+	})
+	return id, err
+}

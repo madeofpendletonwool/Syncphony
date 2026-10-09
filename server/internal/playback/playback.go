@@ -615,18 +615,9 @@ func (e *Engine) Command(ctx context.Context, roomID, userID string, c Command) 
 		if r.np.Item == nil {
 			return rooms.NowPlaying{}, ErrNothingPlaying
 		}
-		to := max(c.Position, 0)
-		if d := duration(r.np.Item); d > 0 {
-			to = min(to, d)
+		if err := e.seek(ctx, r, c.Position, now); err != nil {
+			return rooms.NowPlaying{}, err
 		}
-		if r.remote != nil {
-			if err := r.remote.Seek(ctx, to); err != nil {
-				return rooms.NowPlaying{}, err
-			}
-		}
-		r.np.Position, r.np.At = to, now
-		r.np.Revision++
-		e.publish(r)
 	case ActionVoteSkip, ActionUnvoteSkip:
 		if perms.Skip != rooms.Vote {
 			return rooms.NowPlaying{}, &InvalidInputError{"this room doesn't vote on skips"}
@@ -913,6 +904,51 @@ func (e *Engine) Resume(ctx context.Context, roomID, itemID string, at time.Dura
 	}
 	r.np.Position, r.np.At = max(at, 0), e.cfg.Now()
 	return e.play(ctx, r)
+}
+
+// seek moves the current song to `to`, and tells the room.
+func (e *Engine) seek(ctx context.Context, r *room, to time.Duration, now time.Time) error {
+	to = max(to, 0)
+	if d := duration(r.np.Item); d > 0 {
+		to = min(to, d)
+	}
+	if r.remote != nil {
+		if err := r.remote.Seek(ctx, to); err != nil {
+			return err
+		}
+	}
+	r.np.Position, r.np.At = to, now
+	r.np.Revision++
+	e.publish(r)
+	return nil
+}
+
+// Seek moves itemID to at, if it's still the room's song: a bracket
+// battle's short version starts at the song's peak.
+func (e *Engine) Seek(ctx context.Context, roomID, itemID string, at time.Duration) error {
+	r, err := e.lock(ctx, roomID)
+	if err != nil {
+		return err
+	}
+	defer r.mu.Unlock()
+	if r.np.Item == nil || r.np.Item.ID != itemID {
+		return nil
+	}
+	return e.seek(ctx, r, at, e.cfg.Now())
+}
+
+// Cut ends itemID as if it had played through, if it's still the room's
+// song: a bracket battle's short version is over.
+func (e *Engine) Cut(ctx context.Context, roomID, itemID string) error {
+	r, err := e.lock(ctx, roomID)
+	if err != nil {
+		return err
+	}
+	defer r.mu.Unlock()
+	if r.np.Item == nil || r.np.Item.ID != itemID {
+		return nil
+	}
+	return e.next(ctx, r, store.EndFinished)
 }
 
 // pause pauses the current song where it is. The caller publishes.

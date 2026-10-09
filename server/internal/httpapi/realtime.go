@@ -293,6 +293,11 @@ func (rc *roomConn) helloGames(ctx context.Context) error {
 			return err
 		}
 	}
+	for _, qg := range g.QueueGames(rc.room.ID) {
+		if err := rc.send(ctx, realtime.Event{Type: realtime.GameQueue, Data: qg}); err != nil {
+			return err
+		}
+	}
 	sc, err := g.Scores(ctx, rc.room.ID)
 	if err != nil || sc.Mode == rooms.ScoresOff || len(sc.Players) == 0 {
 		return err
@@ -319,6 +324,8 @@ func (rc *roomConn) send(ctx context.Context, e realtime.Event) error {
 		data = rc.s.toGameRound(d)
 	case games.Scores:
 		data = toGameScores(d, rc.user.ID)
+	case games.QueueGame:
+		data = toQueueGame(d)
 	case rooms.Notice:
 		n := PlaybackNotice{RoomId: d.RoomID, Message: d.Message}
 		if d.ItemID != "" {
@@ -417,6 +424,9 @@ func toQueueItem(it store.QueueItem) QueueItem {
 	}
 	out := QueueItem{
 		Id: it.ID, AddedBy: it.AddedBy, State: QueueItemState(it.State), LanePosition: it.LanePosition, AddedAt: it.AddedAt, Track: track,
+	}
+	if it.GameHeld && it.State == store.ItemQueued {
+		out.HeldForGame = ptr(true)
 	}
 	if it.ViaLinkID.Valid {
 		out.Via = &PlaysVia{Provider: it.ViaProvider.String, LinkId: it.ViaLinkID.String, TrackId: it.ViaTrackID.String}

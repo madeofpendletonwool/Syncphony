@@ -79,6 +79,9 @@ type Facts struct {
 	// Origin is where the artist is from ("Seattle"); OriginLine says so
 	// in the liner notes' words ("Nirvana formed in Aberdeen in 1987").
 	Origin, OriginLine string
+	// Notes reports whether its liner notes were found: without them, no
+	// cover or samples means unknown, not none.
+	Notes bool
 	// CoverOf is the song this covers, with its writers.
 	CoverOf *Original
 	// Samples are songs it samples; SampledBy, songs that sample it.

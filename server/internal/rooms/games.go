@@ -132,6 +132,10 @@ const (
 // GameKinds are every game, in the order the settings show them.
 var GameKinds = []string{GameYear, GameLiner, GameSample, GameLyrics, GameFinishLyric, GameTune, GameConnect, GameTheme, GameBracket}
 
+// QueueGames are the games played through the queue, across songs, beside
+// the rounds.
+var QueueGames = []string{GameConnect, GameTheme, GameBracket}
+
 // GameBreaks are the games that pause the music, so they're Game night's
 // only and count toward BreaksPerHour.
 var GameBreaks = []string{GameFinishLyric, GameTune}

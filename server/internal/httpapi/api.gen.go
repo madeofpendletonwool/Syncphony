@@ -65,6 +65,7 @@ func (e ArtistFactKind) Valid() bool {
 
 // Defines values for AwardKind.
 const (
+	BracketChamp  AwardKind = "bracket_champ"
 	Closer        AwardKind = "closer"
 	Comeback      AwardKind = "comeback"
 	DanceFloorMvp AwardKind = "dance_floor_mvp"
@@ -81,6 +82,8 @@ const (
 // Valid indicates whether the value is a known member of the AwardKind enum.
 func (e AwardKind) Valid() bool {
 	switch e {
+	case BracketChamp:
+		return true
 	case Closer:
 		return true
 	case Comeback:
@@ -161,16 +164,16 @@ func (e BackupScheduleFrequency) Valid() bool {
 
 // Defines values for DisplayPairingStatusStatus.
 const (
-	Paired  DisplayPairingStatusStatus = "paired"
-	Waiting DisplayPairingStatusStatus = "waiting"
+	DisplayPairingStatusStatusPaired  DisplayPairingStatusStatus = "paired"
+	DisplayPairingStatusStatusWaiting DisplayPairingStatusStatus = "waiting"
 )
 
 // Valid indicates whether the value is a known member of the DisplayPairingStatusStatus enum.
 func (e DisplayPairingStatusStatus) Valid() bool {
 	switch e {
-	case Paired:
+	case DisplayPairingStatusStatusPaired:
 		return true
-	case Waiting:
+	case DisplayPairingStatusStatusWaiting:
 		return true
 	default:
 		return false
@@ -189,6 +192,27 @@ func (e FairnessMode) Valid() bool {
 	case Fifo:
 		return true
 	case RoundRobin:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GameEntryFit.
+const (
+	No      GameEntryFit = "no"
+	Unknown GameEntryFit = "unknown"
+	Yes     GameEntryFit = "yes"
+)
+
+// Valid indicates whether the value is a known member of the GameEntryFit enum.
+func (e GameEntryFit) Valid() bool {
+	switch e {
+	case No:
+		return true
+	case Unknown:
+		return true
+	case Yes:
 		return true
 	default:
 		return false
@@ -228,6 +252,27 @@ func (e GameKind) Valid() bool {
 	case GameKindTune:
 		return true
 	case GameKindYear:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GameMatchState.
+const (
+	GameMatchStateDone    GameMatchState = "done"
+	GameMatchStateUp      GameMatchState = "up"
+	GameMatchStateWaiting GameMatchState = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the GameMatchState enum.
+func (e GameMatchState) Valid() bool {
+	switch e {
+	case GameMatchStateDone:
+		return true
+	case GameMatchStateUp:
+		return true
+	case GameMatchStateWaiting:
 		return true
 	default:
 		return false
@@ -687,6 +732,72 @@ func (e ProviderInfoPlayback) Valid() bool {
 	}
 }
 
+// Defines values for QueueGameScores.
+const (
+	QueueGameScoresBoard   QueueGameScores = "board"
+	QueueGameScoresOff     QueueGameScores = "off"
+	QueueGameScoresPrivate QueueGameScores = "private"
+)
+
+// Valid indicates whether the value is a known member of the QueueGameScores enum.
+func (e QueueGameScores) Valid() bool {
+	switch e {
+	case QueueGameScoresBoard:
+		return true
+	case QueueGameScoresOff:
+		return true
+	case QueueGameScoresPrivate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for QueueGameState.
+const (
+	QueueGameStateDone    QueueGameState = "done"
+	QueueGameStateOpen    QueueGameState = "open"
+	QueueGameStatePlaying QueueGameState = "playing"
+	QueueGameStateReveal  QueueGameState = "reveal"
+)
+
+// Valid indicates whether the value is a known member of the QueueGameState enum.
+func (e QueueGameState) Valid() bool {
+	switch e {
+	case QueueGameStateDone:
+		return true
+	case QueueGameStateOpen:
+		return true
+	case QueueGameStatePlaying:
+		return true
+	case QueueGameStateReveal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for QueueGameKind.
+const (
+	QueueGameKindBracket QueueGameKind = "bracket"
+	QueueGameKindConnect QueueGameKind = "connect"
+	QueueGameKindTheme   QueueGameKind = "theme"
+)
+
+// Valid indicates whether the value is a known member of the QueueGameKind enum.
+func (e QueueGameKind) Valid() bool {
+	switch e {
+	case QueueGameKindBracket:
+		return true
+	case QueueGameKindConnect:
+		return true
+	case QueueGameKindTheme:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for QueueItemState.
 const (
 	QueueItemStatePlayed  QueueItemState = "played"
@@ -788,6 +899,7 @@ func (e RoomAutopilotAdventure) Valid() bool {
 
 // Defines values for RoomEventType.
 const (
+	RoomEventTypeGameQueue         RoomEventType = "game.queue"
 	RoomEventTypeGameRound         RoomEventType = "game.round"
 	RoomEventTypeGameScores        RoomEventType = "game.scores"
 	RoomEventTypeGuestsUpdated     RoomEventType = "guests.updated"
@@ -809,6 +921,8 @@ const (
 // Valid indicates whether the value is a known member of the RoomEventType enum.
 func (e RoomEventType) Valid() bool {
 	switch e {
+	case RoomEventTypeGameQueue:
+		return true
 	case RoomEventTypeGameRound:
 		return true
 	case RoomEventTypeGameScores:
@@ -1206,6 +1320,27 @@ func (e StartGameRoundRequestSet) Valid() bool {
 	}
 }
 
+// Defines values for StartQueueGameRequestSize.
+const (
+	StartQueueGameRequestSizeN16 StartQueueGameRequestSize = 16
+	StartQueueGameRequestSizeN4  StartQueueGameRequestSize = 4
+	StartQueueGameRequestSizeN8  StartQueueGameRequestSize = 8
+)
+
+// Valid indicates whether the value is a known member of the StartQueueGameRequestSize enum.
+func (e StartQueueGameRequestSize) Valid() bool {
+	switch e {
+	case StartQueueGameRequestSizeN16:
+		return true
+	case StartQueueGameRequestSizeN4:
+		return true
+	case StartQueueGameRequestSizeN8:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SuggestionsScope.
 const (
 	SuggestionsScopeGroup SuggestionsScope = "group"
@@ -1218,6 +1353,54 @@ func (e SuggestionsScope) Valid() bool {
 	case SuggestionsScopeGroup:
 		return true
 	case SuggestionsScopeMine:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ThemeKind.
+const (
+	ThemeKindBefore1985 ThemeKind = "before_1985"
+	ThemeKindBuild      ThemeKind = "build"
+	ThemeKindCover      ThemeKind = "cover"
+	ThemeKindFast       ThemeKind = "fast"
+	ThemeKindGenre      ThemeKind = "genre"
+	ThemeKindLive       ThemeKind = "live"
+	ThemeKindNineties   ThemeKind = "nineties"
+	ThemeKindProducer   ThemeKind = "producer"
+	ThemeKindSad        ThemeKind = "sad"
+	ThemeKindSamples    ThemeKind = "samples"
+	ThemeKindSlow       ThemeKind = "slow"
+	ThemeKindYear       ThemeKind = "year"
+)
+
+// Valid indicates whether the value is a known member of the ThemeKind enum.
+func (e ThemeKind) Valid() bool {
+	switch e {
+	case ThemeKindBefore1985:
+		return true
+	case ThemeKindBuild:
+		return true
+	case ThemeKindCover:
+		return true
+	case ThemeKindFast:
+		return true
+	case ThemeKindGenre:
+		return true
+	case ThemeKindLive:
+		return true
+	case ThemeKindNineties:
+		return true
+	case ThemeKindProducer:
+		return true
+	case ThemeKindSad:
+		return true
+	case ThemeKindSamples:
+		return true
+	case ThemeKindSlow:
+		return true
+	case ThemeKindYear:
 		return true
 	default:
 		return false
@@ -1847,6 +2030,33 @@ type GameAnswerRequest struct {
 	Text   *string `json:"text,omitempty"`
 }
 
+// GameBracket A bracket battle's draw: rounds of matches, the first to the final.
+// Matches play through the night between normal songs.
+type GameBracket struct {
+	// Champion The final's winner, an index into the game's `entries`.
+	Champion *int          `json:"champion,omitempty"`
+	Current  *GameMatchRef `json:"current,omitempty"`
+	Last     *GameMatchRef `json:"last,omitempty"`
+
+	// NextAt When the next match may start, at the earliest.
+	NextAt *time.Time    `json:"nextAt,omitempty"`
+	Rounds [][]GameMatch `json:"rounds"`
+
+	// Short Matches play about 90 seconds of each song, from its peak.
+	Short bool `json:"short"`
+	Size  int  `json:"size"`
+}
+
+// GameChain defines model for GameChain.
+type GameChain struct {
+	// Done It reached the end.
+	Done bool `json:"done"`
+
+	// Hints Artists hinted along the way.
+	Hints []string   `json:"hints"`
+	Links []GameLink `json:"links"`
+}
+
 // GameClip defines model for GameClip.
 type GameClip struct {
 	// At When it plays, by the server's clock.
@@ -1860,11 +2070,109 @@ type GameClip struct {
 	Reveal bool `json:"reveal"`
 }
 
+// GameConnect Connect the artists: queue a chain of songs from `from` to `to`,
+// each by an artist similar to the last one's.
+type GameConnect struct {
+	// Chains Each team's chain; one when the room plays together.
+	Chains []GameChain `json:"chains"`
+	From   string      `json:"from"`
+
+	// Hops How many songs a shortest chain takes, as far as the music graph knew.
+	Hops int `json:"hops"`
+
+	// Misses The latest songs queued that didn't link, newest last.
+	Misses []GameMiss `json:"misses"`
+
+	// Path A shortest way, ends included, from the reveal on.
+	Path *[]string `json:"path,omitempty"`
+
+	// Teams Who's on which team, by user ID, as an index into `chains`.
+	Teams map[string]int `json:"teams"`
+	To    string         `json:"to"`
+
+	// Winner The winning team's chain, from the reveal on, when one got there.
+	Winner *int `json:"winner,omitempty"`
+}
+
+// GameEntry defines model for GameEntry.
+type GameEntry struct {
+	Artist *string `json:"artist,omitempty"`
+
+	// Fit Whether it fits the theme, as far as the server knows. One that
+	// doesn't, or can't be told, still plays.
+	Fit *GameEntryFit `json:"fit,omitempty"`
+
+	// Hearts Its hearts, once it's judged.
+	Hearts *int   `json:"hearts,omitempty"`
+	ItemId string `json:"itemId"`
+
+	// Note Why, when it doesn't fit or there's no telling ("Not a cover, as far as we know").
+	Note *string `json:"note,omitempty"`
+
+	// Played It's started playing in the game.
+	Played bool   `json:"played"`
+	Title  string `json:"title"`
+	UserId string `json:"userId"`
+}
+
+// GameEntryFit Whether it fits the theme, as far as the server knows. One that
+// doesn't, or can't be told, still plays.
+type GameEntryFit string
+
 // GameKind A game. `year`: guess the year. `liner`: covers, credits and
 // releases. `sample`: sample detective. `lyrics`: beat the singer.
 // `finish_lyric`: the music stops and you finish the line. `tune`:
 // name that tune. `connect`, `theme`, `bracket`: queue games.
 type GameKind string
+
+// GameLink defines model for GameLink.
+type GameLink struct {
+	Artist string `json:"artist"`
+	ItemId string `json:"itemId"`
+	Points int    `json:"points"`
+
+	// Score How alike its artist is to the one before, 0 to 1.
+	Score  float32 `json:"score"`
+	Title  string  `json:"title"`
+	UserId string  `json:"userId"`
+}
+
+// GameMatch Two entries (indices into the game's `entries`) facing off: -1 for
+// a side still to be decided, and for a bye.
+type GameMatch struct {
+	A       int            `json:"a"`
+	B       int            `json:"b"`
+	Bye     bool           `json:"bye"`
+	HeartsA int            `json:"heartsA"`
+	HeartsB int            `json:"heartsB"`
+	State   GameMatchState `json:"state"`
+
+	// Toss The hearts tied, and a coin decided.
+	Toss bool `json:"toss"`
+
+	// Walkover The other song left the queue before its match.
+	Walkover bool `json:"walkover"`
+	Winner   int  `json:"winner"`
+}
+
+// GameMatchState defines model for GameMatch.State.
+type GameMatchState string
+
+// GameMatchRef defines model for GameMatchRef.
+type GameMatchRef struct {
+	Match int `json:"match"`
+	Round int `json:"round"`
+}
+
+// GameMiss defines model for GameMiss.
+type GameMiss struct {
+	// After The chain's artist it didn't link to.
+	After  string `json:"after"`
+	Artist string `json:"artist"`
+	ItemId string `json:"itemId"`
+	Reason string `json:"reason"`
+	UserId string `json:"userId"`
+}
 
 // GamePlayer defines model for GamePlayer.
 type GamePlayer struct {
@@ -2070,6 +2378,12 @@ type GameSong struct {
 type GameStreak struct {
 	Count  int    `json:"count"`
 	UserId string `json:"userId"`
+}
+
+// GameTheme A theme round's prompt, or a bracket's.
+type GameTheme struct {
+	Kind   ThemeKind `json:"kind"`
+	Prompt string    `json:"prompt"`
 }
 
 // GenreDetail defines model for GenreDetail.
@@ -2351,8 +2665,15 @@ type MoveQueueItemRequest struct {
 // the room went quiet. Fed into recaps.
 type Night struct {
 	// Awards The night's awards, at most six, in rooms whose games level
-	// isn't `off`.
-	Awards  []Award      `json:"awards"`
+	// isn't `off`, and the bracket's champion's, if the room played a
+	// bracket.
+	Awards []Award `json:"awards"`
+
+	// Bracket A queue game, run by the server across songs. `open`: entries are
+	// in (theme, bracket), or the chain's growing (connect) until
+	// `closesAt`. `playing`: a theme round's block or a bracket's matches
+	// are playing. `reveal`: the result, until `doneAt`. `done`: over.
+	Bracket *QueueGame   `json:"bracket,omitempty"`
 	EndedAt time.Time    `json:"endedAt"`
 	EndedBy NightEndedBy `json:"endedBy"`
 	Id      string       `json:"id"`
@@ -2748,6 +3069,64 @@ type QueueDuplicate struct {
 	Title string `json:"title"`
 }
 
+// QueueGame A queue game, run by the server across songs. `open`: entries are
+// in (theme, bracket), or the chain's growing (connect) until
+// `closesAt`. `playing`: a theme round's block or a bracket's matches
+// are playing. `reveal`: the result, until `doneAt`. `done`: over.
+type QueueGame struct {
+	// Bracket A bracket battle's draw: rounds of matches, the first to the final.
+	// Matches play through the night between normal songs.
+	Bracket  *GameBracket `json:"bracket,omitempty"`
+	ClosesAt time.Time    `json:"closesAt"`
+
+	// Connect Connect the artists: queue a chain of songs from `from` to `to`,
+	// each by an artist similar to the last one's.
+	Connect *GameConnect `json:"connect,omitempty"`
+	DoneAt  *time.Time   `json:"doneAt,omitempty"`
+
+	// Entries A theme round's or a bracket's songs, as entered.
+	Entries []GameEntry `json:"entries"`
+
+	// Guests Guests may play.
+	Guests bool          `json:"guests"`
+	Id     string        `json:"id"`
+	Kind   QueueGameKind `json:"kind"`
+
+	// Points Everyone's points in the game so far, best first.
+	Points    []GameSetPlayer `json:"points"`
+	RoomId    string          `json:"roomId"`
+	Scores    QueueGameScores `json:"scores"`
+	StartedAt time.Time       `json:"startedAt"`
+	StartedBy string          `json:"startedBy"`
+	State     QueueGameState  `json:"state"`
+
+	// Theme A theme round's prompt, or a bracket's.
+	Theme *GameTheme `json:"theme,omitempty"`
+
+	// Winners A theme round's most-hearted entries (indices into `entries`), from its reveal on.
+	Winners *[]int `json:"winners,omitempty"`
+}
+
+// QueueGameScores defines model for QueueGame.Scores.
+type QueueGameScores string
+
+// QueueGameState defines model for QueueGame.State.
+type QueueGameState string
+
+// QueueGameEntryRequest defines model for QueueGameEntryRequest.
+type QueueGameEntryRequest struct {
+	// ItemId One of your songs waiting in the queue.
+	ItemId string `json:"itemId"`
+}
+
+// QueueGameKind defines model for QueueGameKind.
+type QueueGameKind string
+
+// QueueGames defines model for QueueGames.
+type QueueGames struct {
+	Games []QueueGame `json:"games"`
+}
+
 // QueueItem defines model for QueueItem.
 type QueueItem struct {
 	AddedAt time.Time `json:"addedAt"`
@@ -2759,9 +3138,13 @@ type QueueItem struct {
 	// Autopilot Set when autopilot queued the song, because the queue ran dry.
 	// Label it "Autopilot", not as anyone's. It plays after every
 	// member's song, takes nobody's turn, and anyone may remove it.
-	Autopilot    *AutopilotPick `json:"autopilot,omitempty"`
-	Id           string         `json:"id"`
-	LanePosition int64          `json:"lanePosition"`
+	Autopilot *AutopilotPick `json:"autopilot,omitempty"`
+
+	// HeldForGame A queue game holds it out of the play order (it's entered in a
+	// theme round or a bracket) until the game plays it.
+	HeldForGame  *bool  `json:"heldForGame,omitempty"`
+	Id           string `json:"id"`
+	LanePosition int64  `json:"lanePosition"`
 
 	// Palette The colors of a song's artwork, worked out once on the server so
 	// every phone in the room matches. On a queue item once it's ready
@@ -3029,6 +3412,8 @@ type RoomAutopilotAdventure string
 //     answer, was revealed, or is done. Sent after hello while one is up.
 //   - `game.scores`: GameScores. Tonight's scores, after a reveal; only
 //     your own while the room's scores are `private`.
+//   - `game.queue`: QueueGame. A queue game started, changed, or is
+//     done. Sent after hello for each that's up.
 //
 // A paired display connects with its display cookie instead, to its
 // own room only. So does a signed-in user with `display=1`: either way
@@ -3544,6 +3929,24 @@ type StartGameRoundRequest struct {
 // StartGameRoundRequestSet Start a set of this many tunes (`tune` only).
 type StartGameRoundRequestSet int
 
+// StartQueueGameRequest defines model for StartQueueGameRequest.
+type StartQueueGameRequest struct {
+	Kind QueueGameKind `json:"kind"`
+
+	// Short Play a bracket's matches about 90 seconds of each song, from its peak.
+	Short *bool `json:"short,omitempty"`
+
+	// Size A bracket's most songs.
+	Size *StartQueueGameRequestSize `json:"size,omitempty"`
+
+	// Teams Connect the artists as the room together (1), or as 2 teams racing.
+	Teams *int       `json:"teams,omitempty"`
+	Theme *ThemeKind `json:"theme,omitempty"`
+}
+
+// StartQueueGameRequestSize A bracket's most songs.
+type StartQueueGameRequestSize int
+
 // Suggestion A song to queue, and the room's song it's like.
 type Suggestion struct {
 	// Because The song a suggestion is like.
@@ -3581,6 +3984,9 @@ type TasteTag struct {
 	// Weight From 0 to 1, against the strongest.
 	Weight float32 `json:"weight"`
 }
+
+// ThemeKind defines model for ThemeKind.
+type ThemeKind string
 
 // TonightArtist defines model for TonightArtist.
 type TonightArtist struct {
@@ -3779,6 +4185,9 @@ type Username = string
 
 // InviteCode defines model for InviteCode.
 type InviteCode = string
+
+// QueueGameId defines model for QueueGameId.
+type QueueGameId = string
 
 // ResetCode defines model for ResetCode.
 type ResetCode = string
@@ -4027,6 +4436,12 @@ type PairDisplayJSONRequestBody = PairDisplayRequest
 
 // UpdateDisplayJSONRequestBody defines body for UpdateDisplay for application/json ContentType.
 type UpdateDisplayJSONRequestBody = UpdateDisplayRequest
+
+// StartQueueGameJSONRequestBody defines body for StartQueueGame for application/json ContentType.
+type StartQueueGameJSONRequestBody = StartQueueGameRequest
+
+// EnterQueueGameJSONRequestBody defines body for EnterQueueGame for application/json ContentType.
+type EnterQueueGameJSONRequestBody = QueueGameEntryRequest
 
 // StartGameRoundJSONRequestBody defines body for StartGameRound for application/json ContentType.
 type StartGameRoundJSONRequestBody = StartGameRoundRequest
@@ -4345,6 +4760,24 @@ type ServerInterface interface {
 	// GetGameClip A clip of a song, for a round
 	// (GET /rooms/{roomId}/games/clips/{clipId})
 	GetGameClip(w http.ResponseWriter, r *http.Request, roomId RoomId, clipId string)
+	// GetQueueGames The room's queue games
+	// (GET /rooms/{roomId}/games/queue)
+	GetQueueGames(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// StartQueueGame Start a queue game
+	// (POST /rooms/{roomId}/games/queue)
+	StartQueueGame(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// CloseQueueGame Move a queue game on
+	// (POST /rooms/{roomId}/games/queue/{gameId}/close)
+	CloseQueueGame(w http.ResponseWriter, r *http.Request, roomId RoomId, gameId QueueGameId)
+	// EnterQueueGame Enter one of your songs in a theme round or a bracket
+	// (POST /rooms/{roomId}/games/queue/{gameId}/entries)
+	EnterQueueGame(w http.ResponseWriter, r *http.Request, roomId RoomId, gameId QueueGameId)
+	// WithdrawQueueGameEntry Take one of your songs out of a game
+	// (DELETE /rooms/{roomId}/games/queue/{gameId}/entries/{itemId})
+	WithdrawQueueGameEntry(w http.ResponseWriter, r *http.Request, roomId RoomId, gameId QueueGameId, itemId string)
+	// HintQueueGame A hint for connect the artists
+	// (POST /rooms/{roomId}/games/queue/{gameId}/hint)
+	HintQueueGame(w http.ResponseWriter, r *http.Request, roomId RoomId, gameId QueueGameId)
 	// GetGameRound The room's game round, if one is up
 	// (GET /rooms/{roomId}/games/round)
 	GetGameRound(w http.ResponseWriter, r *http.Request, roomId RoomId)
@@ -6643,6 +7076,207 @@ func (siw *ServerInterfaceWrapper) GetGameClip(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetQueueGames operation middleware
+func (siw *ServerInterfaceWrapper) GetQueueGames(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetQueueGames(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartQueueGame operation middleware
+func (siw *ServerInterfaceWrapper) StartQueueGame(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartQueueGame(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CloseQueueGame operation middleware
+func (siw *ServerInterfaceWrapper) CloseQueueGame(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "gameId" -------------
+	var gameId QueueGameId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "gameId", r.PathValue("gameId"), &gameId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "gameId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CloseQueueGame(w, r, roomId, gameId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EnterQueueGame operation middleware
+func (siw *ServerInterfaceWrapper) EnterQueueGame(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "gameId" -------------
+	var gameId QueueGameId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "gameId", r.PathValue("gameId"), &gameId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "gameId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EnterQueueGame(w, r, roomId, gameId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// WithdrawQueueGameEntry operation middleware
+func (siw *ServerInterfaceWrapper) WithdrawQueueGameEntry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "gameId" -------------
+	var gameId QueueGameId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "gameId", r.PathValue("gameId"), &gameId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "gameId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.WithdrawQueueGameEntry(w, r, roomId, gameId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// HintQueueGame operation middleware
+func (siw *ServerInterfaceWrapper) HintQueueGame(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "gameId" -------------
+	var gameId QueueGameId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "gameId", r.PathValue("gameId"), &gameId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "gameId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.HintQueueGame(w, r, roomId, gameId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetGameRound operation middleware
 func (siw *ServerInterfaceWrapper) GetGameRound(w http.ResponseWriter, r *http.Request) {
 
@@ -8742,6 +9376,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/games/rounds/{roundId}/artwork", wrapper.GetGameRoundArtwork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/games/clips/{clipId}", wrapper.GetGameClip)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/games/scores", wrapper.GetGameScores)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/games/queue", wrapper.GetQueueGames)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/games/queue", wrapper.StartQueueGame)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/games/queue/{gameId}/entries", wrapper.EnterQueueGame)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/games/queue/{gameId}/entries/{itemId}", wrapper.WithdrawQueueGameEntry)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/games/queue/{gameId}/hint", wrapper.HintQueueGame)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/games/queue/{gameId}/close", wrapper.CloseQueueGame)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/guest-pass", wrapper.RevokeGuestPass)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/guest-pass", wrapper.GetGuestPass)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/guest-pass", wrapper.CreateGuestPass)
@@ -12231,6 +12871,247 @@ func (response GetGameClipdefaultJSONResponse) VisitGetGameClipResponse(w http.R
 	return err
 }
 
+type GetQueueGamesRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type GetQueueGamesResponseObject interface {
+	VisitGetQueueGamesResponse(w http.ResponseWriter) error
+}
+
+type GetQueueGames200JSONResponse QueueGames
+
+func (response GetQueueGames200JSONResponse) VisitGetQueueGamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQueueGamesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetQueueGamesdefaultJSONResponse) VisitGetQueueGamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartQueueGameRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Body   *StartQueueGameJSONRequestBody
+}
+
+type StartQueueGameResponseObject interface {
+	VisitStartQueueGameResponse(w http.ResponseWriter) error
+}
+
+type StartQueueGame201JSONResponse QueueGame
+
+func (response StartQueueGame201JSONResponse) VisitStartQueueGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartQueueGamedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response StartQueueGamedefaultJSONResponse) VisitStartQueueGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseQueueGameRequestObject struct {
+	RoomId RoomId      `json:"roomId"`
+	GameId QueueGameId `json:"gameId"`
+}
+
+type CloseQueueGameResponseObject interface {
+	VisitCloseQueueGameResponse(w http.ResponseWriter) error
+}
+
+type CloseQueueGame200JSONResponse QueueGame
+
+func (response CloseQueueGame200JSONResponse) VisitCloseQueueGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseQueueGamedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CloseQueueGamedefaultJSONResponse) VisitCloseQueueGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EnterQueueGameRequestObject struct {
+	RoomId RoomId      `json:"roomId"`
+	GameId QueueGameId `json:"gameId"`
+	Body   *EnterQueueGameJSONRequestBody
+}
+
+type EnterQueueGameResponseObject interface {
+	VisitEnterQueueGameResponse(w http.ResponseWriter) error
+}
+
+type EnterQueueGame200JSONResponse QueueGame
+
+func (response EnterQueueGame200JSONResponse) VisitEnterQueueGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EnterQueueGamedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response EnterQueueGamedefaultJSONResponse) VisitEnterQueueGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawQueueGameEntryRequestObject struct {
+	RoomId RoomId      `json:"roomId"`
+	GameId QueueGameId `json:"gameId"`
+	ItemId string      `json:"itemId"`
+}
+
+type WithdrawQueueGameEntryResponseObject interface {
+	VisitWithdrawQueueGameEntryResponse(w http.ResponseWriter) error
+}
+
+type WithdrawQueueGameEntry200JSONResponse QueueGame
+
+func (response WithdrawQueueGameEntry200JSONResponse) VisitWithdrawQueueGameEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WithdrawQueueGameEntrydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response WithdrawQueueGameEntrydefaultJSONResponse) VisitWithdrawQueueGameEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type HintQueueGameRequestObject struct {
+	RoomId RoomId      `json:"roomId"`
+	GameId QueueGameId `json:"gameId"`
+}
+
+type HintQueueGameResponseObject interface {
+	VisitHintQueueGameResponse(w http.ResponseWriter) error
+}
+
+type HintQueueGame200JSONResponse QueueGame
+
+func (response HintQueueGame200JSONResponse) VisitHintQueueGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type HintQueueGamedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response HintQueueGamedefaultJSONResponse) VisitHintQueueGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetGameRoundRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 }
@@ -14716,6 +15597,24 @@ type StrictServerInterface interface {
 	// GetGameClip A clip of a song, for a round
 	// (GET /rooms/{roomId}/games/clips/{clipId})
 	GetGameClip(ctx context.Context, request GetGameClipRequestObject) (GetGameClipResponseObject, error)
+	// GetQueueGames The room's queue games
+	// (GET /rooms/{roomId}/games/queue)
+	GetQueueGames(ctx context.Context, request GetQueueGamesRequestObject) (GetQueueGamesResponseObject, error)
+	// StartQueueGame Start a queue game
+	// (POST /rooms/{roomId}/games/queue)
+	StartQueueGame(ctx context.Context, request StartQueueGameRequestObject) (StartQueueGameResponseObject, error)
+	// CloseQueueGame Move a queue game on
+	// (POST /rooms/{roomId}/games/queue/{gameId}/close)
+	CloseQueueGame(ctx context.Context, request CloseQueueGameRequestObject) (CloseQueueGameResponseObject, error)
+	// EnterQueueGame Enter one of your songs in a theme round or a bracket
+	// (POST /rooms/{roomId}/games/queue/{gameId}/entries)
+	EnterQueueGame(ctx context.Context, request EnterQueueGameRequestObject) (EnterQueueGameResponseObject, error)
+	// WithdrawQueueGameEntry Take one of your songs out of a game
+	// (DELETE /rooms/{roomId}/games/queue/{gameId}/entries/{itemId})
+	WithdrawQueueGameEntry(ctx context.Context, request WithdrawQueueGameEntryRequestObject) (WithdrawQueueGameEntryResponseObject, error)
+	// HintQueueGame A hint for connect the artists
+	// (POST /rooms/{roomId}/games/queue/{gameId}/hint)
+	HintQueueGame(ctx context.Context, request HintQueueGameRequestObject) (HintQueueGameResponseObject, error)
 	// GetGameRound The room's game round, if one is up
 	// (GET /rooms/{roomId}/games/round)
 	GetGameRound(ctx context.Context, request GetGameRoundRequestObject) (GetGameRoundResponseObject, error)
@@ -17369,6 +18268,181 @@ func (sh *strictHandler) GetGameClip(w http.ResponseWriter, r *http.Request, roo
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetGameClipResponseObject); ok {
 		if err := validResponse.VisitGetGameClipResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetQueueGames operation middleware
+func (sh *strictHandler) GetQueueGames(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request GetQueueGamesRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetQueueGames(ctx, request.(GetQueueGamesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetQueueGames")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetQueueGamesResponseObject); ok {
+		if err := validResponse.VisitGetQueueGamesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartQueueGame operation middleware
+func (sh *strictHandler) StartQueueGame(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request StartQueueGameRequestObject
+
+	request.RoomId = roomId
+
+	var body StartQueueGameJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartQueueGame(ctx, request.(StartQueueGameRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartQueueGame")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartQueueGameResponseObject); ok {
+		if err := validResponse.VisitStartQueueGameResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CloseQueueGame operation middleware
+func (sh *strictHandler) CloseQueueGame(w http.ResponseWriter, r *http.Request, roomId RoomId, gameId QueueGameId) {
+	var request CloseQueueGameRequestObject
+
+	request.RoomId = roomId
+	request.GameId = gameId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CloseQueueGame(ctx, request.(CloseQueueGameRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CloseQueueGame")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CloseQueueGameResponseObject); ok {
+		if err := validResponse.VisitCloseQueueGameResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EnterQueueGame operation middleware
+func (sh *strictHandler) EnterQueueGame(w http.ResponseWriter, r *http.Request, roomId RoomId, gameId QueueGameId) {
+	var request EnterQueueGameRequestObject
+
+	request.RoomId = roomId
+	request.GameId = gameId
+
+	var body EnterQueueGameJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EnterQueueGame(ctx, request.(EnterQueueGameRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EnterQueueGame")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EnterQueueGameResponseObject); ok {
+		if err := validResponse.VisitEnterQueueGameResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// WithdrawQueueGameEntry operation middleware
+func (sh *strictHandler) WithdrawQueueGameEntry(w http.ResponseWriter, r *http.Request, roomId RoomId, gameId QueueGameId, itemId string) {
+	var request WithdrawQueueGameEntryRequestObject
+
+	request.RoomId = roomId
+	request.GameId = gameId
+	request.ItemId = itemId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.WithdrawQueueGameEntry(ctx, request.(WithdrawQueueGameEntryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "WithdrawQueueGameEntry")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(WithdrawQueueGameEntryResponseObject); ok {
+		if err := validResponse.VisitWithdrawQueueGameEntryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// HintQueueGame operation middleware
+func (sh *strictHandler) HintQueueGame(w http.ResponseWriter, r *http.Request, roomId RoomId, gameId QueueGameId) {
+	var request HintQueueGameRequestObject
+
+	request.RoomId = roomId
+	request.GameId = gameId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.HintQueueGame(ctx, request.(HintQueueGameRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "HintQueueGame")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(HintQueueGameResponseObject); ok {
+		if err := validResponse.VisitHintQueueGameResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

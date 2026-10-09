@@ -69,5 +69,9 @@ func (e *Engine) Awards(ctx context.Context, n store.Night) ([]awards.Award, err
 	for _, r := range rows {
 		scores = append(scores, awards.Score{UserID: r.UserID, Points: int(r.Points)})
 	}
-	return awards.Pick(plays, scores), nil
+	out := awards.Pick(plays, scores)
+	if a, ok := e.bracketAward(ctx, n); ok {
+		out = append(out, a)
+	}
+	return out, nil
 }
