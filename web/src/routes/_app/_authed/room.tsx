@@ -7,6 +7,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { errorMessage } from '@/api/errors'
 import { Artwork } from '@/components/artwork'
 import { PageHeader } from '@/components/page-header'
+import { SaveToPlaylistButton } from '@/components/playlists/save-to-playlist'
 import { AutopilotBadge } from '@/components/room/autopilot-badge'
 import { QueueGameDialog } from '@/components/games/queue-game-dialog'
 import { BigScreenDialog } from '@/components/room/big-screen-dialog'
@@ -37,6 +38,7 @@ import { isMine } from '@/lib/autopilot'
 import { laneStyle } from '@/lib/lane'
 import { fadeUp, spring, stagger } from '@/lib/motion'
 import { plays, SET_SIZES, startRound, tunesOn } from '@/lib/games'
+import { isGuest } from '@/lib/guests'
 import { endNight } from '@/lib/nights'
 import { queueGamesOn } from '@/lib/queue-games'
 import { formatDuration, usePlayer, type User } from '@/lib/now-playing'
@@ -346,6 +348,7 @@ const menuItem =
 
 function NowPlayingCard({ room, waiting }: { room: RoomInfo; waiting: number }) {
   const roomId = room.id
+  const me = useMe()
   const { nowPlaying: np, commands } = usePlayer()
   const playback = useQuery({ ...playbackQuery(roomId), enabled: false })
   const position = usePosition(np)
@@ -427,6 +430,7 @@ function NowPlayingCard({ room, waiting }: { room: RoomInfo; waiting: number }) 
             {np.autopilot && <AutopilotBadge pick={np.autopilot} />}
             <SourceTag provider={np.track.provider} via={np.via} className="py-1" />
             <HeartButton room={room} np={np} className="ml-auto" />
+            {np.itemId && !isGuest(me) && <SaveToPlaylistButton song={{ itemId: np.itemId }} title={np.track.title} />}
           </div>
         </div>
       </div>

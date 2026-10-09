@@ -50,3 +50,15 @@ export function dismissCrown() {
   clearTimeout(clear)
   crowning.set(null)
 }
+
+/**
+ * A night's Wrapped playing, or its playlist being saved, after its
+ * crowning: they outlive the crowning, so they're kept apart from it.
+ */
+export const afterNight = createStore<{ night: Night; show: 'wrapped' | 'save' } | null>(null)
+
+/** Plays a night's Wrapped, or opens saving its playlist, in place of its crowning. */
+export function followNight(night: Night, show: 'wrapped' | 'save') {
+  dismissCrown()
+  afterNight.set({ night, show })
+}

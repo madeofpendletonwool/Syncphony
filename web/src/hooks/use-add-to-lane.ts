@@ -15,8 +15,11 @@ import { usersQuery } from '@/lib/users'
 
 export type LaneStatus = 'idle' | 'adding' | 'added'
 
-/** A song to add: from search, or one the room had (`fromItemId`), again. */
-export type LaneTrack = TrackResult & { fromItemId?: string }
+/**
+ * A song to add: from search, one the room had (`fromItemId`), again, or
+ * one from a Syncphony playlist (`fromPlaylistSongId`).
+ */
+export type LaneTrack = TrackResult & { fromItemId?: string; fromPlaylistSongId?: string }
 
 /** A song the room had, to add again. linkId is the item's own (it has one). */
 export function laneTrackOf(item: QueueItem, linkId: string): LaneTrack {
@@ -76,7 +79,13 @@ export function useAddToLane() {
       const call = api.POST('/rooms/{roomId}/queue', {
         params: { path: { roomId: room.id } },
         body: {
-          items: tracks.map((t) => (t.fromItemId ? { fromItemId: t.fromItemId } : { linkId: t.linkId, trackId: t.trackId })),
+          items: tracks.map((t) =>
+            t.fromItemId
+              ? { fromItemId: t.fromItemId }
+              : t.fromPlaylistSongId
+                ? { fromPlaylistSongId: t.fromPlaylistSongId }
+                : { linkId: t.linkId, trackId: t.trackId },
+          ),
           warnDuplicates: !anyway,
         },
       })

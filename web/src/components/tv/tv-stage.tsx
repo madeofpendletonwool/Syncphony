@@ -8,6 +8,7 @@ import { AutopilotMark } from '@/components/room/autopilot-badge'
 import { QueueGameStage } from '@/components/games/queue-game-stage'
 import { RoundStage } from '@/components/games/round-stage'
 import { CrownMoment } from '@/components/room/crown-moment'
+import { NightWrapped } from '@/components/wrapped/night-wrapped'
 import { AlbumBackdrop } from '@/components/shell/album-backdrop'
 import { Waveform } from '@/components/shell/waveform'
 import { UserAvatar } from '@/components/user-avatar'
@@ -147,6 +148,7 @@ export function TvStage({
         onShowSetting={setShowPick}
       />
       <CrownMoment roomId={roomId} variant="stage" />
+      <NightWrapped roomId={roomId} roomName={roomName} variant="stage" />
       <RoundStage roomId={roomId} />
       <QueueGameStage roomId={roomId} />
 

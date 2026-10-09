@@ -32,6 +32,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/nights"
 	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
 	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
+	"github.com/madeofpendletonwool/syncphony/server/internal/playlists"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
@@ -74,6 +75,8 @@ type Server struct {
 	Playback *playback.Engine
 	// Nights hearts songs and crowns each night's song of the night.
 	Nights *nights.Service
+	// Playlists keeps Syncphony's own playlists.
+	Playlists *playlists.Service
 	// Games runs the rooms' party games. Nil turns them off.
 	Games *games.Engine
 	// Clips serves the games' song clips. Nil serves none.
@@ -332,7 +335,10 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var invalidAdmin *admin.InvalidInputError
 	var invalidBackup *backup.InvalidInputError
 	var invalidGame *games.InvalidInputError
+	var invalidPlaylist *playlists.InvalidInputError
 	switch {
+	case errors.As(err, &invalidPlaylist):
+		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidPlaylist.Error())
 	case errors.As(err, &invalidGame):
 		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidGame.Error())
 	case errors.As(err, &invalidBackup):
@@ -407,6 +413,9 @@ var errorCodes = []struct {
 	{nights.ErrNotHost, http.StatusForbidden, "forbidden"},
 	{nights.ErrNotTonight, http.StatusConflict, "not_tonight"},
 	{nights.ErrNothingPlayed, http.StatusConflict, "nothing_played"},
+	{playlists.ErrNotFound, http.StatusNotFound, "not_found"},
+	{playlists.ErrForbidden, http.StatusForbidden, "forbidden"},
+	{playlists.ErrNothingPlayed, http.StatusConflict, "nothing_played"},
 	{games.ErrNoRound, http.StatusConflict, "round_closed"},
 	{games.ErrRoundRunning, http.StatusConflict, "round_running"},
 	{games.ErrForbidden, http.StatusForbidden, "forbidden"},
