@@ -215,6 +215,30 @@ type PlayHistory struct {
 	EndReason   sql.NullString
 }
 
+type Playlist struct {
+	ID          string
+	OwnerID     string
+	Name        string
+	RoomID      sql.NullString
+	NightRoomID sql.NullString
+	NightFrom   sql.NullTime
+	NightTo     sql.NullTime
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type PlaylistSong struct {
+	ID         string
+	PlaylistID string
+	Position   int64
+	Provider   string
+	LinkID     sql.NullString
+	TrackID    string
+	Metadata   string
+	AddedBy    sql.NullString
+	AddedAt    time.Time
+}
+
 type QueueItem struct {
 	ID           string
 	RoomID       string

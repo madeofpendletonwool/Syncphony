@@ -445,6 +445,10 @@ func (r artworkResponse) VisitGetQueueItemArtworkResponse(w http.ResponseWriter)
 	return r.write(w)
 }
 
+func (r artworkResponse) VisitGetSavedPlaylistSongArtworkResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}
+
 func (r artworkResponse) VisitGetUserAvatarResponse(w http.ResponseWriter) error { return r.write(w) }
 
 func (r artworkResponse) VisitGetGameRoundArtworkResponse(w http.ResponseWriter) error {

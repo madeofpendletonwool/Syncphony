@@ -177,6 +177,10 @@ type TrackRef struct {
 	// the same link. That needs a link the user can use, unless the room
 	// lets people borrow (rooms.Matching.Borrow).
 	FromItemID string
+	// Snapshot queues a song kept elsewhere, such as in a playlist, with
+	// its ref. Like FromItemID, it needs a link the user can use, unless
+	// the room lets people borrow.
+	Snapshot *provider.Track
 }
 
 // ErrCantBorrow is queueing again a song from someone else's service in a
@@ -477,8 +481,16 @@ func (s *Service) lookup(ctx context.Context, room store.Room, userID string, re
 			out[i] = t
 			continue
 		}
+		if r.Snapshot != nil {
+			t := *r.Snapshot
+			if err := s.borrow(ctx, room, userID, t.Ref.LinkID); err != nil {
+				return nil, err
+			}
+			out[i] = t
+			continue
+		}
 		if r.LinkID == "" || r.TrackID == "" {
-			return nil, &InvalidInputError{"each song needs a linkId and trackId, or a fromItemId"}
+			return nil, &InvalidInputError{"each song needs a linkId and trackId, a fromItemId, or a fromPlaylistSongId"}
 		}
 		sess, ok := sessions[r.LinkID]
 		if !ok {
@@ -518,19 +530,29 @@ func (s *Service) again(ctx context.Context, room store.Room, userID, itemID str
 	if err := json.Unmarshal([]byte(it.Metadata), &t); err != nil {
 		return provider.Track{}, err
 	}
-	if !it.LinkID.Valid {
-		return provider.Track{}, &InvalidInputError{"that song's service was unlinked"}
-	}
-	if !rooms.ParseSettings(room.Settings).Matching.Borrow {
-		if _, err := s.tracks.GetUsable(ctx, userID, it.LinkID.String); err != nil {
-			if errors.Is(err, links.ErrNotFound) {
-				return provider.Track{}, ErrCantBorrow
-			}
-			return provider.Track{}, err
-		}
+	if err := s.borrow(ctx, room, userID, it.LinkID.String); err != nil {
+		return provider.Track{}, err
 	}
 	t.Ref = provider.TrackRef{Provider: it.Provider, LinkID: it.LinkID.String, ID: it.TrackID}
 	return t, nil
+}
+
+// borrow checks userID may queue a song kept from linkID: it's a link
+// they can use, or the room lets people borrow.
+func (s *Service) borrow(ctx context.Context, room store.Room, userID, linkID string) error {
+	if linkID == "" {
+		return &InvalidInputError{"that song's service was unlinked"}
+	}
+	if rooms.ParseSettings(room.Settings).Matching.Borrow {
+		return nil
+	}
+	if _, err := s.tracks.GetUsable(ctx, userID, linkID); err != nil {
+		if errors.Is(err, links.ErrNotFound) {
+			return ErrCantBorrow
+		}
+		return err
+	}
+	return nil
 }
 
 // serviceName is a provider's display name, for messages.

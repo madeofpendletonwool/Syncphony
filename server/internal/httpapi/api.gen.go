@@ -1494,6 +1494,11 @@ type Accent struct {
 	H float64 `json:"h"`
 }
 
+// AddPlaylistSongsRequest defines model for AddPlaylistSongsRequest.
+type AddPlaylistSongsRequest struct {
+	Items []PlaylistSongToAdd `json:"items"`
+}
+
 // AddToQueueConflict defines model for AddToQueueConflict.
 type AddToQueueConflict struct {
 	// Code Example: duplicate
@@ -1879,6 +1884,14 @@ type CreateInviteRequest struct {
 type CreateLinkRequest struct {
 	Fields   map[string]string `json:"fields"`
 	Provider string            `json:"provider"`
+}
+
+// CreatePlaylistRequest defines model for CreatePlaylistRequest.
+type CreatePlaylistRequest struct {
+	Name string `json:"name"`
+
+	// RoomId A room to share it with.
+	RoomId *string `json:"roomId,omitempty"`
 }
 
 // CreateResetLinkRequest defines model for CreateResetLinkRequest.
@@ -2655,6 +2668,19 @@ type Me struct {
 	Username string `json:"username"`
 }
 
+// MixShare defines model for MixShare.
+type MixShare struct {
+	// Name A genre ("indie rock") or a decade ("1990s").
+	Name  string `json:"name"`
+	Plays int    `json:"plays"`
+}
+
+// MovePlaylistSongRequest defines model for MovePlaylistSongRequest.
+type MovePlaylistSongRequest struct {
+	// Position Where to put the song; 0 is the top. Past the end means the end.
+	Position int `json:"position"`
+}
+
 // MoveQueueItemRequest defines model for MoveQueueItemRequest.
 type MoveQueueItemRequest struct {
 	// Position Where in your lane to put the song; 0 is the front. Past the end means the end.
@@ -2853,6 +2879,14 @@ type PendingRestore struct {
 // PermissionLevel Who may do something. The room's owner always may.
 type PermissionLevel string
 
+// PersonCount A person and a count: for `topAdder`, songs played; `mostHearted`,
+// hearts on their songs; `streak`, their songs in a row that played
+// through without a skip (at least three).
+type PersonCount struct {
+	Count  int    `json:"count"`
+	UserId string `json:"userId"`
+}
+
 // PersonStats One person's songs, whoever skipped them.
 type PersonStats struct {
 	ListeningMs int64         `json:"listeningMs"`
@@ -2977,6 +3011,20 @@ type PlaylistList struct {
 	Provider  string           `json:"provider"`
 }
 
+// PlaylistNight The night a playlist was saved from.
+type PlaylistNight struct {
+	From   time.Time `json:"from"`
+	RoomId string    `json:"roomId"`
+	To     time.Time `json:"to"`
+}
+
+// PlaylistRef defines model for PlaylistRef.
+type PlaylistRef struct {
+	Id      string `json:"id"`
+	Name    string `json:"name"`
+	OwnerId string `json:"ownerId"`
+}
+
 // PlaylistResult defines model for PlaylistResult.
 type PlaylistResult struct {
 	Artwork *string `json:"artwork,omitempty"`
@@ -2986,6 +3034,26 @@ type PlaylistResult struct {
 	// Owner The owner's username on the service.
 	Owner      *string `json:"owner,omitempty"`
 	TrackCount *int    `json:"trackCount,omitempty"`
+}
+
+// PlaylistSong defines model for PlaylistSong.
+type PlaylistSong struct {
+	AddedAt time.Time `json:"addedAt"`
+
+	// AddedBy Who brought it: who queued it, for a saved night, or who added
+	// it. Absent for autopilot's songs.
+	AddedBy *string `json:"addedBy,omitempty"`
+	Id      string  `json:"id"`
+
+	// Track The track as it was when queued; still shown if its service is offline.
+	Track QueuedTrack `json:"track"`
+}
+
+// PlaylistSongToAdd A song from search (`linkId` and `trackId`), or one a room had (`itemId`).
+type PlaylistSongToAdd struct {
+	ItemId  *string `json:"itemId,omitempty"`
+	LinkId  *string `json:"linkId,omitempty"`
+	TrackId *string `json:"trackId,omitempty"`
 }
 
 // PlaylistTracks defines model for PlaylistTracks.
@@ -3219,6 +3287,47 @@ type ReactionEmoji string
 type ReactionRequest struct {
 	// Emoji The reactions a room can send.
 	Emoji ReactionEmoji `json:"emoji"`
+}
+
+// Recap A night's Syncphony Wrapped (MAD-722).
+type Recap struct {
+	// Decades The decade mix, in order, at most five.
+	Decades []MixShare `json:"decades"`
+
+	// Genres The genre mix, biggest first, at most five.
+	Genres []MixShare `json:"genres"`
+
+	// MostHearted A person and a count: for `topAdder`, songs played; `mostHearted`,
+	// hearts on their songs; `streak`, their songs in a row that played
+	// through without a skip (at least three).
+	MostHearted *PersonCount `json:"mostHearted,omitempty"`
+
+	// MostSkipped The song skipped most. Absent if none was.
+	MostSkipped *struct {
+		Item  QueueItem `json:"item"`
+		Skips int       `json:"skips"`
+	} `json:"mostSkipped,omitempty"`
+
+	// Night A night in the room: from its first song until the host ended it or
+	// the room went quiet. Fed into recaps.
+	Night *Night `json:"night,omitempty"`
+
+	// Overlaps Pairs of friends who brought the same artists, most shared first.
+	Overlaps []TasteOverlap `json:"overlaps"`
+
+	// Playlists Playlists saved from this night that you can see.
+	Playlists []PlaylistRef `json:"playlists"`
+	Stats     RoomStats     `json:"stats"`
+
+	// Streak A person and a count: for `topAdder`, songs played; `mostHearted`,
+	// hearts on their songs; `streak`, their songs in a row that played
+	// through without a skip (at least three).
+	Streak *PersonCount `json:"streak,omitempty"`
+
+	// TopAdder A person and a count: for `topAdder`, songs played; `mostHearted`,
+	// hearts on their songs; `streak`, their songs in a row that played
+	// through without a skip (at least three).
+	TopAdder *PersonCount `json:"topAdder,omitempty"`
 }
 
 // RelatedArtist defines model for RelatedArtist.
@@ -3783,6 +3892,56 @@ type RoomTaste struct {
 // in. The owner is always in.
 type RoomVisibility string
 
+// SaveNightRequest defines model for SaveNightRequest.
+type SaveNightRequest struct {
+	From time.Time `json:"from"`
+
+	// KeepRepeats Keep a song every time it played, not just the first.
+	KeepRepeats *bool `json:"keepRepeats,omitempty"`
+
+	// KeepSkipped Keep songs that were skipped.
+	KeepSkipped *bool  `json:"keepSkipped,omitempty"`
+	Name        string `json:"name"`
+
+	// Share Share it with the room.
+	Share *bool     `json:"share,omitempty"`
+	To    time.Time `json:"to"`
+}
+
+// SavedPlaylist A Syncphony playlist and its songs, in order.
+type SavedPlaylist struct {
+	CreatedAt time.Time `json:"createdAt"`
+	Id        string    `json:"id"`
+	Name      string    `json:"name"`
+
+	// Night The night a playlist was saved from.
+	Night   *PlaylistNight `json:"night,omitempty"`
+	OwnerId string         `json:"ownerId"`
+
+	// RoomId The room it's shared with. Absent if it's only its owner's.
+	RoomId    *string        `json:"roomId,omitempty"`
+	Songs     []PlaylistSong `json:"songs"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+}
+
+// SavedPlaylistSummary A Syncphony playlist in a list.
+type SavedPlaylistSummary struct {
+	// Covers Its first few songs, for a cover.
+	Covers    []PlaylistSong `json:"covers"`
+	CreatedAt time.Time      `json:"createdAt"`
+	Id        string         `json:"id"`
+	Name      string         `json:"name"`
+
+	// Night The night a playlist was saved from.
+	Night   *PlaylistNight `json:"night,omitempty"`
+	OwnerId string         `json:"ownerId"`
+
+	// RoomId The room it's shared with. Absent if it's only its owner's.
+	RoomId    *string   `json:"roomId,omitempty"`
+	SongCount int       `json:"songCount"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 // SearchGroup One link's search results.
 type SearchGroup struct {
 	AccountLabel string         `json:"accountLabel"`
@@ -3977,6 +4136,13 @@ type Suggestions struct {
 // SuggestionsScope defines model for Suggestions.Scope.
 type SuggestionsScope string
 
+// TasteOverlap defines model for TasteOverlap.
+type TasteOverlap struct {
+	// Artists Artists both brought, most played first.
+	Artists []string `json:"artists"`
+	UserIds []string `json:"userIds"`
+}
+
 // TasteTag defines model for TasteTag.
 type TasteTag struct {
 	Name string `json:"name"`
@@ -4025,13 +4191,18 @@ type TrackResult struct {
 	TrackId    string  `json:"trackId"`
 }
 
-// TrackToQueue A song from search (`linkId` and `trackId`), or a song the room
-// already had, again (`fromItemId`). Queueing again from someone
+// TrackToQueue A song from search (`linkId` and `trackId`), a song the room
+// already had, again (`fromItemId`), or one from a Syncphony playlist
+// (`fromPlaylistSongId`). Queueing again from someone
 // else's service needs the room's `matching.borrow`
 // (`cant_borrow` otherwise).
 type TrackToQueue struct {
 	// FromItemId One of the room's queue items, from history or stats.
 	FromItemId *string `json:"fromItemId,omitempty"`
+
+	// FromPlaylistSongId A song from a Syncphony playlist you can see. Like `fromItemId`,
+	// it plays from the link it came from.
+	FromPlaylistSongId *string `json:"fromPlaylistSongId,omitempty"`
 
 	// LinkId A link you can use (yours, or shared).
 	LinkId *string `json:"linkId,omitempty"`
@@ -4053,6 +4224,14 @@ type UpdateDisplayRequest struct {
 // UpdateLinkRequest defines model for UpdateLinkRequest.
 type UpdateLinkRequest struct {
 	Shared bool `json:"shared"`
+}
+
+// UpdatePlaylistRequest defines model for UpdatePlaylistRequest.
+type UpdatePlaylistRequest struct {
+	Name *string `json:"name,omitempty"`
+
+	// RoomId A room to share it with, or "" to keep it to yourself.
+	RoomId *string `json:"roomId,omitempty"`
 }
 
 // UpdateRoomRequest defines model for UpdateRoomRequest.
@@ -4186,6 +4365,12 @@ type Username = string
 // InviteCode defines model for InviteCode.
 type InviteCode = string
 
+// PlaylistId defines model for PlaylistId.
+type PlaylistId = string
+
+// PlaylistSongId defines model for PlaylistSongId.
+type PlaylistSongId = string
+
 // QueueGameId defines model for QueueGameId.
 type QueueGameId = string
 
@@ -4257,6 +4442,12 @@ type RenamePasskeyJSONBody struct {
 	Name string `json:"name"`
 }
 
+// GetSavedPlaylistSongArtworkParams defines parameters for GetSavedPlaylistSongArtwork.
+type GetSavedPlaylistSongArtworkParams struct {
+	// Size Wanted width in pixels; a hint.
+	Size *int `form:"size,omitempty" json:"size,omitempty"`
+}
+
 // GetRandomTracksParams defines parameters for GetRandomTracks.
 type GetRandomTracksParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
@@ -4304,6 +4495,12 @@ type GetQueueItemArtworkParams struct {
 // GetQueueItemSimilarParams defines parameters for GetQueueItemSimilar.
 type GetQueueItemSimilarParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetRoomRecapParams defines parameters for GetRoomRecap.
+type GetRoomRecapParams struct {
+	From time.Time `form:"from" json:"from"`
+	To   time.Time `form:"to" json:"to"`
 }
 
 // ListSessionsParams defines parameters for ListSessions.
@@ -4419,6 +4616,18 @@ type SetPasswordJSONRequestBody = SetPasswordRequest
 // BeginPairingJSONRequestBody defines body for BeginPairing for application/json ContentType.
 type BeginPairingJSONRequestBody = BeginPairingRequest
 
+// CreateSavedPlaylistJSONRequestBody defines body for CreateSavedPlaylist for application/json ContentType.
+type CreateSavedPlaylistJSONRequestBody = CreatePlaylistRequest
+
+// UpdateSavedPlaylistJSONRequestBody defines body for UpdateSavedPlaylist for application/json ContentType.
+type UpdateSavedPlaylistJSONRequestBody = UpdatePlaylistRequest
+
+// AddSavedPlaylistSongsJSONRequestBody defines body for AddSavedPlaylistSongs for application/json ContentType.
+type AddSavedPlaylistSongsJSONRequestBody = AddPlaylistSongsRequest
+
+// MoveSavedPlaylistSongJSONRequestBody defines body for MoveSavedPlaylistSong for application/json ContentType.
+type MoveSavedPlaylistSongJSONRequestBody = MovePlaylistSongRequest
+
 // FinishResetPasskeyJSONRequestBody defines body for FinishResetPasskey for application/json ContentType.
 type FinishResetPasskeyJSONRequestBody = FinishCeremony
 
@@ -4466,6 +4675,9 @@ type ClaimPlayerJSONRequestBody = ClaimPlayerRequest
 
 // ReportPlaybackJSONRequestBody defines body for ReportPlayback for application/json ContentType.
 type ReportPlaybackJSONRequestBody = PlayerReport
+
+// SaveNightPlaylistJSONRequestBody defines body for SaveNightPlaylist for application/json ContentType.
+type SaveNightPlaylistJSONRequestBody = SaveNightRequest
 
 // AddToQueueJSONRequestBody defines body for AddToQueue for application/json ContentType.
 type AddToQueueJSONRequestBody = AddToQueueRequest
@@ -4697,6 +4909,33 @@ type ServerInterface interface {
 	// PollPairing Whether a device pairing was approved
 	// (GET /pairings/{id})
 	PollPairing(w http.ResponseWriter, r *http.Request, id string)
+	// ListSavedPlaylists Your Syncphony playlists, and ones shared with your rooms
+	// (GET /playlists)
+	ListSavedPlaylists(w http.ResponseWriter, r *http.Request)
+	// CreateSavedPlaylist Make an empty playlist
+	// (POST /playlists)
+	CreateSavedPlaylist(w http.ResponseWriter, r *http.Request)
+	// DeleteSavedPlaylist Delete a playlist
+	// (DELETE /playlists/{playlistId})
+	DeleteSavedPlaylist(w http.ResponseWriter, r *http.Request, playlistId PlaylistId)
+	// GetSavedPlaylist A playlist and its songs
+	// (GET /playlists/{playlistId})
+	GetSavedPlaylist(w http.ResponseWriter, r *http.Request, playlistId PlaylistId)
+	// UpdateSavedPlaylist Rename a playlist, or share it with a room
+	// (PATCH /playlists/{playlistId})
+	UpdateSavedPlaylist(w http.ResponseWriter, r *http.Request, playlistId PlaylistId)
+	// AddSavedPlaylistSongs Add songs to the end of a playlist
+	// (POST /playlists/{playlistId}/songs)
+	AddSavedPlaylistSongs(w http.ResponseWriter, r *http.Request, playlistId PlaylistId)
+	// RemoveSavedPlaylistSong Take a song out of a playlist
+	// (DELETE /playlists/{playlistId}/songs/{songId})
+	RemoveSavedPlaylistSong(w http.ResponseWriter, r *http.Request, playlistId PlaylistId, songId PlaylistSongId)
+	// GetSavedPlaylistSongArtwork A playlist song's artwork
+	// (GET /playlists/{playlistId}/songs/{songId}/artwork)
+	GetSavedPlaylistSongArtwork(w http.ResponseWriter, r *http.Request, playlistId PlaylistId, songId PlaylistSongId, params GetSavedPlaylistSongArtworkParams)
+	// MoveSavedPlaylistSong Move a song within a playlist
+	// (PUT /playlists/{playlistId}/songs/{songId}/position)
+	MoveSavedPlaylistSong(w http.ResponseWriter, r *http.Request, playlistId PlaylistId, songId PlaylistSongId)
 	// ListProviders Services that can be linked
 	// (GET /providers)
 	ListProviders(w http.ResponseWriter, r *http.Request)
@@ -4856,6 +5095,9 @@ type ServerInterface interface {
 	// ReportPlayback The speaker reports on the song it's streaming
 	// (POST /rooms/{roomId}/player/report)
 	ReportPlayback(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// SaveNightPlaylist Save a night as a playlist
+	// (POST /rooms/{roomId}/playlists)
+	SaveNightPlaylist(w http.ResponseWriter, r *http.Request, roomId RoomId)
 	// GetQueue The room's queue and its fair play order
 	// (GET /rooms/{roomId}/queue)
 	GetQueue(w http.ResponseWriter, r *http.Request, roomId RoomId)
@@ -4901,6 +5143,9 @@ type ServerInterface interface {
 	// SendReaction Send an emoji reaction to the room
 	// (POST /rooms/{roomId}/reactions)
 	SendReaction(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// GetRoomRecap A night's Syncphony Wrapped
+	// (GET /rooms/{roomId}/recap)
+	GetRoomRecap(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetRoomRecapParams)
 	// ListSessions The room's listening sessions, newest first
 	// (GET /rooms/{roomId}/sessions)
 	ListSessions(w http.ResponseWriter, r *http.Request, roomId RoomId, params ListSessionsParams)
@@ -6515,6 +6760,259 @@ func (siw *ServerInterfaceWrapper) PollPairing(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// ListSavedPlaylists operation middleware
+func (siw *ServerInterfaceWrapper) ListSavedPlaylists(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSavedPlaylists(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSavedPlaylist operation middleware
+func (siw *ServerInterfaceWrapper) CreateSavedPlaylist(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSavedPlaylist(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteSavedPlaylist operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSavedPlaylist(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "playlistId" -------------
+	var playlistId PlaylistId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "playlistId", r.PathValue("playlistId"), &playlistId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playlistId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteSavedPlaylist(w, r, playlistId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSavedPlaylist operation middleware
+func (siw *ServerInterfaceWrapper) GetSavedPlaylist(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "playlistId" -------------
+	var playlistId PlaylistId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "playlistId", r.PathValue("playlistId"), &playlistId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playlistId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSavedPlaylist(w, r, playlistId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateSavedPlaylist operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSavedPlaylist(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "playlistId" -------------
+	var playlistId PlaylistId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "playlistId", r.PathValue("playlistId"), &playlistId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playlistId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateSavedPlaylist(w, r, playlistId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddSavedPlaylistSongs operation middleware
+func (siw *ServerInterfaceWrapper) AddSavedPlaylistSongs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "playlistId" -------------
+	var playlistId PlaylistId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "playlistId", r.PathValue("playlistId"), &playlistId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playlistId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddSavedPlaylistSongs(w, r, playlistId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveSavedPlaylistSong operation middleware
+func (siw *ServerInterfaceWrapper) RemoveSavedPlaylistSong(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "playlistId" -------------
+	var playlistId PlaylistId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "playlistId", r.PathValue("playlistId"), &playlistId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playlistId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "songId" -------------
+	var songId PlaylistSongId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "songId", r.PathValue("songId"), &songId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "songId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveSavedPlaylistSong(w, r, playlistId, songId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSavedPlaylistSongArtwork operation middleware
+func (siw *ServerInterfaceWrapper) GetSavedPlaylistSongArtwork(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "playlistId" -------------
+	var playlistId PlaylistId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "playlistId", r.PathValue("playlistId"), &playlistId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playlistId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "songId" -------------
+	var songId PlaylistSongId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "songId", r.PathValue("songId"), &songId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "songId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSavedPlaylistSongArtworkParams
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "size", r.URL.Query(), &params.Size, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSavedPlaylistSongArtwork(w, r, playlistId, songId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MoveSavedPlaylistSong operation middleware
+func (siw *ServerInterfaceWrapper) MoveSavedPlaylistSong(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "playlistId" -------------
+	var playlistId PlaylistId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "playlistId", r.PathValue("playlistId"), &playlistId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playlistId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "songId" -------------
+	var songId PlaylistSongId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "songId", r.PathValue("songId"), &songId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "songId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MoveSavedPlaylistSong(w, r, playlistId, songId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListProviders operation middleware
 func (siw *ServerInterfaceWrapper) ListProviders(w http.ResponseWriter, r *http.Request) {
 
@@ -8097,6 +8595,32 @@ func (siw *ServerInterfaceWrapper) ReportPlayback(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// SaveNightPlaylist operation middleware
+func (siw *ServerInterfaceWrapper) SaveNightPlaylist(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SaveNightPlaylist(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetQueue operation middleware
 func (siw *ServerInterfaceWrapper) GetQueue(w http.ResponseWriter, r *http.Request) {
 
@@ -8609,6 +9133,61 @@ func (siw *ServerInterfaceWrapper) SendReaction(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SendReaction(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRoomRecap operation middleware
+func (siw *ServerInterfaceWrapper) GetRoomRecap(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetRoomRecapParams
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRoomRecap(w, r, roomId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9370,6 +9949,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/hearts", wrapper.HeartSong)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/nights", wrapper.ListNights)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/nights", wrapper.EndNight)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/recap", wrapper.GetRoomRecap)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/playlists", wrapper.SaveNightPlaylist)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/playlists", wrapper.ListSavedPlaylists)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/playlists", wrapper.CreateSavedPlaylist)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/playlists/{playlistId}", wrapper.DeleteSavedPlaylist)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/playlists/{playlistId}", wrapper.GetSavedPlaylist)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/playlists/{playlistId}", wrapper.UpdateSavedPlaylist)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/playlists/{playlistId}/songs", wrapper.AddSavedPlaylistSongs)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/playlists/{playlistId}/songs/{songId}", wrapper.RemoveSavedPlaylistSong)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/playlists/{playlistId}/songs/{songId}/position", wrapper.MoveSavedPlaylistSong)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/playlists/{playlistId}/songs/{songId}/artwork", wrapper.GetSavedPlaylistSongArtwork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/games/round", wrapper.GetGameRound)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/games/rounds", wrapper.StartGameRound)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/games/rounds/{roundId}/answers", wrapper.AnswerGameRound)
@@ -12046,6 +12636,364 @@ func (response PollPairingdefaultJSONResponse) VisitPollPairingResponse(w http.R
 	return err
 }
 
+type ListSavedPlaylistsRequestObject struct {
+}
+
+type ListSavedPlaylistsResponseObject interface {
+	VisitListSavedPlaylistsResponse(w http.ResponseWriter) error
+}
+
+type ListSavedPlaylists200JSONResponse []SavedPlaylistSummary
+
+func (response ListSavedPlaylists200JSONResponse) VisitListSavedPlaylistsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSavedPlaylistsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListSavedPlaylistsdefaultJSONResponse) VisitListSavedPlaylistsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSavedPlaylistRequestObject struct {
+	Body *CreateSavedPlaylistJSONRequestBody
+}
+
+type CreateSavedPlaylistResponseObject interface {
+	VisitCreateSavedPlaylistResponse(w http.ResponseWriter) error
+}
+
+type CreateSavedPlaylist201JSONResponse SavedPlaylist
+
+func (response CreateSavedPlaylist201JSONResponse) VisitCreateSavedPlaylistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSavedPlaylistdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateSavedPlaylistdefaultJSONResponse) VisitCreateSavedPlaylistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSavedPlaylistRequestObject struct {
+	PlaylistId PlaylistId `json:"playlistId"`
+}
+
+type DeleteSavedPlaylistResponseObject interface {
+	VisitDeleteSavedPlaylistResponse(w http.ResponseWriter) error
+}
+
+type DeleteSavedPlaylist204Response struct {
+}
+
+func (response DeleteSavedPlaylist204Response) VisitDeleteSavedPlaylistResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteSavedPlaylistdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteSavedPlaylistdefaultJSONResponse) VisitDeleteSavedPlaylistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSavedPlaylistRequestObject struct {
+	PlaylistId PlaylistId `json:"playlistId"`
+}
+
+type GetSavedPlaylistResponseObject interface {
+	VisitGetSavedPlaylistResponse(w http.ResponseWriter) error
+}
+
+type GetSavedPlaylist200JSONResponse SavedPlaylist
+
+func (response GetSavedPlaylist200JSONResponse) VisitGetSavedPlaylistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSavedPlaylistdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetSavedPlaylistdefaultJSONResponse) VisitGetSavedPlaylistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSavedPlaylistRequestObject struct {
+	PlaylistId PlaylistId `json:"playlistId"`
+	Body       *UpdateSavedPlaylistJSONRequestBody
+}
+
+type UpdateSavedPlaylistResponseObject interface {
+	VisitUpdateSavedPlaylistResponse(w http.ResponseWriter) error
+}
+
+type UpdateSavedPlaylist200JSONResponse SavedPlaylist
+
+func (response UpdateSavedPlaylist200JSONResponse) VisitUpdateSavedPlaylistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSavedPlaylistdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateSavedPlaylistdefaultJSONResponse) VisitUpdateSavedPlaylistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddSavedPlaylistSongsRequestObject struct {
+	PlaylistId PlaylistId `json:"playlistId"`
+	Body       *AddSavedPlaylistSongsJSONRequestBody
+}
+
+type AddSavedPlaylistSongsResponseObject interface {
+	VisitAddSavedPlaylistSongsResponse(w http.ResponseWriter) error
+}
+
+type AddSavedPlaylistSongs200JSONResponse SavedPlaylist
+
+func (response AddSavedPlaylistSongs200JSONResponse) VisitAddSavedPlaylistSongsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddSavedPlaylistSongsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response AddSavedPlaylistSongsdefaultJSONResponse) VisitAddSavedPlaylistSongsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveSavedPlaylistSongRequestObject struct {
+	PlaylistId PlaylistId     `json:"playlistId"`
+	SongId     PlaylistSongId `json:"songId"`
+}
+
+type RemoveSavedPlaylistSongResponseObject interface {
+	VisitRemoveSavedPlaylistSongResponse(w http.ResponseWriter) error
+}
+
+type RemoveSavedPlaylistSong200JSONResponse SavedPlaylist
+
+func (response RemoveSavedPlaylistSong200JSONResponse) VisitRemoveSavedPlaylistSongResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveSavedPlaylistSongdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RemoveSavedPlaylistSongdefaultJSONResponse) VisitRemoveSavedPlaylistSongResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSavedPlaylistSongArtworkRequestObject struct {
+	PlaylistId PlaylistId     `json:"playlistId"`
+	SongId     PlaylistSongId `json:"songId"`
+	Params     GetSavedPlaylistSongArtworkParams
+}
+
+type GetSavedPlaylistSongArtworkResponseObject interface {
+	VisitGetSavedPlaylistSongArtworkResponse(w http.ResponseWriter) error
+}
+
+type GetSavedPlaylistSongArtwork200ImageResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetSavedPlaylistSongArtwork200ImageResponse) VisitGetSavedPlaylistSongArtworkResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetSavedPlaylistSongArtworkdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetSavedPlaylistSongArtworkdefaultJSONResponse) VisitGetSavedPlaylistSongArtworkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveSavedPlaylistSongRequestObject struct {
+	PlaylistId PlaylistId     `json:"playlistId"`
+	SongId     PlaylistSongId `json:"songId"`
+	Body       *MoveSavedPlaylistSongJSONRequestBody
+}
+
+type MoveSavedPlaylistSongResponseObject interface {
+	VisitMoveSavedPlaylistSongResponse(w http.ResponseWriter) error
+}
+
+type MoveSavedPlaylistSong200JSONResponse SavedPlaylist
+
+func (response MoveSavedPlaylistSong200JSONResponse) VisitMoveSavedPlaylistSongResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MoveSavedPlaylistSongdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response MoveSavedPlaylistSongdefaultJSONResponse) VisitMoveSavedPlaylistSongResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListProvidersRequestObject struct {
 }
 
@@ -14129,6 +15077,46 @@ func (response ReportPlaybackdefaultJSONResponse) VisitReportPlaybackResponse(w 
 	return err
 }
 
+type SaveNightPlaylistRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Body   *SaveNightPlaylistJSONRequestBody
+}
+
+type SaveNightPlaylistResponseObject interface {
+	VisitSaveNightPlaylistResponse(w http.ResponseWriter) error
+}
+
+type SaveNightPlaylist201JSONResponse SavedPlaylist
+
+func (response SaveNightPlaylist201JSONResponse) VisitSaveNightPlaylistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveNightPlaylistdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SaveNightPlaylistdefaultJSONResponse) VisitSaveNightPlaylistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetQueueRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 }
@@ -14741,6 +15729,46 @@ type SendReactiondefaultJSONResponse struct {
 }
 
 func (response SendReactiondefaultJSONResponse) VisitSendReactionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoomRecapRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Params GetRoomRecapParams
+}
+
+type GetRoomRecapResponseObject interface {
+	VisitGetRoomRecapResponse(w http.ResponseWriter) error
+}
+
+type GetRoomRecap200JSONResponse Recap
+
+func (response GetRoomRecap200JSONResponse) VisitGetRoomRecapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRoomRecapdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetRoomRecapdefaultJSONResponse) VisitGetRoomRecapResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -15534,6 +16562,33 @@ type StrictServerInterface interface {
 	// PollPairing Whether a device pairing was approved
 	// (GET /pairings/{id})
 	PollPairing(ctx context.Context, request PollPairingRequestObject) (PollPairingResponseObject, error)
+	// ListSavedPlaylists Your Syncphony playlists, and ones shared with your rooms
+	// (GET /playlists)
+	ListSavedPlaylists(ctx context.Context, request ListSavedPlaylistsRequestObject) (ListSavedPlaylistsResponseObject, error)
+	// CreateSavedPlaylist Make an empty playlist
+	// (POST /playlists)
+	CreateSavedPlaylist(ctx context.Context, request CreateSavedPlaylistRequestObject) (CreateSavedPlaylistResponseObject, error)
+	// DeleteSavedPlaylist Delete a playlist
+	// (DELETE /playlists/{playlistId})
+	DeleteSavedPlaylist(ctx context.Context, request DeleteSavedPlaylistRequestObject) (DeleteSavedPlaylistResponseObject, error)
+	// GetSavedPlaylist A playlist and its songs
+	// (GET /playlists/{playlistId})
+	GetSavedPlaylist(ctx context.Context, request GetSavedPlaylistRequestObject) (GetSavedPlaylistResponseObject, error)
+	// UpdateSavedPlaylist Rename a playlist, or share it with a room
+	// (PATCH /playlists/{playlistId})
+	UpdateSavedPlaylist(ctx context.Context, request UpdateSavedPlaylistRequestObject) (UpdateSavedPlaylistResponseObject, error)
+	// AddSavedPlaylistSongs Add songs to the end of a playlist
+	// (POST /playlists/{playlistId}/songs)
+	AddSavedPlaylistSongs(ctx context.Context, request AddSavedPlaylistSongsRequestObject) (AddSavedPlaylistSongsResponseObject, error)
+	// RemoveSavedPlaylistSong Take a song out of a playlist
+	// (DELETE /playlists/{playlistId}/songs/{songId})
+	RemoveSavedPlaylistSong(ctx context.Context, request RemoveSavedPlaylistSongRequestObject) (RemoveSavedPlaylistSongResponseObject, error)
+	// GetSavedPlaylistSongArtwork A playlist song's artwork
+	// (GET /playlists/{playlistId}/songs/{songId}/artwork)
+	GetSavedPlaylistSongArtwork(ctx context.Context, request GetSavedPlaylistSongArtworkRequestObject) (GetSavedPlaylistSongArtworkResponseObject, error)
+	// MoveSavedPlaylistSong Move a song within a playlist
+	// (PUT /playlists/{playlistId}/songs/{songId}/position)
+	MoveSavedPlaylistSong(ctx context.Context, request MoveSavedPlaylistSongRequestObject) (MoveSavedPlaylistSongResponseObject, error)
 	// ListProviders Services that can be linked
 	// (GET /providers)
 	ListProviders(ctx context.Context, request ListProvidersRequestObject) (ListProvidersResponseObject, error)
@@ -15693,6 +16748,9 @@ type StrictServerInterface interface {
 	// ReportPlayback The speaker reports on the song it's streaming
 	// (POST /rooms/{roomId}/player/report)
 	ReportPlayback(ctx context.Context, request ReportPlaybackRequestObject) (ReportPlaybackResponseObject, error)
+	// SaveNightPlaylist Save a night as a playlist
+	// (POST /rooms/{roomId}/playlists)
+	SaveNightPlaylist(ctx context.Context, request SaveNightPlaylistRequestObject) (SaveNightPlaylistResponseObject, error)
 	// GetQueue The room's queue and its fair play order
 	// (GET /rooms/{roomId}/queue)
 	GetQueue(ctx context.Context, request GetQueueRequestObject) (GetQueueResponseObject, error)
@@ -15738,6 +16796,9 @@ type StrictServerInterface interface {
 	// SendReaction Send an emoji reaction to the room
 	// (POST /rooms/{roomId}/reactions)
 	SendReaction(ctx context.Context, request SendReactionRequestObject) (SendReactionResponseObject, error)
+	// GetRoomRecap A night's Syncphony Wrapped
+	// (GET /rooms/{roomId}/recap)
+	GetRoomRecap(ctx context.Context, request GetRoomRecapRequestObject) (GetRoomRecapResponseObject, error)
 	// ListSessions The room's listening sessions, newest first
 	// (GET /rooms/{roomId}/sessions)
 	ListSessions(ctx context.Context, request ListSessionsRequestObject) (ListSessionsResponseObject, error)
@@ -17691,6 +18752,268 @@ func (sh *strictHandler) PollPairing(w http.ResponseWriter, r *http.Request, id 
 	}
 }
 
+// ListSavedPlaylists operation middleware
+func (sh *strictHandler) ListSavedPlaylists(w http.ResponseWriter, r *http.Request) {
+	var request ListSavedPlaylistsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSavedPlaylists(ctx, request.(ListSavedPlaylistsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSavedPlaylists")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSavedPlaylistsResponseObject); ok {
+		if err := validResponse.VisitListSavedPlaylistsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateSavedPlaylist operation middleware
+func (sh *strictHandler) CreateSavedPlaylist(w http.ResponseWriter, r *http.Request) {
+	var request CreateSavedPlaylistRequestObject
+
+	var body CreateSavedPlaylistJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateSavedPlaylist(ctx, request.(CreateSavedPlaylistRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateSavedPlaylist")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateSavedPlaylistResponseObject); ok {
+		if err := validResponse.VisitCreateSavedPlaylistResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteSavedPlaylist operation middleware
+func (sh *strictHandler) DeleteSavedPlaylist(w http.ResponseWriter, r *http.Request, playlistId PlaylistId) {
+	var request DeleteSavedPlaylistRequestObject
+
+	request.PlaylistId = playlistId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteSavedPlaylist(ctx, request.(DeleteSavedPlaylistRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteSavedPlaylist")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteSavedPlaylistResponseObject); ok {
+		if err := validResponse.VisitDeleteSavedPlaylistResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSavedPlaylist operation middleware
+func (sh *strictHandler) GetSavedPlaylist(w http.ResponseWriter, r *http.Request, playlistId PlaylistId) {
+	var request GetSavedPlaylistRequestObject
+
+	request.PlaylistId = playlistId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSavedPlaylist(ctx, request.(GetSavedPlaylistRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSavedPlaylist")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSavedPlaylistResponseObject); ok {
+		if err := validResponse.VisitGetSavedPlaylistResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateSavedPlaylist operation middleware
+func (sh *strictHandler) UpdateSavedPlaylist(w http.ResponseWriter, r *http.Request, playlistId PlaylistId) {
+	var request UpdateSavedPlaylistRequestObject
+
+	request.PlaylistId = playlistId
+
+	var body UpdateSavedPlaylistJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateSavedPlaylist(ctx, request.(UpdateSavedPlaylistRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateSavedPlaylist")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateSavedPlaylistResponseObject); ok {
+		if err := validResponse.VisitUpdateSavedPlaylistResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddSavedPlaylistSongs operation middleware
+func (sh *strictHandler) AddSavedPlaylistSongs(w http.ResponseWriter, r *http.Request, playlistId PlaylistId) {
+	var request AddSavedPlaylistSongsRequestObject
+
+	request.PlaylistId = playlistId
+
+	var body AddSavedPlaylistSongsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddSavedPlaylistSongs(ctx, request.(AddSavedPlaylistSongsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddSavedPlaylistSongs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddSavedPlaylistSongsResponseObject); ok {
+		if err := validResponse.VisitAddSavedPlaylistSongsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveSavedPlaylistSong operation middleware
+func (sh *strictHandler) RemoveSavedPlaylistSong(w http.ResponseWriter, r *http.Request, playlistId PlaylistId, songId PlaylistSongId) {
+	var request RemoveSavedPlaylistSongRequestObject
+
+	request.PlaylistId = playlistId
+	request.SongId = songId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveSavedPlaylistSong(ctx, request.(RemoveSavedPlaylistSongRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveSavedPlaylistSong")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveSavedPlaylistSongResponseObject); ok {
+		if err := validResponse.VisitRemoveSavedPlaylistSongResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSavedPlaylistSongArtwork operation middleware
+func (sh *strictHandler) GetSavedPlaylistSongArtwork(w http.ResponseWriter, r *http.Request, playlistId PlaylistId, songId PlaylistSongId, params GetSavedPlaylistSongArtworkParams) {
+	var request GetSavedPlaylistSongArtworkRequestObject
+
+	request.PlaylistId = playlistId
+	request.SongId = songId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSavedPlaylistSongArtwork(ctx, request.(GetSavedPlaylistSongArtworkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSavedPlaylistSongArtwork")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSavedPlaylistSongArtworkResponseObject); ok {
+		if err := validResponse.VisitGetSavedPlaylistSongArtworkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MoveSavedPlaylistSong operation middleware
+func (sh *strictHandler) MoveSavedPlaylistSong(w http.ResponseWriter, r *http.Request, playlistId PlaylistId, songId PlaylistSongId) {
+	var request MoveSavedPlaylistSongRequestObject
+
+	request.PlaylistId = playlistId
+	request.SongId = songId
+
+	var body MoveSavedPlaylistSongJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MoveSavedPlaylistSong(ctx, request.(MoveSavedPlaylistSongRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MoveSavedPlaylistSong")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MoveSavedPlaylistSongResponseObject); ok {
+		if err := validResponse.VisitMoveSavedPlaylistSongResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListProviders operation middleware
 func (sh *strictHandler) ListProviders(w http.ResponseWriter, r *http.Request) {
 	var request ListProvidersRequestObject
@@ -19195,6 +20518,39 @@ func (sh *strictHandler) ReportPlayback(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// SaveNightPlaylist operation middleware
+func (sh *strictHandler) SaveNightPlaylist(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request SaveNightPlaylistRequestObject
+
+	request.RoomId = roomId
+
+	var body SaveNightPlaylistJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SaveNightPlaylist(ctx, request.(SaveNightPlaylistRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SaveNightPlaylist")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SaveNightPlaylistResponseObject); ok {
+		if err := validResponse.VisitSaveNightPlaylistResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetQueue operation middleware
 func (sh *strictHandler) GetQueue(w http.ResponseWriter, r *http.Request, roomId RoomId) {
 	var request GetQueueRequestObject
@@ -19619,6 +20975,33 @@ func (sh *strictHandler) SendReaction(w http.ResponseWriter, r *http.Request, ro
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SendReactionResponseObject); ok {
 		if err := validResponse.VisitSendReactionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRoomRecap operation middleware
+func (sh *strictHandler) GetRoomRecap(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetRoomRecapParams) {
+	var request GetRoomRecapRequestObject
+
+	request.RoomId = roomId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRoomRecap(ctx, request.(GetRoomRecapRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRoomRecap")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRoomRecapResponseObject); ok {
+		if err := validResponse.VisitGetRoomRecapResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

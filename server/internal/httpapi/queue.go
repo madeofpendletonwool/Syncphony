@@ -23,6 +23,13 @@ func (s *Server) AddToQueue(ctx context.Context, req AddToQueueRequestObject) (A
 	refs := make([]queue.TrackRef, len(req.Body.Items))
 	for i, it := range req.Body.Items {
 		refs[i] = queue.TrackRef{LinkID: deref(it.LinkId), TrackID: deref(it.TrackId), FromItemID: deref(it.FromItemId)}
+		if id := deref(it.FromPlaylistSongId); id != "" {
+			t, err := s.playlistSnapshot(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			refs[i].Snapshot = t
+		}
 	}
 	opts := queue.AddOptions{WarnDuplicates: req.Body.WarnDuplicates != nil && *req.Body.WarnDuplicates}
 	snap, err := s.Queue.AddWith(ctx, req.RoomId, sessionFrom(ctx).User.ID, refs, opts)

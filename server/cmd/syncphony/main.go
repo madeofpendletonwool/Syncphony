@@ -36,6 +36,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/nights"
 	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
 	"github.com/madeofpendletonwool/syncphony/server/internal/playback"
+	"github.com/madeofpendletonwool/syncphony/server/internal/playlists"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/fake"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/navidrome"
@@ -365,7 +366,7 @@ func run() error {
 	go a.backups.Run(ctx)
 	api := &httpapi.Server{
 		Version: version, StartedAt: time.Now().UTC(), Admin: admin.New(db), Backups: a.backups, Auth: accounts, Links: a.links, Lyrics: lyricsSvc, LinerNotes: notes, Artwork: art, Palettes: palettes, BeatMaps: beatMaps,
-		Rooms: roomSvc, Queue: queueSvc, Playback: player, Nights: nightSvc, Games: gameSvc, Clips: clipSvc, Suggest: suggestions, Autopilot: pilot,
+		Rooms: roomSvc, Queue: queueSvc, Playback: player, Nights: nightSvc, Playlists: playlists.New(db, roomSvc, a.links), Games: gameSvc, Clips: clipSvc, Suggest: suggestions, Autopilot: pilot,
 		Bus: a.bus, Presence: presence,
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	}

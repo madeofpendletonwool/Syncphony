@@ -2588,6 +2588,264 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /rooms/{roomId}/recap:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: getRoomRecap
+      summary: A night's Syncphony Wrapped
+      description: |
+        The story of the songs that started in `[from, to)` (see ADR 0016):
+        the stats, the night that ended in it (if one did, with its song of
+        the night), whose songs played and got hearts most, the song
+        skipped most, the longest run of someone's songs played through,
+        the genre and decade mix, and whose tastes met. Genres and years
+        come from what's already known about the songs, so a mix can be
+        empty. `playlists` are the playlists saved from it that you can see
+        (on the big screen, those shared with the room).
+      tags: [history]
+      security:
+        - session: []
+        - display: []
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: The recap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recap"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/playlists:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    post:
+      operationId: saveNightPlaylist
+      summary: Save a night as a playlist
+      description: |
+        Makes a playlist of yours from the songs the room played in
+        `[from, to)` (a session's recap range), in the order they played.
+        Skipped songs and repeats are left out unless kept. Each song keeps
+        who queued it, and the service it played from, so a night that
+        mixed everyone's services stays whole. Songs whose service was
+        unlinked are left out. `nothing_played` (409) if that leaves none.
+      tags: [playlists]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveNightRequest"
+      responses:
+        "201":
+          description: The playlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedPlaylist"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /playlists:
+    get:
+      operationId: listSavedPlaylists
+      summary: Your Syncphony playlists, and ones shared with your rooms
+      description: |
+        Syncphony's own playlists (ADR 0016), kept on the server rather
+        than on a service. Yours, and those shared with rooms you can
+        enter, most recently changed first.
+      tags: [playlists]
+      responses:
+        "200":
+          description: Playlists
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SavedPlaylistSummary"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: createSavedPlaylist
+      summary: Make an empty playlist
+      tags: [playlists]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlaylistRequest"
+      responses:
+        "201":
+          description: The playlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedPlaylist"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /playlists/{playlistId}:
+    parameters:
+      - $ref: "#/components/parameters/PlaylistId"
+    get:
+      operationId: getSavedPlaylist
+      summary: A playlist and its songs
+      tags: [playlists]
+      responses:
+        "200":
+          description: The playlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedPlaylist"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      operationId: updateSavedPlaylist
+      summary: Rename a playlist, or share it with a room
+      description: Its owner, or an admin. `forbidden` otherwise.
+      tags: [playlists]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePlaylistRequest"
+      responses:
+        "200":
+          description: The playlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedPlaylist"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deleteSavedPlaylist
+      summary: Delete a playlist
+      description: Its owner, or an admin.
+      tags: [playlists]
+      responses:
+        "204":
+          description: Deleted
+        default:
+          $ref: "#/components/responses/Error"
+
+  /playlists/{playlistId}/songs:
+    parameters:
+      - $ref: "#/components/parameters/PlaylistId"
+    post:
+      operationId: addSavedPlaylistSongs
+      summary: Add songs to the end of a playlist
+      description: |
+        Songs from search (`linkId` and `trackId`, through a link you can
+        use), or songs a room had (`itemId`, in a room you can enter). A
+        playlist holds at most 1000 songs.
+      tags: [playlists]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddPlaylistSongsRequest"
+      responses:
+        "200":
+          description: The playlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedPlaylist"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /playlists/{playlistId}/songs/{songId}:
+    parameters:
+      - $ref: "#/components/parameters/PlaylistId"
+      - $ref: "#/components/parameters/PlaylistSongId"
+    delete:
+      operationId: removeSavedPlaylistSong
+      summary: Take a song out of a playlist
+      tags: [playlists]
+      responses:
+        "200":
+          description: The playlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedPlaylist"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /playlists/{playlistId}/songs/{songId}/position:
+    parameters:
+      - $ref: "#/components/parameters/PlaylistId"
+      - $ref: "#/components/parameters/PlaylistSongId"
+    put:
+      operationId: moveSavedPlaylistSong
+      summary: Move a song within a playlist
+      tags: [playlists]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MovePlaylistSongRequest"
+      responses:
+        "200":
+          description: The playlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedPlaylist"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /playlists/{playlistId}/songs/{songId}/artwork:
+    parameters:
+      - $ref: "#/components/parameters/PlaylistId"
+      - $ref: "#/components/parameters/PlaylistSongId"
+    get:
+      operationId: getSavedPlaylistSongArtwork
+      summary: A playlist song's artwork
+      description: |
+        Loaded through the link the song came from, like a queued song's,
+        so everyone who can see the playlist sees its covers.
+      tags: [playlists]
+      parameters:
+        - name: size
+          in: query
+          description: Wanted width in pixels; a hint.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 2048
+      responses:
+        "200":
+          description: The image
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
+
   /rooms/{roomId}/games/round:
     parameters:
       - $ref: "#/components/parameters/RoomId"
@@ -3625,6 +3883,20 @@ components:
 
     RoomId:
       name: roomId
+      in: path
+      required: true
+      schema:
+        type: string
+
+    PlaylistId:
+      name: playlistId
+      in: path
+      required: true
+      schema:
+        type: string
+
+    PlaylistSongId:
+      name: songId
       in: path
       required: true
       schema:
@@ -4736,6 +5008,267 @@ components:
           $ref: "#/components/schemas/QueueItem"
         hearts:
           type: integer
+
+    Recap:
+      type: object
+      description: A night's Syncphony Wrapped (MAD-722).
+      required: [stats, genres, decades, overlaps, playlists]
+      properties:
+        stats:
+          $ref: "#/components/schemas/RoomStats"
+        night:
+          $ref: "#/components/schemas/Night"
+        topAdder:
+          $ref: "#/components/schemas/PersonCount"
+        mostHearted:
+          $ref: "#/components/schemas/PersonCount"
+        mostSkipped:
+          type: object
+          description: The song skipped most. Absent if none was.
+          required: [item, skips]
+          properties:
+            item:
+              $ref: "#/components/schemas/QueueItem"
+            skips:
+              type: integer
+        streak:
+          $ref: "#/components/schemas/PersonCount"
+        genres:
+          type: array
+          description: The genre mix, biggest first, at most five.
+          items:
+            $ref: "#/components/schemas/MixShare"
+        decades:
+          type: array
+          description: The decade mix, in order, at most five.
+          items:
+            $ref: "#/components/schemas/MixShare"
+        overlaps:
+          type: array
+          description: Pairs of friends who brought the same artists, most shared first.
+          items:
+            $ref: "#/components/schemas/TasteOverlap"
+        playlists:
+          type: array
+          description: Playlists saved from this night that you can see.
+          items:
+            $ref: "#/components/schemas/PlaylistRef"
+
+    PersonCount:
+      type: object
+      description: |
+        A person and a count: for `topAdder`, songs played; `mostHearted`,
+        hearts on their songs; `streak`, their songs in a row that played
+        through without a skip (at least three).
+      required: [userId, count]
+      properties:
+        userId:
+          type: string
+        count:
+          type: integer
+
+    MixShare:
+      type: object
+      required: [name, plays]
+      properties:
+        name:
+          type: string
+          description: A genre ("indie rock") or a decade ("1990s").
+        plays:
+          type: integer
+
+    TasteOverlap:
+      type: object
+      required: [userIds, artists]
+      properties:
+        userIds:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: string
+        artists:
+          type: array
+          description: Artists both brought, most played first.
+          items:
+            type: string
+
+    PlaylistRef:
+      type: object
+      required: [id, name, ownerId]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        ownerId:
+          type: string
+
+    PlaylistNight:
+      type: object
+      description: The night a playlist was saved from.
+      required: [roomId, from, to]
+      properties:
+        roomId:
+          type: string
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+
+    SavedPlaylistSummary:
+      type: object
+      description: A Syncphony playlist in a list.
+      required: [id, name, ownerId, createdAt, updatedAt, songCount, covers]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        ownerId:
+          type: string
+        roomId:
+          type: string
+          description: The room it's shared with. Absent if it's only its owner's.
+        night:
+          $ref: "#/components/schemas/PlaylistNight"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        songCount:
+          type: integer
+        covers:
+          type: array
+          description: Its first few songs, for a cover.
+          items:
+            $ref: "#/components/schemas/PlaylistSong"
+
+    SavedPlaylist:
+      type: object
+      description: A Syncphony playlist and its songs, in order.
+      required: [id, name, ownerId, createdAt, updatedAt, songs]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        ownerId:
+          type: string
+        roomId:
+          type: string
+          description: The room it's shared with. Absent if it's only its owner's.
+        night:
+          $ref: "#/components/schemas/PlaylistNight"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        songs:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlaylistSong"
+
+    PlaylistSong:
+      type: object
+      required: [id, track, addedAt]
+      properties:
+        id:
+          type: string
+        track:
+          $ref: "#/components/schemas/QueuedTrack"
+        addedBy:
+          type: string
+          description: |
+            Who brought it: who queued it, for a saved night, or who added
+            it. Absent for autopilot's songs.
+        addedAt:
+          type: string
+          format: date-time
+
+    SaveNightRequest:
+      type: object
+      required: [name, from, to]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        keepSkipped:
+          type: boolean
+          description: Keep songs that were skipped.
+        keepRepeats:
+          type: boolean
+          description: Keep a song every time it played, not just the first.
+        share:
+          type: boolean
+          description: Share it with the room.
+
+    CreatePlaylistRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        roomId:
+          type: string
+          description: A room to share it with.
+
+    UpdatePlaylistRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        roomId:
+          type: string
+          description: A room to share it with, or "" to keep it to yourself.
+
+    AddPlaylistSongsRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/PlaylistSongToAdd"
+
+    PlaylistSongToAdd:
+      type: object
+      description: A song from search (`linkId` and `trackId`), or one a room had (`itemId`).
+      properties:
+        linkId:
+          type: string
+        trackId:
+          type: string
+        itemId:
+          type: string
+
+    MovePlaylistSongRequest:
+      type: object
+      required: [position]
+      properties:
+        position:
+          type: integer
+          minimum: 0
+          description: Where to put the song; 0 is the top. Past the end means the end.
 
     ProfileUpdate:
       type: object
@@ -6098,8 +6631,9 @@ components:
     TrackToQueue:
       type: object
       description: |
-        A song from search (`linkId` and `trackId`), or a song the room
-        already had, again (`fromItemId`). Queueing again from someone
+        A song from search (`linkId` and `trackId`), a song the room
+        already had, again (`fromItemId`), or one from a Syncphony playlist
+        (`fromPlaylistSongId`). Queueing again from someone
         else's service needs the room's `matching.borrow`
         (`cant_borrow` otherwise).
       properties:
@@ -6112,6 +6646,11 @@ components:
         fromItemId:
           type: string
           description: One of the room's queue items, from history or stats.
+        fromPlaylistSongId:
+          type: string
+          description: |
+            A song from a Syncphony playlist you can see. Like `fromItemId`,
+            it plays from the link it came from.
 
     RestoreQueueItemsRequest:
       type: object

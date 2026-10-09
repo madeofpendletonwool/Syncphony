@@ -406,3 +406,17 @@ func (s *Service) List(ctx context.Context, roomID string, limit int) ([]Night, 
 	}
 	return out, nil
 }
+
+// HeartsSince counts the hearts on each of a room's songs that started
+// playing since a time, by item ID.
+func (s *Service) HeartsSince(ctx context.Context, roomID string, since time.Time) (map[string]int, error) {
+	rows, err := s.db.HeartCountsSince(ctx, store.HeartCountsSinceParams{RoomID: roomID, Since: since})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]int, len(rows))
+	for _, r := range rows {
+		out[r.QueueItemID] = int(r.Hearts)
+	}
+	return out, nil
+}
