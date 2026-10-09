@@ -20,6 +20,7 @@ import { isShow, useShow } from '@/hooks/use-scene'
 import { usePosition } from '@/hooks/use-position'
 import { useWakeLock } from '@/hooks/use-wake-lock'
 import { autopilotReason, autopilotSource } from '@/lib/autopilot'
+import { box } from '@/lib/box'
 import { setBeatSettings } from '@/lib/beat'
 import { useHidden } from '@/lib/games'
 import { guestPassQuery } from '@/lib/guests'
@@ -69,13 +70,17 @@ export function TvStage({
   paired: boolean
   onUnpaired: () => void
   /** Set when this screen may be the room's speaker. */
-  audio?: { device: string; name: string; onStopped?: () => void; canPlayPause?: boolean; canSkip?: boolean }
+  audio?: { device: string; name: string; onStopped?: () => void; canPlayPause?: boolean; canSkip?: boolean; autoStart?: boolean }
   /** A signed-in screen's playback controls, as its user, for the keys. */
   commands?: PlayerCommands
 }) {
   const queryClient = useQueryClient()
   useRoomSocket(roomId, { display: true, onSessionEnded: paired ? onUnpaired : undefined, device: audio?.device })
   const playback = useQuery(playbackQuery(roomId))
+  // A box's daemon wants to know when the room plays (ADR 0016); elsewhere this does nothing.
+  useEffect(() => {
+    box.playback(roomId, playback.data)
+  }, [roomId, playback.data])
   const queue = useQuery(queueQuery(roomId))
   const users = useQuery(usersQuery)
   const np = useMemo(

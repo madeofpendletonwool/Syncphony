@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { isBox } from './box'
 import { createStore, useStore } from './store'
 import { toast } from './toast'
 
@@ -20,7 +21,12 @@ export function registerServiceWorker() {
     location.reload()
   })
   void navigator.serviceWorker.register('/sw.js').then((reg) => {
-    const offer = (worker: ServiceWorker) =>
+    const offer = (worker: ServiceWorker) => {
+      // A box has nobody to tap Reload: it takes the new version by itself.
+      if (isBox()) {
+        worker.postMessage('skip-waiting')
+        return
+      }
       toast(
         {
           message: 'A new version of Syncphony is ready',
@@ -28,6 +34,7 @@ export function registerServiceWorker() {
         },
         60_000,
       )
+    }
     if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting)
     reg.addEventListener('updatefound', () => {
       const worker = reg.installing

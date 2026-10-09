@@ -6,6 +6,7 @@ import { TvStage } from '@/components/tv/tv-stage'
 import { meQuery } from '@/lib/auth'
 import { displayMeQuery, type DisplayMe } from '@/lib/displays'
 import { useRoomControls } from '@/hooks/use-room-controls'
+import { box, isBox } from '@/lib/box'
 import { can, playbackQuery } from '@/lib/playback'
 import { useCurrentRoom } from '@/lib/room'
 import { deviceId } from '@/lib/speaker'
@@ -14,7 +15,8 @@ import { deviceId } from '@/lib/speaker'
 // room. A paired display shows its room; a signed-in device shows the
 // room it's in; anything else shows a code to pair it. Either kind can
 // also play the room's audio: a display if it was paired with audio on,
-// a signed-in device if its user may be the speaker.
+// a signed-in device if its user may be the speaker. On a box (ADR 0016),
+// the page talks to the box's own daemon and plays by itself.
 export const Route = createFileRoute('/tv')({
   component: Tv,
 })
@@ -23,6 +25,12 @@ function Tv() {
   // Polled, so turning the screen's audio on or off from a phone shows up here.
   const display = useQuery({ ...displayMeQuery, refetchInterval: (q) => (q.state.data ? 30_000 : false) })
   const me = useQuery({ ...meQuery, enabled: display.isSuccess && !display.data })
+  const boxMode = isBox()
+  useEffect(() => {
+    if (!boxMode) return
+    box.start()
+    return () => box.stop()
+  }, [boxMode])
   useDarkTheme()
 
   if (display.isPending || (display.isSuccess && !display.data && me.isPending)) return <Blank />
@@ -34,6 +42,11 @@ function Tv() {
 function PairedStage({ me }: { me: DisplayMe }) {
   const queryClient = useQueryClient()
   const { display, room } = me
+  // Tell the box which room's screen this is now.
+  useEffect(() => {
+    box.paired(room.id)
+    return () => box.unpaired()
+  }, [room.id])
   return (
     <TvStage
       roomId={room.id}
@@ -46,6 +59,8 @@ function PairedStage({ me }: { me: DisplayMe }) {
           ? {
               device: display.id,
               name: display.name,
+              // A box plays by itself; nobody's there to press OK.
+              autoStart: isBox(),
               onStopped: () => void queryClient.invalidateQueries({ queryKey: displayMeQuery.queryKey }),
             }
           : undefined

@@ -200,14 +200,42 @@ func toDisplay(d store.Display) Display {
 	return out
 }
 
-// BeginDisplayPairing gives a display a code to show.
-func (s *Server) BeginDisplayPairing(ctx context.Context, _ BeginDisplayPairingRequestObject) (BeginDisplayPairingResponseObject, error) {
-	p, err := s.Auth.BeginDisplayPairing()
+// BeginDisplayPairing gives a display a code to show. A box says what it
+// is, and what it would like to be called (ADR 0016).
+func (s *Server) BeginDisplayPairing(ctx context.Context, req BeginDisplayPairingRequestObject) (BeginDisplayPairingResponseObject, error) {
+	kind, suggestedName := auth.DisplayScreen, ""
+	if req.Body != nil {
+		if req.Body.Kind != nil {
+			kind = auth.DisplayKind(*req.Body.Kind)
+		}
+		if req.Body.SuggestedName != nil {
+			suggestedName = *req.Body.SuggestedName
+		}
+	}
+	p, err := s.Auth.BeginDisplayPairing(kind, suggestedName)
 	if err != nil {
 		return nil, err
 	}
 	requestFrom(ctx).setCookie(s.pairingCookie(p.Secret, p.Expires.Sub(p.Begun)))
 	return BeginDisplayPairing201JSONResponse{Code: p.Code, ExpiresAt: p.Expires}, nil
+}
+
+// LookupDisplayPairing tells whoever is typing in a code what kind of
+// screen waits behind it, so they pair it with the right defaults. Their
+// choices stay final.
+func (s *Server) LookupDisplayPairing(ctx context.Context, req LookupDisplayPairingRequestObject) (LookupDisplayPairingResponseObject, error) {
+	if _, err := s.Rooms.Get(ctx, req.RoomId); err != nil {
+		return nil, err
+	}
+	info, err := s.Auth.LookupDisplayPairing(sessionFrom(ctx).User, req.Code)
+	if err != nil {
+		return nil, err
+	}
+	out := LookupDisplayPairing200JSONResponse{Kind: DisplayPairingInfoKind(info.Kind)}
+	if info.SuggestedName != "" {
+		out.SuggestedName = &info.SuggestedName
+	}
+	return out, nil
 }
 
 // PollDisplayPairing tells a display whether its code was typed in, and

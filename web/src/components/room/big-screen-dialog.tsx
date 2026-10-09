@@ -3,14 +3,14 @@ import { Link } from '@tanstack/react-router'
 import { MonitorPlay, Speaker, Trash2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Dialog } from 'radix-ui'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { errorMessage } from '@/api/errors'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { BigScreenLook } from './big-screen-look'
 import { useMe } from '@/lib/auth'
-import { displaysQuery, pairDisplay, setDisplayAudio, unpairDisplay } from '@/lib/displays'
+import { displayPairingLookupQuery, displaysQuery, pairDisplay, setDisplayAudio, unpairDisplay } from '@/lib/displays'
 import { easeOutExpo } from '@/lib/motion'
 import { can } from '@/lib/playback'
 import type { Room } from '@/lib/room'
@@ -20,8 +20,9 @@ import { toast } from '@/lib/toast'
 /**
  * Pairs a TV, projector or spare tablet with the room: open /tv on it,
  * type in the code it shows, and choose whether it plays the room's audio
- * too. Lists the room's screens, turns their audio on and off, and
- * unpairs them.
+ * too. A box (ADR 0016) says so while it waits, so the defaults fit it:
+ * its name, and audio on — the choices here are still final. Lists the
+ * room's screens, turns their audio on and off, and unpairs them.
  */
 export function BigScreenDialog({ room, open, onOpenChange }: { room: Room; open: boolean; onOpenChange: (open: boolean) => void }) {
   const me = useMe()
@@ -30,15 +31,36 @@ export function BigScreenDialog({ room, open, onOpenChange }: { room: Room; open
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [audio, setAudio] = useState(false)
+  // Whether the person here has chosen audio themselves; until then a box
+  // waiting behind the code sets the default.
+  const choseAudio = useRef(false)
+  // A screen can say what it is once the whole code is in (MAD-802).
+  const typed = code.toUpperCase().replace(/[\s-]/g, '')
   // A screen plays as whoever paired it, so it needs their say-so to be the speaker.
   const maySpeak = !me.guest && can(room, me.id, 'speaker')
+  const pairing = useQuery({
+    ...displayPairingLookupQuery(room.id, typed),
+    enabled: open && maySpeak && typed.length === 6,
+    retry: false,
+  })
+  const boxPairing = pairing.data?.kind === 'box'
+  useEffect(() => {
+    if (boxPairing && !choseAudio.current) setAudio(true)
+  }, [boxPairing])
   const pair = useMutation({
     mutationFn: () => pairDisplay(room.id, code, name.trim() || undefined, maySpeak && audio),
     onSuccess: (d) => {
       setCode('')
       setName('')
       setAudio(false)
-      toast({ message: d.audio ? `${d.name} is showing ${room.name}. Press OK on it to play the audio there.` : `${d.name} is showing ${room.name}` })
+      choseAudio.current = false
+      toast({
+        message: boxPairing
+          ? `${d.name} is showing ${room.name}${d.audio ? ' and will play the room by itself' : ''}`
+          : d.audio
+            ? `${d.name} is showing ${room.name}. Press OK on it to play the audio there.`
+            : `${d.name} is showing ${room.name}`,
+      })
       void queryClient.invalidateQueries({ queryKey: displaysQuery(room.id).queryKey })
     },
     onError: (e) => toast({ message: errorMessage(e), tone: 'error' }),
@@ -108,7 +130,13 @@ export function BigScreenDialog({ room, open, onOpenChange }: { room: Room; open
                     maxLength={16}
                     className="h-14 text-center font-mono text-2xl tracking-[0.3em] md:text-2xl"
                   />
-                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (Living room TV)" aria-label="Screen name" maxLength={40} />
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder={pairing.data?.suggestedName ?? 'Name (Living room TV)'}
+                    aria-label="Screen name"
+                    maxLength={40}
+                  />
                   {maySpeak && (
                     <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl bg-muted/60 px-3.5 py-3">
                       <span className="flex min-w-0 items-start gap-2.5">
@@ -116,11 +144,20 @@ export function BigScreenDialog({ room, open, onOpenChange }: { room: Room; open
                         <span className="min-w-0">
                           <span className="block text-sm font-medium">Play the audio on it too</span>
                           <span className="block text-caption text-muted-foreground">
-                            The screen becomes the speaker, through its own speakers or sound system.
+                            {boxPairing
+                              ? 'A Syncphony box: it becomes the speaker and plays by itself.'
+                              : 'The screen becomes the speaker, through its own speakers or sound system.'}
                           </span>
                         </span>
                       </span>
-                      <Switch checked={audio} onChange={setAudio} label="Play the audio on this screen" />
+                      <Switch
+                        checked={audio}
+                        onChange={(on) => {
+                          choseAudio.current = true
+                          setAudio(on)
+                        }}
+                        label="Play the audio on this screen"
+                      />
                     </label>
                   )}
                   <Button type="submit" size="lg" disabled={!code.trim() || pair.isPending}>
