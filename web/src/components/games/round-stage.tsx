@@ -1,13 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
-import { Check, Dices, Trophy } from 'lucide-react'
+import { ArrowRight, Check, Dices, Disc3, Flame, Pause, Trophy } from 'lucide-react'
+import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { UserAvatar } from '@/components/user-avatar'
 import { useServerNow } from '@/hooks/use-server-now'
-import { GAMES, gameRoundQuery, gameScoresQuery, remaining, type GameRound } from '@/lib/games'
+import { GAMES, gameRoundQuery, gameScoresQuery, remaining, roundArtworkUrl, splitPrompt, type GameRound } from '@/lib/games'
 import { laneStyle } from '@/lib/lane'
 import { easeOutExpo, spring } from '@/lib/motion'
 import { usersQuery } from '@/lib/users'
 import { cn } from '@/lib/utils'
+import { RoundLine } from './round-line'
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F']
 
@@ -41,6 +43,8 @@ function Panel({ round }: { round: GameRound }) {
       <Header round={round} />
       <Question round={round} big />
       {round.choices.length > 0 && <Choices round={round} big />}
+      {isYear(round) && (revealed ? <Timeline round={round} /> : <YearRange round={round} />)}
+      {revealed && round.other && <Covers round={round} />}
       {revealed ? <Reveal round={round} /> : <Answered round={round} />}
     </motion.div>
   )
@@ -77,6 +81,11 @@ function Header({ round }: { round: GameRound }) {
         {GAMES[round.kind].label}
       </span>
       <span className="ml-auto flex items-center gap-[0.8vw] text-[clamp(1rem,1.6vw,1.7rem)] font-semibold tabular-nums">
+        {round.stopsMusic && round.state === 'open' && (
+          <span className="flex items-center gap-[0.4vw] text-primary">
+            <Pause className="size-[2.6vh]" /> Music paused
+          </span>
+        )}
         {round.state === 'announce' && <span className="text-muted-foreground">Get your phones out</span>}
         {seconds !== undefined && <span className={cn(seconds <= 5 && 'text-destructive')}>{seconds}</span>}
         {round.state !== 'announce' && round.state !== 'open' && <span className="text-muted-foreground">Time’s up</span>}
@@ -109,18 +118,144 @@ function Ring({ value }: { value: number }) {
 }
 
 function Question({ round, big }: { round: GameRound; big?: boolean }) {
-  const [question, ...rest] = round.prompt.split('\n')
+  const { question, line } = splitPrompt(round.prompt)
   return (
     <div>
       <p className={cn('leading-tight font-bold text-balance', big ? 'text-[clamp(1.6rem,3.2vw,3.6rem)]' : 'text-[clamp(1.1rem,1.8vw,2rem)]')}>
         {question}
       </p>
-      {rest.length > 0 && (
-        <p className={cn('mt-[1vh] text-muted-foreground italic', big ? 'text-[clamp(1.2rem,2.2vw,2.4rem)]' : 'text-[clamp(0.95rem,1.4vw,1.5rem)]')}>
-          {rest.join(' ')}
-        </p>
+      {line && (
+        <RoundLine
+          round={round}
+          text={line}
+          className={cn('mt-[1vh] text-muted-foreground italic', big ? 'text-[clamp(1.2rem,2.2vw,2.4rem)]' : 'text-[clamp(0.95rem,1.4vw,1.5rem)]')}
+        />
       )}
     </div>
+  )
+}
+
+/** Whether a round is guessed on the year slider. */
+function isYear(round: GameRound) {
+  return round.answer === 'number' && round.min !== undefined && round.max !== undefined
+}
+
+/** While answers are open: the slider's span, as phones see it. */
+function YearRange({ round }: { round: GameRound }) {
+  return (
+    <div className="flex items-center gap-[1vw] text-[clamp(0.9rem,1.3vw,1.4rem)] text-muted-foreground tabular-nums">
+      <span>{round.min}</span>
+      <span className="h-[0.6vh] flex-1 rounded-full bg-foreground/12" />
+      <span>{round.max}</span>
+    </div>
+  )
+}
+
+/**
+ * Guess the year's reveal: everyone's guess on a timeline, with the real
+ * year marked. The closest glow.
+ */
+function Timeline({ round }: { round: GameRound }) {
+  const users = useQuery(usersQuery).data
+  // A year round always has its slider's ends (isYear).
+  const min = round.min ?? 0
+  const max = round.max ?? 0
+  const span = Math.max(1, max - min)
+  const at = (y: number) => `${((Math.min(max, Math.max(min, y)) - min) / span) * 100}%`
+  const year = Number(round.correct)
+  const guesses = (round.results ?? []).filter((r) => r.number !== undefined)
+  // Guesses on the same year stack up.
+  const stack = new Map<number, number>()
+  const decades = Array.from({ length: Math.floor(max / 10) - Math.ceil(min / 10) + 1 }, (_, i) => (Math.ceil(min / 10) + i) * 10)
+  return (
+    <div className="relative mt-[5vh] mb-[1vh] h-[11vh]">
+      <div className="absolute inset-x-0 top-[6vh] h-[0.6vh] rounded-full bg-foreground/12" />
+      {decades.map((d) => (
+        <span
+          key={d}
+          style={{ left: at(d) }}
+          className="absolute top-[7.6vh] -translate-x-1/2 text-[clamp(0.7rem,1vw,1.05rem)] text-muted-foreground tabular-nums"
+        >
+          {d}
+        </span>
+      ))}
+      {Number.isFinite(year) && (
+        <motion.div
+          initial={{ opacity: 0, scaleY: 0 }}
+          animate={{ opacity: 1, scaleY: 1 }}
+          transition={{ duration: 0.7, ease: easeOutExpo }}
+          style={{ left: at(year) }}
+          className="absolute -top-[4vh] bottom-[3vh] flex w-0 origin-bottom flex-col items-center"
+        >
+          <span className="rounded-full bg-success px-[0.8vw] py-[0.3vh] text-[clamp(0.9rem,1.4vw,1.5rem)] font-bold text-background tabular-nums">
+            {year}
+          </span>
+          <span className="w-[0.3vw] flex-1 bg-success" />
+        </motion.div>
+      )}
+      {guesses.map((r, i) => {
+        const u = users?.find((x) => x.id === r.userId)
+        const n = stack.get(r.number!) ?? 0
+        stack.set(r.number!, n + 1)
+        return (
+          <motion.span
+            key={r.userId}
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...spring, delay: 0.25 + i * 0.06 }}
+            style={{ left: at(r.number!), top: `${4.2 - n * 3.2}vh` }}
+            title={`${u?.displayName ?? 'Someone'}: ${r.number}`}
+            className={cn('absolute -translate-x-1/2 rounded-full', r.closest && 'ring-[0.4vh] ring-success')}
+          >
+            {u ? <UserAvatar user={u} className="size-[4vh] text-[1.5vh] ring-2 ring-background" /> : <span className="block size-[2vh] rounded-full bg-foreground/50" />}
+          </motion.span>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Sample detective's reveal: the two songs' covers, side by side. */
+function Covers({ round }: { round: GameRound }) {
+  const other = round.other!
+  const mine = `/api/rooms/${encodeURIComponent(round.roomId)}/queue/${encodeURIComponent(round.itemId)}/artwork?size=300`
+  const samples = round.topic !== 'sampled_by'
+  const left = { src: mine, title: 'This song' }
+  const right = { src: roundArtworkUrl(round), title: other.title, artist: other.artist }
+  const [a, b] = samples ? [left, right] : [right, left]
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.7, ease: easeOutExpo }}
+      className="flex items-center justify-center gap-[2vw]"
+    >
+      <Cover {...a} />
+      <span className="flex flex-col items-center gap-[0.6vh] text-[clamp(0.8rem,1.1vw,1.15rem)] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+        <ArrowRight className="size-[3.5vh]" />
+        samples
+      </span>
+      <Cover {...b} />
+    </motion.div>
+  )
+}
+
+function Cover({ src, title, artist }: { src?: string; title: string; artist?: string }) {
+  const [failed, setFailed] = useState(false)
+  return (
+    <figure className="flex w-[16vh] flex-col items-center gap-[0.8vh] text-center">
+      {src && !failed ? (
+        <img src={src} alt="" onError={() => setFailed(true)} className="size-[16vh] rounded-[2vh] object-cover shadow-float" />
+      ) : (
+        <span className="grid size-[16vh] place-items-center rounded-[2vh] bg-foreground/8">
+          <Disc3 className="size-[6vh] text-muted-foreground" />
+        </span>
+      )}
+      <figcaption className="w-full">
+        <p className="truncate text-[clamp(0.85rem,1.2vw,1.3rem)] font-semibold">{title}</p>
+        {artist && <p className="truncate text-[clamp(0.75rem,1vw,1.1rem)] text-muted-foreground">{artist}</p>}
+      </figcaption>
+    </figure>
   )
 }
 
@@ -194,6 +329,7 @@ function RevealLine({ round }: { round: GameRound }) {
       className="text-[clamp(1rem,1.5vw,1.6rem)] font-semibold"
     >
       {round.reveal ?? round.correct}
+      {round.detail && <span className="mt-[0.4vh] block text-[clamp(0.8rem,1.1vw,1.2rem)] font-normal text-muted-foreground">{round.detail}</span>}
     </motion.p>
   )
 }
@@ -213,6 +349,7 @@ function Reveal({ round }: { round: GameRound }) {
     >
       <div className="flex flex-col gap-[1.4vh]">
         <p className="text-[clamp(1.2rem,2vw,2.2rem)] font-bold">{round.reveal ?? round.correct}</p>
+        {round.detail && <p className="text-[clamp(0.9rem,1.3vw,1.4rem)] text-muted-foreground">{round.detail}</p>}
         {results.length === 0 ? (
           <p className="text-[clamp(0.9rem,1.3vw,1.4rem)] text-muted-foreground">Nobody got it this time</p>
         ) : (
@@ -235,6 +372,12 @@ function Reveal({ round }: { round: GameRound }) {
           <li className="flex items-center gap-[0.6vw] text-[clamp(0.8rem,1.1vw,1.15rem)] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
             <Trophy className="size-[2.4vh]" /> Tonight
           </li>
+          {round.topic === 'higher_lower' && scores?.best && (
+            <li className="flex items-center gap-[0.6vw] text-[clamp(0.85rem,1.2vw,1.3rem)] text-muted-foreground">
+              <Flame className="size-[2.4vh] text-primary" />
+              Best streak: {users?.find((x) => x.id === scores.best!.userId)?.displayName ?? 'Someone'}, {scores.best.count} in a row
+            </li>
+          )}
           {board.map((p, i) => {
             const u = users?.find((x) => x.id === p.userId)
             return (

@@ -12,6 +12,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/awards"
 	"github.com/madeofpendletonwool/syncphony/server/internal/games"
+	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/quiz"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 )
@@ -30,7 +31,7 @@ func (s *Server) GetGameRound(_ context.Context, req GetGameRoundRequestObject) 
 	if !ok {
 		return GetGameRound204Response{}, nil
 	}
-	return GetGameRound200JSONResponse(toGameRound(rd)), nil
+	return GetGameRound200JSONResponse(s.toGameRound(rd)), nil
 }
 
 // StartGameRound starts a round about the song that's playing.
@@ -50,7 +51,7 @@ func (s *Server) StartGameRound(ctx context.Context, req StartGameRoundRequestOb
 	if err != nil {
 		return nil, err
 	}
-	return StartGameRound201JSONResponse(toGameRound(*rd)), nil
+	return StartGameRound201JSONResponse(s.toGameRound(*rd)), nil
 }
 
 // AnswerGameRound takes an answer to the open round.
@@ -70,6 +71,27 @@ func (s *Server) AnswerGameRound(ctx context.Context, req AnswerGameRoundRequest
 	return AnswerGameRound200JSONResponse{RoundId: req.RoundId, At: a.At}, nil
 }
 
+// GetGameRoundArtwork returns the cover of the round's other song, from
+// its reveal on.
+func (s *Server) GetGameRoundArtwork(ctx context.Context, req GetGameRoundArtworkRequestObject) (GetGameRoundArtworkResponseObject, error) {
+	if s.Games == nil || s.Artwork == nil {
+		return nil, provider.ErrNotFound
+	}
+	rd, ok := s.Games.Current(req.RoomId)
+	if !ok || rd.ID != req.RoundId || (rd.State != games.StateReveal && rd.State != games.StateDone) || rd.Question.Other == nil {
+		return nil, provider.ErrNotFound
+	}
+	px := 0
+	if req.Params.Size != nil {
+		px = *req.Params.Size
+	}
+	img, err := s.Artwork.ForRecording(ctx, rd.Question.Other.ID, px)
+	if err != nil {
+		return nil, err
+	}
+	return imageResponse(img), nil
+}
+
 // GetGameScores returns tonight's scores, as far as the caller may see them.
 func (s *Server) GetGameScores(ctx context.Context, req GetGameScoresRequestObject) (GetGameScoresResponseObject, error) {
 	if s.Games == nil {
@@ -86,14 +108,15 @@ func (s *Server) GetGameScores(ctx context.Context, req GetGameScoresRequestObje
 	return GetGameScores200JSONResponse(toGameScores(sc, you)), nil
 }
 
-func toGameRound(rd games.Round) GameRound {
+func (s *Server) toGameRound(rd games.Round) GameRound {
 	q := rd.Question
 	out := GameRound{
 		Id: rd.ID, RoomId: rd.RoomID, ItemId: rd.ItemID, Kind: GameKind(rd.Kind), Topic: nonEmpty(q.Topic),
 		Mode: GameRoundMode(rd.Mode), State: GameRoundState(rd.State), Prompt: q.Prompt, Answer: GameRoundAnswer(q.Answer),
 		Choices: q.Choices, StartedBy: nonEmpty(rd.StartedBy), OpensAt: rd.OpensAt, ClosesAt: rd.ClosesAt, DoneAt: rd.DoneAt,
 		Answered: []string{}, Hides: []GameRoundHides{}, Guests: rd.Guests, TvOnly: rd.TVOnly,
-		Scores: GameRoundScores(rd.Scores), Difficulty: float32(q.Difficulty),
+		Scores: GameRoundScores(rd.Scores), Difficulty: float32(q.Difficulty), StopsMusic: rd.Breaks,
+		Min: nonZero(q.Min), Max: nonZero(q.Max), AtMs: nonZero(q.AtMs),
 	}
 	if out.Choices == nil {
 		out.Choices = []string{}
@@ -113,14 +136,20 @@ func toGameRound(rd games.Round) GameRound {
 	if rd.State != games.StateReveal && rd.State != games.StateDone {
 		return out
 	}
-	out.Correct, out.Reveal = &q.Correct, nonEmpty(q.Reveal)
+	out.Correct, out.Reveal, out.Detail = &q.Correct, nonEmpty(q.Reveal), nonEmpty(q.Detail)
+	if o := q.Other; o != nil {
+		out.Other = &GameSong{Title: o.Title, Artist: nonEmpty(o.Artist), HasArtwork: o.ID != "" && s.Artwork != nil}
+	}
 	if q.Answer == quiz.AnswerChoice || len(q.Choices) > 0 {
 		out.CorrectIndex = &q.CorrectIndex
 	}
 	slices.SortStableFunc(answers, func(a, b *games.Answer) int { return cmp.Compare(b.Points, a.Points) })
 	results := make([]GameResult, 0, len(answers))
 	for _, a := range answers {
-		results = append(results, GameResult{UserId: a.UserID, Correct: a.Correct, Points: a.Points, Answer: nonEmpty(answerText(q, a.Response))})
+		results = append(results, GameResult{
+			UserId: a.UserID, Correct: a.Correct, Points: a.Points, Answer: nonEmpty(answerText(q, a.Response)),
+			Number: a.Response.Number, Closest: nonZero(a.Closest),
+		})
 	}
 	out.Results = &results
 	return out
@@ -145,7 +174,13 @@ func toGameScores(sc games.Scores, you string) GameScores {
 		if sc.Mode == rooms.ScoresOff || (sc.Mode == rooms.ScoresPrivate && p.UserID != you) {
 			continue
 		}
-		out.Players = append(out.Players, GamePlayer{UserId: p.UserID, Points: p.Points, Correct: p.Correct, Answered: p.Answered})
+		out.Players = append(out.Players, GamePlayer{
+			UserId: p.UserID, Points: p.Points, Correct: p.Correct, Answered: p.Answered, Streak: p.Streak, BestStreak: p.BestStreak,
+		})
+	}
+	// The night's best streak names someone, so only on a board.
+	if b := sc.Best; b != nil && sc.Mode == rooms.ScoresBoard {
+		out.Best = &GameStreak{UserId: b.UserID, Count: b.Count}
 	}
 	return out
 }

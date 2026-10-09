@@ -260,6 +260,7 @@ func (e GameRoundAnswer) Valid() bool {
 
 // Defines values for GameRoundHides.
 const (
+	GameRoundHidesLine   GameRoundHides = "line"
 	GameRoundHidesLyrics GameRoundHides = "lyrics"
 	GameRoundHidesNotes  GameRoundHides = "notes"
 	GameRoundHidesSong   GameRoundHides = "song"
@@ -268,6 +269,8 @@ const (
 // Valid indicates whether the value is a known member of the GameRoundHides enum.
 func (e GameRoundHides) Valid() bool {
 	switch e {
+	case GameRoundHidesLine:
+		return true
 	case GameRoundHidesLyrics:
 		return true
 	case GameRoundHidesNotes:
@@ -1750,19 +1753,33 @@ type GameKind string
 
 // GamePlayer defines model for GamePlayer.
 type GamePlayer struct {
-	Answered int    `json:"answered"`
-	Correct  int    `json:"correct"`
-	Points   int    `json:"points"`
-	UserId   string `json:"userId"`
+	Answered int `json:"answered"`
+
+	// BestStreak Their longest higher-or-lower streak tonight.
+	BestStreak int `json:"bestStreak"`
+	Correct    int `json:"correct"`
+	Points     int `json:"points"`
+
+	// Streak Higher-or-lower rounds right in a row, up to now. A wrong answer ends it; sitting one out doesn't.
+	Streak int    `json:"streak"`
+	UserId string `json:"userId"`
 }
 
 // GameResult defines model for GameResult.
 type GameResult struct {
 	// Answer What they answered, as text.
-	Answer  *string `json:"answer,omitempty"`
-	Correct bool    `json:"correct"`
-	Points  int     `json:"points"`
-	UserId  string  `json:"userId"`
+	Answer *string `json:"answer,omitempty"`
+
+	// Closest Nearest the answer in a `number` round. An exact guess scores
+	// a bonus; otherwise the nearest that scored at all scores a
+	// smaller one.
+	Closest *bool `json:"closest,omitempty"`
+	Correct bool  `json:"correct"`
+
+	// Number Their number, for a `number` round.
+	Number *int   `json:"number,omitempty"`
+	Points int    `json:"points"`
+	UserId string `json:"userId"`
 }
 
 // GameRound A round of a game, run by the server: `announce` (the question is
@@ -1776,7 +1793,11 @@ type GameRound struct {
 	Answer GameRoundAnswer `json:"answer"`
 
 	// Answered Who has answered so far.
-	Answered []string  `json:"answered"`
+	Answered []string `json:"answered"`
+
+	// AtMs When in the song the round's lyric line is sung. With `line`
+	// in `hides`, screens keep that line back until the reveal.
+	AtMs     *int64    `json:"atMs,omitempty"`
 	Choices  []string  `json:"choices"`
 	ClosesAt time.Time `json:"closesAt"`
 
@@ -1785,6 +1806,10 @@ type GameRound struct {
 
 	// CorrectIndex The right choice, from the reveal on.
 	CorrectIndex *int `json:"correctIndex,omitempty"`
+
+	// Detail A line from the liner notes to show with the answer, from the
+	// reveal on, so people learn something even when they're wrong.
+	Detail *string `json:"detail,omitempty"`
 
 	// Difficulty Roughly how hard, 0 (easy) to 1.
 	Difficulty float32 `json:"difficulty"`
@@ -1796,8 +1821,9 @@ type GameRound struct {
 	Guests bool `json:"guests"`
 
 	// Hides What screens keep back until the reveal: `song` (title,
-	// artists, album, artwork), `notes` (liner notes), `lyrics`. The
-	// server leaves them out too, except for the speaker.
+	// artists, album, artwork), `notes` (liner notes), `lyrics`, or
+	// `line` (the lyric line sung at `atMs`). The server leaves them
+	// out too, except for the speaker.
 	Hides []GameRoundHides `json:"hides"`
 	Id    string           `json:"id"`
 
@@ -1810,11 +1836,22 @@ type GameRound struct {
 	// name that tune. `connect`, `theme`, `bracket`: queue games.
 	Kind GameKind `json:"kind"`
 
+	// Max For a `number` round, the highest answer to offer.
+	Max *int `json:"max,omitempty"`
+
+	// Min For a `number` round, the lowest answer to offer: the year
+	// slider's start. Loose, so it doesn't give the answer away.
+	Min *int `json:"min,omitempty"`
+
 	// Mode `ambient`: a question to ignore if you like, shown quietly.
 	// `round`: a countdown and a reveal on the big screen.
 	Mode    GameRoundMode `json:"mode"`
 	OpensAt time.Time     `json:"opensAt"`
-	Prompt  string        `json:"prompt"`
+
+	// Other The other song in a sample detective round, from the reveal on:
+	// what this one samples, or what samples it.
+	Other  *GameSong `json:"other,omitempty"`
+	Prompt string    `json:"prompt"`
 
 	// Results Everyone's answers, from the reveal on, best first.
 	Results *[]GameResult `json:"results,omitempty"`
@@ -1827,6 +1864,10 @@ type GameRound struct {
 	// StartedBy Who started it; absent when the room's frequency did.
 	StartedBy *string        `json:"startedBy,omitempty"`
 	State     GameRoundState `json:"state"`
+
+	// StopsMusic The music stops while answers are open (finish the lyric) and
+	// comes back at the reveal, on the line.
+	StopsMusic bool `json:"stopsMusic"`
 
 	// Topic What it asks within its game, e.g. `credit`, `first_released`.
 	Topic *string `json:"topic,omitempty"`
@@ -1854,6 +1895,8 @@ type GameRoundState string
 
 // GameScores Tonight's game scores, best first.
 type GameScores struct {
+	// Best The night's longest higher-or-lower streak, on a board.
+	Best    *GameStreak    `json:"best,omitempty"`
 	Mode    GameScoresMode `json:"mode"`
 	Players []GamePlayer   `json:"players"`
 	RoomId  string         `json:"roomId"`
@@ -1861,6 +1904,22 @@ type GameScores struct {
 
 // GameScoresMode defines model for GameScores.Mode.
 type GameScoresMode string
+
+// GameSong The other song in a sample detective round, from the reveal on:
+// what this one samples, or what samples it.
+type GameSong struct {
+	Artist *string `json:"artist,omitempty"`
+
+	// HasArtwork Its cover may be at the round's `artwork` endpoint.
+	HasArtwork bool   `json:"hasArtwork"`
+	Title      string `json:"title"`
+}
+
+// GameStreak The night's longest higher-or-lower streak, on a board.
+type GameStreak struct {
+	Count  int    `json:"count"`
+	UserId string `json:"userId"`
+}
 
 // GenreDetail defines model for GenreDetail.
 type GenreDetail struct {
@@ -3596,6 +3655,12 @@ type GetRoomArtistPlaysParams struct {
 	Limit *int   `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// GetGameRoundArtworkParams defines parameters for GetGameRoundArtwork.
+type GetGameRoundArtworkParams struct {
+	// Size Wanted width in pixels; a hint.
+	Size *int `form:"size,omitempty" json:"size,omitempty"`
+}
+
 // GetHistoryParams defines parameters for GetHistory.
 type GetHistoryParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
@@ -4082,6 +4147,9 @@ type ServerInterface interface {
 	// AnswerGameRound Answer the open round
 	// (POST /rooms/{roomId}/games/rounds/{roundId}/answers)
 	AnswerGameRound(w http.ResponseWriter, r *http.Request, roomId RoomId, roundId string)
+	// GetGameRoundArtwork The cover of a round's other song
+	// (GET /rooms/{roomId}/games/rounds/{roundId}/artwork)
+	GetGameRoundArtwork(w http.ResponseWriter, r *http.Request, roomId RoomId, roundId string, params GetGameRoundArtworkParams)
 	// GetGameScores Tonight's game scores
 	// (GET /rooms/{roomId}/games/scores)
 	GetGameScores(w http.ResponseWriter, r *http.Request, roomId RoomId)
@@ -6420,6 +6488,57 @@ func (siw *ServerInterfaceWrapper) AnswerGameRound(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetGameRoundArtwork operation middleware
+func (siw *ServerInterfaceWrapper) GetGameRoundArtwork(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "roundId" -------------
+	var roundId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roundId", r.PathValue("roundId"), &roundId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roundId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetGameRoundArtworkParams
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "size", r.URL.Query(), &params.Size, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGameRoundArtwork(w, r, roomId, roundId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetGameScores operation middleware
 func (siw *ServerInterfaceWrapper) GetGameScores(w http.ResponseWriter, r *http.Request) {
 
@@ -8378,6 +8497,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/games/round", wrapper.GetGameRound)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/games/rounds", wrapper.StartGameRound)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/games/rounds/{roundId}/answers", wrapper.AnswerGameRound)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/games/rounds/{roundId}/artwork", wrapper.GetGameRoundArtwork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/games/scores", wrapper.GetGameScores)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/guest-pass", wrapper.RevokeGuestPass)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/guest-pass", wrapper.GetGuestPass)
@@ -11950,6 +12070,54 @@ func (response AnswerGameRounddefaultJSONResponse) VisitAnswerGameRoundResponse(
 	return err
 }
 
+type GetGameRoundArtworkRequestObject struct {
+	RoomId  RoomId `json:"roomId"`
+	RoundId string `json:"roundId"`
+	Params  GetGameRoundArtworkParams
+}
+
+type GetGameRoundArtworkResponseObject interface {
+	VisitGetGameRoundArtworkResponse(w http.ResponseWriter) error
+}
+
+type GetGameRoundArtwork200ImageResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetGameRoundArtwork200ImageResponse) VisitGetGameRoundArtworkResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetGameRoundArtworkdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetGameRoundArtworkdefaultJSONResponse) VisitGetGameRoundArtworkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetGameScoresRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 }
@@ -14265,6 +14433,9 @@ type StrictServerInterface interface {
 	// AnswerGameRound Answer the open round
 	// (POST /rooms/{roomId}/games/rounds/{roundId}/answers)
 	AnswerGameRound(ctx context.Context, request AnswerGameRoundRequestObject) (AnswerGameRoundResponseObject, error)
+	// GetGameRoundArtwork The cover of a round's other song
+	// (GET /rooms/{roomId}/games/rounds/{roundId}/artwork)
+	GetGameRoundArtwork(ctx context.Context, request GetGameRoundArtworkRequestObject) (GetGameRoundArtworkResponseObject, error)
 	// GetGameScores Tonight's game scores
 	// (GET /rooms/{roomId}/games/scores)
 	GetGameScores(ctx context.Context, request GetGameScoresRequestObject) (GetGameScoresResponseObject, error)
@@ -16975,6 +17146,34 @@ func (sh *strictHandler) AnswerGameRound(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AnswerGameRoundResponseObject); ok {
 		if err := validResponse.VisitAnswerGameRoundResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetGameRoundArtwork operation middleware
+func (sh *strictHandler) GetGameRoundArtwork(w http.ResponseWriter, r *http.Request, roomId RoomId, roundId string, params GetGameRoundArtworkParams) {
+	var request GetGameRoundArtworkRequestObject
+
+	request.RoomId = roomId
+	request.RoundId = roundId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGameRoundArtwork(ctx, request.(GetGameRoundArtworkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGameRoundArtwork")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGameRoundArtworkResponseObject); ok {
+		if err := validResponse.VisitGetGameRoundArtworkResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

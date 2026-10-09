@@ -1080,3 +1080,43 @@ func TestFallback(t *testing.T) {
 		t.Fatalf("with fallback off: %s", describe(np))
 	}
 }
+
+func TestGameBreak(t *testing.T) {
+	e := newEnv(t)
+	ctx := t.Context()
+	e.claim(e.alice, "phone")
+	e.add(e.alice, "t01", "t02")
+	np := e.waitFor("alice's song to load", playing(playback.StateLoading, "t01"))
+	e.report(e.alice, "phone", playback.EventPlaying, 0)
+	item := np.Item.ID
+
+	// A break for another song does nothing.
+	if err := e.p.Break(ctx, e.room.ID, "someone-else"); err != nil {
+		t.Fatal(err)
+	}
+	if np = e.np(); np.State != playback.StatePlaying {
+		t.Fatalf("after another song's break: %s", describe(np))
+	}
+	e.advance(5 * time.Second)
+	if err := e.p.Break(ctx, e.room.ID, item); err != nil {
+		t.Fatal(err)
+	}
+	if np = e.np(); np.State != playback.StatePaused || np.Position != 5*time.Second {
+		t.Fatalf("after the break: %s at %v", describe(np), np.Position)
+	}
+	// The music comes back on the line, wherever it stopped.
+	if err := e.p.Resume(ctx, e.room.ID, item, 4500*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	if np = e.np(); np.State != playback.StatePlaying || np.Position != 4500*time.Millisecond {
+		t.Fatalf("after resuming: %s at %v", describe(np), np.Position)
+	}
+	// Resuming a song that isn't paused leaves it be.
+	e.advance(time.Second)
+	if err := e.p.Resume(ctx, e.room.ID, item, 0); err != nil {
+		t.Fatal(err)
+	}
+	if np = e.np(); np.Position != 5500*time.Millisecond {
+		t.Errorf("resumed a playing song: at %v", np.Position)
+	}
+}

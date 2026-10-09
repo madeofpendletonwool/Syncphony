@@ -456,6 +456,15 @@ func writeJSONError(w http.ResponseWriter, status int, code, message string) {
 // ptr returns a pointer to v.
 func ptr[T any](v T) *T { return &v }
 
+// nonZero returns nil for v's zero value.
+func nonZero[T comparable](v T) *T {
+	var zero T
+	if v == zero {
+		return nil
+	}
+	return &v
+}
+
 // nonEmpty returns nil for "".
 func nonEmpty(s string) *string {
 	if s == "" {

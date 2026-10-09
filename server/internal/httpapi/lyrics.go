@@ -5,6 +5,8 @@ package httpapi
 import (
 	"context"
 	"log/slog"
+	"slices"
+	"strings"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
@@ -53,7 +55,38 @@ func (s *Server) GetQueueItemLyrics(ctx context.Context, req GetQueueItemLyricsR
 	if err != nil {
 		return nil, err
 	}
-	return GetQueueItemLyrics200JSONResponse(toLyrics(r)), nil
+	out := toLyrics(r)
+	if s.Games != nil {
+		if item, at, ok := s.Games.HiddenLine(req.RoomId); ok && item == req.ItemId {
+			out = hideLine(out, at)
+		}
+	}
+	return GetQueueItemLyrics200JSONResponse(out), nil
+}
+
+// hiddenLine stands in for a lyric line a round keeps back.
+const hiddenLine = "• • •"
+
+// hideLine keeps back the line sung at atMs, everywhere it's sung (a
+// chorus comes back), until a round's reveal.
+func hideLine(l Lyrics, atMs int64) Lyrics {
+	var text string
+	for _, line := range l.Lines {
+		if line.AtMs == atMs {
+			text = strings.TrimSpace(line.Text)
+		}
+	}
+	if text == "" {
+		return l
+	}
+	l.Lines = slices.Clone(l.Lines)
+	for i := range l.Lines {
+		if strings.TrimSpace(l.Lines[i].Text) == text {
+			l.Lines[i].Text = hiddenLine
+		}
+	}
+	l.Plain = strings.ReplaceAll(l.Plain, text, hiddenLine)
+	return l
 }
 
 func toLyrics(r lyrics.Result) Lyrics {

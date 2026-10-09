@@ -2676,6 +2676,45 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /rooms/{roomId}/games/rounds/{roundId}/artwork:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: roundId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getGameRoundArtwork
+      summary: The cover of a round's other song
+      description: |
+        The cover of the round's `other` song (what a sample detective
+        round's song samples, or is sampled in), from the Cover Art
+        Archive. Only while the round is up and from its reveal on, so it
+        never gives the answer away. 404 if there's none.
+      tags: [games]
+      parameters:
+        - name: size
+          in: query
+          description: Wanted width in pixels; a hint.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 2048
+      security:
+        - session: []
+        - display: []
+      responses:
+        "200":
+          description: The image
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
+
   /rooms/{roomId}/games/scores:
     parameters:
       - $ref: "#/components/parameters/RoomId"
@@ -3699,7 +3738,7 @@ components:
         and everyone's results), `done` (it's over). Times are the
         server's; answers open and the reveal lands with the music when
         the song has a beat map. Until the reveal there's no answer in it.
-      required: [id, roomId, itemId, kind, mode, state, prompt, answer, choices, opensAt, closesAt, doneAt, answered, hides, guests, tvOnly, scores, difficulty]
+      required: [id, roomId, itemId, kind, mode, state, prompt, answer, choices, opensAt, closesAt, doneAt, answered, hides, guests, tvOnly, scores, difficulty, stopsMusic]
       properties:
         id:
           type: string
@@ -3734,6 +3773,25 @@ components:
           type: array
           items:
             type: string
+        min:
+          type: integer
+          description: |
+            For a `number` round, the lowest answer to offer: the year
+            slider's start. Loose, so it doesn't give the answer away.
+        max:
+          type: integer
+          description: For a `number` round, the highest answer to offer.
+        atMs:
+          type: integer
+          format: int64
+          description: |
+            When in the song the round's lyric line is sung. With `line`
+            in `hides`, screens keep that line back until the reveal.
+        stopsMusic:
+          type: boolean
+          description: |
+            The music stops while answers are open (finish the lyric) and
+            comes back at the reveal, on the line.
         startedBy:
           type: string
           description: Who started it; absent when the room's frequency did.
@@ -3756,11 +3814,12 @@ components:
           type: array
           description: |
             What screens keep back until the reveal: `song` (title,
-            artists, album, artwork), `notes` (liner notes), `lyrics`. The
-            server leaves them out too, except for the speaker.
+            artists, album, artwork), `notes` (liner notes), `lyrics`, or
+            `line` (the lyric line sung at `atMs`). The server leaves them
+            out too, except for the speaker.
           items:
             type: string
-            enum: [song, notes, lyrics]
+            enum: [song, notes, lyrics, line]
         guests:
           type: boolean
           description: Guests may answer.
@@ -3782,11 +3841,33 @@ components:
         reveal:
           type: string
           description: A line to show with the answer, from the reveal on.
+        detail:
+          type: string
+          description: |
+            A line from the liner notes to show with the answer, from the
+            reveal on, so people learn something even when they're wrong.
+        other:
+          $ref: "#/components/schemas/GameSong"
         results:
           type: array
           description: Everyone's answers, from the reveal on, best first.
           items:
             $ref: "#/components/schemas/GameResult"
+
+    GameSong:
+      type: object
+      description: |
+        The other song in a sample detective round, from the reveal on:
+        what this one samples, or what samples it.
+      required: [title, hasArtwork]
+      properties:
+        title:
+          type: string
+        artist:
+          type: string
+        hasArtwork:
+          type: boolean
+          description: Its cover may be at the round's `artwork` endpoint.
 
     GameResult:
       type: object
@@ -3801,6 +3882,15 @@ components:
         answer:
           type: string
           description: What they answered, as text.
+        number:
+          type: integer
+          description: Their number, for a `number` round.
+        closest:
+          type: boolean
+          description: |
+            Nearest the answer in a `number` round. An exact guess scores
+            a bonus; otherwise the nearest that scored at all scores a
+            smaller one.
 
     StartGameRoundRequest:
       type: object
@@ -3846,10 +3936,22 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GamePlayer"
+        best:
+          $ref: "#/components/schemas/GameStreak"
+
+    GameStreak:
+      type: object
+      description: The night's longest higher-or-lower streak, on a board.
+      required: [userId, count]
+      properties:
+        userId:
+          type: string
+        count:
+          type: integer
 
     GamePlayer:
       type: object
-      required: [userId, points, correct, answered]
+      required: [userId, points, correct, answered, streak, bestStreak]
       properties:
         userId:
           type: string
@@ -3859,6 +3961,12 @@ components:
           type: integer
         answered:
           type: integer
+        streak:
+          type: integer
+          description: Higher-or-lower rounds right in a row, up to now. A wrong answer ends it; sitting one out doesn't.
+        bestStreak:
+          type: integer
+          description: Their longest higher-or-lower streak tonight.
 
     Award:
       type: object

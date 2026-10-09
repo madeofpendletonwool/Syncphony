@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from 'motion/react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useBeat } from '@/hooks/use-beat'
-import { useHidden } from '@/lib/games'
+import { HIDDEN_LINE, maskLine, useHidden, useHiddenLine } from '@/lib/games'
 import { easeOutExpo } from '@/lib/motion'
 import {
   activeLine,
@@ -51,6 +51,8 @@ export function LyricsView({ np, variant = 'panel', onSeek, className }: Props) 
   const { roomId, itemId } = np
   // A round about the words keeps them back until its reveal.
   const hidden = useHidden(roomId, itemId).lyrics
+  // A round about one line keeps just that line back.
+  const hiddenLine = useHiddenLine(roomId, itemId)
   const lyrics = useQuery({ ...lyricsQuery(roomId ?? '', itemId ?? ''), enabled: !!roomId && !!itemId && !hidden })
   const key = offsetKey(np.track)
   const [offset] = useLyricsOffset(key)
@@ -67,9 +69,9 @@ export function LyricsView({ np, variant = 'panel', onSeek, className }: Props) 
   return (
     <div className={cn('relative flex min-h-0 flex-col', className)}>
       {l.synced ? (
-        <SyncedLyrics lines={l.lines} np={np} offset={offset} variant={variant} onSeek={onSeek} />
+        <SyncedLyrics lines={maskLine(l.lines, hiddenLine)} np={np} offset={offset} variant={variant} onSeek={onSeek} />
       ) : (
-        <PlainLyrics text={l.plain} variant={variant} np={np} />
+        <PlainLyrics text={hiddenPlain(l.plain, l.lines, hiddenLine)} variant={variant} np={np} />
       )}
       {variant !== 'stage' && (
         <div className="flex flex-wrap items-center justify-between gap-2 pt-3">
@@ -79,6 +81,12 @@ export function LyricsView({ np, variant = 'panel', onSeek, className }: Props) 
       )}
     </div>
   )
+}
+
+/** Plain lyrics with a hidden line blanked out. */
+function hiddenPlain(plain: string, lines: LyricLine[], atMs: number | undefined) {
+  const text = atMs === undefined ? undefined : lines.find((l) => l.atMs === atMs)?.text.trim()
+  return text ? plain.split(text).join(HIDDEN_LINE) : plain
 }
 
 function SyncedLyrics({

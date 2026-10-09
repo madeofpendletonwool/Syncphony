@@ -873,6 +873,48 @@ func (e *Engine) play(ctx context.Context, r *room) error {
 	return nil
 }
 
+// Break pauses itemID where it is for a game round that stops the music
+// (finish the lyric), if it's the song playing. It's the server's own
+// pause, so it takes no permission.
+func (e *Engine) Break(ctx context.Context, roomID, itemID string) error {
+	r, err := e.lock(ctx, roomID)
+	if err != nil {
+		return err
+	}
+	defer r.mu.Unlock()
+	if r.np.Item == nil || r.np.Item.ID != itemID || (r.np.State != StatePlaying && r.np.State != StateLoading) {
+		return nil
+	}
+	if err := e.pause(ctx, r); err != nil {
+		return err
+	}
+	e.publish(r)
+	return nil
+}
+
+// Resume plays itemID on from at after a round's break, if it's still the
+// room's song and still paused: someone may have moved on meanwhile.
+func (e *Engine) Resume(ctx context.Context, roomID, itemID string, at time.Duration) error {
+	r, err := e.lock(ctx, roomID)
+	if err != nil {
+		return err
+	}
+	defer r.mu.Unlock()
+	if r.np.Item == nil || r.np.Item.ID != itemID || r.np.State != StatePaused {
+		return nil
+	}
+	if d := duration(r.np.Item); d > 0 {
+		at = min(at, d)
+	}
+	if r.remote != nil {
+		if err := r.remote.Seek(ctx, at); err != nil {
+			return err
+		}
+	}
+	r.np.Position, r.np.At = max(at, 0), e.cfg.Now()
+	return e.play(ctx, r)
+}
+
 // pause pauses the current song where it is. The caller publishes.
 func (e *Engine) pause(ctx context.Context, r *room) error {
 	now := e.cfg.Now()

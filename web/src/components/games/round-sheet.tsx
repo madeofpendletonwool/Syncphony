@@ -1,19 +1,23 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Check, Dices, LoaderCircle, Send, Speaker, VolumeX, X } from 'lucide-react'
+import { Check, Dices, Flame, LoaderCircle, Minus, Pause, Plus, Send, Speaker, VolumeX, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { errorMessage } from '@/api/errors'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Slider } from '@/components/ui/slider'
 import { useMe } from '@/lib/auth'
 import {
   answerRound,
   GAMES,
   gameRoundQuery,
+  gameScoresQuery,
   isOpen,
   myAnswers,
   rememberAnswer,
   setGamesMuted,
+  splitPrompt,
+  streakOf,
   useGamesMuted,
   type GameAnswer,
   type GameRound,
@@ -26,6 +30,7 @@ import { useStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { useServerNow } from '@/hooks/use-server-now'
 import { Countdown } from './countdown'
+import { RoundLine } from './round-line'
 
 /**
  * A game round on a phone (MAD-785): a compact answer sheet that slides up
@@ -134,7 +139,14 @@ function Sheet({ roomId, round, onFold, onDismiss }: { roomId: string; round: Ga
         </Button>
       </header>
 
-      <Prompt text={round.prompt} />
+      <Prompt round={round} />
+
+      {round.stopsMusic && round.state === 'open' && (
+        <p className="flex items-center gap-2 rounded-xl bg-primary/12 px-3 py-2 text-caption font-medium text-primary">
+          <Pause className="size-3.5 shrink-0" />
+          The music’s stopped. It comes back on the line.
+        </p>
+      )}
 
       {speaking && !revealed && (
         <p className="flex items-center gap-2 rounded-xl bg-muted/60 px-3 py-2 text-caption text-muted-foreground">
@@ -165,13 +177,15 @@ function Sheet({ roomId, round, onFold, onDismiss }: { roomId: string; round: Ga
           className="flex flex-col gap-1 rounded-2xl bg-muted/60 px-3 py-2.5"
         >
           <p className="text-sm font-semibold">{round.reveal ?? round.correct}</p>
+          {round.detail && <p className="text-caption text-muted-foreground">{round.detail}</p>}
           {result ? (
             <p className={cn('text-caption', result.correct ? 'text-success' : 'text-muted-foreground')}>
-              {result.correct ? `Right! +${result.points}` : result.points > 0 ? `Close: +${result.points}` : 'Not this time'}
+              {resultLine(result)}
             </p>
           ) : (
             mine === undefined && canPlay && <p className="text-caption text-muted-foreground">You sat this one out</p>
           )}
+          {round.topic === 'higher_lower' && <Streak roomId={roomId} userId={me.id} />}
         </motion.div>
       )}
 
@@ -195,13 +209,36 @@ function Sheet({ roomId, round, onFold, onDismiss }: { roomId: string; round: Ga
   )
 }
 
+type Result = NonNullable<GameRound['results']>[number]
+
+/** How you did, in words. */
+function resultLine(r: Result) {
+  if (r.correct) return r.closest && r.number !== undefined ? `Spot on! +${r.points}` : `Right! +${r.points}`
+  if (r.closest && r.points > 0) return `Closest in the room: +${r.points}`
+  return r.points > 0 ? `Close: +${r.points}` : 'Not this time'
+}
+
+/** Your higher-or-lower streak, once the scores come in. */
+function Streak({ roomId, userId }: { roomId: string; userId: string }) {
+  const scores = useQuery(gameScoresQuery(roomId)).data
+  const { streak, best } = streakOf(scores, userId)
+  if (streak === 0 && best === 0) return null
+  return (
+    <p className="flex items-center gap-1.5 text-caption text-muted-foreground">
+      <Flame className={cn('size-3.5', streak > 0 && 'text-primary')} />
+      {streak > 0 ? `${streak} in a row` : 'Streak over'}
+      {best > streak && <span>· best {best}</span>}
+    </p>
+  )
+}
+
 /** The prompt: a question, then a quoted line on its own line, if any. */
-function Prompt({ text, className }: { text: string; className?: string }) {
-  const [question, ...rest] = text.split('\n')
+function Prompt({ round, className }: { round: GameRound; className?: string }) {
+  const { question, line } = splitPrompt(round.prompt)
   return (
     <div className={className}>
       <p className="text-base leading-snug font-semibold text-balance">{question}</p>
-      {rest.length > 0 && <p className="mt-1 text-sm text-muted-foreground italic">{rest.join(' ')}</p>}
+      {line && <RoundLine round={round} text={line} className="mt-1 text-sm text-muted-foreground italic" />}
     </div>
   )
 }
@@ -252,7 +289,56 @@ function Answer({
       </div>
     )
   }
+  if (round.answer === 'number' && round.min !== undefined && round.max !== undefined) {
+    return <YearSlider round={round} mine={mine} open={open} pending={pending} onAnswer={onAnswer} />
+  }
   return <TypedAnswer round={round} mine={mine} open={open} pending={pending} onAnswer={onAnswer} />
+}
+
+/** Guess the year: a slider across the decades, nudged a year at a time. */
+function YearSlider({
+  round,
+  mine,
+  open,
+  pending,
+  onAnswer,
+}: {
+  round: GameRound
+  mine?: GameAnswer
+  open: boolean
+  pending: boolean
+  onAnswer: (a: GameAnswer) => void
+}) {
+  // Only for rounds with the slider's ends.
+  const min = round.min ?? 0
+  const max = round.max ?? 0
+  const [year, setYear] = useState(mine?.number ?? Math.round((min + max) / 2))
+  const nudge = (d: number) => setYear((y) => Math.min(max, Math.max(min, y + d)))
+  const sent = mine?.number === year
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <Button size="icon" variant="ghost" aria-label="A year earlier" disabled={!open || year <= min} onClick={() => nudge(-1)}>
+          <Minus />
+        </Button>
+        <output aria-live="polite" className="text-4xl font-bold tracking-tight tabular-nums">
+          {year}
+        </output>
+        <Button size="icon" variant="ghost" aria-label="A year later" disabled={!open || year >= max} onClick={() => nudge(1)}>
+          <Plus />
+        </Button>
+      </div>
+      <Slider aria-label="The year" min={min} max={max} step={1} value={[year]} disabled={!open} onValueChange={([y]) => setYear(y)} />
+      <div className="flex justify-between text-caption text-muted-foreground tabular-nums">
+        <span>{min}</span>
+        <span>{max}</span>
+      </div>
+      <Button disabled={!open || pending || sent} onClick={() => onAnswer({ number: year })}>
+        {pending ? <LoaderCircle className="animate-spin" /> : sent ? <Check /> : null}
+        {sent ? `Locked in ${year}` : mine?.number !== undefined ? `Change to ${year}` : `Lock in ${year}`}
+      </Button>
+    </div>
+  )
 }
 
 function TypedAnswer({
@@ -283,7 +369,7 @@ function TypedAnswer({
         value={draft}
         onChange={(e) => setDraft(number ? e.target.value.replace(/\D/g, '').slice(0, 4) : e.target.value)}
         inputMode={number ? 'numeric' : 'text'}
-        placeholder={number ? 'Year' : 'Your answer'}
+        placeholder={number ? 'Year' : round.kind === 'lyrics' ? 'The missing words' : round.kind === 'finish_lyric' ? 'How does it go on?' : 'Your answer'}
         maxLength={number ? 4 : 200}
         autoComplete="off"
         autoCapitalize="off"

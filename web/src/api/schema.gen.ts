@@ -2065,6 +2065,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/games/rounds/{roundId}/artwork": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * The cover of a round's other song
+         * @description The cover of the round's `other` song (what a sample detective
+         *     round's song samples, or is sampled in), from the Cover Art
+         *     Archive. Only while the round is up and from its reveal on, so it
+         *     never gives the answer away. 404 if there's none.
+         */
+        get: operations["getGameRoundArtwork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/games/scores": {
         parameters: {
             query?: never;
@@ -2767,6 +2793,24 @@ export interface components {
              */
             answer: "choice" | "number" | "text" | "song";
             choices: string[];
+            /**
+             * @description For a `number` round, the lowest answer to offer: the year
+             *     slider's start. Loose, so it doesn't give the answer away.
+             */
+            min?: number;
+            /** @description For a `number` round, the highest answer to offer. */
+            max?: number;
+            /**
+             * Format: int64
+             * @description When in the song the round's lyric line is sung. With `line`
+             *     in `hides`, screens keep that line back until the reveal.
+             */
+            atMs?: number;
+            /**
+             * @description The music stops while answers are open (finish the lyric) and
+             *     comes back at the reveal, on the line.
+             */
+            stopsMusic: boolean;
             /** @description Who started it; absent when the room's frequency did. */
             startedBy?: string;
             /** Format: date-time */
@@ -2782,10 +2826,11 @@ export interface components {
             answered: string[];
             /**
              * @description What screens keep back until the reveal: `song` (title,
-             *     artists, album, artwork), `notes` (liner notes), `lyrics`. The
-             *     server leaves them out too, except for the speaker.
+             *     artists, album, artwork), `notes` (liner notes), `lyrics`, or
+             *     `line` (the lyric line sung at `atMs`). The server leaves them
+             *     out too, except for the speaker.
              */
-            hides: ("song" | "notes" | "lyrics")[];
+            hides: ("song" | "notes" | "lyrics" | "line")[];
             /** @description Guests may answer. */
             guests: boolean;
             /** @description Phones don't prompt for it; the big screen shows it. */
@@ -2800,8 +2845,24 @@ export interface components {
             correctIndex?: number;
             /** @description A line to show with the answer, from the reveal on. */
             reveal?: string;
+            /**
+             * @description A line from the liner notes to show with the answer, from the
+             *     reveal on, so people learn something even when they're wrong.
+             */
+            detail?: string;
+            other?: components["schemas"]["GameSong"];
             /** @description Everyone's answers, from the reveal on, best first. */
             results?: components["schemas"]["GameResult"][];
+        };
+        /**
+         * @description The other song in a sample detective round, from the reveal on:
+         *     what this one samples, or what samples it.
+         */
+        GameSong: {
+            title: string;
+            artist?: string;
+            /** @description Its cover may be at the round's `artwork` endpoint. */
+            hasArtwork: boolean;
         };
         GameResult: {
             userId: string;
@@ -2809,6 +2870,14 @@ export interface components {
             points: number;
             /** @description What they answered, as text. */
             answer?: string;
+            /** @description Their number, for a `number` round. */
+            number?: number;
+            /**
+             * @description Nearest the answer in a `number` round. An exact guess scores
+             *     a bonus; otherwise the nearest that scored at all scores a
+             *     smaller one.
+             */
+            closest?: boolean;
         };
         StartGameRoundRequest: {
             kind?: components["schemas"]["GameKind"];
@@ -2833,12 +2902,22 @@ export interface components {
             /** @enum {string} */
             mode: "off" | "private" | "board";
             players: components["schemas"]["GamePlayer"][];
+            best?: components["schemas"]["GameStreak"];
+        };
+        /** @description The night's longest higher-or-lower streak, on a board. */
+        GameStreak: {
+            userId: string;
+            count: number;
         };
         GamePlayer: {
             userId: string;
             points: number;
             correct: number;
             answered: number;
+            /** @description Higher-or-lower rounds right in a row, up to now. A wrong answer ends it; sitting one out doesn't. */
+            streak: number;
+            /** @description Their longest higher-or-lower streak tonight. */
+            bestStreak: number;
         };
         /**
          * @description One of the night's awards: who won it, usually for which song, and
@@ -7060,6 +7139,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GameAnswer"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getGameRoundArtwork: {
+        parameters: {
+            query?: {
+                /** @description Wanted width in pixels; a hint. */
+                size?: number;
+            };
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
                 };
             };
             default: components["responses"]["Error"];

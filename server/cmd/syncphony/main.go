@@ -306,6 +306,7 @@ func run() error {
 	// Party games (ADR 0015) follow the same playback and queue changes.
 	gameSvc := games.New(db, a.bus, roomSvc, games.Config{})
 	gameSvc.Facts = &games.Sources{DB: db, LinerNotes: notes, Lyrics: lyricsSvc, Graph: graph}
+	gameSvc.Music = player
 	gameSvc.OnHide = func(ctx context.Context, roomID string) {
 		// Everyone gets the song again, with it left out or put back.
 		if np, err := player.NowPlaying(ctx, roomID); err == nil {

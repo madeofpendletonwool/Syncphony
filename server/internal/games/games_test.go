@@ -9,6 +9,8 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,6 +32,45 @@ func (facts) Song(context.Context, store.QueueItem, bool) (quiz.Facts, error) {
 }
 
 func (facts) Pool(context.Context, string, store.QueueItem, quiz.Facts) quiz.Pool { return quiz.Pool{} }
+
+// byTrack knows each song by its track ID.
+type byTrack map[string]quiz.Facts
+
+func (b byTrack) Song(_ context.Context, it store.QueueItem, _ bool) (quiz.Facts, error) {
+	return b[it.TrackID], nil
+}
+
+func (byTrack) Pool(context.Context, string, store.QueueItem, quiz.Facts) quiz.Pool {
+	return quiz.Pool{}
+}
+
+// music records what the engine asks of the room's music.
+type music struct {
+	mu     sync.Mutex
+	calls  []string
+	resume time.Duration
+}
+
+func (m *music) Break(_ context.Context, _, itemID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, "break "+itemID)
+	return nil
+}
+
+func (m *music) Resume(_ context.Context, _, itemID string, at time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, "resume "+itemID)
+	m.resume = at
+	return nil
+}
+
+func (m *music) seen() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return slices.Clone(m.calls)
+}
 
 type fixture struct {
 	db     *store.Store
@@ -60,7 +101,7 @@ func setup(t *testing.T, g rooms.Games) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := games.New(db, bus, rs, games.Config{Announce: 30 * time.Millisecond, RoundWindow: 300 * time.Millisecond, AmbientWindow: 300 * time.Millisecond, RevealFor: 60 * time.Millisecond, Seed: 1})
+	e := games.New(db, bus, rs, games.Config{Announce: 30 * time.Millisecond, RoundWindow: 300 * time.Millisecond, AmbientWindow: 300 * time.Millisecond, RevealFor: 60 * time.Millisecond, LyricLead: 200 * time.Millisecond, Seed: 1})
 	e.Facts = facts{}
 	t.Cleanup(e.Close)
 	f := &fixture{db: db, bus: bus, rooms: rs, engine: e, room: room, sub: bus.Subscribe(realtime.RoomTopic(room.ID))}
@@ -152,8 +193,11 @@ func TestRound(t *testing.T) {
 	}
 	rd = f.round(t, games.StateReveal)
 	ann, bob := rd.Answers["ann"], rd.Answers["bob"]
-	if !ann.Correct || ann.Points < 500 || bob.Correct || bob.Points <= 0 || bob.Points >= ann.Points {
+	if !ann.Correct || ann.Points < 500+games.ExactBonus || bob.Correct || bob.Points <= 0 || bob.Points >= ann.Points {
 		t.Errorf("ann %+v, bob %+v", ann, bob)
+	}
+	if !ann.Closest || bob.Closest {
+		t.Errorf("closest: ann %v, bob %v", ann.Closest, bob.Closest)
 	}
 	if item, _ := f.engine.Hidden(f.room.ID); item != "" {
 		t.Error("still hidden after the reveal")
@@ -195,6 +239,200 @@ func TestStart(t *testing.T) {
 	f.play(1)
 	if rd := f.round(t, games.StateReveal); rd.ItemID != f.items[0].ID {
 		t.Errorf("%+v", rd)
+	}
+}
+
+func TestClosestGuessScoresABonus(t *testing.T) {
+	f := setup(t, yearOnly)
+	ctx := t.Context()
+	f.play(0)
+	rd := f.round(t, games.StateOpen)
+	for who, year := range map[string]int{"ann": 1980, "bob": 1981} {
+		if _, err := f.engine.Answer(ctx, f.room.ID, rd.ID, store.User{ID: who}, false, quiz.Response{Number: &year}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rd = f.round(t, games.StateReveal)
+	ann, bob := rd.Answers["ann"], rd.Answers["bob"]
+	if !ann.Closest || bob.Closest || ann.Correct {
+		t.Errorf("ann %+v, bob %+v", ann, bob)
+	}
+	// Ann answered first and nearer, and the nearest scores a bonus on top.
+	if ann.Points != games.Points(ann.Closeness, ann.At, rd.OpensAt, rd.ClosesAt)+games.ClosestBonus {
+		t.Errorf("ann's points %d", ann.Points)
+	}
+}
+
+func TestHigherOrLower(t *testing.T) {
+	g := yearOnly
+	g.Frequency = new(0)
+	f := setup(t, g)
+	ctx := t.Context()
+	f.engine.Facts = byTrack{
+		"bob": {Song: quiz.Song{Title: "Heroes", Artist: "Bowie"}, Year: 1977},
+		"ann": {Song: quiz.Song{Title: "Smells Like Teen Spirit", Artist: "Nirvana"}, Year: 1991},
+	}
+	f.play(0)
+	f.play(1)
+	time.Sleep(20 * time.Millisecond)
+	// Guess the year or higher or lower, at random: start rounds until it's the latter.
+	for range 12 {
+		rd, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, rooms.GameYear)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rd.Question.Topic != quiz.TopicHigherLower {
+			f.round(t, games.StateDone)
+			continue
+		}
+		if !strings.Contains(rd.Question.Prompt, "Heroes") || rd.Question.Correct != "Newer" {
+			t.Fatalf("%+v", rd.Question)
+		}
+		f.round(t, games.StateOpen)
+		if _, err := f.engine.Answer(ctx, f.room.ID, rd.ID, store.User{ID: "bob"}, false, quiz.Response{Choice: new(rd.Question.CorrectIndex)}); err != nil {
+			t.Fatal(err)
+		}
+		f.round(t, games.StateReveal)
+		if s := f.scores(t); s.Best == nil || s.Best.UserID != "bob" || s.Best.Count != 1 {
+			t.Errorf("best streak %+v", s.Best)
+		}
+		return
+	}
+	t.Fatal("never asked higher or lower")
+}
+
+func TestStreaks(t *testing.T) {
+	f := setup(t, yearOnly)
+	ctx := t.Context()
+	at := store.Now().Add(-time.Hour)
+	hl := `{"Kind":"year","Topic":"higher_lower"}`
+	// Bob: right, right, wrong, right. Ann: right, sits two out, right.
+	for i, answers := range []map[string]bool{
+		{"bob": true, "ann": true}, {"bob": true}, {"bob": false}, {"bob": true, "ann": true},
+	} {
+		id := store.NewID()
+		if err := f.db.CreateGameRound(ctx, store.CreateGameRoundParams{
+			ID: id, RoomID: f.room.ID, Kind: rooms.GameYear, Question: hl, StartedAt: at.Add(time.Duration(i) * time.Minute), RevealedAt: at,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		for who, right := range answers {
+			if err := f.db.CreateGameAnswer(ctx, store.CreateGameAnswerParams{RoundID: id, UserID: who, Answer: "{}", Correct: right, AnsweredAt: at}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	s, err := f.engine.Scores(ctx, f.room.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	streaks := map[string][2]int{}
+	for _, p := range s.Players {
+		streaks[p.UserID] = [2]int{p.Streak, p.BestStreak}
+	}
+	if streaks["bob"] != [2]int{1, 2} || streaks["ann"] != [2]int{2, 2} || s.Best == nil || s.Best.Count != 2 {
+		t.Errorf("streaks %v, best %+v", streaks, s.Best)
+	}
+}
+
+// lyrics are a song whose fourth line is the one to ask about, 1.5s in.
+var lyrics = quiz.Facts{
+	Song: quiz.Song{Title: "Song", Artist: "Band"}, DurationMs: 200_000,
+	Lyrics: []quiz.Line{
+		{Ms: 0, Text: "first line of the song"},
+		{Ms: 300, Text: "second line goes here"},
+		{Ms: 600, Text: "third one comes along"},
+		{Ms: 1500, Text: "dancing under neon lights tonight"},
+	},
+}
+
+func TestBeatTheSingerWaitsForItsLine(t *testing.T) {
+	g := rooms.Games{Level: rooms.GamesRounds, Frequency: new(0), Enabled: map[string]bool{"year": false, "liner": false, "sample": false}}
+	f := setup(t, g)
+	ctx := t.Context()
+	f.engine.Facts = byTrack{"bob": lyrics}
+	f.play(0)
+	time.Sleep(20 * time.Millisecond)
+	rd, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, rooms.GameLyrics)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rd.State != games.StatePending || rd.Question.AtMs != 1500 || rd.Question.Topic != quiz.TopicBlanks {
+		t.Fatalf("%+v", rd)
+	}
+	// Nobody sees it until it's time to show the line.
+	if _, ok := f.engine.Current(f.room.ID); ok {
+		t.Error("a pending round is showing")
+	}
+	if _, _, ok := f.engine.HiddenLine(f.room.ID); ok {
+		t.Error("a pending round hides its line")
+	}
+	f.round(t, games.StateAnnounce)
+	open := f.round(t, games.StateOpen)
+	if item, at, ok := f.engine.HiddenLine(f.room.ID); !ok || item != rd.ItemID || at != 1500 {
+		t.Errorf("hidden line %s %d %v", item, at, ok)
+	}
+	// It closes as the singer gets to the line.
+	if d := open.ClosesAt.Sub(open.OpensAt); d != 200*time.Millisecond {
+		t.Errorf("open for %v", d)
+	}
+	if _, err := f.engine.Answer(ctx, f.room.ID, rd.ID, store.User{ID: "bob"}, false, quiz.Response{Text: rd.Question.Correct}); err != nil {
+		t.Fatal(err)
+	}
+	if rev := f.round(t, games.StateReveal); !rev.Answers["bob"].Correct {
+		t.Errorf("%+v", rev.Answers["bob"])
+	}
+}
+
+func TestPendingRoundGoesWithItsSong(t *testing.T) {
+	g := rooms.Games{Level: rooms.GamesRounds, Frequency: new(0), Enabled: map[string]bool{"year": false, "liner": false, "sample": false}}
+	f := setup(t, g)
+	f.engine.Facts = byTrack{"bob": lyrics}
+	f.play(0)
+	time.Sleep(20 * time.Millisecond)
+	if _, err := f.engine.Start(t.Context(), f.room.ID, store.User{ID: "ann"}, rooms.GameLyrics); err != nil {
+		t.Fatal(err)
+	}
+	f.play(1)
+	time.Sleep(20 * time.Millisecond)
+	if _, err := f.engine.Start(t.Context(), f.room.ID, store.User{ID: "ann"}, ""); errors.Is(err, games.ErrRoundRunning) {
+		t.Error("the skipped song's round is still running")
+	}
+}
+
+func TestFinishTheLyricStopsTheMusic(t *testing.T) {
+	g := rooms.Games{Level: rooms.GamesNight, Frequency: new(0), BreaksPerHour: new(1), Enabled: map[string]bool{
+		"year": false, "liner": false, "sample": false, "lyrics": false, "tune": false,
+	}}
+	f := setup(t, g)
+	ctx := t.Context()
+	f.engine.Facts = byTrack{"bob": lyrics}
+	m := &music{}
+	f.play(0)
+	time.Sleep(20 * time.Millisecond)
+	// Without a way to stop the music, there's no such round.
+	if _, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, rooms.GameFinishLyric); !errors.Is(err, games.ErrNoQuestion) {
+		t.Fatalf("no music: %v", err)
+	}
+	f.engine.Music = m
+	rd, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, rooms.GameFinishLyric)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rd.Breaks || rd.Question.AtMs != 1500 || !strings.Contains(rd.Question.Prompt, "third one comes along") {
+		t.Fatalf("%+v", rd)
+	}
+	f.round(t, games.StateOpen)
+	f.round(t, games.StateReveal)
+	f.round(t, games.StateDone)
+	time.Sleep(20 * time.Millisecond)
+	item := f.items[0].ID
+	if got := m.seen(); !slices.Equal(got, []string{"break " + item, "resume " + item}) || m.resume != 1500*time.Millisecond {
+		t.Errorf("music %v, resumed at %v", got, m.resume)
+	}
+	// One break an hour, and it's had it.
+	if _, err := f.engine.Start(ctx, f.room.ID, store.User{ID: "ann"}, rooms.GameFinishLyric); !errors.Is(err, games.ErrNoQuestion) {
+		t.Errorf("a second break: %v", err)
 	}
 }
 

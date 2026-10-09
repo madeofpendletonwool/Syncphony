@@ -316,7 +316,7 @@ func (rc *roomConn) send(ctx context.Context, e realtime.Event) error {
 		rc.player = d.Player
 		data = rc.s.nowPlayingFor(d, rc.speaker())
 	case games.Round:
-		data = toGameRound(d)
+		data = rc.s.toGameRound(d)
 	case games.Scores:
 		data = toGameScores(d, rc.user.ID)
 	case rooms.Notice:
