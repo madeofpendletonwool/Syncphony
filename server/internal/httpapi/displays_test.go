@@ -36,7 +36,7 @@ func pairTVAudio(t *testing.T, e *env, by *client, roomID string, audio bool) (*
 	}
 	var st httpapi.DisplayPairingStatus
 	tv.want(http.StatusOK, "GET", "/display/pairing", nil).decode(t, &st)
-	if st.Status != httpapi.Paired || st.RoomId == nil || *st.RoomId != roomID {
+	if st.Status != httpapi.DisplayPairingStatusStatusPaired || st.RoomId == nil || *st.RoomId != roomID {
 		t.Fatalf("pairing status: %+v", st)
 	}
 	return tv, d
@@ -63,7 +63,7 @@ func TestDisplayPairing(t *testing.T) {
 	}
 	var st httpapi.DisplayPairingStatus
 	tv.want(http.StatusOK, "GET", "/display/pairing", nil).decode(t, &st)
-	if st.Status != httpapi.Waiting || st.Code != p.Code {
+	if st.Status != httpapi.DisplayPairingStatusStatusWaiting || st.Code != p.Code {
 		t.Fatalf("waiting: %+v", st)
 	}
 	if r := bob.do("POST", "/rooms/"+room.ID+"/displays", httpapi.PairDisplayRequest{Code: "ZZZZZZ"}); r.status != http.StatusNotFound || r.code() != "pairing_invalid" {

@@ -44,6 +44,7 @@ var displayOps = map[string]bool{
 	"GetGameRoundArtwork":    true,
 	"GetGameScores":          true,
 	"GetGameClip":            true,
+	"GetQueueGames":          true,
 	// Playing the room's audio, for displays with audio on (audioOps).
 	"ClaimPlayer":     true,
 	"ReleasePlayer":   true,
@@ -101,6 +102,8 @@ func displayRoom(req any) (roomID string, ok bool) {
 	case GetGameScoresRequestObject:
 		return r.RoomId, true
 	case GetGameClipRequestObject:
+		return r.RoomId, true
+	case GetQueueGamesRequestObject:
 		return r.RoomId, true
 	case ClaimPlayerRequestObject:
 		return r.RoomId, true
@@ -212,11 +215,11 @@ func (s *Server) PollDisplayPairing(ctx context.Context, _ PollDisplayPairingReq
 		r.setCookie(s.pairingCookie("", 0))
 		return nil, err
 	}
-	out := PollDisplayPairing200JSONResponse{Status: Waiting, Code: p.Code, ExpiresAt: p.Expires}
+	out := PollDisplayPairing200JSONResponse{Status: DisplayPairingStatusStatusWaiting, Code: p.Code, ExpiresAt: p.Expires}
 	if p.Token != "" {
 		r.setCookie(s.pairingCookie("", 0))
 		r.setCookie(s.displayCookie(p.Token, p.Display.ExpiresAt))
-		out.Status, out.RoomId = Paired, &p.Display.RoomID
+		out.Status, out.RoomId = DisplayPairingStatusStatusPaired, &p.Display.RoomID
 	}
 	return out, nil
 }

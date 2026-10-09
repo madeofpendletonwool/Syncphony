@@ -47,3 +47,18 @@ WHERE queue_items.room_id = sqlc.arg(room_id) AND EXISTS (
 )
 ORDER BY queue_items.added_at DESC
 LIMIT sqlc.arg(limit);
+
+-- CountHeartsFor counts the hearts on some songs: theme rounds' and
+-- bracket matches' votes.
+-- name: CountHeartsFor :many
+SELECT queue_item_id, count(*) AS hearts FROM hearts
+WHERE queue_item_id IN (sqlc.slice(ids))
+GROUP BY queue_item_id;
+
+-- LastGameRound is a room's latest kept round of a kind since a time:
+-- the night's bracket, as it stood after its last match.
+-- name: LastGameRound :one
+SELECT * FROM game_rounds
+WHERE room_id = sqlc.arg(room_id) AND kind = sqlc.arg(kind) AND started_at >= sqlc.arg(since)
+ORDER BY revealed_at DESC, id DESC
+LIMIT 1;

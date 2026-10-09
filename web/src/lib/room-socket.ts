@@ -10,6 +10,7 @@ import { gameRoundQuery, gameScoresQuery, type GameRound, type GameScores } from
 import { guestPassQuery, guestsQuery } from './guests'
 import { crown, heartsQuery, nightsQuery, type Hearts, type Night } from './nights'
 import { newer, playbackQuery, type Playback } from './playback'
+import { putQueueGame, queueGamesQuery, type QueueGame } from './queue-games'
 import { addReaction, type Reaction } from './reactions'
 import { leaveRoom, queueQuery, roomsQuery, type QueueSnapshot, type Room } from './room'
 import { linksQuery, usableLinksQuery } from './services'
@@ -132,6 +133,8 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
       const hello = ev.data as components['schemas']['RoomHello']
       syncServerClock(hello.serverTime)
       live.set({ roomId, status: 'live', members: hello.members })
+      // The games still up follow, one event each.
+      queryClient.setQueryData(queueGamesQuery(roomId).queryKey, [])
       hello.members.forEach((u) => upsertUser(queryClient, u))
       break
     }
@@ -202,6 +205,9 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
     }
     case 'game.scores':
       queryClient.setQueryData(gameScoresQuery(roomId).queryKey, ev.data as GameScores)
+      break
+    case 'game.queue':
+      putQueueGame(queryClient, ev.data as QueueGame)
       break
     case 'guests.updated':
       void queryClient.invalidateQueries({ queryKey: guestPassQuery(roomId).queryKey })

@@ -12,6 +12,7 @@ import (
 	"math/rand/v2"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/clips"
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
+	"github.com/madeofpendletonwool/syncphony/server/internal/match"
 	"github.com/madeofpendletonwool/syncphony/server/internal/musicgraph"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 	"github.com/madeofpendletonwool/syncphony/server/internal/quiz"
@@ -49,8 +51,9 @@ type Providers interface {
 }
 
 var (
-	_ Facts = (*Sources)(nil)
-	_ Tunes = (*Sources)(nil)
+	_ Facts   = (*Sources)(nil)
+	_ Tunes   = (*Sources)(nil)
+	_ Artists = (*Sources)(nil)
 )
 
 func (s *Sources) now() time.Time {
@@ -65,6 +68,7 @@ func (s *Sources) Song(ctx context.Context, it store.QueueItem, cachedOnly bool)
 	t := queuedTrack(it)
 	f := quiz.Facts{Song: quiz.Song{Title: t.Title, Artist: mainArtist(t)}, Album: t.Album.Title, DurationMs: t.Duration.Milliseconds()}
 	if n, ok := s.notes(ctx, t, cachedOnly); ok {
+		f.Notes = true
 		f.Year = n.Year
 		if n.Release != nil {
 			f.ReleaseYear = year(n.Release.Date)
@@ -421,6 +425,143 @@ func (s *Sources) streamable(items []store.QueueItem) []Tune {
 	return out
 }
 
+// --- Artists -------------------------------------------------------------
+
+// How far the night's artists reach: tonight's songs, then favorites.
+const artistsTonight = 80
+
+// tonightItems are the songs the room played since its last night ended,
+// oldest first.
+func (s *Sources) tonightItems(ctx context.Context, roomID string, limit int) []store.QueueItem {
+	since := time.Time{}
+	if last, err := s.DB.LastNight(ctx, roomID); err == nil {
+		since = last.EndedAt
+	}
+	plays, err := s.DB.PlaysSince(ctx, store.PlaysSinceParams{RoomID: roomID, Since: since, Limit: int64(limit)})
+	if err != nil {
+		return nil
+	}
+	out := make([]store.QueueItem, 0, len(plays))
+	for _, pl := range plays {
+		if it, err := s.DB.GetQueueItem(ctx, pl.QueueItemID); err == nil {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+// Known implements Artists: the artists of tonight's songs, the most
+// played first, then of the room's favorites.
+func (s *Sources) Known(ctx context.Context, roomID string) ([]string, error) {
+	if s.DB == nil {
+		return nil, nil
+	}
+	count := map[string]int{}
+	name := map[string]string{}
+	var order []string
+	add := func(it store.QueueItem, w int) {
+		a := mainArtist(queuedTrack(it))
+		k := match.Simplify(a)
+		if k == "" {
+			return
+		}
+		if _, ok := name[k]; !ok {
+			name[k] = a
+			order = append(order, k)
+		}
+		count[k] += w
+	}
+	for _, it := range s.tonightItems(ctx, roomID, artistsTonight) {
+		add(it, 10)
+	}
+	if favs, err := s.favorites(ctx, roomID); err == nil {
+		for _, it := range favs {
+			add(it, 1)
+		}
+	}
+	slices.SortStableFunc(order, func(a, b string) int { return cmp.Compare(count[b], count[a]) })
+	out := make([]string, 0, len(order))
+	for _, k := range order {
+		out = append(out, name[k])
+	}
+	return out, nil
+}
+
+// Similar implements Artists, from the music graph.
+func (s *Sources) Similar(ctx context.Context, artist string, fetch bool) ([]Neighbour, error) {
+	if s.Graph == nil {
+		return nil, nil
+	}
+	ref := musicgraph.ArtistRef{Name: artist}
+	var a musicgraph.Artist
+	var err error
+	if fetch {
+		a, err = s.Graph.Artist(ctx, ref)
+	} else {
+		var ok bool
+		a, ok, err = s.Graph.CachedArtist(ctx, ref)
+		if err == nil && !ok {
+			return nil, nil
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Neighbour, 0, len(a.Similar))
+	for _, sim := range a.Similar {
+		out = append(out, Neighbour{Name: sim.Artist.Name, Score: sim.Score})
+	}
+	return out, nil
+}
+
+// Themes implements Artists: tonight's producers, from the liner notes,
+// and its artists' genres, the commonest first.
+func (s *Sources) Themes(ctx context.Context, roomID string) quiz.ThemePool {
+	var p quiz.ThemePool
+	if s.DB == nil {
+		return p
+	}
+	producers := map[string]bool{}
+	tags := map[string]int{}
+	seen := map[string]bool{}
+	for _, it := range s.tonightItems(ctx, roomID, poolTonight) {
+		t := queuedTrack(it)
+		if n, ok := s.notes(ctx, t, true); ok {
+			for _, c := range n.Credits {
+				if c.Role != "Produced by" {
+					continue
+				}
+				for _, name := range c.Names {
+					if !producers[name] {
+						producers[name] = true
+						p.Producers = append(p.Producers, name)
+					}
+				}
+			}
+		}
+		a := mainArtist(t)
+		if s.Graph == nil || seen[a] {
+			continue
+		}
+		seen[a] = true
+		if art, ok, err := s.Graph.CachedArtist(ctx, musicgraph.ArtistRef{Name: a}); ok && err == nil {
+			for _, tag := range art.Tags[:min(len(art.Tags), 5)] {
+				tags[strings.ToLower(tag.Name)]++
+			}
+		}
+	}
+	for t := range tags {
+		if !slices.Contains(themeTagsLeftOut, t) {
+			p.Genres = append(p.Genres, t)
+		}
+	}
+	slices.SortFunc(p.Genres, func(a, b string) int { return cmp.Or(cmp.Compare(tags[b], tags[a]), cmp.Compare(a, b)) })
+	return p
+}
+
+// themeTagsLeftOut are tags that aren't genres to queue for.
+var themeTagsLeftOut = []string{"seen live", "favorites", "favourite", "albums i own", "under 2000 listeners", "male vocalists", "female vocalists"}
+
 // --- Readiness -----------------------------------------------------------
 
 // readiness caches what's known about songs coming up, so a round never
@@ -487,6 +628,9 @@ func (e *Engine) QueueChanged(roomID string) {
 		snap, err := e.rooms.QueueSnapshot(ctx, roomID)
 		if err != nil {
 			return
+		}
+		if e.Queue != nil || e.Artists != nil {
+			e.watchQueue(ctx, roomID, snap)
 		}
 		byID := map[string]store.QueueItem{}
 		var ids []string

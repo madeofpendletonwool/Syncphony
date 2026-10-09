@@ -3,6 +3,7 @@ import { Clock, Crown, Disc3, Heart, SkipForward } from 'lucide-react'
 import { motion } from 'motion/react'
 import type { ReactNode } from 'react'
 import { AwardsList } from '@/components/games/awards-list'
+import { BracketRecap } from '@/components/games/bracket-recap'
 import { QueueRow } from '@/components/room/queue-row'
 import { RequeueButton } from '@/components/room/requeue-button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -73,6 +74,13 @@ export function StatsView({ roomId, range, recap, night }: { roomId: string; ran
         <motion.section variants={fadeUp} className="glass flex flex-col rounded-3xl p-1.5">
           <Caption>Awards</Caption>
           <AwardsList awards={night.awards} />
+        </motion.section>
+      )}
+
+      {recap && night?.bracket && (
+        <motion.section variants={fadeUp} className="glass flex flex-col rounded-3xl p-1.5">
+          <Caption>The bracket</Caption>
+          <BracketRecap game={night.bracket} />
         </motion.section>
       )}
 

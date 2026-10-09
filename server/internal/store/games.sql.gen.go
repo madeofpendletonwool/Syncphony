@@ -44,6 +44,52 @@ func (q *Queries) CountGameRoundsSince(ctx context.Context, arg CountGameRoundsS
 	return count, err
 }
 
+const countHeartsFor = `-- name: CountHeartsFor :many
+SELECT queue_item_id, count(*) AS hearts FROM hearts
+WHERE queue_item_id IN (/*SLICE:ids*/?)
+GROUP BY queue_item_id
+`
+
+type CountHeartsForRow struct {
+	QueueItemID string
+	Hearts      int64
+}
+
+// CountHeartsFor counts the hearts on some songs: theme rounds' and
+// bracket matches' votes.
+func (q *Queries) CountHeartsFor(ctx context.Context, ids []string) ([]CountHeartsForRow, error) {
+	query := countHeartsFor
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountHeartsForRow{}
+	for rows.Next() {
+		var i CountHeartsForRow
+		if err := rows.Scan(&i.QueueItemID, &i.Hearts); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createGameAnswer = `-- name: CreateGameAnswer :exec
 INSERT INTO game_answers (round_id, user_id, answer, correct, points, answered_at)
 VALUES (?, ?, ?, ?, ?, ?)
@@ -103,7 +149,7 @@ func (q *Queries) CreateGameRound(ctx context.Context, arg CreateGameRoundParams
 }
 
 const favoriteItems = `-- name: FavoriteItems :many
-SELECT queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at, queue_items.via_provider, queue_items.via_link_id, queue_items.via_track_id, queue_items.palette, queue_items.autopilot, queue_items.removed_by, queue_items.resume_at,
+SELECT queue_items.id, queue_items.room_id, queue_items.added_by, queue_items.provider, queue_items.link_id, queue_items.track_id, queue_items.metadata, queue_items.state, queue_items.lane_position, queue_items.added_at, queue_items.updated_at, queue_items.via_provider, queue_items.via_link_id, queue_items.via_track_id, queue_items.palette, queue_items.autopilot, queue_items.removed_by, queue_items.resume_at, queue_items.game_held, queue_items.front_at,
        CAST((SELECT count(*) FROM hearts WHERE hearts.queue_item_id = queue_items.id) AS INTEGER) AS hearts
 FROM queue_items
 WHERE queue_items.room_id = ?1 AND EXISTS (
@@ -154,6 +200,8 @@ func (q *Queries) FavoriteItems(ctx context.Context, arg FavoriteItemsParams) ([
 			&i.QueueItem.Autopilot,
 			&i.QueueItem.RemovedBy,
 			&i.QueueItem.ResumeAt,
+			&i.QueueItem.GameHeld,
+			&i.QueueItem.FrontAt,
 			&i.Hearts,
 		); err != nil {
 			return nil, err
@@ -265,4 +313,36 @@ func (q *Queries) HigherLowerAnswersSince(ctx context.Context, arg HigherLowerAn
 		return nil, err
 	}
 	return items, nil
+}
+
+const lastGameRound = `-- name: LastGameRound :one
+SELECT id, room_id, queue_item_id, kind, question, started_by, started_at, revealed_at, set_id FROM game_rounds
+WHERE room_id = ?1 AND kind = ?2 AND started_at >= ?3
+ORDER BY revealed_at DESC, id DESC
+LIMIT 1
+`
+
+type LastGameRoundParams struct {
+	RoomID string
+	Kind   string
+	Since  time.Time
+}
+
+// LastGameRound is a room's latest kept round of a kind since a time:
+// the night's bracket, as it stood after its last match.
+func (q *Queries) LastGameRound(ctx context.Context, arg LastGameRoundParams) (GameRound, error) {
+	row := q.db.QueryRowContext(ctx, lastGameRound, arg.RoomID, arg.Kind, arg.Since)
+	var i GameRound
+	err := row.Scan(
+		&i.ID,
+		&i.RoomID,
+		&i.QueueItemID,
+		&i.Kind,
+		&i.Question,
+		&i.StartedBy,
+		&i.StartedAt,
+		&i.RevealedAt,
+		&i.SetID,
+	)
+	return i, err
 }

@@ -81,8 +81,10 @@ type Config struct {
 	// LyricLead is how long before its line beat the singer shows the
 	// line with words blanked. Default 8s.
 	LyricLead time.Duration
-	// Tune times name that tune; zero values take its defaults.
-	Tune TuneConfig
+	// Tune times name that tune, and Queue the queue games; zero values
+	// take their defaults.
+	Tune  TuneConfig
+	Queue QueueConfig
 	// Now is the clock. Default store.Now.
 	Now func() time.Time
 	// Seed seeds the engine's choices, for tests. 0 is random.
@@ -108,6 +110,13 @@ type Engine struct {
 	// name that tune. Nil runs none.
 	Clips Clips
 	Tunes Tunes
+	// Queue holds and plays songs for theme rounds and bracket battles,
+	// and Artists says how artists relate, for connect the artists. Nil
+	// runs none of them. Trim plays bracket battles' short versions; nil
+	// plays the songs whole.
+	Queue   Queue
+	Artists Artists
+	Trim    Trim
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -158,6 +167,15 @@ type room struct {
 	tuned     []string
 	// set is the set of tunes running, if one is.
 	set *Set
+	// play is the connect or theme game running, bracket the bracket, if
+	// any; claimed are the kinds of queue game being set up. work orders
+	// the queue games' slow work, so the room's songs are taken in turn.
+	play, bracket *QueueGame
+	claimed       []string
+	work          sync.Mutex
+	// breaks is the room's breaks per hour as last read, for spacing
+	// bracket matches.
+	breaks int
 }
 
 // Round is a round of a game.
@@ -249,6 +267,7 @@ func New(db *store.Store, bus realtime.Bus, rs *rooms.Service, cfg Config) *Engi
 		cfg.LyricLead = 8 * time.Second
 	}
 	cfg.Tune = cfg.Tune.withDefaults()
+	cfg.Queue = cfg.Queue.withDefaults()
 	if cfg.Now == nil {
 		cfg.Now = store.Now
 	}
@@ -332,6 +351,7 @@ func (e *Engine) NowPlaying(np rooms.NowPlaying) {
 			e.reveal(rd)
 		}
 	}
+	e.queueNowPlaying(r, np)
 	if now == "" {
 		return
 	}
@@ -366,6 +386,7 @@ func (e *Engine) auto(ctx context.Context, roomID string) (*Round, error) {
 	g := rooms.ParseSettings(row.Settings).Games
 	e.mu.Lock()
 	r := e.roomOf(roomID)
+	r.breaks = g.Breaks()
 	due := g.Plays() && g.Every() > 0 && r.songs >= g.Every() && r.round == nil
 	np := r.np
 	e.mu.Unlock()
@@ -393,6 +414,9 @@ func (e *Engine) Start(ctx context.Context, roomID string, by store.User, kind s
 	}
 	if by.Role != store.RoleAdmin && !rooms.Allowed(st.Permissions.StartRounds, row.OwnerID, by.ID) {
 		return nil, ErrForbidden
+	}
+	if slices.Contains(rooms.QueueGames, kind) {
+		return nil, &InvalidInputError{"queue games start from the queue games endpoint"}
 	}
 	if set > 0 {
 		if kind == "" {
@@ -991,8 +1015,15 @@ func (e *Engine) HiddenLine(roomID string) (itemID string, atMs int64, ok bool) 
 func (e *Engine) RoomDeleted(roomID string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if r := e.byRoom[roomID]; r != nil && r.round != nil {
-		r.round.State = StateDone
+	if r := e.byRoom[roomID]; r != nil {
+		if r.round != nil {
+			r.round.State = StateDone
+		}
+		for _, g := range []*QueueGame{r.play, r.bracket} {
+			if g != nil {
+				g.State = StateDone
+			}
+		}
 	}
 	delete(e.byRoom, roomID)
 }

@@ -35,17 +35,21 @@ func TestCrown(t *testing.T) {
 	at := time.Date(2026, 10, 3, 20, 0, 0, 0, time.UTC)
 	plays := []store.PlayHistory{play("a", at), play("b", at.Add(5*time.Minute)), play("c", at.Add(10*time.Minute))}
 	for _, tc := range []struct {
-		name   string
-		counts []store.HeartCountsSinceRow
-		want   string
-		hearts int64
+		name     string
+		counts   []store.HeartCountsSinceRow
+		champion string
+		want     string
+		hearts   int64
 	}{
-		{"nothing hearted", nil, "", 0},
-		{"most hearts", []store.HeartCountsSinceRow{{QueueItemID: "a", Hearts: 1}, {QueueItemID: "c", Hearts: 3}}, "c", 3},
-		{"a tie goes to the earlier song", []store.HeartCountsSinceRow{{QueueItemID: "c", Hearts: 2}, {QueueItemID: "b", Hearts: 2}}, "b", 2},
-		{"songs from another night don't count", []store.HeartCountsSinceRow{{QueueItemID: "old", Hearts: 9}, {QueueItemID: "a", Hearts: 1}}, "a", 1},
+		{"nothing hearted", nil, "", "", 0},
+		{"most hearts", []store.HeartCountsSinceRow{{QueueItemID: "a", Hearts: 1}, {QueueItemID: "c", Hearts: 3}}, "", "c", 3},
+		{"a tie goes to the earlier song", []store.HeartCountsSinceRow{{QueueItemID: "c", Hearts: 2}, {QueueItemID: "b", Hearts: 2}}, "", "b", 2},
+		{"songs from another night don't count", []store.HeartCountsSinceRow{{QueueItemID: "old", Hearts: 9}, {QueueItemID: "a", Hearts: 1}}, "", "a", 1},
+		{"the bracket's champion takes a tie", []store.HeartCountsSinceRow{{QueueItemID: "b", Hearts: 2}, {QueueItemID: "c", Hearts: 2}}, "c", "c", 2},
+		{"but not the crown from a song with more", []store.HeartCountsSinceRow{{QueueItemID: "b", Hearts: 3}, {QueueItemID: "c", Hearts: 2}}, "c", "b", 3},
+		{"nor a crown nobody hearted", nil, "c", "", 0},
 	} {
-		got, hearts := crown(plays, tc.counts)
+		got, hearts := crown(plays, tc.counts, tc.champion)
 		if got != tc.want || hearts != tc.hearts {
 			t.Errorf("%s: got %q with %d, want %q with %d", tc.name, got, hearts, tc.want, tc.hearts)
 		}

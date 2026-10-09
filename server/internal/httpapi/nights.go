@@ -4,7 +4,9 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 
+	"github.com/madeofpendletonwool/syncphony/server/internal/games"
 	"github.com/madeofpendletonwool/syncphony/server/internal/nights"
 )
 
@@ -30,6 +32,12 @@ func toNight(n nights.Night) Night {
 	}
 	if n.Item != nil {
 		out.SongOfTheNight = &SongOfTheNight{Item: toQueueItem(*n.Item), Hearts: int(n.Hearts)}
+	}
+	if n.Bracket != "" {
+		var g games.QueueGame
+		if err := json.Unmarshal([]byte(n.Bracket), &g); err == nil && g.Bracket != nil {
+			out.Bracket = ptr(toQueueGame(g))
+		}
 	}
 	return out
 }

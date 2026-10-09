@@ -86,6 +86,7 @@ export function QueueRow({
               </>
             )}
           </span>
+          {item.heldForGame && <span className="shrink-0 text-caption text-primary">· In a game</span>}
         </p>
       </div>
       {user && !hideAvatar && <UserAvatar user={user} className="size-6 text-[0.6rem]" />}

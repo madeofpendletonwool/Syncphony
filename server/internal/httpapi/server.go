@@ -415,6 +415,9 @@ var errorCodes = []struct {
 	{games.ErrNothingPlaying, http.StatusConflict, "nothing_playing"},
 	{games.ErrNoQuestion, http.StatusConflict, "no_question"},
 	{games.ErrAnswered, http.StatusConflict, "already_answered"},
+	{games.ErrGameRunning, http.StatusConflict, "game_running"},
+	{games.ErrNoGame, http.StatusNotFound, "not_found"},
+	{games.ErrNotEntering, http.StatusConflict, "entries_closed"},
 	{ErrHiddenForRound, http.StatusConflict, "hidden_for_round"},
 
 	{links.ErrUnknownProvider, http.StatusNotFound, "unknown_provider"},

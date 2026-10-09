@@ -2147,6 +2147,139 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/games/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The room's queue games
+         * @description The queue games up now (ADR 0015): a connect the artists game or a
+         *     theme round, and a bracket battle, each the same as its latest
+         *     `game.queue` event.
+         */
+        get: operations["getQueueGames"];
+        put?: never;
+        /**
+         * Start a queue game
+         * @description Game night's queue games, played through the queue across songs,
+         *     beside the rounds. Who may is the room's `startRounds` permission;
+         *     admins always may. A room runs one connect or theme game at a time,
+         *     and one bracket: `game_running` (409) if one's up. `games_off`
+         *     (409) if the room's games level doesn't run rounds; `no_question`
+         *     (409) if the server can't run it (no music graph, say).
+         */
+        post: operations["startQueueGame"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/games/queue/{gameId}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                gameId: components["parameters"]["QueueGameId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enter one of your songs in a theme round or a bracket
+         * @description Enters one of your songs waiting in the queue, while the game's
+         *     entries are open (`entries_closed`, 409, after). It's held out of
+         *     the play order until the game plays it. A theme round takes one
+         *     song each, so entering another swaps it; a bracket takes two each.
+         *     The first song you queue once a game opens is entered for you.
+         */
+        post: operations["enterQueueGame"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/games/queue/{gameId}/entries/{itemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                gameId: components["parameters"]["QueueGameId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Take one of your songs out of a game
+         * @description While entries are open. The song goes back into the play order.
+         */
+        delete: operations["withdrawQueueGameEntry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/games/queue/{gameId}/hint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                gameId: components["parameters"]["QueueGameId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A hint for connect the artists
+         * @description Names an artist on a shortest way from where your team's chain is
+         *     to the end. Links after a hint score less.
+         */
+        post: operations["hintQueueGame"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/games/queue/{gameId}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                gameId: components["parameters"]["QueueGameId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move a queue game on
+         * @description Closes the game's entries now, reveals a connect game or a theme
+         *     round's hearts, or ends a bracket where it stands. Its starter, the
+         *     room's owner and admins may.
+         */
+        post: operations["closeQueueGame"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/guest-pass": {
         parameters: {
             query?: never;
@@ -3032,13 +3165,180 @@ export interface components {
             /** @description Their longest higher-or-lower streak tonight. */
             bestStreak: number;
         };
+        QueueGames: {
+            games: components["schemas"]["QueueGame"][];
+        };
+        /** @enum {string} */
+        QueueGameKind: "connect" | "theme" | "bracket";
+        /**
+         * @description A queue game, run by the server across songs. `open`: entries are
+         *     in (theme, bracket), or the chain's growing (connect) until
+         *     `closesAt`. `playing`: a theme round's block or a bracket's matches
+         *     are playing. `reveal`: the result, until `doneAt`. `done`: over.
+         */
+        QueueGame: {
+            id: string;
+            roomId: string;
+            kind: components["schemas"]["QueueGameKind"];
+            /** @enum {string} */
+            state: "open" | "playing" | "reveal" | "done";
+            startedBy: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            closesAt: string;
+            /** Format: date-time */
+            doneAt?: string;
+            /** @description Guests may play. */
+            guests: boolean;
+            /** @enum {string} */
+            scores: "off" | "private" | "board";
+            /** @description Everyone's points in the game so far, best first. */
+            points: components["schemas"]["GameSetPlayer"][];
+            theme?: components["schemas"]["GameTheme"];
+            /** @description A theme round's or a bracket's songs, as entered. */
+            entries: components["schemas"]["GameEntry"][];
+            /** @description A theme round's most-hearted entries (indices into `entries`), from its reveal on. */
+            winners?: number[];
+            connect?: components["schemas"]["GameConnect"];
+            bracket?: components["schemas"]["GameBracket"];
+        };
+        /** @description A theme round's prompt, or a bracket's. */
+        GameTheme: {
+            kind: components["schemas"]["ThemeKind"];
+            prompt: string;
+        };
+        /** @enum {string} */
+        ThemeKind: "before_1985" | "nineties" | "year" | "cover" | "samples" | "live" | "producer" | "fast" | "slow" | "build" | "sad" | "genre";
+        GameEntry: {
+            userId: string;
+            itemId: string;
+            title: string;
+            artist?: string;
+            /**
+             * @description Whether it fits the theme, as far as the server knows. One that
+             *     doesn't, or can't be told, still plays.
+             * @enum {string}
+             */
+            fit?: "yes" | "no" | "unknown";
+            /** @description Why, when it doesn't fit or there's no telling ("Not a cover, as far as we know"). */
+            note?: string;
+            /** @description It's started playing in the game. */
+            played: boolean;
+            /** @description Its hearts, once it's judged. */
+            hearts?: number;
+        };
+        /**
+         * @description Connect the artists: queue a chain of songs from `from` to `to`,
+         *     each by an artist similar to the last one's.
+         */
+        GameConnect: {
+            from: string;
+            to: string;
+            /** @description How many songs a shortest chain takes, as far as the music graph knew. */
+            hops: number;
+            /** @description A shortest way, ends included, from the reveal on. */
+            path?: string[];
+            /** @description Each team's chain; one when the room plays together. */
+            chains: components["schemas"]["GameChain"][];
+            /** @description Who's on which team, by user ID, as an index into `chains`. */
+            teams: {
+                [key: string]: number;
+            };
+            /** @description The latest songs queued that didn't link, newest last. */
+            misses: components["schemas"]["GameMiss"][];
+            /** @description The winning team's chain, from the reveal on, when one got there. */
+            winner?: number;
+        };
+        GameChain: {
+            links: components["schemas"]["GameLink"][];
+            /** @description Artists hinted along the way. */
+            hints: string[];
+            /** @description It reached the end. */
+            done: boolean;
+        };
+        GameLink: {
+            userId: string;
+            itemId: string;
+            title: string;
+            artist: string;
+            /** @description How alike its artist is to the one before, 0 to 1. */
+            score: number;
+            points: number;
+        };
+        GameMiss: {
+            userId: string;
+            itemId: string;
+            artist: string;
+            /** @description The chain's artist it didn't link to. */
+            after: string;
+            reason: string;
+        };
+        /**
+         * @description A bracket battle's draw: rounds of matches, the first to the final.
+         *     Matches play through the night between normal songs.
+         */
+        GameBracket: {
+            size: number;
+            /** @description Matches play about 90 seconds of each song, from its peak. */
+            short: boolean;
+            rounds: components["schemas"]["GameMatch"][][];
+            current?: components["schemas"]["GameMatchRef"];
+            last?: components["schemas"]["GameMatchRef"];
+            /**
+             * Format: date-time
+             * @description When the next match may start, at the earliest.
+             */
+            nextAt?: string;
+            /** @description The final's winner, an index into the game's `entries`. */
+            champion?: number;
+        };
+        /**
+         * @description Two entries (indices into the game's `entries`) facing off: -1 for
+         *     a side still to be decided, and for a bye.
+         */
+        GameMatch: {
+            a: number;
+            b: number;
+            winner: number;
+            /** @enum {string} */
+            state: "waiting" | "up" | "done";
+            heartsA: number;
+            heartsB: number;
+            bye: boolean;
+            /** @description The other song left the queue before its match. */
+            walkover: boolean;
+            /** @description The hearts tied, and a coin decided. */
+            toss: boolean;
+        };
+        GameMatchRef: {
+            round: number;
+            match: number;
+        };
+        StartQueueGameRequest: {
+            kind: components["schemas"]["QueueGameKind"];
+            theme?: components["schemas"]["ThemeKind"];
+            /**
+             * @description A bracket's most songs.
+             * @enum {integer}
+             */
+            size?: 4 | 8 | 16;
+            /** @description Play a bracket's matches about 90 seconds of each song, from its peak. */
+            short?: boolean;
+            /** @description Connect the artists as the room together (1), or as 2 teams racing. */
+            teams?: number;
+        };
+        QueueGameEntryRequest: {
+            /** @description One of your songs waiting in the queue. */
+            itemId: string;
+        };
         /**
          * @description One of the night's awards: who won it, usually for which song, and
          *     a one-line reason ("Dropped from 128 to 70 BPM").
          */
         Award: {
             /** @enum {string} */
-            kind: "deepest_cut" | "dance_floor_mvp" | "vibe_killer" | "trendsetter" | "time_traveler" | "tempo_whiplash" | "sample_snitch" | "comeback" | "opener" | "closer" | "trivia_champ";
+            kind: "deepest_cut" | "dance_floor_mvp" | "vibe_killer" | "trendsetter" | "time_traveler" | "tempo_whiplash" | "sample_snitch" | "comeback" | "opener" | "closer" | "trivia_champ" | "bracket_champ";
             title: string;
             userId: string;
             itemId?: string;
@@ -3123,9 +3423,11 @@ export interface components {
             songOfTheNight?: components["schemas"]["SongOfTheNight"];
             /**
              * @description The night's awards, at most six, in rooms whose games level
-             *     isn't `off`.
+             *     isn't `off`, and the bracket's champion's, if the room played a
+             *     bracket.
              */
             awards: components["schemas"]["Award"][];
+            bracket?: components["schemas"]["QueueGame"];
         };
         /** @description The night's most-hearted song. Absent if nothing got a heart. */
         SongOfTheNight: {
@@ -3930,6 +4232,8 @@ export interface components {
          *       answer, was revealed, or is done. Sent after hello while one is up.
          *     - `game.scores`: GameScores. Tonight's scores, after a reveal; only
          *       your own while the room's scores are `private`.
+         *     - `game.queue`: QueueGame. A queue game started, changed, or is
+         *       done. Sent after hello for each that's up.
          *
          *     A paired display connects with its display cookie instead, to its
          *     own room only. So does a signed-in user with `display=1`: either way
@@ -3945,7 +4249,7 @@ export interface components {
          */
         RoomEvent: {
             /** @enum {string} */
-            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "room.deleted" | "reaction.sent" | "hearts.updated" | "night.ended" | "guests.updated" | "members.updated" | "game.round" | "game.scores";
+            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "room.deleted" | "reaction.sent" | "hearts.updated" | "night.ended" | "guests.updated" | "members.updated" | "game.round" | "game.scores" | "game.queue";
             /**
              * Format: int64
              * @description Queue version, on `queue.updated` only.
@@ -4000,6 +4304,11 @@ export interface components {
             via?: components["schemas"]["PlaysVia"];
             palette?: components["schemas"]["Palette"];
             autopilot?: components["schemas"]["AutopilotPick"];
+            /**
+             * @description A queue game holds it out of the play order (it's entered in a
+             *     theme round or a bracket) until the game plays it.
+             */
+            heldForGame?: boolean;
         };
         /**
          * @description Set when autopilot queued the song, because the queue ran dry.
@@ -4607,6 +4916,7 @@ export interface components {
         InviteCode: string;
         ResetCode: string;
         RoomId: string;
+        QueueGameId: string;
     };
     requestBodies: never;
     headers: never;
@@ -7326,6 +7636,157 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GameScores"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getQueueGames: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The queue games */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueGames"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    startQueueGame: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartQueueGameRequest"];
+            };
+        };
+        responses: {
+            /** @description The game, open */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueGame"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    enterQueueGame: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                gameId: components["parameters"]["QueueGameId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QueueGameEntryRequest"];
+            };
+        };
+        responses: {
+            /** @description The game, with the entry */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueGame"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    withdrawQueueGameEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                gameId: components["parameters"]["QueueGameId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The game, without it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueGame"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    hintQueueGame: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                gameId: components["parameters"]["QueueGameId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The game, with the hint on your chain */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueGame"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    closeQueueGame: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                gameId: components["parameters"]["QueueGameId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The game, moved on */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueGame"];
                 };
             };
             default: components["responses"]["Error"];

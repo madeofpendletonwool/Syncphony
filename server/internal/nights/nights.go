@@ -91,6 +91,13 @@ type Service struct {
 	// Awards, if set, hands out a night's awards as it ends (package
 	// games). Nil gives none.
 	Awards func(ctx context.Context, n store.Night) ([]awards.Award, error)
+	// Champion, if set, names the queue item that won the room's bracket
+	// battle since a time (package games), "" if none did. It's a
+	// candidate for song of the night.
+	Champion func(ctx context.Context, roomID string, since time.Time) string
+	// Bracket, if set, gives the night's bracket battle as JSON to keep
+	// for the recap, "" if it had none (package games).
+	Bracket func(ctx context.Context, n store.Night) (string, error)
 }
 
 // New returns a Service.
@@ -202,6 +209,14 @@ func (s *Service) End(ctx context.Context, roomID string, by store.User) (Night,
 // end ends a room's night at a time, if anything played in it.
 func (s *Service) end(ctx context.Context, roomID, by string, at time.Time) (Night, bool, error) {
 	var out Night
+	champion := ""
+	if s.Champion != nil {
+		since := time.Time{}
+		if last, err := s.db.LastNight(ctx, roomID); err == nil {
+			since = last.EndedAt
+		}
+		champion = s.Champion(ctx, roomID, since)
+	}
 	err := s.db.Tx(ctx, func(q *store.Queries) error {
 		since := time.Time{}
 		if last, err := q.LastNight(ctx, roomID); err == nil {
@@ -222,7 +237,7 @@ func (s *Service) end(ctx context.Context, roomID, by string, at time.Time) (Nig
 		n := store.CreateNightParams{
 			ID: store.NewID(), RoomID: roomID, StartedAt: start, EndedAt: at, EndedBy: by, Plays: int64(len(plays)),
 		}
-		if best, hearts := crown(plays, counts); best != "" {
+		if best, hearts := crown(plays, counts, champion); best != "" {
 			n.QueueItemID, n.Hearts = sql.NullString{String: best, Valid: true}, hearts
 		}
 		row, err := q.CreateNight(ctx, n)
@@ -258,6 +273,19 @@ func (s *Service) end(ctx context.Context, roomID, by string, at time.Time) (Nig
 			}
 		}
 	}
+	if s.Bracket != nil {
+		raw, err := s.Bracket(ctx, out.Night)
+		switch {
+		case err != nil:
+			slog.Warn("nights: reading the bracket", "room", roomID, "err", err)
+		case raw != "":
+			if err := s.db.SetNightBracket(ctx, store.SetNightBracketParams{Bracket: raw, ID: out.ID}); err != nil {
+				slog.Warn("nights: keeping the bracket", "room", roomID, "err", err)
+			} else {
+				out.Bracket = raw
+			}
+		}
+	}
 	s.bus.Publish(realtime.RoomTopic(roomID), realtime.Event{Type: realtime.NightEnded, Data: out})
 	return out, true, nil
 }
@@ -283,8 +311,9 @@ func endOf(p store.PlayHistory) time.Time {
 
 // crown picks the night's song: the most hearts, and of those the one
 // that played first, so a late heart can't steal the crown from a song
-// that earned its hearts earlier. "" if nothing tonight got a heart.
-func crown(plays []store.PlayHistory, counts []store.HeartCountsSinceRow) (string, int64) {
+// that earned its hearts earlier. The bracket's champion, if it played
+// tonight, takes a tie. "" if nothing tonight got a heart.
+func crown(plays []store.PlayHistory, counts []store.HeartCountsSinceRow, champion string) (string, int64) {
 	started := map[string]time.Time{}
 	for _, p := range plays {
 		if _, ok := started[p.QueueItemID]; !ok {
@@ -295,6 +324,18 @@ func crown(plays []store.PlayHistory, counts []store.HeartCountsSinceRow) (strin
 		_, ok := started[c.QueueItemID]
 		return !ok || c.Hearts == 0
 	})
+	if _, ok := started[champion]; ok {
+		var top, mine int64
+		for _, c := range counts {
+			top = max(top, c.Hearts)
+			if c.QueueItemID == champion {
+				mine = c.Hearts
+			}
+		}
+		if mine > 0 && mine >= top {
+			return champion, mine
+		}
+	}
 	if len(counts) == 0 {
 		return "", 0
 	}

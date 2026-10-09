@@ -2776,6 +2776,153 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /rooms/{roomId}/games/queue:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: getQueueGames
+      summary: The room's queue games
+      description: |
+        The queue games up now (ADR 0015): a connect the artists game or a
+        theme round, and a bracket battle, each the same as its latest
+        `game.queue` event.
+      tags: [games]
+      security:
+        - session: []
+        - display: []
+      responses:
+        "200":
+          description: The queue games
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueGames"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: startQueueGame
+      summary: Start a queue game
+      description: |
+        Game night's queue games, played through the queue across songs,
+        beside the rounds. Who may is the room's `startRounds` permission;
+        admins always may. A room runs one connect or theme game at a time,
+        and one bracket: `game_running` (409) if one's up. `games_off`
+        (409) if the room's games level doesn't run rounds; `no_question`
+        (409) if the server can't run it (no music graph, say).
+      tags: [games]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartQueueGameRequest"
+      responses:
+        "201":
+          description: The game, open
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueGame"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/games/queue/{gameId}/entries:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - $ref: "#/components/parameters/QueueGameId"
+    post:
+      operationId: enterQueueGame
+      summary: Enter one of your songs in a theme round or a bracket
+      description: |
+        Enters one of your songs waiting in the queue, while the game's
+        entries are open (`entries_closed`, 409, after). It's held out of
+        the play order until the game plays it. A theme round takes one
+        song each, so entering another swaps it; a bracket takes two each.
+        The first song you queue once a game opens is entered for you.
+      tags: [games]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueueGameEntryRequest"
+      responses:
+        "200":
+          description: The game, with the entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueGame"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/games/queue/{gameId}/entries/{itemId}:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - $ref: "#/components/parameters/QueueGameId"
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: withdrawQueueGameEntry
+      summary: Take one of your songs out of a game
+      description: While entries are open. The song goes back into the play order.
+      tags: [games]
+      responses:
+        "200":
+          description: The game, without it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueGame"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/games/queue/{gameId}/hint:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - $ref: "#/components/parameters/QueueGameId"
+    post:
+      operationId: hintQueueGame
+      summary: A hint for connect the artists
+      description: |
+        Names an artist on a shortest way from where your team's chain is
+        to the end. Links after a hint score less.
+      tags: [games]
+      responses:
+        "200":
+          description: The game, with the hint on your chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueGame"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/games/queue/{gameId}/close:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - $ref: "#/components/parameters/QueueGameId"
+    post:
+      operationId: closeQueueGame
+      summary: Move a queue game on
+      description: |
+        Closes the game's entries now, reveals a connect game or a theme
+        round's hearts, or ends a bracket where it stands. Its starter, the
+        room's owner and admins may.
+      tags: [games]
+      responses:
+        "200":
+          description: The game, moved on
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueGame"
+        default:
+          $ref: "#/components/responses/Error"
+
   /rooms/{roomId}/guest-pass:
     parameters:
       - $ref: "#/components/parameters/RoomId"
@@ -3483,6 +3630,13 @@ components:
       schema:
         type: string
 
+    QueueGameId:
+      name: gameId
+      in: path
+      required: true
+      schema:
+        type: string
+
   responses:
     Error:
       description: |
@@ -4116,6 +4270,304 @@ components:
           type: integer
           description: Their longest higher-or-lower streak tonight.
 
+    QueueGames:
+      type: object
+      required: [games]
+      properties:
+        games:
+          type: array
+          items:
+            $ref: "#/components/schemas/QueueGame"
+
+    QueueGameKind:
+      type: string
+      enum: [connect, theme, bracket]
+
+    QueueGame:
+      type: object
+      description: |
+        A queue game, run by the server across songs. `open`: entries are
+        in (theme, bracket), or the chain's growing (connect) until
+        `closesAt`. `playing`: a theme round's block or a bracket's matches
+        are playing. `reveal`: the result, until `doneAt`. `done`: over.
+      required: [id, roomId, kind, state, startedBy, startedAt, closesAt, guests, scores, points, entries]
+      properties:
+        id:
+          type: string
+        roomId:
+          type: string
+        kind:
+          $ref: "#/components/schemas/QueueGameKind"
+        state:
+          type: string
+          enum: [open, playing, reveal, done]
+        startedBy:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        closesAt:
+          type: string
+          format: date-time
+        doneAt:
+          type: string
+          format: date-time
+        guests:
+          type: boolean
+          description: Guests may play.
+        scores:
+          type: string
+          enum: ["off", private, board]
+        points:
+          type: array
+          description: Everyone's points in the game so far, best first.
+          items:
+            $ref: "#/components/schemas/GameSetPlayer"
+        theme:
+          $ref: "#/components/schemas/GameTheme"
+        entries:
+          type: array
+          description: A theme round's or a bracket's songs, as entered.
+          items:
+            $ref: "#/components/schemas/GameEntry"
+        winners:
+          type: array
+          description: A theme round's most-hearted entries (indices into `entries`), from its reveal on.
+          items:
+            type: integer
+        connect:
+          $ref: "#/components/schemas/GameConnect"
+        bracket:
+          $ref: "#/components/schemas/GameBracket"
+
+    GameTheme:
+      type: object
+      description: A theme round's prompt, or a bracket's.
+      required: [kind, prompt]
+      properties:
+        kind:
+          $ref: "#/components/schemas/ThemeKind"
+        prompt:
+          type: string
+
+    ThemeKind:
+      type: string
+      enum: [before_1985, nineties, year, cover, samples, live, producer, fast, slow, build, sad, genre]
+
+    GameEntry:
+      type: object
+      required: [userId, itemId, title, played]
+      properties:
+        userId:
+          type: string
+        itemId:
+          type: string
+        title:
+          type: string
+        artist:
+          type: string
+        fit:
+          type: string
+          enum: ["yes", "no", unknown]
+          description: |
+            Whether it fits the theme, as far as the server knows. One that
+            doesn't, or can't be told, still plays.
+        note:
+          type: string
+          description: Why, when it doesn't fit or there's no telling ("Not a cover, as far as we know").
+        played:
+          type: boolean
+          description: It's started playing in the game.
+        hearts:
+          type: integer
+          description: Its hearts, once it's judged.
+
+    GameConnect:
+      type: object
+      description: |
+        Connect the artists: queue a chain of songs from `from` to `to`,
+        each by an artist similar to the last one's.
+      required: [from, to, hops, chains, teams, misses]
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+        hops:
+          type: integer
+          description: How many songs a shortest chain takes, as far as the music graph knew.
+        path:
+          type: array
+          description: A shortest way, ends included, from the reveal on.
+          items:
+            type: string
+        chains:
+          type: array
+          description: Each team's chain; one when the room plays together.
+          items:
+            $ref: "#/components/schemas/GameChain"
+        teams:
+          type: object
+          description: Who's on which team, by user ID, as an index into `chains`.
+          additionalProperties:
+            type: integer
+        misses:
+          type: array
+          description: The latest songs queued that didn't link, newest last.
+          items:
+            $ref: "#/components/schemas/GameMiss"
+        winner:
+          type: integer
+          description: The winning team's chain, from the reveal on, when one got there.
+
+    GameChain:
+      type: object
+      required: [links, hints, done]
+      properties:
+        links:
+          type: array
+          items:
+            $ref: "#/components/schemas/GameLink"
+        hints:
+          type: array
+          description: Artists hinted along the way.
+          items:
+            type: string
+        done:
+          type: boolean
+          description: It reached the end.
+
+    GameLink:
+      type: object
+      required: [userId, itemId, title, artist, score, points]
+      properties:
+        userId:
+          type: string
+        itemId:
+          type: string
+        title:
+          type: string
+        artist:
+          type: string
+        score:
+          type: number
+          description: How alike its artist is to the one before, 0 to 1.
+        points:
+          type: integer
+
+    GameMiss:
+      type: object
+      required: [userId, itemId, artist, after, reason]
+      properties:
+        userId:
+          type: string
+        itemId:
+          type: string
+        artist:
+          type: string
+        after:
+          type: string
+          description: The chain's artist it didn't link to.
+        reason:
+          type: string
+
+    GameBracket:
+      type: object
+      description: |
+        A bracket battle's draw: rounds of matches, the first to the final.
+        Matches play through the night between normal songs.
+      required: [size, short, rounds]
+      properties:
+        size:
+          type: integer
+        short:
+          type: boolean
+          description: Matches play about 90 seconds of each song, from its peak.
+        rounds:
+          type: array
+          items:
+            type: array
+            items:
+              $ref: "#/components/schemas/GameMatch"
+        current:
+          $ref: "#/components/schemas/GameMatchRef"
+        last:
+          $ref: "#/components/schemas/GameMatchRef"
+        nextAt:
+          type: string
+          format: date-time
+          description: When the next match may start, at the earliest.
+        champion:
+          type: integer
+          description: The final's winner, an index into the game's `entries`.
+
+    GameMatch:
+      type: object
+      description: |
+        Two entries (indices into the game's `entries`) facing off: -1 for
+        a side still to be decided, and for a bye.
+      required: [a, b, winner, state, heartsA, heartsB, bye, walkover, toss]
+      properties:
+        a:
+          type: integer
+        b:
+          type: integer
+        winner:
+          type: integer
+        state:
+          type: string
+          enum: [waiting, up, done]
+        heartsA:
+          type: integer
+        heartsB:
+          type: integer
+        bye:
+          type: boolean
+        walkover:
+          type: boolean
+          description: The other song left the queue before its match.
+        toss:
+          type: boolean
+          description: The hearts tied, and a coin decided.
+
+    GameMatchRef:
+      type: object
+      required: [round, match]
+      properties:
+        round:
+          type: integer
+        match:
+          type: integer
+
+    StartQueueGameRequest:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          $ref: "#/components/schemas/QueueGameKind"
+        theme:
+          $ref: "#/components/schemas/ThemeKind"
+        size:
+          type: integer
+          enum: [4, 8, 16]
+          description: A bracket's most songs.
+        short:
+          type: boolean
+          description: Play a bracket's matches about 90 seconds of each song, from its peak.
+        teams:
+          type: integer
+          minimum: 1
+          maximum: 2
+          description: Connect the artists as the room together (1), or as 2 teams racing.
+
+    QueueGameEntryRequest:
+      type: object
+      required: [itemId]
+      properties:
+        itemId:
+          type: string
+          description: One of your songs waiting in the queue.
+
     Award:
       type: object
       description: |
@@ -4125,7 +4577,7 @@ components:
       properties:
         kind:
           type: string
-          enum: [deepest_cut, dance_floor_mvp, vibe_killer, trendsetter, time_traveler, tempo_whiplash, sample_snitch, comeback, opener, closer, trivia_champ]
+          enum: [deepest_cut, dance_floor_mvp, vibe_killer, trendsetter, time_traveler, tempo_whiplash, sample_snitch, comeback, opener, closer, trivia_champ, bracket_champ]
         title:
           type: string
         userId:
@@ -4268,9 +4720,12 @@ components:
           type: array
           description: |
             The night's awards, at most six, in rooms whose games level
-            isn't `off`.
+            isn't `off`, and the bracket's champion's, if the room played a
+            bracket.
           items:
             $ref: "#/components/schemas/Award"
+        bracket:
+          $ref: "#/components/schemas/QueueGame"
 
     SongOfTheNight:
       type: object
@@ -5794,6 +6249,8 @@ components:
           answer, was revealed, or is done. Sent after hello while one is up.
         - `game.scores`: GameScores. Tonight's scores, after a reveal; only
           your own while the room's scores are `private`.
+        - `game.queue`: QueueGame. A queue game started, changed, or is
+          done. Sent after hello for each that's up.
 
         A paired display connects with its display cookie instead, to its
         own room only. So does a signed-in user with `display=1`: either way
@@ -5810,7 +6267,7 @@ components:
       properties:
         type:
           type: string
-          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated, room.deleted, reaction.sent, hearts.updated, night.ended, guests.updated, members.updated, game.round, game.scores]
+          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated, room.deleted, reaction.sent, hearts.updated, night.ended, guests.updated, members.updated, game.round, game.scores, game.queue]
         version:
           type: integer
           format: int64
@@ -5894,6 +6351,11 @@ components:
           $ref: "#/components/schemas/Palette"
         autopilot:
           $ref: "#/components/schemas/AutopilotPick"
+        heldForGame:
+          type: boolean
+          description: |
+            A queue game holds it out of the play order (it's entered in a
+            theme round or a bracket) until the game plays it.
 
     AutopilotPick:
       type: object

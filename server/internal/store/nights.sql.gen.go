@@ -30,7 +30,7 @@ func (q *Queries) AddHeart(ctx context.Context, arg AddHeartParams) error {
 const createNight = `-- name: CreateNight :one
 INSERT INTO nights (id, room_id, started_at, ended_at, ended_by, plays, queue_item_id, hearts)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, room_id, started_at, ended_at, ended_by, plays, queue_item_id, hearts, awards
+RETURNING id, room_id, started_at, ended_at, ended_by, plays, queue_item_id, hearts, awards, bracket
 `
 
 type CreateNightParams struct {
@@ -66,6 +66,7 @@ func (q *Queries) CreateNight(ctx context.Context, arg CreateNightParams) (Night
 		&i.QueueItemID,
 		&i.Hearts,
 		&i.Awards,
+		&i.Bracket,
 	)
 	return i, err
 }
@@ -133,7 +134,7 @@ func (q *Queries) HeartCountsSince(ctx context.Context, arg HeartCountsSincePara
 }
 
 const lastNight = `-- name: LastNight :one
-SELECT id, room_id, started_at, ended_at, ended_by, plays, queue_item_id, hearts, awards FROM nights WHERE room_id = ? ORDER BY ended_at DESC, id DESC LIMIT 1
+SELECT id, room_id, started_at, ended_at, ended_by, plays, queue_item_id, hearts, awards, bracket FROM nights WHERE room_id = ? ORDER BY ended_at DESC, id DESC LIMIT 1
 `
 
 func (q *Queries) LastNight(ctx context.Context, roomID string) (Night, error) {
@@ -149,6 +150,7 @@ func (q *Queries) LastNight(ctx context.Context, roomID string) (Night, error) {
 		&i.QueueItemID,
 		&i.Hearts,
 		&i.Awards,
+		&i.Bracket,
 	)
 	return i, err
 }
@@ -181,7 +183,7 @@ func (q *Queries) ListHearts(ctx context.Context, queueItemID string) ([]string,
 }
 
 const listNights = `-- name: ListNights :many
-SELECT id, room_id, started_at, ended_at, ended_by, plays, queue_item_id, hearts, awards FROM nights WHERE room_id = ? ORDER BY ended_at DESC, id DESC LIMIT ?
+SELECT id, room_id, started_at, ended_at, ended_by, plays, queue_item_id, hearts, awards, bracket FROM nights WHERE room_id = ? ORDER BY ended_at DESC, id DESC LIMIT ?
 `
 
 type ListNightsParams struct {
@@ -208,6 +210,7 @@ func (q *Queries) ListNights(ctx context.Context, arg ListNightsParams) ([]Night
 			&i.QueueItemID,
 			&i.Hearts,
 			&i.Awards,
+			&i.Bracket,
 		); err != nil {
 			return nil, err
 		}
@@ -294,5 +297,19 @@ type SetNightAwardsParams struct {
 
 func (q *Queries) SetNightAwards(ctx context.Context, arg SetNightAwardsParams) error {
 	_, err := q.db.ExecContext(ctx, setNightAwards, arg.Awards, arg.ID)
+	return err
+}
+
+const setNightBracket = `-- name: SetNightBracket :exec
+UPDATE nights SET bracket = ? WHERE id = ?
+`
+
+type SetNightBracketParams struct {
+	Bracket string
+	ID      string
+}
+
+func (q *Queries) SetNightBracket(ctx context.Context, arg SetNightBracketParams) error {
+	_, err := q.db.ExecContext(ctx, setNightBracket, arg.Bracket, arg.ID)
 	return err
 }

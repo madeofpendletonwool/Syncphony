@@ -82,7 +82,7 @@ type fixture struct {
 	items  []store.QueueItem
 }
 
-func setup(t *testing.T, g rooms.Games) *fixture {
+func setup(t *testing.T, g rooms.Games, tune ...func(*games.Config)) *fixture {
 	t.Helper()
 	ctx := t.Context()
 	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "test.db"))
@@ -101,7 +101,11 @@ func setup(t *testing.T, g rooms.Games) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := games.New(db, bus, rs, games.Config{Announce: 30 * time.Millisecond, RoundWindow: 300 * time.Millisecond, AmbientWindow: 300 * time.Millisecond, RevealFor: 60 * time.Millisecond, LyricLead: 200 * time.Millisecond, Seed: 1})
+	cfg := games.Config{Announce: 30 * time.Millisecond, RoundWindow: 300 * time.Millisecond, AmbientWindow: 300 * time.Millisecond, RevealFor: 60 * time.Millisecond, LyricLead: 200 * time.Millisecond, Seed: 1}
+	for _, fn := range tune {
+		fn(&cfg)
+	}
+	e := games.New(db, bus, rs, cfg)
 	e.Facts = facts{}
 	t.Cleanup(e.Close)
 	f := &fixture{db: db, bus: bus, rooms: rs, engine: e, room: room, sub: bus.Subscribe(realtime.RoomTopic(room.ID))}

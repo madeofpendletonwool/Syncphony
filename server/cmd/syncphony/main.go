@@ -324,6 +324,13 @@ func run() error {
 	}
 	gameSvc.Facts = gameSources
 	gameSvc.Music = player
+	// Queue games (MAD-794..796) hold songs and put them at the front, and
+	// connect the artists walks the music graph.
+	gameSvc.Queue, gameSvc.Artists, gameSvc.Trim = queueSvc, gameSources, player
+	// Games live in memory: nothing holds a song from before a restart.
+	if err := queueSvc.ReleaseHolds(ctx); err != nil {
+		slog.Warn("games: letting held songs back into the queue", "err", err)
+	}
 	// Name that tune's clips are cut with ffmpeg (MAD-792).
 	var clipSvc *clips.Service
 	if ffmpegAvailable() {
@@ -354,6 +361,7 @@ func run() error {
 	}
 	nightSvc := nights.New(db, a.bus)
 	nightSvc.Awards = gameSvc.Awards
+	nightSvc.Champion, nightSvc.Bracket = gameSvc.Champion, gameSvc.NightBracket
 	go a.backups.Run(ctx)
 	api := &httpapi.Server{
 		Version: version, StartedAt: time.Now().UTC(), Admin: admin.New(db), Backups: a.backups, Auth: accounts, Links: a.links, Lyrics: lyricsSvc, LinerNotes: notes, Artwork: art, Palettes: palettes, BeatMaps: beatMaps,

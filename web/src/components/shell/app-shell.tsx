@@ -14,6 +14,7 @@ import { VisualizerMode } from '@/components/visualizer/visualizer-mode'
 import { AlbumBackdrop } from './album-backdrop'
 import { BeatLab } from './beat-lab'
 import { RoundSheet } from '@/components/games/round-sheet'
+import { QueueGameDock } from '@/components/games/queue-game-card'
 import { BottomNav } from './bottom-nav'
 import { KeyboardShortcuts } from './keyboard-shortcuts'
 import { MiniPlayer } from './mini-player'
@@ -65,6 +66,7 @@ export function AppShell() {
         </div>
 
         <RoundSheet />
+        <QueueGameDock />
         <NowPlayingSheet open={expanded} onOpenChange={setExpanded} lyrics={lyrics} onLyricsChange={setLyrics} />
         <KeyboardShortcuts expanded={expanded} onExpandedChange={setExpanded} onLyricsChange={setLyrics} />
         {!expanded && <BeatLab />}
