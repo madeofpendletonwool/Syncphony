@@ -1,16 +1,19 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { ChevronLeft, Crown, LoaderCircle } from 'lucide-react'
+import { ChevronLeft, Crown, ListMusic, LoaderCircle, Sparkles } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { StatsView } from '@/components/history/stats-view'
 import { PageHeader } from '@/components/page-header'
+import { SaveNightButton } from '@/components/playlists/save-night'
+import { SaveToPlaylistButton } from '@/components/playlists/save-to-playlist'
 import { QueueRow } from '@/components/room/queue-row'
 import { RequeueButton } from '@/components/room/requeue-button'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { UserAvatar } from '@/components/user-avatar'
+import { WrappedStory } from '@/components/wrapped/wrapped-story'
 import { useMe } from '@/lib/auth'
 import {
   formatListening,
@@ -22,7 +25,9 @@ import {
   type ListeningSession,
   type PlayedItem,
 } from '@/lib/history'
+import { isGuest } from '@/lib/guests'
 import { spring } from '@/lib/motion'
+import { recapQuery } from '@/lib/playlists'
 import type { User } from '@/lib/now-playing'
 import { useCurrentRoom, type Room } from '@/lib/room'
 import { usersQuery } from '@/lib/users'
@@ -127,6 +132,7 @@ function Played({ room }: { room: Room }) {
                               ? "Didn't play"
                               : new Date(p.startedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
                         </span>
+                        <SaveToPlaylistButton song={{ itemId: p.item.id }} title={p.item.track.title} className="hidden sm:grid" />
                         <RequeueButton item={p.item} />
                       </>
                     }
@@ -186,8 +192,41 @@ function Recaps({ room }: { room: Room }) {
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={current.startedAt} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={spring}>
           <h2 className="mb-3 px-1 text-title">{sessionName(current)}</h2>
+          <RecapActions room={room} session={current} />
           <StatsView roomId={room.id} range={sessionRange(current)} recap night={current.night} />
         </motion.div>
+      </AnimatePresence>
+    </div>
+  )
+}
+
+/** Play the session's Wrapped, and save it as a playlist (or open the one saved). */
+function RecapActions({ room, session }: { room: Room; session: ListeningSession }) {
+  const me = useMe()
+  const range = sessionRange(session)
+  const from = range.from!
+  const to = range.to!
+  const recap = useQuery(recapQuery(room.id, from, to))
+  const [playing, setPlaying] = useState(false)
+  const saved = recap.data?.playlists[0]
+  return (
+    <div className="mb-5 flex flex-wrap gap-2">
+      <Button onClick={() => setPlaying(true)}>
+        <Sparkles data-icon="inline-start" />
+        Play Wrapped
+      </Button>
+      {saved ? (
+        <Button asChild variant="glass">
+          <Link to="/library/$playlistId" params={{ playlistId: saved.id }}>
+            <ListMusic data-icon="inline-start" />
+            {saved.name}
+          </Link>
+        </Button>
+      ) : (
+        !isGuest(me) && <SaveNightButton night={{ roomId: room.id, roomName: room.name, from, to }} variant="glass" />
+      )}
+      <AnimatePresence>
+        {playing && <WrappedStory roomId={room.id} roomName={room.name} from={from} to={to} onClose={() => setPlaying(false)} />}
       </AnimatePresence>
     </div>
   )

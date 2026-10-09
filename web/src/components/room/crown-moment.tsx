@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Crown, Heart, X } from 'lucide-react'
+import { Crown, Heart, ListMusic, Sparkles, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo } from 'react'
 import { Artwork } from '@/components/artwork'
@@ -7,9 +7,11 @@ import { AwardsList } from '@/components/games/awards-list'
 import { RequeueButton } from '@/components/room/requeue-button'
 import { Button } from '@/components/ui/button'
 import { UserAvatar } from '@/components/user-avatar'
+import { useMe } from '@/lib/auth'
+import { isGuest } from '@/lib/guests'
 import { laneStyle } from '@/lib/lane'
 import { easeOutExpo } from '@/lib/motion'
-import { crowning, dismissCrown, type Night } from '@/lib/nights'
+import { crowning, dismissCrown, followNight, type Night } from '@/lib/nights'
 import { queueArtworkUrl } from '@/lib/playback'
 import { useStore } from '@/lib/store'
 import { usersQuery } from '@/lib/users'
@@ -118,6 +120,7 @@ function Moment({ night, variant }: { night: Night; variant: 'phone' | 'stage' }
             {night.plays} {night.plays === 1 ? 'song' : 'songs'} tonight. Heart your favorites next time to crown a song of the night.
           </p>
         )}
+        {!stage && night.plays > 0 && <AfterButtons night={night} />}
         {night.awards.length > 0 && (
           <AwardsList
             awards={night.awards}
@@ -127,6 +130,25 @@ function Moment({ night, variant }: { night: Night; variant: 'phone' | 'stage' }
         )}
       </motion.div>
     </motion.div>
+  )
+}
+
+/** On phones: the night's Wrapped, and saving its playlist. */
+function AfterButtons({ night }: { night: Night }) {
+  const me = useMe()
+  return (
+    <div className="flex flex-wrap justify-center gap-2">
+      <Button size="sm" onClick={() => followNight(night, 'wrapped')} className="bg-amber-300 text-black hover:bg-amber-200">
+        <Sparkles data-icon="inline-start" />
+        Play Wrapped
+      </Button>
+      {!isGuest(me) && (
+        <Button size="sm" variant="glass" onClick={() => followNight(night, 'save')} className="text-white">
+          <ListMusic data-icon="inline-start" />
+          Save tonight&apos;s playlist
+        </Button>
+      )}
+    </div>
   )
 }
 

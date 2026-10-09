@@ -75,7 +75,7 @@ func TestSavedPlaylists(t *testing.T) {
 	// Bob sees the shared night, not alice's own; and can't change either.
 	var list []httpapi.SavedPlaylistSummary
 	bob.want(http.StatusOK, "GET", "/playlists", nil).decode(t, &list)
-	if len(list) != 1 || list[0].Id != saved.Id || list[0].SongCount != 3 || len(list[0].Covers) != 3 {
+	if len(list) != 1 || list[0].Id != saved.Id || list[0].SongCount != 3 || len(list[0].Covers) == 0 {
 		t.Fatalf("bob's list: %+v", list)
 	}
 	alice.want(http.StatusOK, "GET", "/playlists", nil).decode(t, &list)

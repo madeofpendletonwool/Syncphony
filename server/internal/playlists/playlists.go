@@ -11,6 +11,7 @@
 package playlists
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -48,8 +49,10 @@ const (
 	MaxAdd = 100
 	// MaxName is the longest name, in characters.
 	MaxName = 100
-	// Covers is how many songs' artwork make a playlist's cover.
-	Covers = 4
+	// Covers is how many songs' artwork make a playlist's cover, picked
+	// from its first coverReach songs: different albums where it can.
+	Covers     = 4
+	coverReach = 50
 )
 
 // Tracks opens a user's links, to look up songs added from search. It's
@@ -199,18 +202,41 @@ func (s *Service) List(ctx context.Context, a Actor) ([]Summary, error) {
 	if len(ids) == 0 {
 		return out, nil
 	}
-	covers, err := s.db.PlaylistCovers(ctx, store.PlaylistCoversParams{Ids: ids, N: Covers})
+	songs, err := s.db.PlaylistCovers(ctx, store.PlaylistCoversParams{Ids: ids, N: coverReach})
 	if err != nil {
 		return nil, err
 	}
 	byID := map[string][]store.PlaylistSong{}
-	for _, c := range covers {
+	for _, c := range songs {
 		byID[c.PlaylistID] = append(byID[c.PlaylistID], c)
 	}
 	for i := range out {
-		out[i].Covers = byID[out[i].ID]
+		out[i].Covers = covers(byID[out[i].ID])
 	}
 	return out, nil
+}
+
+// covers picks the songs whose artwork makes a playlist's cover: the
+// first Covers with artwork from different albums, or failing that, the
+// first with artwork.
+func covers(songs []store.PlaylistSong) []store.PlaylistSong {
+	seen := map[string]bool{}
+	var out []store.PlaylistSong
+	for _, sg := range songs {
+		var t provider.Track
+		if err := json.Unmarshal([]byte(sg.Metadata), &t); err != nil || t.Artwork == "" {
+			continue
+		}
+		k := sg.Provider + "\x00" + cmp.Or(t.Album.Title, string(t.Artwork))
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		if out = append(out, sg); len(out) == Covers {
+			break
+		}
+	}
+	return out
 }
 
 // Get returns a playlist a can see, with its songs.

@@ -3926,7 +3926,8 @@ type SavedPlaylist struct {
 
 // SavedPlaylistSummary A Syncphony playlist in a list.
 type SavedPlaylistSummary struct {
-	// Covers Its first few songs, for a cover.
+	// Covers Up to four of its first songs with artwork, from different
+	// albums where it can, for a cover.
 	Covers    []PlaylistSong `json:"covers"`
 	CreatedAt time.Time      `json:"createdAt"`
 	Id        string         `json:"id"`

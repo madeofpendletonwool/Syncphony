@@ -3,9 +3,12 @@ import { motion } from 'motion/react'
 import { useEffect, useRef } from 'react'
 import { AddButton } from '@/components/add-button'
 import { Artwork } from '@/components/artwork'
+import { SaveToPlaylistButton } from '@/components/playlists/save-to-playlist'
 import { ProviderIcon } from '@/components/provider-icon'
 import type { LaneStatus } from '@/hooks/use-add-to-lane'
+import { useMe } from '@/lib/auth'
 import { artistNames, artworkUrl, type TrackResult } from '@/lib/browse'
+import { isGuest } from '@/lib/guests'
 import { fadeUp } from '@/lib/motion'
 import { formatDuration } from '@/lib/now-playing'
 import { cn } from '@/lib/utils'
@@ -26,8 +29,9 @@ type Props = {
   active?: boolean
 }
 
-/** A song in a list, with its one-tap add. */
+/** A song in a list, with its one-tap add, and a bookmark to save it to a playlist. */
 export function TrackRow({ track, status, onAdd, providerIcon, number, hideAlbum, note, active }: Props) {
+  const me = useMe()
   const albumId = track.album?.id
   const ref = useRef<HTMLLIElement>(null)
   useEffect(() => {
@@ -80,6 +84,7 @@ export function TrackRow({ track, status, onAdd, providerIcon, number, hideAlbum
       <span className="hidden shrink-0 text-sm text-muted-foreground tabular-nums sm:block">
         {formatDuration(track.durationMs)}
       </span>
+      {!isGuest(me) && <SaveToPlaylistButton song={{ linkId: track.linkId, trackId: track.trackId }} title={track.title} className="-mr-1" />}
       <AddButton status={status} onAdd={onAdd} title={track.title} />
     </motion.li>
   )

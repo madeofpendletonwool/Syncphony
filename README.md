@@ -114,6 +114,7 @@ Images are published to `ghcr.io/madeofpendletonwool/syncphony`: `:main` tracks 
 4. Optionally, turn on **Autopilot** in the room's settings. When every lane runs dry, it keeps the music going with songs like the ones the room has played, taking turns with everyone's taste. Anything someone adds still plays first.
 5. Friends of friends without an account: turn on **Guests** in the room's settings, then **Invite guests** from the room menu (the big screen shows the code too). Guests scan, pick a name, and add songs from the server's shared services, in a lane of their own, up to the room's limit. They're signed out when the code runs out, and a host can remove them sooner.
 6. Heart the songs you love as they play. When the host taps **End the night** (or the room goes quiet for two hours), the most-hearted song is crowned **song of the night**, on everyone's phone and the big screen, and it's kept with the night's recap.
+7. Then play the night's **Wrapped**: who brought the most, whose songs got the hearts, the genres and decades, whose tastes matched. Share it as an image, and **save tonight's playlist** to your **Library**, shared with the room, to play it again any time. The big screen plays the Wrapped on its own. Playlists live in Syncphony, so one can hold songs from everyone's services ([ADR 0016](docs/adr/0016-playlists-and-wrapped.md)).
 
 What works where (and what doesn't yet) is in [docs/player-mode.md](docs/player-mode.md).
 

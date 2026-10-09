@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { RoomLive } from '@/components/room-live'
 import { CrownMoment } from '@/components/room/crown-moment'
 import { PageTransition } from '@/components/shell/app-shell'
+import { NightWrapped } from '@/components/wrapped/night-wrapped'
 import { meQuery } from '@/lib/auth'
 import { useServerTitle } from '@/lib/server'
 
@@ -29,6 +30,7 @@ function Authed() {
     <>
       <RoomLive />
       <CrownMoment />
+      <NightWrapped />
       <PageTransition>
         <Outlet />
       </PageTransition>

@@ -1988,6 +1988,200 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/recap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * A night's Syncphony Wrapped
+         * @description The story of the songs that started in `[from, to)` (see ADR 0016):
+         *     the stats, the night that ended in it (if one did, with its song of
+         *     the night), whose songs played and got hearts most, the song
+         *     skipped most, the longest run of someone's songs played through,
+         *     the genre and decade mix, and whose tastes met. Genres and years
+         *     come from what's already known about the songs, so a mix can be
+         *     empty. `playlists` are the playlists saved from it that you can see
+         *     (on the big screen, those shared with the room).
+         */
+        get: operations["getRoomRecap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/playlists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save a night as a playlist
+         * @description Makes a playlist of yours from the songs the room played in
+         *     `[from, to)` (a session's recap range), in the order they played.
+         *     Skipped songs and repeats are left out unless kept. Each song keeps
+         *     who queued it, and the service it played from, so a night that
+         *     mixed everyone's services stays whole. Songs whose service was
+         *     unlinked are left out. `nothing_played` (409) if that leaves none.
+         */
+        post: operations["saveNightPlaylist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playlists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your Syncphony playlists, and ones shared with your rooms
+         * @description Syncphony's own playlists (ADR 0016), kept on the server rather
+         *     than on a service. Yours, and those shared with rooms you can
+         *     enter, most recently changed first.
+         */
+        get: operations["listSavedPlaylists"];
+        put?: never;
+        /** Make an empty playlist */
+        post: operations["createSavedPlaylist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playlists/{playlistId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlistId: components["parameters"]["PlaylistId"];
+            };
+            cookie?: never;
+        };
+        /** A playlist and its songs */
+        get: operations["getSavedPlaylist"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a playlist
+         * @description Its owner, or an admin.
+         */
+        delete: operations["deleteSavedPlaylist"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a playlist, or share it with a room
+         * @description Its owner, or an admin. `forbidden` otherwise.
+         */
+        patch: operations["updateSavedPlaylist"];
+        trace?: never;
+    };
+    "/playlists/{playlistId}/songs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlistId: components["parameters"]["PlaylistId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add songs to the end of a playlist
+         * @description Songs from search (`linkId` and `trackId`, through a link you can
+         *     use), or songs a room had (`itemId`, in a room you can enter). A
+         *     playlist holds at most 1000 songs.
+         */
+        post: operations["addSavedPlaylistSongs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playlists/{playlistId}/songs/{songId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlistId: components["parameters"]["PlaylistId"];
+                songId: components["parameters"]["PlaylistSongId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Take a song out of a playlist */
+        delete: operations["removeSavedPlaylistSong"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playlists/{playlistId}/songs/{songId}/position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlistId: components["parameters"]["PlaylistId"];
+                songId: components["parameters"]["PlaylistSongId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Move a song within a playlist */
+        put: operations["moveSavedPlaylistSong"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/playlists/{playlistId}/songs/{songId}/artwork": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlistId: components["parameters"]["PlaylistId"];
+                songId: components["parameters"]["PlaylistSongId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * A playlist song's artwork
+         * @description Loaded through the link the song came from, like a queued song's,
+         *     so everyone who can see the playlist sees its covers.
+         */
+        get: operations["getSavedPlaylistSongArtwork"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/games/round": {
         parameters: {
             query?: never;
@@ -3434,6 +3628,139 @@ export interface components {
             item: components["schemas"]["QueueItem"];
             hearts: number;
         };
+        /** @description A night's Syncphony Wrapped (MAD-722). */
+        Recap: {
+            stats: components["schemas"]["RoomStats"];
+            night?: components["schemas"]["Night"];
+            topAdder?: components["schemas"]["PersonCount"];
+            mostHearted?: components["schemas"]["PersonCount"];
+            /** @description The song skipped most. Absent if none was. */
+            mostSkipped?: {
+                item: components["schemas"]["QueueItem"];
+                skips: number;
+            };
+            streak?: components["schemas"]["PersonCount"];
+            /** @description The genre mix, biggest first, at most five. */
+            genres: components["schemas"]["MixShare"][];
+            /** @description The decade mix, in order, at most five. */
+            decades: components["schemas"]["MixShare"][];
+            /** @description Pairs of friends who brought the same artists, most shared first. */
+            overlaps: components["schemas"]["TasteOverlap"][];
+            /** @description Playlists saved from this night that you can see. */
+            playlists: components["schemas"]["PlaylistRef"][];
+        };
+        /**
+         * @description A person and a count: for `topAdder`, songs played; `mostHearted`,
+         *     hearts on their songs; `streak`, their songs in a row that played
+         *     through without a skip (at least three).
+         */
+        PersonCount: {
+            userId: string;
+            count: number;
+        };
+        MixShare: {
+            /** @description A genre ("indie rock") or a decade ("1990s"). */
+            name: string;
+            plays: number;
+        };
+        TasteOverlap: {
+            userIds: string[];
+            /** @description Artists both brought, most played first. */
+            artists: string[];
+        };
+        PlaylistRef: {
+            id: string;
+            name: string;
+            ownerId: string;
+        };
+        /** @description The night a playlist was saved from. */
+        PlaylistNight: {
+            roomId: string;
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+        };
+        /** @description A Syncphony playlist in a list. */
+        SavedPlaylistSummary: {
+            id: string;
+            name: string;
+            ownerId: string;
+            /** @description The room it's shared with. Absent if it's only its owner's. */
+            roomId?: string;
+            night?: components["schemas"]["PlaylistNight"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            songCount: number;
+            /**
+             * @description Up to four of its first songs with artwork, from different
+             *     albums where it can, for a cover.
+             */
+            covers: components["schemas"]["PlaylistSong"][];
+        };
+        /** @description A Syncphony playlist and its songs, in order. */
+        SavedPlaylist: {
+            id: string;
+            name: string;
+            ownerId: string;
+            /** @description The room it's shared with. Absent if it's only its owner's. */
+            roomId?: string;
+            night?: components["schemas"]["PlaylistNight"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            songs: components["schemas"]["PlaylistSong"][];
+        };
+        PlaylistSong: {
+            id: string;
+            track: components["schemas"]["QueuedTrack"];
+            /**
+             * @description Who brought it: who queued it, for a saved night, or who added
+             *     it. Absent for autopilot's songs.
+             */
+            addedBy?: string;
+            /** Format: date-time */
+            addedAt: string;
+        };
+        SaveNightRequest: {
+            name: string;
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            /** @description Keep songs that were skipped. */
+            keepSkipped?: boolean;
+            /** @description Keep a song every time it played, not just the first. */
+            keepRepeats?: boolean;
+            /** @description Share it with the room. */
+            share?: boolean;
+        };
+        CreatePlaylistRequest: {
+            name: string;
+            /** @description A room to share it with. */
+            roomId?: string;
+        };
+        UpdatePlaylistRequest: {
+            name?: string;
+            /** @description A room to share it with, or "" to keep it to yourself. */
+            roomId?: string;
+        };
+        AddPlaylistSongsRequest: {
+            items: components["schemas"]["PlaylistSongToAdd"][];
+        };
+        /** @description A song from search (`linkId` and `trackId`), or one a room had (`itemId`). */
+        PlaylistSongToAdd: {
+            linkId?: string;
+            trackId?: string;
+            itemId?: string;
+        };
+        MovePlaylistSongRequest: {
+            /** @description Where to put the song; 0 is the top. Past the end means the end. */
+            position: number;
+        };
         /** @description Fields to change. `avatar` is an image URL or `icon:<name>`; send it as "" to remove it. */
         ProfileUpdate: {
             displayName?: string;
@@ -4137,8 +4464,9 @@ export interface components {
             playedAt?: string;
         };
         /**
-         * @description A song from search (`linkId` and `trackId`), or a song the room
-         *     already had, again (`fromItemId`). Queueing again from someone
+         * @description A song from search (`linkId` and `trackId`), a song the room
+         *     already had, again (`fromItemId`), or one from a Syncphony playlist
+         *     (`fromPlaylistSongId`). Queueing again from someone
          *     else's service needs the room's `matching.borrow`
          *     (`cant_borrow` otherwise).
          */
@@ -4149,6 +4477,11 @@ export interface components {
             trackId?: string;
             /** @description One of the room's queue items, from history or stats. */
             fromItemId?: string;
+            /**
+             * @description A song from a Syncphony playlist you can see. Like `fromItemId`,
+             *     it plays from the link it came from.
+             */
+            fromPlaylistSongId?: string;
         };
         RestoreQueueItemsRequest: {
             itemIds: string[];
@@ -4916,6 +5249,8 @@ export interface components {
         InviteCode: string;
         ResetCode: string;
         RoomId: string;
+        PlaylistId: string;
+        PlaylistSongId: string;
         QueueGameId: string;
     };
     requestBodies: never;
@@ -7477,6 +7812,282 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Night"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getRoomRecap: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+            };
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The recap */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Recap"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    saveNightPlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveNightRequest"];
+            };
+        };
+        responses: {
+            /** @description The playlist */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedPlaylist"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listSavedPlaylists: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Playlists */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedPlaylistSummary"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createSavedPlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePlaylistRequest"];
+            };
+        };
+        responses: {
+            /** @description The playlist */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedPlaylist"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getSavedPlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlistId: components["parameters"]["PlaylistId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The playlist */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedPlaylist"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteSavedPlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlistId: components["parameters"]["PlaylistId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateSavedPlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlistId: components["parameters"]["PlaylistId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePlaylistRequest"];
+            };
+        };
+        responses: {
+            /** @description The playlist */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedPlaylist"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    addSavedPlaylistSongs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlistId: components["parameters"]["PlaylistId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddPlaylistSongsRequest"];
+            };
+        };
+        responses: {
+            /** @description The playlist */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedPlaylist"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    removeSavedPlaylistSong: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlistId: components["parameters"]["PlaylistId"];
+                songId: components["parameters"]["PlaylistSongId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The playlist */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedPlaylist"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    moveSavedPlaylistSong: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playlistId: components["parameters"]["PlaylistId"];
+                songId: components["parameters"]["PlaylistSongId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MovePlaylistSongRequest"];
+            };
+        };
+        responses: {
+            /** @description The playlist */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedPlaylist"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getSavedPlaylistSongArtwork: {
+        parameters: {
+            query?: {
+                /** @description Wanted width in pixels; a hint. */
+                size?: number;
+            };
+            header?: never;
+            path: {
+                playlistId: components["parameters"]["PlaylistId"];
+                songId: components["parameters"]["PlaylistSongId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
                 };
             };
             default: components["responses"]["Error"];

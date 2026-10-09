@@ -1,5 +1,5 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import { CircleUserRound, Disc3, Search } from 'lucide-react'
+import { CircleUserRound, Disc3, Library, Search } from 'lucide-react'
 import { motion } from 'motion/react'
 import { spring } from '@/lib/motion'
 import { cn } from '@/lib/utils'
@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 const tabs = [
   { to: '/room', label: 'Room', icon: Disc3, also: ['/history'] },
   { to: '/search', label: 'Search', icon: Search, also: ['/album', '/artist'] },
+  { to: '/library', label: 'Library', icon: Library, also: [] },
   { to: '/me', label: 'Me', icon: CircleUserRound, also: ['/settings'] },
 ] as const
 
@@ -17,7 +18,7 @@ export function BottomNav() {
 
   return (
     <nav aria-label="Main" className="glass-strong h-nav rounded-3xl p-1.5 shadow-float">
-      <ul className="grid h-full grid-cols-3 gap-1">
+      <ul className="grid h-full grid-cols-4 gap-1">
         {tabs.map(({ to, label, icon: Icon, also }) => {
           const active = [to, ...also].some((base) => under(pathname, base))
           return (

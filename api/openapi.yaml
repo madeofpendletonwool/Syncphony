@@ -5144,7 +5144,9 @@ components:
           type: integer
         covers:
           type: array
-          description: Its first few songs, for a cover.
+          description: |
+            Up to four of its first songs with artwork, from different
+            albums where it can, for a cover.
           items:
             $ref: "#/components/schemas/PlaylistSong"
 
