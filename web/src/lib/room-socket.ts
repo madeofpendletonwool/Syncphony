@@ -14,7 +14,7 @@ import { putQueueGame, queueGamesQuery, type QueueGame } from './queue-games'
 import { addReaction, type Reaction } from './reactions'
 import { leaveRoom, queueQuery, roomsQuery, type QueueSnapshot, type Room } from './room'
 import { linksQuery, usableLinksQuery } from './services'
-import { deviceId } from './speaker'
+import { deviceId, speaker } from './speaker'
 import { createStore } from './store'
 import { toast } from './toast'
 import { usersQuery } from './users'
@@ -146,6 +146,9 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
     case 'nowplaying.updated': {
       const np = ev.data as Playback
       queryClient.setQueryData(playbackQuery(roomId).queryKey, (old) => newer(old, np))
+      // The speaker hears it now, not when the page next renders: a locked
+      // phone may not render at all.
+      speaker.apply(queryClient.getQueryData(playbackQuery(roomId).queryKey))
       break
     }
     case 'playback.notice':

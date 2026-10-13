@@ -13,7 +13,8 @@ const SHOWN_MS = 2200
 
 /**
  * The big screen's keys (MAD-735), for a keyboard or a remote: space or K plays
- * and pauses, → skips (or votes to skip), ↑ and ↓ step through the visuals.
+ * and pauses, → skips (or votes to skip), ↑ and ↓ step through the visuals,
+ * V turns them off and on.
  * The visuals change on this screen only, starting from the room's pick;
  * auto is one of the steps. Each press says what it did, big, for a while.
  */
@@ -41,7 +42,7 @@ export function TvKeys({
   onShowSetting: (setting: string) => void
 }) {
   const scene = useScene()
-  const { scene: sceneSetting } = useStore(beatSettings)
+  const { scene: sceneSetting, level } = useStore(beatSettings)
   // What the last press did. A look's name is read when shown: in auto,
   // the pick to name is the one the change makes.
   const [said, setSaid] = useState<{ id: number; text?: string }>()
@@ -84,8 +85,12 @@ export function TvKeys({
           vote.toggle()
           return say(vote.voted ? 'Took back your vote' : `Voted to skip · ${vote.count + 1} of ${vote.needed}`)
         }
+        case 'visuals':
+          setBeatSettings({ level: level === 'off' ? 'subtle' : 'off' })
+          return say(level === 'off' ? 'Visuals on' : 'Visuals off')
         case 'nextLook':
         case 'previousLook': {
+          if (level === 'off') return say('Visuals are off · press V')
           const by = key === 'nextLook' ? 1 : -1
           if (visualizing) onShowSetting(cycle(['auto', ...SHOWS], showSetting, by))
           else setBeatSettings({ scene: cycle(['auto', ...SCENES], sceneSetting, by) })
@@ -95,7 +100,7 @@ export function TvKeys({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [playback, commands, display, visualizing, showSetting, sceneSetting, onShowSetting, say])
+  }, [playback, commands, display, visualizing, showSetting, sceneSetting, level, onShowSetting, say])
 
   return (
     <div aria-live="polite" className="pointer-events-none fixed inset-x-0 top-[12vh] z-30 flex justify-center">

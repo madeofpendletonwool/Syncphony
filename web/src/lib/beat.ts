@@ -109,6 +109,8 @@ function applyEffects(s: BeatSettings) {
   const root = document.documentElement
   for (const [k, v] of Object.entries(s.effects)) root.style.setProperty(`--fx-${k}`, String(v))
   root.toggleAttribute('data-fx-eq-off', s.effects.eq === 0)
+  // Everything off: the CSS-only motion (the mesh's drift) stops too.
+  root.toggleAttribute('data-visuals-off', s.level === 'off')
 }
 
 /** Whether the full-screen visualizer is open in the app. */

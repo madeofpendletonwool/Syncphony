@@ -191,9 +191,19 @@ function Look() {
 
 function Effects() {
   const { effects } = useStore(beatSettings)
+  const keys = Object.keys(EFFECTS) as Effect[]
+  const anyOn = keys.some((k) => effects[k] > 0)
   return (
     <>
-      {(Object.keys(EFFECTS) as Effect[]).map((k) => (
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-muted-foreground">All effects</span>
+        <Switch
+          label="All effects on"
+          checked={anyOn}
+          onChange={(v) => setBeatSettings({ effects: Object.fromEntries(keys.map((k) => [k, v ? 1 : 0])) })}
+        />
+      </div>
+      {keys.map((k) => (
         <Field key={k} label={EFFECTS[k]} value={effects[k] === 0 ? 'Off' : `${Math.round(effects[k] * 100)}%`}>
           <div className="flex items-center gap-2">
             <Slider

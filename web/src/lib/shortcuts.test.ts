@@ -70,6 +70,7 @@ describe('tvKeyOf', () => {
     expect(tv('ArrowRight')).toBe('skip')
     expect(tv('ArrowUp')).toBe('previousLook')
     expect(tv('ArrowDown')).toBe('nextLook')
+    expect(tv('v')).toBe('visuals')
     expect(tv('ArrowLeft')).toBeUndefined()
   })
 
@@ -88,6 +89,7 @@ describe('tvKeyOf', () => {
     expect(tv('ArrowDown', { target: el('<input>') })).toBeUndefined()
     expect(tv('k', { target: el('<input>') })).toBeUndefined()
     expect(tv('k', { repeat: true })).toBeUndefined()
+    expect(tv('v', { repeat: true })).toBeUndefined()
   })
 })
 

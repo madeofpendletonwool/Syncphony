@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { createFileRoute } from '@tanstack/react-router'
-import { useEffect } from 'react'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useCallback, useEffect, type ReactNode } from 'react'
 import { TvPairing } from '@/components/tv/tv-pairing'
 import { TvStage } from '@/components/tv/tv-stage'
 import { meQuery } from '@/lib/auth'
@@ -9,11 +9,13 @@ import { useRoomControls } from '@/hooks/use-room-controls'
 import { box, isBox } from '@/lib/box'
 import { can, playbackQuery } from '@/lib/playback'
 import { useCurrentRoom } from '@/lib/room'
-import { deviceId } from '@/lib/speaker'
+import { deviceId, speakerState } from '@/lib/speaker'
+import { useStore } from '@/lib/store'
 
 // Big-screen mode (MAD-716): a TV, projector or spare tablet showing one
-// room. A paired display shows its room; a signed-in device shows the
-// room it's in; anything else shows a code to pair it. Either kind can
+// room. A signed-in device shows the room it's in, even if it was once
+// paired too (its own room is the one you mean); a paired display shows
+// its room; anything else shows a code to pair it. Either kind can
 // also play the room's audio: a display if it was paired with audio on,
 // a signed-in device if its user may be the speaker. On a box (ADR 0016),
 // the page talks to the box's own daemon and plays by itself.
@@ -24,8 +26,9 @@ export const Route = createFileRoute('/tv')({
 function Tv() {
   // Polled, so turning the screen's audio on or off from a phone shows up here.
   const display = useQuery({ ...displayMeQuery, refetchInterval: (q) => (q.state.data ? 30_000 : false) })
-  const me = useQuery({ ...meQuery, enabled: display.isSuccess && !display.data })
   const boxMode = isBox()
+  // A box is always its pairing; anywhere else, whoever's signed in wins.
+  const me = useQuery({ ...meQuery, enabled: !boxMode || (display.isSuccess && !display.data) })
   useEffect(() => {
     if (!boxMode) return
     box.start()
@@ -33,10 +36,11 @@ function Tv() {
   }, [boxMode])
   useDarkTheme()
 
-  if (display.isPending || (display.isSuccess && !display.data && me.isPending)) return <Blank />
-  if (display.data) return <PairedStage me={display.data} />
-  if (me.data) return <SignedInStage />
-  return <TvPairing />
+  if (display.isPending || (me.isPending && !(boxMode && display.data))) return <Blank />
+  const paired = display.data ? <PairedStage me={display.data} /> : undefined
+  if (paired && (boxMode || !me.data)) return paired
+  if (me.data) return <SignedInStage orElse={paired} />
+  return paired ?? <TvPairing />
 }
 
 function PairedStage({ me }: { me: DisplayMe }) {
@@ -69,18 +73,27 @@ function PairedStage({ me }: { me: DisplayMe }) {
   )
 }
 
-/** A signed-in device shows the room it's in, without joining it. */
-function SignedInStage() {
+/**
+ * A signed-in device shows the room it's in, without joining it. Out of
+ * any room, it shows its pairing (orElse) if it has one.
+ */
+function SignedInStage({ orElse }: { orElse?: ReactNode }) {
   const { room, rooms } = useCurrentRoom()
   const me = useQuery(meQuery).data
+  const speaking = useStore(speakerState)
+  const navigate = useNavigate()
+  const exit = useCallback(() => void navigate({ to: '/room' }), [navigate])
   const playback = useQuery({ ...playbackQuery(room?.id ?? ''), enabled: !!room })
   // The keys do what the buttons would: skip or vote, as the room allows.
   const commands = useRoomControls(room, playback.data, me ?? { id: '', displayName: '' }, !!me?.guest)
   if (rooms.isPending) return <Blank />
-  if (!room) return <TvPairing />
+  if (!room) return orElse ?? <TvPairing />
   const maySpeak = !!me && !me.guest && can(room, me.id, 'speaker')
   const mayPlay = maySpeak && can(room, me.id, 'playPause')
   const maySkip = maySpeak && can(room, me.id, 'skip')
+  // Already playing the room here (listening along, say): it carries on,
+  // whether or not this user may be the speaker.
+  const playingHere = speaking.roomId === room.id && speaking.status !== 'off'
   return (
     <TvStage
       roomId={room.id}
@@ -89,8 +102,9 @@ function SignedInStage() {
       paired={false}
       onUnpaired={() => {}}
       commands={me ? commands : {}}
+      onExit={exit}
       audio={
-        maySpeak
+        me && (maySpeak || playingHere)
           ? { device: deviceId(), name: `${me.displayName.split(' ')[0]}'s big screen`, canPlayPause: mayPlay, canSkip: maySkip }
           : undefined
       }

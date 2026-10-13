@@ -60,11 +60,11 @@ export function shortcutOf(e: Key): Shortcut | undefined {
 }
 
 /** What a key (or a remote's button) does on the big screen. */
-export type TvKey = 'playPause' | 'skip' | 'nextLook' | 'previousLook'
+export type TvKey = 'playPause' | 'skip' | 'nextLook' | 'previousLook' | 'visuals'
 
 /**
  * The big screen's keys: space (or K, even on a button) plays and pauses, → skips (or votes to),
- * ↑ and ↓ change the visuals. A remote's D-pad sends arrows too, so → is
+ * ↑ and ↓ change the visuals, V turns them off and on. A remote's D-pad sends arrows too, so → is
  * left to move between buttons while one has focus; nothing sits above or
  * below them, so ↑ and ↓ are always free.
  */
@@ -83,6 +83,9 @@ export function tvKeyOf(e: Key): TvKey | undefined {
       return 'previousLook'
     case 'ArrowDown':
       return 'nextLook'
+    case 'v':
+    case 'V':
+      return e.repeat ? undefined : 'visuals'
   }
   return undefined
 }

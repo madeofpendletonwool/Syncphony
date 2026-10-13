@@ -1,7 +1,7 @@
 import { api } from '@/api/client'
 import { ApiError, errorMessage, unwrap } from '@/api/errors'
 import { serverNow } from './clock'
-import { BACK_WITHIN_MS, queueArtworkUrl, sendCommand, type Playback, type QueueItem } from './playback'
+import { BACK_WITHIN_MS, newer, queueArtworkUrl, sendCommand, type Playback, type QueueItem } from './playback'
 import { createStore } from './store'
 import { toast } from './toast'
 import { deviceName } from './webauthn'
@@ -58,6 +58,8 @@ const RETRIES = 2
 // How long a screen that let go of the speaker waits for the next one to
 // keep it (the big screen loads its room first) before stopping.
 const HANDOFF = 5_000
+// How long one report may take before the next one goes anyway.
+const REPORT_TIMEOUT = 10_000
 
 export const speakerState = createStore<SpeakerState>({ status: 'off', mode: 'speaker', keepAwake: readFlag(AWAKE_KEY, true) })
 
@@ -151,6 +153,9 @@ class Speaker {
   private localPause = false
   private resyncTimer?: ReturnType<typeof setInterval>
   private stopping?: ReturnType<typeof setTimeout>
+  // Reports go one at a time, in order: a song's "ended" must land before
+  // the next song's "playing", or the server drops the "playing" and waits.
+  private reports: Promise<unknown> = Promise.resolve()
   /** Receives every playback state the server returns to a report. */
   onState?: (p: Playback) => void
 
@@ -664,12 +669,18 @@ class Speaker {
     const roomId = this.roomId
     if (!roomId || !item || this.mode !== 'speaker') return
     const positionMs = Math.round(item === this.curItem ? this.position() : 0)
-    api
-      .POST('/rooms/{roomId}/player/report', {
-        params: { path: { roomId } },
-        body: { deviceId: this.device, itemId: item.id, event, positionMs, error },
+    const body = { deviceId: this.device, itemId: item.id, event, positionMs, error }
+    this.reports = this.reports
+      .then(() =>
+        api.POST('/rooms/{roomId}/player/report', { params: { path: { roomId } }, body, signal: AbortSignal.timeout(REPORT_TIMEOUT) }),
+      )
+      .then(({ data }) => {
+        if (!data) return
+        this.onState?.(data)
+        // Straight to the audio, not through the page: a locked phone may
+        // not render, and the next song has to start anyway.
+        this.apply(newer(this.last, data))
       })
-      .then(({ data }) => data && this.onState?.(data))
       .catch(() => {
         // The socket will bring us the truth when the network is back.
       })

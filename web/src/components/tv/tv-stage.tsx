@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Heart, Sparkles } from 'lucide-react'
+import { Heart, Sparkles, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import { Artwork } from '@/components/artwork'
@@ -11,6 +11,7 @@ import { CrownMoment } from '@/components/room/crown-moment'
 import { NightWrapped } from '@/components/wrapped/night-wrapped'
 import { AlbumBackdrop } from '@/components/shell/album-backdrop'
 import { Waveform } from '@/components/shell/waveform'
+import { Button } from '@/components/ui/button'
 import { UserAvatar } from '@/components/user-avatar'
 import { Visualizer } from '@/components/visualizer/visualizer'
 import { useAlbumPalette } from '@/hooks/use-album-palette'
@@ -21,7 +22,7 @@ import { usePosition } from '@/hooks/use-position'
 import { useWakeLock } from '@/hooks/use-wake-lock'
 import { autopilotReason, autopilotSource } from '@/lib/autopilot'
 import { box } from '@/lib/box'
-import { setBeatSettings } from '@/lib/beat'
+import { beatSettings, setBeatSettings } from '@/lib/beat'
 import { useHidden } from '@/lib/games'
 import { guestPassQuery } from '@/lib/guests'
 import { laneStyle } from '@/lib/lane'
@@ -51,7 +52,10 @@ const UP_NEXT_SHOWN = 5
  * center, who queued it, whose turn is next, and reactions floating up
  * from everyone's phones. Nothing to click; it just runs. With audio, it
  * can play the room too: one press of OK on the remote makes it the speaker.
- * Keys work too (see TvKeys): space, → to skip, ↑ and ↓ for the visuals.
+ * Keys work too (see TvKeys): space, → to skip, ↑ and ↓ for the visuals,
+ * V to turn them off (the button that shows with the mouse does too).
+ * A signed-in screen can go back to the app: Escape, or the button that
+ * shows with the mouse.
  */
 export function TvStage({
   roomId,
@@ -61,6 +65,7 @@ export function TvStage({
   onUnpaired,
   audio,
   commands,
+  onExit,
 }: {
   roomId: string
   roomName: string
@@ -73,6 +78,8 @@ export function TvStage({
   audio?: { device: string; name: string; onStopped?: () => void; canPlayPause?: boolean; canSkip?: boolean; autoStart?: boolean }
   /** A signed-in screen's playback controls, as its user, for the keys. */
   commands?: PlayerCommands
+  /** Back to the app, for a signed-in screen; a paired display has nowhere to go. */
+  onExit?: () => void
 }) {
   const queryClient = useQueryClient()
   useRoomSocket(roomId, { display: true, onSessionEnded: paired ? onUnpaired : undefined, device: audio?.device })
@@ -90,20 +97,30 @@ export function TvStage({
   useAlbumPalette(np)
   useBeatSync(np)
   useWakeLock()
-  // Big screens move harder than phones, as hard as the room says.
+  // Big screens move harder than phones, as hard as the room says. Unless
+  // this screen has its visuals off: that stays.
   useEffect(() => {
-    setBeatSettings({ level: 'subtle', intensity: screens.intensity, scene: 'auto' })
+    setBeatSettings({ intensity: screens.intensity, scene: 'auto' })
   }, [screens.intensity])
+  const visualsOn = useStore(beatSettings).level !== 'off'
   // The visualizer takes over in its look, and in auto for songs with no words to sing.
   const words = useQuery({ ...lyricsQuery(roomId, np?.itemId ?? ''), enabled: !!np?.itemId })
   const wordless = words.isSuccess && (!words.data || words.data.instrumental)
-  const visualizing = !!np && (screens.look === 'visualizer' || (screens.look === 'auto' && wordless))
+  const visualizing = visualsOn && !!np && (screens.look === 'visualizer' || (screens.look === 'auto' && wordless))
   // ↑ and ↓ pick a show on this screen; the room's setting until then.
   const [showPick, setShowPick] = useState<string>()
   const showSetting = showPick ?? (isShow(screens.scene) ? screens.scene : 'auto')
   const show = useShow(showSetting)
   const { status } = useStore(live)
   const pointer = usePointerShown()
+  useEffect(() => {
+    if (!onExit) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) onExit()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onExit])
 
   // Songs queued by someone who signed up after we loaded the user list.
   useEffect(() => {
@@ -125,7 +142,7 @@ export function TvStage({
 
   return (
     <div className={cn('relative isolate h-dvh overflow-hidden select-none', !pointer && 'cursor-none')}>
-      <AlbumBackdrop src={np?.artworkUrl} scene={!visualizing} />
+      <AlbumBackdrop src={np?.artworkUrl} scene={visualsOn && !visualizing} />
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgb(0_0_0/0.55))]" />
       <AnimatePresence>
         {visualizing && (
@@ -164,7 +181,33 @@ export function TvStage({
             <span className="font-semibold">{roomName}</span>
             <span className="text-muted-foreground">· Syncphony</span>
           </div>
-          {audio && <TvAudio roomId={roomId} {...audio} />}
+          <div className="flex items-center gap-[1vw]">
+            {audio && <TvAudio roomId={roomId} {...audio} />}
+            <Button
+              variant="ghost"
+              onClick={() => setBeatSettings({ level: visualsOn ? 'off' : 'subtle' })}
+              className={cn(
+                'text-[clamp(0.85rem,1.1vw,1.15rem)] text-muted-foreground transition-opacity focus-visible:opacity-100 focus-visible:ring-4',
+                !pointer && 'opacity-0',
+              )}
+            >
+              <Sparkles data-icon="inline-start" className={cn(!visualsOn && 'opacity-40')} />
+              {visualsOn ? 'Visuals off' : 'Visuals on'}
+            </Button>
+            {onExit && (
+              <Button
+                variant="ghost"
+                onClick={onExit}
+                className={cn(
+                  'text-[clamp(0.85rem,1.1vw,1.15rem)] text-muted-foreground transition-opacity focus-visible:opacity-100 focus-visible:ring-4',
+                  !pointer && 'opacity-0',
+                )}
+              >
+                <X data-icon="inline-start" />
+                Exit big screen
+              </Button>
+            )}
+          </div>
         </header>
 
         {visualizing && np ? (
