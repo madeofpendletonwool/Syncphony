@@ -3834,6 +3834,12 @@ type ResetPasswordRequest struct {
 	NewPassword Password `json:"newPassword"`
 }
 
+// ResolvedRef An artist or album to open with `linkId` and `id`.
+type ResolvedRef struct {
+	Id     string `json:"id"`
+	LinkId string `json:"linkId"`
+}
+
 // RestoreQueueItemsRequest defines model for RestoreQueueItemsRequest.
 type RestoreQueueItemsRequest struct {
 	ItemIds []string `json:"itemIds"`
@@ -4991,6 +4997,17 @@ type GetRandomTracksParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ResolveAlbumParams defines parameters for ResolveAlbum.
+type ResolveAlbumParams struct {
+	Title  string  `form:"title" json:"title"`
+	Artist *string `form:"artist,omitempty" json:"artist,omitempty"`
+}
+
+// ResolveArtistParams defines parameters for ResolveArtist.
+type ResolveArtistParams struct {
+	Name string `form:"name" json:"name"`
+}
+
 // GetRoomArtistPlaysParams defines parameters for GetRoomArtistPlays.
 type GetRoomArtistPlaysParams struct {
 	Name  string `form:"name" json:"name"`
@@ -5579,6 +5596,12 @@ type ServerInterface interface {
 	// ResetPassword Set a new password with a reset link
 	// (POST /reset-links/{code}/password)
 	ResetPassword(w http.ResponseWriter, r *http.Request, code ResetCode)
+	// ResolveAlbum Find an album on a service you can use
+	// (GET /resolve/album)
+	ResolveAlbum(w http.ResponseWriter, r *http.Request, params ResolveAlbumParams)
+	// ResolveArtist Find an artist on a service you can use
+	// (GET /resolve/artist)
+	ResolveArtist(w http.ResponseWriter, r *http.Request, params ResolveArtistParams)
 	// GetRoomInvite Check a room invite before using it
 	// (GET /room-invites/{code})
 	GetRoomInvite(w http.ResponseWriter, r *http.Request, code string)
@@ -8526,6 +8549,85 @@ func (siw *ServerInterfaceWrapper) ResetPassword(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ResolveAlbum operation middleware
+func (siw *ServerInterfaceWrapper) ResolveAlbum(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ResolveAlbumParams
+
+	// ------------- Required query parameter "title" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "title", r.URL.Query(), &params.Title, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "title"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "title", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "artist" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "artist", r.URL.Query(), &params.Artist, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "artist"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "artist", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResolveAlbum(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResolveArtist operation middleware
+func (siw *ServerInterfaceWrapper) ResolveArtist(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ResolveArtistParams
+
+	// ------------- Required query parameter "name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "name", r.URL.Query(), &params.Name, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "name"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResolveArtist(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetRoomInvite operation middleware
 func (siw *ServerInterfaceWrapper) GetRoomInvite(w http.ResponseWriter, r *http.Request) {
 
@@ -11293,6 +11395,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artists/{artistId}/tracks", wrapper.GetArtistTracks)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artists/{artistId}/related", wrapper.GetArtistRelated)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artists/{artistId}/elsewhere", wrapper.GetArtistElsewhere)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/resolve/artist", wrapper.ResolveArtist)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/resolve/album", wrapper.ResolveAlbum)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/artists/{artistId}/shuffle", wrapper.GetArtistShuffle)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/albums/{albumId}/about", wrapper.GetAlbumAbout)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/links/{id}/genre", wrapper.GetGenre)
@@ -15566,6 +15670,84 @@ func (response ResetPassworddefaultJSONResponse) VisitResetPasswordResponse(w ht
 	return err
 }
 
+type ResolveAlbumRequestObject struct {
+	Params ResolveAlbumParams
+}
+
+type ResolveAlbumResponseObject interface {
+	VisitResolveAlbumResponse(w http.ResponseWriter) error
+}
+
+type ResolveAlbum200JSONResponse ResolvedRef
+
+func (response ResolveAlbum200JSONResponse) VisitResolveAlbumResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAlbumdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ResolveAlbumdefaultJSONResponse) VisitResolveAlbumResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveArtistRequestObject struct {
+	Params ResolveArtistParams
+}
+
+type ResolveArtistResponseObject interface {
+	VisitResolveArtistResponse(w http.ResponseWriter) error
+}
+
+type ResolveArtist200JSONResponse ResolvedRef
+
+func (response ResolveArtist200JSONResponse) VisitResolveArtistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveArtistdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ResolveArtistdefaultJSONResponse) VisitResolveArtistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetRoomInviteRequestObject struct {
 	Code string `json:"code"`
 }
@@ -19009,6 +19191,12 @@ type StrictServerInterface interface {
 	// ResetPassword Set a new password with a reset link
 	// (POST /reset-links/{code}/password)
 	ResetPassword(ctx context.Context, request ResetPasswordRequestObject) (ResetPasswordResponseObject, error)
+	// ResolveAlbum Find an album on a service you can use
+	// (GET /resolve/album)
+	ResolveAlbum(ctx context.Context, request ResolveAlbumRequestObject) (ResolveAlbumResponseObject, error)
+	// ResolveArtist Find an artist on a service you can use
+	// (GET /resolve/artist)
+	ResolveArtist(ctx context.Context, request ResolveArtistRequestObject) (ResolveArtistResponseObject, error)
 	// GetRoomInvite Check a room invite before using it
 	// (GET /room-invites/{code})
 	GetRoomInvite(ctx context.Context, request GetRoomInviteRequestObject) (GetRoomInviteResponseObject, error)
@@ -22210,6 +22398,58 @@ func (sh *strictHandler) ResetPassword(w http.ResponseWriter, r *http.Request, c
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ResetPasswordResponseObject); ok {
 		if err := validResponse.VisitResetPasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResolveAlbum operation middleware
+func (sh *strictHandler) ResolveAlbum(w http.ResponseWriter, r *http.Request, params ResolveAlbumParams) {
+	var request ResolveAlbumRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResolveAlbum(ctx, request.(ResolveAlbumRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResolveAlbum")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResolveAlbumResponseObject); ok {
+		if err := validResponse.VisitResolveAlbumResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResolveArtist operation middleware
+func (sh *strictHandler) ResolveArtist(w http.ResponseWriter, r *http.Request, params ResolveArtistParams) {
+	var request ResolveArtistRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResolveArtist(ctx, request.(ResolveArtistRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResolveArtist")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResolveArtistResponseObject); ok {
+		if err := validResponse.VisitResolveArtistResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

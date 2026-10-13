@@ -1212,6 +1212,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/resolve/artist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find an artist on a service you can use
+         * @description For a name that came from somewhere you can't browse (a song queued
+         *     from someone else's service, or one without an artist ID). Looks
+         *     for the artist by name on your links, then on shared ones, and
+         *     returns the first exact match. 404 when none has it.
+         */
+        get: operations["resolveArtist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resolve/album": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find an album on a service you can use
+         * @description Like `resolveArtist`, for an album by its title and, when known, its
+         *     artist.
+         */
+        get: operations["resolveAlbum"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/links/{id}/artists/{artistId}/shuffle": {
         parameters: {
             query?: never;
@@ -4833,6 +4877,11 @@ export interface components {
             accountLabel: string;
             artist: components["schemas"]["ArtistResult"];
         };
+        /** @description An artist or album to open with `linkId` and `id`. */
+        ResolvedRef: {
+            linkId: string;
+            id: string;
+        };
         AlbumAbout: {
             kind?: components["schemas"]["AlbumKind"];
             /** @description YYYY, YYYY-MM or YYYY-MM-DD. */
@@ -7498,6 +7547,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArtistElsewhere"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    resolveArtist: {
+        parameters: {
+            query: {
+                name: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Where to open the artist */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolvedRef"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    resolveAlbum: {
+        parameters: {
+            query: {
+                title: string;
+                artist?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Where to open the album */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolvedRef"];
                 };
             };
             default: components["responses"]["Error"];

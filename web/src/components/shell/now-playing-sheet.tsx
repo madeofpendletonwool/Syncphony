@@ -6,7 +6,7 @@ import { Artwork } from '@/components/artwork'
 import { LyricsView } from '@/components/lyrics/lyrics-view'
 import { AutopilotBadge, AutopilotWhy } from '@/components/room/autopilot-badge'
 import { SourceTag } from '@/components/service-tag'
-import { AlbumLink, ArtistLinks } from '@/components/track-credits'
+import { AlbumLink, ArtistLinks } from '@/components/linked-names'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
@@ -45,7 +45,6 @@ export function NowPlayingSheet({
   // While scrubbing, show the thumb where the finger is, not the live position.
   const [scrub, setScrub] = useState<number>()
   const queueRef = useRef<HTMLElement>(null)
-  const close = () => onOpenChange(false)
   const beat = useBeat<HTMLDivElement>()
 
   return (
@@ -171,12 +170,8 @@ export function NowPlayingSheet({
                         className="min-w-0"
                       >
                         <Dialog.Title className="line-clamp-2 text-title">{np.track.title}</Dialog.Title>
-                        <ArtistLinks
-                          track={np.track}
-                          onNavigate={close}
-                          className="line-clamp-1 text-headline font-normal text-muted-foreground"
-                        />
-                        <AlbumLink track={np.track} onNavigate={close} className="line-clamp-1 text-sm text-muted-foreground/80" />
+                        <ArtistLinks track={np.track} className="line-clamp-1 text-headline font-normal text-muted-foreground" />
+                        <AlbumLink track={np.track} className="line-clamp-1 text-sm text-muted-foreground/80" />
                         <div className="mt-3 flex flex-wrap items-center gap-1.5">
                           {np.requester && (
                             <Badge variant="lane" style={laneStyle(np.requester.color)} className="gap-1.5 py-1 pl-1">
