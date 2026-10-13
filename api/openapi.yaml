@@ -3156,6 +3156,92 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /me/discover/map:
+    get:
+      operationId: getDiscoveryMap
+      summary: A map of artists around an artist or a set
+      description: |
+        A graph in the spirit of music-map.com: give `artist` (any artist,
+        not just yours) or `setId`. Around an artist, its neighbors and,
+        at depth 2, their nearest neighbors. Around a set, its seeds and
+        their neighbors, those near the most seeds first. Edges say how
+        alike two artists are. Artists you blocked are left out, unless
+        the map is of them. It reads the music graph's cache: artists not
+        known yet are looked up in the background (`partial`), and loading
+        the map again shows more.
+      tags: [discover]
+      parameters:
+        - name: artist
+          in: query
+          description: The artist's name. Give this or `setId`.
+          schema:
+            type: string
+            maxLength: 200
+        - name: mbid
+          in: query
+          description: The artist's MusicBrainz ID, when known.
+          schema:
+            type: string
+        - name: setId
+          in: query
+          description: One of your sets. Give this or `artist`.
+          schema:
+            type: string
+        - name: depth
+          in: query
+          description: Steps out from the artist or seeds. Default 2 around an artist, 1 around a set.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 2
+        - name: limit
+          in: query
+          description: How many artists, at most. Default 60.
+          schema:
+            type: integer
+            minimum: 10
+            maximum: 100
+      responses:
+        "200":
+          description: The map
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoveryMap"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/songs:
+    get:
+      operationId: listDiscoveryArtistSongs
+      summary: An artist's songs you don't have
+      description: |
+        Their best-known songs, without the ones you have, turned down or
+        blocked: for an artist on the map. Each has a preview when Deezer
+        has one.
+      tags: [discover]
+      parameters:
+        - name: artist
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+        - name: mbid
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The songs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoverySongs"
+        default:
+          $ref: "#/components/responses/Error"
+
   /me/discover/library:
     get:
       operationId: getDiscoveryLibrary
@@ -8407,6 +8493,107 @@ components:
         noGraph:
           type: boolean
           description: The server knows nothing of how music relates (no sources are on), so feeds are empty.
+
+    DiscoveryMapNode:
+      type: object
+      description: An artist on a map.
+      required: [key, name, tags, owned, seed, center, blocked, hop, seeds, score, known]
+      properties:
+        key:
+          type: string
+          description: How the artist is compared, and what edges name.
+        name:
+          type: string
+        mbid:
+          type: string
+        fans:
+          type: integer
+          format: int64
+          description: Fans on Deezer, a measure of how well known.
+        picture:
+          type: string
+          description: Their picture's image ID, for getDiscoveryImage (kind `artist`).
+        tags:
+          type: array
+          description: Their strongest tags.
+          items:
+            type: string
+        owned:
+          type: boolean
+          description: You have something of theirs on your own Navidrome.
+        seed:
+          type: boolean
+          description: One of the set's seeds.
+        center:
+          type: boolean
+          description: The artist the map is of.
+        blocked:
+          type: boolean
+          description: You said they aren't for you. Only ever the artist the map is of, or a seed.
+        hop:
+          type: integer
+          description: Steps from the artist or seeds; 0 for those.
+        seeds:
+          type: integer
+          description: How many of the set's seeds they're near.
+        score:
+          type: number
+          description: How near, 0 to 1; 1 for the artist or seeds.
+        known:
+          type: boolean
+          description: The music graph knows them yet. One it doesn't is being looked up.
+
+    DiscoveryMapEdge:
+      type: object
+      required: [from, to, score, sources]
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+        score:
+          type: number
+          description: How alike, 0 to 1.
+        sources:
+          type: array
+          items:
+            type: string
+
+    DiscoveryMap:
+      type: object
+      required: [nodes, edges, partial, noGraph, library]
+      properties:
+        set:
+          $ref: "#/components/schemas/DiscoverySet"
+        nodes:
+          type: array
+          description: The artist or seeds first, then the rest, nearest first.
+          items:
+            $ref: "#/components/schemas/DiscoveryMapNode"
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscoveryMapEdge"
+        partial:
+          type: boolean
+          description: Some artists aren't known yet and are being looked up; load the map again shortly for more.
+        noGraph:
+          type: boolean
+        library:
+          $ref: "#/components/schemas/DiscoveryLibrary"
+
+    DiscoverySongs:
+      type: object
+      required: [items, library, noGraph]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscoveryItem"
+        library:
+          $ref: "#/components/schemas/DiscoveryLibrary"
+        noGraph:
+          type: boolean
 
     DiscoveryFeedbackRequest:
       type: object

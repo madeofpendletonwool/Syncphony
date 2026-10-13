@@ -24,7 +24,7 @@ export function AddToSetButton({ artist }: { artist: string }) {
   )
 }
 
-function AddToSetSheet({ artist, open, onOpenChange }: { artist: string; open: boolean; onOpenChange: (open: boolean) => void }) {
+export function AddToSetSheet({ artist, open, onOpenChange }: { artist: string; open: boolean; onOpenChange: (open: boolean) => void }) {
   const qc = useQueryClient()
   const sets = useQuery({ ...setsQuery, enabled: open })
   const [name, setName] = useState('')

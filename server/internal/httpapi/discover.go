@@ -161,17 +161,78 @@ func (s *Server) GetDiscoveryFeed(ctx context.Context, req GetDiscoveryFeedReque
 	if err != nil {
 		return nil, err
 	}
-	out := DiscoveryFeed{Items: make([]DiscoveryItem, len(f.Items)), Next: nonEmpty(f.Next), Library: toDiscoveryLibrary(f.Library), NoGraph: f.NoGraph}
-	for i, it := range f.Items {
-		out.Items[i] = DiscoveryItem{
+	out := DiscoveryFeed{Items: toDiscoveryItems(f.Items), Next: nonEmpty(f.Next), Library: toDiscoveryLibrary(f.Library), NoGraph: f.NoGraph}
+	return GetDiscoveryFeed200JSONResponse(out), nil
+}
+
+func toDiscoveryItems(items []discover.Item) []DiscoveryItem {
+	out := make([]DiscoveryItem, len(items))
+	for i, it := range items {
+		out[i] = DiscoveryItem{
 			Key: it.Key, Title: it.Title, Artist: it.Artist, Album: nonEmpty(it.Album), Mbid: nonEmpty(it.MBID), Isrc: nonEmpty(it.ISRC),
 			DeezerId: nonZero(it.DeezerID), Cover: nonEmpty(it.Cover), Because: it.Because, Seed: it.Seed,
 		}
-		if out.Items[i].Because == nil {
-			out.Items[i].Because = []string{}
+		if out[i].Because == nil {
+			out[i].Because = []string{}
 		}
 	}
-	return GetDiscoveryFeed200JSONResponse(out), nil
+	return out
+}
+
+// GetDiscoveryMap returns a map of artists around an artist or a set.
+func (s *Server) GetDiscoveryMap(ctx context.Context, req GetDiscoveryMapRequestObject) (GetDiscoveryMapResponseObject, error) {
+	u, err := member(ctx)
+	if err != nil {
+		return nil, err
+	}
+	p := req.Params
+	q := discover.MapQuery{Artist: deref(p.Artist), MBID: deref(p.Mbid), SetID: deref(p.SetId)}
+	if p.Depth != nil {
+		q.Depth = *p.Depth
+	}
+	if p.Limit != nil {
+		q.Limit = *p.Limit
+	}
+	m, err := s.Discover.Map(ctx, u.ID, q)
+	if err != nil {
+		return nil, err
+	}
+	out := DiscoveryMap{
+		Nodes: make([]DiscoveryMapNode, len(m.Nodes)), Edges: make([]DiscoveryMapEdge, len(m.Edges)),
+		Partial: m.Partial, NoGraph: m.NoGraph, Library: toDiscoveryLibrary(m.Library),
+	}
+	if m.Set != nil {
+		out.Set = ptr(toDiscoverySet(*m.Set))
+	}
+	for i, n := range m.Nodes {
+		out.Nodes[i] = DiscoveryMapNode{
+			Key: n.Key, Name: n.Name, Mbid: nonEmpty(n.MBID), Fans: nonZero(n.Fans), Picture: nonEmpty(n.Picture), Tags: n.Tags,
+			Owned: n.Owned, Seed: n.Seed, Center: n.Center, Blocked: n.Blocked, Hop: n.Hop, Seeds: n.Seeds,
+			Score: float32(n.Score), Known: n.Known,
+		}
+		if out.Nodes[i].Tags == nil {
+			out.Nodes[i].Tags = []string{}
+		}
+	}
+	for i, e := range m.Edges {
+		out.Edges[i] = DiscoveryMapEdge{From: e.From, To: e.To, Score: float32(e.Score), Sources: e.Sources}
+	}
+	return GetDiscoveryMap200JSONResponse(out), nil
+}
+
+// ListDiscoveryArtistSongs returns an artist's songs the caller doesn't have.
+func (s *Server) ListDiscoveryArtistSongs(ctx context.Context, req ListDiscoveryArtistSongsRequestObject) (ListDiscoveryArtistSongsResponseObject, error) {
+	u, err := member(ctx)
+	if err != nil {
+		return nil, err
+	}
+	songs, err := s.Discover.ArtistSongs(ctx, u.ID, req.Params.Artist, deref(req.Params.Mbid))
+	if err != nil {
+		return nil, err
+	}
+	return ListDiscoveryArtistSongs200JSONResponse(DiscoverySongs{
+		Items: toDiscoveryItems(songs.Items), Library: toDiscoveryLibrary(songs.Library), NoGraph: songs.NoGraph,
+	}), nil
 }
 
 // PostDiscoveryFeedback records a thumb on a song.

@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { Compass, LoaderCircle, Plus, RefreshCw, X } from 'lucide-react'
+import { Compass, Crosshair, LoaderCircle, Plus, RefreshCw, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState } from 'react'
 import { errorMessage } from '@/api/errors'
+import { ArtistSearch } from '@/components/discover/artist-search'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -86,6 +87,7 @@ function Discover() {
           ))}
         </motion.ul>
       )}
+      <MapStart />
       <LibraryStatus />
       <Blocks />
     </>
@@ -140,6 +142,23 @@ function SetCard({ set: s }: { set: DiscoverySetSummary }) {
         </span>
       </span>
     </Link>
+  )
+}
+
+/** The map, from any artist: how you explore something entirely new. */
+function MapStart() {
+  const navigate = useNavigate()
+  return (
+    <section className="mt-10">
+      <h2 className="mb-1 px-1 text-headline">Map</h2>
+      <p className="mb-3 px-1 text-sm text-muted-foreground">Start from any artist and wander: tap one to hear them, or re-center and keep going.</p>
+      <ArtistSearch
+        have={new Set()}
+        placeholder="Map an artist"
+        icon={<Crosshair className="size-4" />}
+        onPick={(name) => void navigate({ to: '/discover/map', search: { path: [name] } })}
+      />
+    </section>
   )
 }
 

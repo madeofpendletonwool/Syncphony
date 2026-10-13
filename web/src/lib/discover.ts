@@ -14,6 +14,9 @@ export type DiscoveryFeed = components['schemas']['DiscoveryFeed']
 export type DiscoveryMode = components['schemas']['DiscoveryMode']
 export type DiscoveryArtist = components['schemas']['DiscoveryArtist']
 export type DiscoveryLibrary = components['schemas']['DiscoveryLibrary']
+export type DiscoveryMap = components['schemas']['DiscoveryMap']
+export type DiscoveryMapNode = components['schemas']['DiscoveryMapNode']
+export type DiscoveryMapEdge = components['schemas']['DiscoveryMapEdge']
 
 export const setsQuery = queryOptions({
   queryKey: ['discover', 'sets'],
@@ -69,11 +72,32 @@ export const artistSearchQuery = (q: string) =>
     staleTime: 5 * 60_000,
   })
 
+/** What a map is of: one of your sets, or any artist. */
+export type MapOf = { setId: string } | { artist: string }
+
+export const mapQuery = (of: MapOf) =>
+  queryOptions({
+    queryKey: ['discover', 'map', of],
+    queryFn: ({ signal }) => unwrap(api.GET('/me/discover/map', { params: { query: of }, signal })),
+    staleTime: 5 * 60_000,
+    // Artists the server didn't know yet are being looked up: look again
+    // a few times, and the map fills out.
+    refetchInterval: (q) => (q.state.data?.partial && q.state.dataUpdateCount < 4 ? 6_000 : false),
+  })
+
+export const artistSongsQuery = (artist: string) =>
+  queryOptions({
+    queryKey: ['discover', 'songs', artist],
+    queryFn: ({ signal }) => unwrap(api.GET('/me/discover/songs', { params: { query: { artist } }, signal })),
+    staleTime: 5 * 60_000,
+  })
+
 /** Puts a changed set in the cache, refreshes the list, and drops its stale feed. */
 export function setChanged(qc: QueryClient, set: DiscoverySet) {
   qc.setQueryData(setQuery(set.id).queryKey, set)
   void qc.invalidateQueries({ queryKey: setsQuery.queryKey, exact: true })
   void qc.resetQueries({ queryKey: feedQuery(set.id).queryKey })
+  void qc.invalidateQueries({ queryKey: mapQuery({ setId: set.id }).queryKey })
 }
 
 export function createSet(name: string, artists: { name: string; mbid?: string }[] = []) {

@@ -2164,6 +2164,73 @@ type DiscoveryLibrary struct {
 	Songs    int        `json:"songs"`
 }
 
+// DiscoveryMap defines model for DiscoveryMap.
+type DiscoveryMap struct {
+	Edges []DiscoveryMapEdge `json:"edges"`
+
+	// Library How far your library (your own Navidrome links) is indexed.
+	Library DiscoveryLibrary `json:"library"`
+	NoGraph bool             `json:"noGraph"`
+
+	// Nodes The artist or seeds first, then the rest, nearest first.
+	Nodes []DiscoveryMapNode `json:"nodes"`
+
+	// Partial Some artists aren't known yet and are being looked up; load the map again shortly for more.
+	Partial bool          `json:"partial"`
+	Set     *DiscoverySet `json:"set,omitempty"`
+}
+
+// DiscoveryMapEdge defines model for DiscoveryMapEdge.
+type DiscoveryMapEdge struct {
+	From string `json:"from"`
+
+	// Score How alike, 0 to 1.
+	Score   float32  `json:"score"`
+	Sources []string `json:"sources"`
+	To      string   `json:"to"`
+}
+
+// DiscoveryMapNode An artist on a map.
+type DiscoveryMapNode struct {
+	// Blocked You said they aren't for you. Only ever the artist the map is of, or a seed.
+	Blocked bool `json:"blocked"`
+
+	// Center The artist the map is of.
+	Center bool `json:"center"`
+
+	// Fans Fans on Deezer, a measure of how well known.
+	Fans *int64 `json:"fans,omitempty"`
+
+	// Hop Steps from the artist or seeds; 0 for those.
+	Hop int `json:"hop"`
+
+	// Key How the artist is compared, and what edges name.
+	Key string `json:"key"`
+
+	// Known The music graph knows them yet. One it doesn't is being looked up.
+	Known bool    `json:"known"`
+	Mbid  *string `json:"mbid,omitempty"`
+	Name  string  `json:"name"`
+
+	// Owned You have something of theirs on your own Navidrome.
+	Owned bool `json:"owned"`
+
+	// Picture Their picture's image ID, for getDiscoveryImage (kind `artist`).
+	Picture *string `json:"picture,omitempty"`
+
+	// Score How near, 0 to 1; 1 for the artist or seeds.
+	Score float32 `json:"score"`
+
+	// Seed One of the set's seeds.
+	Seed bool `json:"seed"`
+
+	// Seeds How many of the set's seeds they're near.
+	Seeds int `json:"seeds"`
+
+	// Tags Their strongest tags.
+	Tags []string `json:"tags"`
+}
+
 // DiscoveryMode Which feeds a set shows: `deep` cuts (anything new to you), `fresh`
 // releases (coming), or `both`.
 type DiscoveryMode string
@@ -2216,6 +2283,15 @@ type DiscoverySetSummary struct {
 	Mode      DiscoveryMode `json:"mode"`
 	Name      string        `json:"name"`
 	UpdatedAt time.Time     `json:"updatedAt"`
+}
+
+// DiscoverySongs defines model for DiscoverySongs.
+type DiscoverySongs struct {
+	Items []DiscoveryItem `json:"items"`
+
+	// Library How far your library (your own Navidrome links) is indexed.
+	Library DiscoveryLibrary `json:"library"`
+	NoGraph bool             `json:"noGraph"`
 }
 
 // Display defines model for Display.
@@ -4727,6 +4803,24 @@ type GetDiscoveryImageParams struct {
 	Size *int `form:"size,omitempty" json:"size,omitempty"`
 }
 
+// GetDiscoveryMapParams defines parameters for GetDiscoveryMap.
+type GetDiscoveryMapParams struct {
+	// Artist The artist's name. Give this or `setId`.
+	Artist *string `form:"artist,omitempty" json:"artist,omitempty"`
+
+	// Mbid The artist's MusicBrainz ID, when known.
+	Mbid *string `form:"mbid,omitempty" json:"mbid,omitempty"`
+
+	// SetId One of your sets. Give this or `artist`.
+	SetId *string `form:"setId,omitempty" json:"setId,omitempty"`
+
+	// Depth Steps out from the artist or seeds. Default 2 around an artist, 1 around a set.
+	Depth *int `form:"depth,omitempty" json:"depth,omitempty"`
+
+	// Limit How many artists, at most. Default 60.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // GetDiscoveryPreviewParams defines parameters for GetDiscoveryPreview.
 type GetDiscoveryPreviewParams struct {
 	Range *string `json:"Range,omitempty"`
@@ -4739,6 +4833,12 @@ type GetDiscoveryFeedParams struct {
 
 	// Refresh Build the feed again now, for the first page.
 	Refresh *bool `form:"refresh,omitempty" json:"refresh,omitempty"`
+}
+
+// ListDiscoveryArtistSongsParams defines parameters for ListDiscoveryArtistSongs.
+type ListDiscoveryArtistSongsParams struct {
+	Artist string  `form:"artist" json:"artist"`
+	Mbid   *string `form:"mbid,omitempty" json:"mbid,omitempty"`
 }
 
 // RenamePasskeyJSONBody defines parameters for RenamePasskey.
@@ -5216,6 +5316,9 @@ type ServerInterface interface {
 	// RefreshDiscoveryLibrary Index your library again now
 	// (POST /me/discover/library)
 	RefreshDiscoveryLibrary(w http.ResponseWriter, r *http.Request)
+	// GetDiscoveryMap A map of artists around an artist or a set
+	// (GET /me/discover/map)
+	GetDiscoveryMap(w http.ResponseWriter, r *http.Request, params GetDiscoveryMapParams)
 	// GetDiscoveryPreview A song's 30-second preview
 	// (GET /me/discover/preview/{deezerTrackId})
 	GetDiscoveryPreview(w http.ResponseWriter, r *http.Request, deezerTrackId int64, params GetDiscoveryPreviewParams)
@@ -5243,6 +5346,9 @@ type ServerInterface interface {
 	// GetDiscoveryFeed A page of a set's feed
 	// (GET /me/discover/sets/{setId}/feed)
 	GetDiscoveryFeed(w http.ResponseWriter, r *http.Request, setId DiscoverySetId, params GetDiscoveryFeedParams)
+	// ListDiscoveryArtistSongs An artist's songs you don't have
+	// (GET /me/discover/songs)
+	ListDiscoveryArtistSongs(w http.ResponseWriter, r *http.Request, params ListDiscoveryArtistSongsParams)
 	// ListPasskeys Your passkeys
 	// (GET /me/passkeys)
 	ListPasskeys(w http.ResponseWriter, r *http.Request)
@@ -7086,6 +7192,91 @@ func (siw *ServerInterfaceWrapper) RefreshDiscoveryLibrary(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// GetDiscoveryMap operation middleware
+func (siw *ServerInterfaceWrapper) GetDiscoveryMap(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetDiscoveryMapParams
+
+	// ------------- Optional query parameter "artist" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "artist", r.URL.Query(), &params.Artist, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "artist"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "artist", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "mbid" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "mbid", r.URL.Query(), &params.Mbid, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "mbid"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "mbid", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "setId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "setId", r.URL.Query(), &params.SetId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "setId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "setId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "depth" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "depth", r.URL.Query(), &params.Depth, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "depth"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "depth", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDiscoveryMap(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetDiscoveryPreview operation middleware
 func (siw *ServerInterfaceWrapper) GetDiscoveryPreview(w http.ResponseWriter, r *http.Request) {
 
@@ -7349,6 +7540,52 @@ func (siw *ServerInterfaceWrapper) GetDiscoveryFeed(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetDiscoveryFeed(w, r, setId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDiscoveryArtistSongs operation middleware
+func (siw *ServerInterfaceWrapper) ListDiscoveryArtistSongs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListDiscoveryArtistSongsParams
+
+	// ------------- Required query parameter "artist" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "artist", r.URL.Query(), &params.Artist, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "artist"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "artist", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "mbid" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "mbid", r.URL.Query(), &params.Mbid, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "mbid"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "mbid", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDiscoveryArtistSongs(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10837,6 +11074,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/me/discover/blocks", wrapper.BlockDiscoveryArtist)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/me/discover/blocks/{artistKey}", wrapper.UnblockDiscoveryArtist)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/artists", wrapper.SearchDiscoveryArtists)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/map", wrapper.GetDiscoveryMap)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/songs", wrapper.ListDiscoveryArtistSongs)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/library", wrapper.GetDiscoveryLibrary)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/me/discover/library", wrapper.RefreshDiscoveryLibrary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/preview/{deezerTrackId}", wrapper.GetDiscoveryPreview)
@@ -13358,6 +13597,45 @@ func (response RefreshDiscoveryLibrarydefaultJSONResponse) VisitRefreshDiscovery
 	return err
 }
 
+type GetDiscoveryMapRequestObject struct {
+	Params GetDiscoveryMapParams
+}
+
+type GetDiscoveryMapResponseObject interface {
+	VisitGetDiscoveryMapResponse(w http.ResponseWriter) error
+}
+
+type GetDiscoveryMap200JSONResponse DiscoveryMap
+
+func (response GetDiscoveryMap200JSONResponse) VisitGetDiscoveryMapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDiscoveryMapdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetDiscoveryMapdefaultJSONResponse) VisitGetDiscoveryMapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetDiscoveryPreviewRequestObject struct {
 	DeezerTrackId int64 `json:"deezerTrackId"`
 	Params        GetDiscoveryPreviewParams
@@ -13724,6 +14002,45 @@ type GetDiscoveryFeeddefaultJSONResponse struct {
 }
 
 func (response GetDiscoveryFeeddefaultJSONResponse) VisitGetDiscoveryFeedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDiscoveryArtistSongsRequestObject struct {
+	Params ListDiscoveryArtistSongsParams
+}
+
+type ListDiscoveryArtistSongsResponseObject interface {
+	VisitListDiscoveryArtistSongsResponse(w http.ResponseWriter) error
+}
+
+type ListDiscoveryArtistSongs200JSONResponse DiscoverySongs
+
+func (response ListDiscoveryArtistSongs200JSONResponse) VisitListDiscoveryArtistSongsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDiscoveryArtistSongsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListDiscoveryArtistSongsdefaultJSONResponse) VisitListDiscoveryArtistSongsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -18152,6 +18469,9 @@ type StrictServerInterface interface {
 	// RefreshDiscoveryLibrary Index your library again now
 	// (POST /me/discover/library)
 	RefreshDiscoveryLibrary(ctx context.Context, request RefreshDiscoveryLibraryRequestObject) (RefreshDiscoveryLibraryResponseObject, error)
+	// GetDiscoveryMap A map of artists around an artist or a set
+	// (GET /me/discover/map)
+	GetDiscoveryMap(ctx context.Context, request GetDiscoveryMapRequestObject) (GetDiscoveryMapResponseObject, error)
 	// GetDiscoveryPreview A song's 30-second preview
 	// (GET /me/discover/preview/{deezerTrackId})
 	GetDiscoveryPreview(ctx context.Context, request GetDiscoveryPreviewRequestObject) (GetDiscoveryPreviewResponseObject, error)
@@ -18179,6 +18499,9 @@ type StrictServerInterface interface {
 	// GetDiscoveryFeed A page of a set's feed
 	// (GET /me/discover/sets/{setId}/feed)
 	GetDiscoveryFeed(ctx context.Context, request GetDiscoveryFeedRequestObject) (GetDiscoveryFeedResponseObject, error)
+	// ListDiscoveryArtistSongs An artist's songs you don't have
+	// (GET /me/discover/songs)
+	ListDiscoveryArtistSongs(ctx context.Context, request ListDiscoveryArtistSongsRequestObject) (ListDiscoveryArtistSongsResponseObject, error)
 	// ListPasskeys Your passkeys
 	// (GET /me/passkeys)
 	ListPasskeys(ctx context.Context, request ListPasskeysRequestObject) (ListPasskeysResponseObject, error)
@@ -20287,6 +20610,32 @@ func (sh *strictHandler) RefreshDiscoveryLibrary(w http.ResponseWriter, r *http.
 	}
 }
 
+// GetDiscoveryMap operation middleware
+func (sh *strictHandler) GetDiscoveryMap(w http.ResponseWriter, r *http.Request, params GetDiscoveryMapParams) {
+	var request GetDiscoveryMapRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDiscoveryMap(ctx, request.(GetDiscoveryMapRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDiscoveryMap")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDiscoveryMapResponseObject); ok {
+		if err := validResponse.VisitGetDiscoveryMapResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetDiscoveryPreview operation middleware
 func (sh *strictHandler) GetDiscoveryPreview(w http.ResponseWriter, r *http.Request, deezerTrackId int64, params GetDiscoveryPreviewParams) {
 	var request GetDiscoveryPreviewRequestObject
@@ -20534,6 +20883,32 @@ func (sh *strictHandler) GetDiscoveryFeed(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetDiscoveryFeedResponseObject); ok {
 		if err := validResponse.VisitGetDiscoveryFeedResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDiscoveryArtistSongs operation middleware
+func (sh *strictHandler) ListDiscoveryArtistSongs(w http.ResponseWriter, r *http.Request, params ListDiscoveryArtistSongsParams) {
+	var request ListDiscoveryArtistSongsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDiscoveryArtistSongs(ctx, request.(ListDiscoveryArtistSongsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDiscoveryArtistSongs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDiscoveryArtistSongsResponseObject); ok {
+		if err := validResponse.VisitListDiscoveryArtistSongsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

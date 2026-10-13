@@ -8,6 +8,7 @@ import { BackButton } from '@/components/back-button'
 import { ConfirmButton } from '@/components/confirm-button'
 import { ArtistSearch } from '@/components/discover/artist-search'
 import { FeedCard } from '@/components/discover/feed-card'
+import { SetTabs } from '@/components/discover/set-tabs'
 import { Notice } from '@/components/notice'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -141,6 +142,7 @@ function Header({ set }: { set: DiscoverySet }) {
           </div>
         </div>
       )}
+      <SetTabs setId={set.id} on="feed" className="self-start" />
     </header>
   )
 }

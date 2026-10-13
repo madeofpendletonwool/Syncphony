@@ -25,6 +25,7 @@ import { Route as AppAuthedRoomRouteImport } from './routes/_app/_authed/room'
 import { Route as AppAuthedSearchRouteImport } from './routes/_app/_authed/search'
 import { Route as AppAuthedDiscoverIndexRouteImport } from './routes/_app/_authed/discover.index'
 import { Route as AppAuthedDiscoverSetIdRouteImport } from './routes/_app/_authed/discover.$setId'
+import { Route as AppAuthedDiscoverMapRouteImport } from './routes/_app/_authed/discover.map'
 import { Route as AppAuthedGenreLinkIdRouteImport } from './routes/_app/_authed/genre.$linkId'
 import { Route as AppAuthedLibraryIndexRouteImport } from './routes/_app/_authed/library.index'
 import { Route as AppAuthedLibraryPlaylistIdRouteImport } from './routes/_app/_authed/library.$playlistId'
@@ -115,6 +116,11 @@ const AppAuthedDiscoverSetIdRoute = AppAuthedDiscoverSetIdRouteImport.update({
   path: '/discover/$setId',
   getParentRoute: () => AppAuthedRoute,
 } as any)
+const AppAuthedDiscoverMapRoute = AppAuthedDiscoverMapRouteImport.update({
+  id: '/discover/map',
+  path: '/discover/map',
+  getParentRoute: () => AppAuthedRoute,
+} as any)
 const AppAuthedGenreLinkIdRoute = AppAuthedGenreLinkIdRouteImport.update({
   id: '/genre/$linkId',
   path: '/genre/$linkId',
@@ -192,6 +198,7 @@ export interface FileRoutesByFullPath {
   '/room': typeof AppAuthedRoomRoute
   '/search': typeof AppAuthedSearchRoute
   '/discover/$setId': typeof AppAuthedDiscoverSetIdRoute
+  '/discover/map': typeof AppAuthedDiscoverMapRoute
   '/genre/$linkId': typeof AppAuthedGenreLinkIdRoute
   '/library/$playlistId': typeof AppAuthedLibraryPlaylistIdRoute
   '/settings/people': typeof AppAuthedSettingsPeopleRoute
@@ -219,6 +226,7 @@ export interface FileRoutesByTo {
   '/room': typeof AppAuthedRoomRoute
   '/search': typeof AppAuthedSearchRoute
   '/discover/$setId': typeof AppAuthedDiscoverSetIdRoute
+  '/discover/map': typeof AppAuthedDiscoverMapRoute
   '/genre/$linkId': typeof AppAuthedGenreLinkIdRoute
   '/library/$playlistId': typeof AppAuthedLibraryPlaylistIdRoute
   '/settings/people': typeof AppAuthedSettingsPeopleRoute
@@ -249,6 +257,7 @@ export interface FileRoutesById {
   '/_app/_authed/search': typeof AppAuthedSearchRoute
   '/_app/_authed/': typeof AppAuthedIndexRoute
   '/_app/_authed/discover/$setId': typeof AppAuthedDiscoverSetIdRoute
+  '/_app/_authed/discover/map': typeof AppAuthedDiscoverMapRoute
   '/_app/_authed/genre/$linkId': typeof AppAuthedGenreLinkIdRoute
   '/_app/_authed/library/$playlistId': typeof AppAuthedLibraryPlaylistIdRoute
   '/_app/_authed/settings/people': typeof AppAuthedSettingsPeopleRoute
@@ -278,6 +287,7 @@ export interface FileRouteTypes {
     | '/room'
     | '/search'
     | '/discover/$setId'
+    | '/discover/map'
     | '/genre/$linkId'
     | '/library/$playlistId'
     | '/settings/people'
@@ -305,6 +315,7 @@ export interface FileRouteTypes {
     | '/room'
     | '/search'
     | '/discover/$setId'
+    | '/discover/map'
     | '/genre/$linkId'
     | '/library/$playlistId'
     | '/settings/people'
@@ -334,6 +345,7 @@ export interface FileRouteTypes {
     | '/_app/_authed/search'
     | '/_app/_authed/'
     | '/_app/_authed/discover/$setId'
+    | '/_app/_authed/discover/map'
     | '/_app/_authed/genre/$linkId'
     | '/_app/_authed/library/$playlistId'
     | '/_app/_authed/settings/people'
@@ -472,6 +484,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAuthedDiscoverSetIdRouteImport
       parentRoute: typeof AppAuthedRoute
     }
+    '/_app/_authed/discover/map': {
+      id: '/_app/_authed/discover/map'
+      path: '/discover/map'
+      fullPath: '/discover/map'
+      preLoaderRoute: typeof AppAuthedDiscoverMapRouteImport
+      parentRoute: typeof AppAuthedRoute
+    }
     '/_app/_authed/genre/$linkId': {
       id: '/_app/_authed/genre/$linkId'
       path: '/genre/$linkId'
@@ -559,6 +578,7 @@ interface AppAuthedRouteChildren {
   AppAuthedSearchRoute: typeof AppAuthedSearchRoute
   AppAuthedIndexRoute: typeof AppAuthedIndexRoute
   AppAuthedDiscoverSetIdRoute: typeof AppAuthedDiscoverSetIdRoute
+  AppAuthedDiscoverMapRoute: typeof AppAuthedDiscoverMapRoute
   AppAuthedGenreLinkIdRoute: typeof AppAuthedGenreLinkIdRoute
   AppAuthedLibraryPlaylistIdRoute: typeof AppAuthedLibraryPlaylistIdRoute
   AppAuthedSettingsPeopleRoute: typeof AppAuthedSettingsPeopleRoute
@@ -580,6 +600,7 @@ const AppAuthedRouteChildren: AppAuthedRouteChildren = {
   AppAuthedSearchRoute: AppAuthedSearchRoute,
   AppAuthedIndexRoute: AppAuthedIndexRoute,
   AppAuthedDiscoverSetIdRoute: AppAuthedDiscoverSetIdRoute,
+  AppAuthedDiscoverMapRoute: AppAuthedDiscoverMapRoute,
   AppAuthedGenreLinkIdRoute: AppAuthedGenreLinkIdRoute,
   AppAuthedLibraryPlaylistIdRoute: AppAuthedLibraryPlaylistIdRoute,
   AppAuthedSettingsPeopleRoute: AppAuthedSettingsPeopleRoute,
