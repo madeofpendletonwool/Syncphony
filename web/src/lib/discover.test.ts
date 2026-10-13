@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { becauseText, fansText, feedItems, imageUrl, youtubeUrl, type DiscoveryFeed } from './discover'
+import {
+  becauseText,
+  fansText,
+  feedItems,
+  imageUrl,
+  kindText,
+  mixFresh,
+  releaseCoverUrl,
+  releaseDateText,
+  releaseYoutubeUrl,
+  youtubeUrl,
+  type DiscoveryFeed,
+  type DiscoveryRelease,
+} from './discover'
 
 const item = (key: string) => ({ key, title: key, artist: 'A', because: ['Slowdive'], seed: false })
 const page = (...keys: string[]): DiscoveryFeed => ({
@@ -52,5 +65,70 @@ describe('fansText', () => {
     expect(fansText(12_400)).toBe('12K fans')
     expect(fansText(1)).toBe('1 fan')
     expect(fansText(undefined)).toBe('')
+  })
+})
+
+const release = (key: string): DiscoveryRelease => ({
+  key,
+  title: key,
+  artist: 'A',
+  date: '2026-10-01',
+  kind: 'album',
+  sources: ['deezer'],
+  because: ['Slowdive'],
+  seed: false,
+})
+
+describe('mixFresh', () => {
+  const songs = ['a', 'b', 'c', 'd', 'e', 'f'].map(item)
+  const order = (entries: ReturnType<typeof mixFresh>) => entries.map((e) => (e.kind === 'song' ? e.item.key : `R${e.release.key}`))
+  it('puts a release after the first song, then one every few', () => {
+    expect(order(mixFresh(songs, ['1', '2', '3'].map(release), false, 4))).toEqual(['a', 'R1', 'b', 'c', 'd', 'e', 'R2', 'f'])
+  })
+  it('keeps what is left over for the end of the feed', () => {
+    expect(order(mixFresh(songs.slice(0, 2), ['1', '2'].map(release), true))).toEqual(['a', 'R1', 'b', 'R2'])
+    expect(order(mixFresh([], ['1'].map(release), true))).toEqual(['R1'])
+  })
+  it('is just the songs without releases', () => {
+    expect(order(mixFresh(songs.slice(0, 2), [], true))).toEqual(['a', 'b'])
+  })
+})
+
+describe('releaseDateText', () => {
+  const now = new Date(2026, 9, 13, 15).getTime()
+  it('says how lately it came out', () => {
+    expect(releaseDateText('2026-10-13', now)).toBe('Out today')
+    expect(releaseDateText('2026-10-12', now)).toBe('Out yesterday')
+    expect(releaseDateText('2026-10-09', now)).toBe('Out 4 days ago')
+    expect(releaseDateText('2026-09-19', now)).toMatch(/^Out .*19/)
+  })
+  it('names the month when that is all that is known', () => {
+    expect(releaseDateText('2026-09', now)).toMatch(/^Out in /)
+    expect(releaseDateText('', now)).toBe('')
+  })
+})
+
+describe('releaseCoverUrl', () => {
+  it("uses Deezer's cover, else the Cover Art Archive's", () => {
+    expect(releaseCoverUrl({ cover: 'abc' }, 120)).toBe('/api/me/discover/images/cover/abc?size=120')
+    expect(releaseCoverUrl({ coverRelease: 'r1', mbid: 'g1' })).toBe('/api/me/discover/release-art/r1?size=250')
+    expect(releaseCoverUrl({ mbid: 'g1' })).toBe('/api/me/discover/release-art/g1?group=true&size=250')
+    expect(releaseCoverUrl({})).toBeUndefined()
+  })
+})
+
+describe('releaseYoutubeUrl', () => {
+  it('searches for the whole album, or the single', () => {
+    expect(releaseYoutubeUrl({ artist: 'Hum', title: 'Inlet', kind: 'album' })).toBe(
+      'https://www.youtube.com/results?search_query=Hum%20Inlet%20full%20album',
+    )
+    expect(releaseYoutubeUrl({ artist: 'Hum', title: 'Waves', kind: 'single' })).toBe('https://www.youtube.com/results?search_query=Hum%20Waves')
+  })
+})
+
+describe('kindText', () => {
+  it('names kinds of release', () => {
+    expect(kindText('ep')).toBe('EP')
+    expect(kindText('live')).toBe('Live album')
   })
 })

@@ -2331,6 +2331,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/discover/sets/{setId}/fresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * A set's Fresh feed
+         * @description Releases (albums, EPs, singles) from the set's last `freshDays` by
+         *     its seeds and their nearest neighbors, that you don't have or
+         *     want, and not by an artist you blocked. The seeds' come first,
+         *     then the neighbors' by how near they are; albums and EPs before
+         *     singles, and compilations and live albums last. Releases come from
+         *     ListenBrainz, MusicBrainz and Deezer, cached a day per artist:
+         *     artists not known yet are looked up in the background
+         *     (`partial`).
+         */
+        get: operations["getDiscoveryFresh"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/release-tracks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A release's songs, with previews
+         * @description From Deezer: by `deezerId`, or found by `artist` and `title`.
+         *     Empty when Deezer doesn't have it, or is off.
+         */
+        get: operations["listDiscoveryReleaseTracks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/release-art/{mbid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A release's MBID (`coverRelease`), or with `group`, a release group's (`mbid`). */
+                mbid: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * A release's cover from the Cover Art Archive, through the server
+         * @description For a release Deezer doesn't have. `not_found` if there's none, or MusicBrainz is off.
+         */
+        get: operations["getDiscoveryReleaseArt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/discover/feedback": {
         parameters: {
             query?: never;
@@ -5581,7 +5654,7 @@ export interface components {
         };
         /**
          * @description Which feeds a set shows: `deep` cuts (anything new to you), `fresh`
-         *     releases (coming), or `both`.
+         *     releases (recent albums, EPs and singles), or `both`.
          * @enum {string}
          */
         DiscoveryMode: "deep" | "fresh" | "both";
@@ -5590,6 +5663,7 @@ export interface components {
             name: string;
             explore: number;
             mode: components["schemas"]["DiscoveryMode"];
+            freshDays: components["schemas"]["DiscoveryFreshDays"];
             artistCount: number;
             /** Format: date-time */
             createdAt: string;
@@ -5602,6 +5676,7 @@ export interface components {
             /** @description How far the feed strays from the seeds, and toward less-known artists. */
             explore: number;
             mode: components["schemas"]["DiscoveryMode"];
+            freshDays: components["schemas"]["DiscoveryFreshDays"];
             artists: components["schemas"]["DiscoverySetArtist"][];
             /** Format: date-time */
             createdAt: string;
@@ -5630,6 +5705,53 @@ export interface components {
             name?: string;
             explore?: number;
             mode?: components["schemas"]["DiscoveryMode"];
+            freshDays?: components["schemas"]["DiscoveryFreshDays"];
+        };
+        /**
+         * @description How far back a set's Fresh feed looks, in days.
+         * @enum {integer}
+         */
+        DiscoveryFreshDays: 30 | 60 | 90;
+        /** @description A recent release near a set's seeds, that you don't have. */
+        DiscoveryRelease: {
+            key: string;
+            title: string;
+            /** @description Who it's credited to. */
+            artist: string;
+            /** @description When it first came out, YYYY-MM-DD (or YYYY-MM, if that's all that's known). */
+            date: string;
+            /** @enum {string} */
+            kind: "album" | "ep" | "single" | "compilation" | "live";
+            /** @description Its MusicBrainz release group. */
+            mbid?: string;
+            /** @description A release of it with a cover in the Cover Art Archive, for getDiscoveryReleaseArt. */
+            coverRelease?: string;
+            /**
+             * Format: int64
+             * @description The release on Deezer, for its songs.
+             */
+            deezerId?: number;
+            /** @description Its cover's image ID on Deezer, for getDiscoveryImage (kind `cover`). */
+            cover?: string;
+            sources: string[];
+            /** @description The seed artists it's near, nearest first; the seed itself for a seed's release. */
+            because: string[];
+            /** @description Whether it's a seed artist's. */
+            seed: boolean;
+        };
+        DiscoveryFresh: {
+            items: components["schemas"]["DiscoveryRelease"][];
+            days: components["schemas"]["DiscoveryFreshDays"];
+            /** @description Some artists' releases weren't known yet. They're being looked up; load it again in a while. */
+            partial: boolean;
+            library: components["schemas"]["DiscoveryLibrary"];
+            /** @description The server knows nothing of how music relates, so only the seeds' releases show. */
+            noGraph: boolean;
+            /** @description The server has no source of releases (Deezer, ListenBrainz and MusicBrainz are all off). */
+            noReleases: boolean;
+        };
+        DiscoveryReleaseTracks: {
+            items: components["schemas"]["DiscoveryItem"][];
         };
         /** @description A song you don't have, near a set's seeds. */
         DiscoveryItem: {
@@ -8855,6 +8977,83 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DiscoveryFeed"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getDiscoveryFresh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The feed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryFresh"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listDiscoveryReleaseTracks: {
+        parameters: {
+            query: {
+                artist: string;
+                title: string;
+                deezerId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The songs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryReleaseTracks"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getDiscoveryReleaseArt: {
+        parameters: {
+            query?: {
+                /** @description The MBID is a release group's. */
+                group?: boolean;
+                /** @description Wanted width in pixels; a hint. */
+                size?: number;
+            };
+            header?: never;
+            path: {
+                /** @description A release's MBID (`coverRelease`), or with `group`, a release group's (`mbid`). */
+                mbid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
                 };
             };
             default: components["responses"]["Error"];
