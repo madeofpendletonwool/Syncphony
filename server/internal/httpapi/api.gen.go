@@ -113,22 +113,22 @@ func (e AwardKind) Valid() bool {
 
 // Defines values for BackupKind.
 const (
-	Manual     BackupKind = "manual"
-	PreRestore BackupKind = "pre-restore"
-	PreUpgrade BackupKind = "pre-upgrade"
-	Scheduled  BackupKind = "scheduled"
+	BackupKindManual     BackupKind = "manual"
+	BackupKindPreRestore BackupKind = "pre-restore"
+	BackupKindPreUpgrade BackupKind = "pre-upgrade"
+	BackupKindScheduled  BackupKind = "scheduled"
 )
 
 // Valid indicates whether the value is a known member of the BackupKind enum.
 func (e BackupKind) Valid() bool {
 	switch e {
-	case Manual:
+	case BackupKindManual:
 		return true
-	case PreRestore:
+	case BackupKindPreRestore:
 		return true
-	case PreUpgrade:
+	case BackupKindPreUpgrade:
 		return true
-	case Scheduled:
+	case BackupKindScheduled:
 		return true
 	default:
 		return false
@@ -174,6 +174,69 @@ func (e BeginDisplayPairingRequestKind) Valid() bool {
 	case BeginDisplayPairingRequestKindBox:
 		return true
 	case BeginDisplayPairingRequestKindScreen:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DiscoveryFeedbackRequestKind.
+const (
+	DiscoveryFeedbackRequestKindDown DiscoveryFeedbackRequestKind = "down"
+	DiscoveryFeedbackRequestKindUp   DiscoveryFeedbackRequestKind = "up"
+)
+
+// Valid indicates whether the value is a known member of the DiscoveryFeedbackRequestKind enum.
+func (e DiscoveryFeedbackRequestKind) Valid() bool {
+	switch e {
+	case DiscoveryFeedbackRequestKindDown:
+		return true
+	case DiscoveryFeedbackRequestKindUp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DiscoveryMode.
+const (
+	DiscoveryModeBoth  DiscoveryMode = "both"
+	DiscoveryModeDeep  DiscoveryMode = "deep"
+	DiscoveryModeFresh DiscoveryMode = "fresh"
+)
+
+// Valid indicates whether the value is a known member of the DiscoveryMode enum.
+func (e DiscoveryMode) Valid() bool {
+	switch e {
+	case DiscoveryModeBoth:
+		return true
+	case DiscoveryModeDeep:
+		return true
+	case DiscoveryModeFresh:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DiscoverySetArtistAddedFrom.
+const (
+	DiscoverySetArtistAddedFromManual  DiscoverySetArtistAddedFrom = "manual"
+	DiscoverySetArtistAddedFromRoom    DiscoverySetArtistAddedFrom = "room"
+	DiscoverySetArtistAddedFromStarred DiscoverySetArtistAddedFrom = "starred"
+	DiscoverySetArtistAddedFromThumb   DiscoverySetArtistAddedFrom = "thumb"
+)
+
+// Valid indicates whether the value is a known member of the DiscoverySetArtistAddedFrom enum.
+func (e DiscoverySetArtistAddedFrom) Valid() bool {
+	switch e {
+	case DiscoverySetArtistAddedFromManual:
+		return true
+	case DiscoverySetArtistAddedFromRoom:
+		return true
+	case DiscoverySetArtistAddedFromStarred:
+		return true
+	case DiscoverySetArtistAddedFromThumb:
 		return true
 	default:
 		return false
@@ -1881,6 +1944,11 @@ type BeginPairingRequest struct {
 	Provider *string `json:"provider,omitempty"`
 }
 
+// BlockDiscoveryArtistRequest defines model for BlockDiscoveryArtistRequest.
+type BlockDiscoveryArtistRequest struct {
+	Name string `json:"name"`
+}
+
 // Ceremony defines model for Ceremony.
 type Ceremony struct {
 	// CeremonyId Pass back to the matching finish endpoint within 5 minutes.
@@ -1913,6 +1981,12 @@ type ClearedLane struct {
 
 	// Removed The IDs of the songs removed, in lane order, to restore them.
 	Removed []string `json:"removed"`
+}
+
+// CreateDiscoverySetRequest defines model for CreateDiscoverySetRequest.
+type CreateDiscoverySetRequest struct {
+	Artists *[]DiscoverySeed `json:"artists,omitempty"`
+	Name    string           `json:"name"`
 }
 
 // CreateGuestPassRequest defines model for CreateGuestPassRequest.
@@ -2011,6 +2085,137 @@ type DeleteMeRequest struct {
 	// Credential The browser's `PublicKeyCredential.toJSON()`.
 	Credential *map[string]interface{} `json:"credential,omitempty"`
 	Password   *string                 `json:"password,omitempty"`
+}
+
+// DiscoveryArtist defines model for DiscoveryArtist.
+type DiscoveryArtist struct {
+	// Fans Fans on Deezer, a measure of how well known.
+	Fans *int64 `json:"fans,omitempty"`
+	Name string `json:"name"`
+
+	// Picture Their picture's image ID, for getDiscoveryImage (kind `artist`).
+	Picture *string `json:"picture,omitempty"`
+}
+
+// DiscoveryBlock defines model for DiscoveryBlock.
+type DiscoveryBlock struct {
+	CreatedAt time.Time `json:"createdAt"`
+	Key       string    `json:"key"`
+	Name      string    `json:"name"`
+}
+
+// DiscoveryFeed defines model for DiscoveryFeed.
+type DiscoveryFeed struct {
+	Items []DiscoveryItem `json:"items"`
+
+	// Library How far your library (your own Navidrome links) is indexed.
+	Library DiscoveryLibrary `json:"library"`
+
+	// Next The cursor for the next page. Absent at the end.
+	Next *string `json:"next,omitempty"`
+
+	// NoGraph The server knows nothing of how music relates (no sources are on), so feeds are empty.
+	NoGraph bool `json:"noGraph"`
+}
+
+// DiscoveryFeedbackRequest defines model for DiscoveryFeedbackRequest.
+type DiscoveryFeedbackRequest struct {
+	Artist   string                       `json:"artist"`
+	DeezerId *int64                       `json:"deezerId,omitempty"`
+	Isrc     *string                      `json:"isrc,omitempty"`
+	Kind     DiscoveryFeedbackRequestKind `json:"kind"`
+	Mbid     *string                      `json:"mbid,omitempty"`
+
+	// SetId The set whose feed it was in.
+	SetId *string `json:"setId,omitempty"`
+	Title string  `json:"title"`
+}
+
+// DiscoveryFeedbackRequestKind defines model for DiscoveryFeedbackRequest.Kind.
+type DiscoveryFeedbackRequestKind string
+
+// DiscoveryItem A song you don't have, near a set's seeds.
+type DiscoveryItem struct {
+	Album  *string `json:"album,omitempty"`
+	Artist string  `json:"artist"`
+
+	// Because The seed artists it's near, nearest first.
+	Because []string `json:"because"`
+
+	// Cover Its cover's image ID, for getDiscoveryImage (kind `cover`).
+	Cover *string `json:"cover,omitempty"`
+
+	// DeezerId The song on Deezer, for its preview. Absent when it isn't there, or isn't found yet.
+	DeezerId *int64  `json:"deezerId,omitempty"`
+	Isrc     *string `json:"isrc,omitempty"`
+	Key      string  `json:"key"`
+	Mbid     *string `json:"mbid,omitempty"`
+
+	// Seed Whether it's a seed artist's own song.
+	Seed  bool   `json:"seed"`
+	Title string `json:"title"`
+}
+
+// DiscoveryLibrary How far your library (your own Navidrome links) is indexed.
+type DiscoveryLibrary struct {
+	Building bool       `json:"building"`
+	BuiltAt  *time.Time `json:"builtAt,omitempty"`
+	Links    int        `json:"links"`
+	Songs    int        `json:"songs"`
+}
+
+// DiscoveryMode Which feeds a set shows: `deep` cuts (anything new to you), `fresh`
+// releases (coming), or `both`.
+type DiscoveryMode string
+
+// DiscoverySeed defines model for DiscoverySeed.
+type DiscoverySeed struct {
+	Mbid *string `json:"mbid,omitempty"`
+	Name string  `json:"name"`
+}
+
+// DiscoverySet defines model for DiscoverySet.
+type DiscoverySet struct {
+	Artists   []DiscoverySetArtist `json:"artists"`
+	CreatedAt time.Time            `json:"createdAt"`
+
+	// Explore How far the feed strays from the seeds, and toward less-known artists.
+	Explore int    `json:"explore"`
+	Id      string `json:"id"`
+
+	// Mode Which feeds a set shows: `deep` cuts (anything new to you), `fresh`
+	// releases (coming), or `both`.
+	Mode      DiscoveryMode `json:"mode"`
+	Name      string        `json:"name"`
+	UpdatedAt time.Time     `json:"updatedAt"`
+}
+
+// DiscoverySetArtist defines model for DiscoverySetArtist.
+type DiscoverySetArtist struct {
+	AddedAt   time.Time                   `json:"addedAt"`
+	AddedFrom DiscoverySetArtistAddedFrom `json:"addedFrom"`
+
+	// Key Their MBID, else their simplified name. Removes them from the set.
+	Key  string  `json:"key"`
+	Mbid *string `json:"mbid,omitempty"`
+	Name string  `json:"name"`
+}
+
+// DiscoverySetArtistAddedFrom defines model for DiscoverySetArtist.AddedFrom.
+type DiscoverySetArtistAddedFrom string
+
+// DiscoverySetSummary defines model for DiscoverySetSummary.
+type DiscoverySetSummary struct {
+	ArtistCount int       `json:"artistCount"`
+	CreatedAt   time.Time `json:"createdAt"`
+	Explore     int       `json:"explore"`
+	Id          string    `json:"id"`
+
+	// Mode Which feeds a set shows: `deep` cuts (anything new to you), `fresh`
+	// releases (coming), or `both`.
+	Mode      DiscoveryMode `json:"mode"`
+	Name      string        `json:"name"`
+	UpdatedAt time.Time     `json:"updatedAt"`
 }
 
 // Display defines model for Display.
@@ -4277,6 +4482,16 @@ type TransferRoomRequest struct {
 	UserId string `json:"userId"`
 }
 
+// UpdateDiscoverySetRequest defines model for UpdateDiscoverySetRequest.
+type UpdateDiscoverySetRequest struct {
+	Explore *int `json:"explore,omitempty"`
+
+	// Mode Which feeds a set shows: `deep` cuts (anything new to you), `fresh`
+	// releases (coming), or `both`.
+	Mode *DiscoveryMode `json:"mode,omitempty"`
+	Name *string        `json:"name,omitempty"`
+}
+
 // UpdateDisplayRequest defines model for UpdateDisplayRequest.
 type UpdateDisplayRequest struct {
 	Audio bool `json:"audio"`
@@ -4423,6 +4638,9 @@ type UserSession struct {
 // Username 2 to 32 characters: lowercase letters, digits, `.`, `_` and `-`.
 type Username = string
 
+// DiscoverySetId defines model for DiscoverySetId.
+type DiscoverySetId = string
+
 // InviteCode defines model for InviteCode.
 type InviteCode = string
 
@@ -4496,6 +4714,31 @@ type ListPlaylistsParams struct {
 type GetPlaylistTracksParams struct {
 	// Cursor The previous page's `next`.
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// SearchDiscoveryArtistsParams defines parameters for SearchDiscoveryArtists.
+type SearchDiscoveryArtistsParams struct {
+	Q string `form:"q" json:"q"`
+}
+
+// GetDiscoveryImageParams defines parameters for GetDiscoveryImage.
+type GetDiscoveryImageParams struct {
+	// Size Wanted width in pixels; a hint.
+	Size *int `form:"size,omitempty" json:"size,omitempty"`
+}
+
+// GetDiscoveryPreviewParams defines parameters for GetDiscoveryPreview.
+type GetDiscoveryPreviewParams struct {
+	Range *string `json:"Range,omitempty"`
+}
+
+// GetDiscoveryFeedParams defines parameters for GetDiscoveryFeed.
+type GetDiscoveryFeedParams struct {
+	// Cursor The previous page's `next`.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Refresh Build the feed again now, for the first page.
+	Refresh *bool `form:"refresh,omitempty" json:"refresh,omitempty"`
 }
 
 // RenamePasskeyJSONBody defines parameters for RenamePasskey.
@@ -4667,6 +4910,21 @@ type UpdateMeJSONRequestBody = ProfileUpdate
 
 // DeleteMeJSONRequestBody defines body for DeleteMe for application/json ContentType.
 type DeleteMeJSONRequestBody = DeleteMeRequest
+
+// BlockDiscoveryArtistJSONRequestBody defines body for BlockDiscoveryArtist for application/json ContentType.
+type BlockDiscoveryArtistJSONRequestBody = BlockDiscoveryArtistRequest
+
+// PostDiscoveryFeedbackJSONRequestBody defines body for PostDiscoveryFeedback for application/json ContentType.
+type PostDiscoveryFeedbackJSONRequestBody = DiscoveryFeedbackRequest
+
+// CreateDiscoverySetJSONRequestBody defines body for CreateDiscoverySet for application/json ContentType.
+type CreateDiscoverySetJSONRequestBody = CreateDiscoverySetRequest
+
+// UpdateDiscoverySetJSONRequestBody defines body for UpdateDiscoverySet for application/json ContentType.
+type UpdateDiscoverySetJSONRequestBody = UpdateDiscoverySetRequest
+
+// AddDiscoverySetArtistJSONRequestBody defines body for AddDiscoverySetArtist for application/json ContentType.
+type AddDiscoverySetArtistJSONRequestBody = DiscoverySeed
 
 // FinishAddPasskeyJSONRequestBody defines body for FinishAddPasskey for application/json ContentType.
 type FinishAddPasskeyJSONRequestBody = FinishCeremony
@@ -4934,6 +5192,57 @@ type ServerInterface interface {
 	// DeleteMe Delete your account
 	// (POST /me/delete)
 	DeleteMe(w http.ResponseWriter, r *http.Request)
+	// SearchDiscoveryArtists Find artists to seed a set with
+	// (GET /me/discover/artists)
+	SearchDiscoveryArtists(w http.ResponseWriter, r *http.Request, params SearchDiscoveryArtistsParams)
+	// ListDiscoveryBlocks Artists you said aren't for you
+	// (GET /me/discover/blocks)
+	ListDiscoveryBlocks(w http.ResponseWriter, r *http.Request)
+	// BlockDiscoveryArtist Not for me
+	// (POST /me/discover/blocks)
+	BlockDiscoveryArtist(w http.ResponseWriter, r *http.Request)
+	// UnblockDiscoveryArtist Let a blocked artist back into your feeds
+	// (DELETE /me/discover/blocks/{artistKey})
+	UnblockDiscoveryArtist(w http.ResponseWriter, r *http.Request, artistKey string)
+	// PostDiscoveryFeedback Thumbs up or down on a song
+	// (POST /me/discover/feedback)
+	PostDiscoveryFeedback(w http.ResponseWriter, r *http.Request)
+	// GetDiscoveryImage A cover or artist picture from Deezer, through the server
+	// (GET /me/discover/images/{kind}/{imageId})
+	GetDiscoveryImage(w http.ResponseWriter, r *http.Request, kind string, imageId string, params GetDiscoveryImageParams)
+	// GetDiscoveryLibrary How far your library is indexed
+	// (GET /me/discover/library)
+	GetDiscoveryLibrary(w http.ResponseWriter, r *http.Request)
+	// RefreshDiscoveryLibrary Index your library again now
+	// (POST /me/discover/library)
+	RefreshDiscoveryLibrary(w http.ResponseWriter, r *http.Request)
+	// GetDiscoveryPreview A song's 30-second preview
+	// (GET /me/discover/preview/{deezerTrackId})
+	GetDiscoveryPreview(w http.ResponseWriter, r *http.Request, deezerTrackId int64, params GetDiscoveryPreviewParams)
+	// ListDiscoverySets Your discovery sets
+	// (GET /me/discover/sets)
+	ListDiscoverySets(w http.ResponseWriter, r *http.Request)
+	// CreateDiscoverySet Make a discovery set
+	// (POST /me/discover/sets)
+	CreateDiscoverySet(w http.ResponseWriter, r *http.Request)
+	// DeleteDiscoverySet Delete a discovery set
+	// (DELETE /me/discover/sets/{setId})
+	DeleteDiscoverySet(w http.ResponseWriter, r *http.Request, setId DiscoverySetId)
+	// GetDiscoverySet A discovery set and its artists
+	// (GET /me/discover/sets/{setId})
+	GetDiscoverySet(w http.ResponseWriter, r *http.Request, setId DiscoverySetId)
+	// UpdateDiscoverySet Rename a set, or change how far it explores and which feeds it shows
+	// (PATCH /me/discover/sets/{setId})
+	UpdateDiscoverySet(w http.ResponseWriter, r *http.Request, setId DiscoverySetId)
+	// AddDiscoverySetArtist Add a seed artist to a set
+	// (POST /me/discover/sets/{setId}/artists)
+	AddDiscoverySetArtist(w http.ResponseWriter, r *http.Request, setId DiscoverySetId)
+	// RemoveDiscoverySetArtist Take a seed artist out of a set
+	// (DELETE /me/discover/sets/{setId}/artists/{artistKey})
+	RemoveDiscoverySetArtist(w http.ResponseWriter, r *http.Request, setId DiscoverySetId, artistKey string)
+	// GetDiscoveryFeed A page of a set's feed
+	// (GET /me/discover/sets/{setId}/feed)
+	GetDiscoveryFeed(w http.ResponseWriter, r *http.Request, setId DiscoverySetId, params GetDiscoveryFeedParams)
 	// ListPasskeys Your passkeys
 	// (GET /me/passkeys)
 	ListPasskeys(w http.ResponseWriter, r *http.Request)
@@ -6588,6 +6897,458 @@ func (siw *ServerInterfaceWrapper) DeleteMe(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchDiscoveryArtists operation middleware
+func (siw *ServerInterfaceWrapper) SearchDiscoveryArtists(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchDiscoveryArtistsParams
+
+	// ------------- Required query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchDiscoveryArtists(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDiscoveryBlocks operation middleware
+func (siw *ServerInterfaceWrapper) ListDiscoveryBlocks(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDiscoveryBlocks(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BlockDiscoveryArtist operation middleware
+func (siw *ServerInterfaceWrapper) BlockDiscoveryArtist(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BlockDiscoveryArtist(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnblockDiscoveryArtist operation middleware
+func (siw *ServerInterfaceWrapper) UnblockDiscoveryArtist(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "artistKey" -------------
+	var artistKey string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "artistKey", r.PathValue("artistKey"), &artistKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "artistKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnblockDiscoveryArtist(w, r, artistKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostDiscoveryFeedback operation middleware
+func (siw *ServerInterfaceWrapper) PostDiscoveryFeedback(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostDiscoveryFeedback(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDiscoveryImage operation middleware
+func (siw *ServerInterfaceWrapper) GetDiscoveryImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "kind" -------------
+	var kind string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "kind", r.PathValue("kind"), &kind, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "imageId" -------------
+	var imageId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "imageId", r.PathValue("imageId"), &imageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "imageId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetDiscoveryImageParams
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "size", r.URL.Query(), &params.Size, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDiscoveryImage(w, r, kind, imageId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDiscoveryLibrary operation middleware
+func (siw *ServerInterfaceWrapper) GetDiscoveryLibrary(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDiscoveryLibrary(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RefreshDiscoveryLibrary operation middleware
+func (siw *ServerInterfaceWrapper) RefreshDiscoveryLibrary(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RefreshDiscoveryLibrary(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDiscoveryPreview operation middleware
+func (siw *ServerInterfaceWrapper) GetDiscoveryPreview(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "deezerTrackId" -------------
+	var deezerTrackId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "deezerTrackId", r.PathValue("deezerTrackId"), &deezerTrackId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "deezerTrackId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetDiscoveryPreviewParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Range" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Range")]; found {
+		var Range string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Range", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Range", valueList[0], &Range, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Range", Err: err})
+			return
+		}
+
+		params.Range = &Range
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDiscoveryPreview(w, r, deezerTrackId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDiscoverySets operation middleware
+func (siw *ServerInterfaceWrapper) ListDiscoverySets(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDiscoverySets(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateDiscoverySet operation middleware
+func (siw *ServerInterfaceWrapper) CreateDiscoverySet(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateDiscoverySet(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteDiscoverySet operation middleware
+func (siw *ServerInterfaceWrapper) DeleteDiscoverySet(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "setId" -------------
+	var setId DiscoverySetId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "setId", r.PathValue("setId"), &setId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "setId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteDiscoverySet(w, r, setId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDiscoverySet operation middleware
+func (siw *ServerInterfaceWrapper) GetDiscoverySet(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "setId" -------------
+	var setId DiscoverySetId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "setId", r.PathValue("setId"), &setId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "setId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDiscoverySet(w, r, setId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateDiscoverySet operation middleware
+func (siw *ServerInterfaceWrapper) UpdateDiscoverySet(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "setId" -------------
+	var setId DiscoverySetId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "setId", r.PathValue("setId"), &setId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "setId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateDiscoverySet(w, r, setId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddDiscoverySetArtist operation middleware
+func (siw *ServerInterfaceWrapper) AddDiscoverySetArtist(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "setId" -------------
+	var setId DiscoverySetId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "setId", r.PathValue("setId"), &setId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "setId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddDiscoverySetArtist(w, r, setId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveDiscoverySetArtist operation middleware
+func (siw *ServerInterfaceWrapper) RemoveDiscoverySetArtist(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "setId" -------------
+	var setId DiscoverySetId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "setId", r.PathValue("setId"), &setId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "setId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "artistKey" -------------
+	var artistKey string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "artistKey", r.PathValue("artistKey"), &artistKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "artistKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveDiscoverySetArtist(w, r, setId, artistKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDiscoveryFeed operation middleware
+func (siw *ServerInterfaceWrapper) GetDiscoveryFeed(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "setId" -------------
+	var setId DiscoverySetId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "setId", r.PathValue("setId"), &setId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "setId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetDiscoveryFeedParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "refresh" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "refresh", r.URL.Query(), &params.Refresh, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "refresh"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "refresh", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDiscoveryFeed(w, r, setId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10063,6 +10824,23 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/playlists/{playlistId}/songs/{songId}", wrapper.RemoveSavedPlaylistSong)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/playlists/{playlistId}/songs/{songId}/position", wrapper.MoveSavedPlaylistSong)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/playlists/{playlistId}/songs/{songId}/artwork", wrapper.GetSavedPlaylistSongArtwork)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/sets", wrapper.ListDiscoverySets)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/me/discover/sets", wrapper.CreateDiscoverySet)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/me/discover/sets/{setId}", wrapper.DeleteDiscoverySet)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/sets/{setId}", wrapper.GetDiscoverySet)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/me/discover/sets/{setId}", wrapper.UpdateDiscoverySet)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/me/discover/sets/{setId}/artists", wrapper.AddDiscoverySetArtist)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/me/discover/sets/{setId}/artists/{artistKey}", wrapper.RemoveDiscoverySetArtist)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/sets/{setId}/feed", wrapper.GetDiscoveryFeed)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/me/discover/feedback", wrapper.PostDiscoveryFeedback)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/blocks", wrapper.ListDiscoveryBlocks)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/me/discover/blocks", wrapper.BlockDiscoveryArtist)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/me/discover/blocks/{artistKey}", wrapper.UnblockDiscoveryArtist)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/artists", wrapper.SearchDiscoveryArtists)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/library", wrapper.GetDiscoveryLibrary)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/me/discover/library", wrapper.RefreshDiscoveryLibrary)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/preview/{deezerTrackId}", wrapper.GetDiscoveryPreview)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/images/{kind}/{imageId}", wrapper.GetDiscoveryImage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/games/round", wrapper.GetGameRound)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/games/rounds", wrapper.StartGameRound)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/games/rounds/{roundId}/answers", wrapper.AnswerGameRound)
@@ -12263,6 +13041,689 @@ type DeleteMedefaultJSONResponse struct {
 }
 
 func (response DeleteMedefaultJSONResponse) VisitDeleteMeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchDiscoveryArtistsRequestObject struct {
+	Params SearchDiscoveryArtistsParams
+}
+
+type SearchDiscoveryArtistsResponseObject interface {
+	VisitSearchDiscoveryArtistsResponse(w http.ResponseWriter) error
+}
+
+type SearchDiscoveryArtists200JSONResponse []DiscoveryArtist
+
+func (response SearchDiscoveryArtists200JSONResponse) VisitSearchDiscoveryArtistsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchDiscoveryArtistsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SearchDiscoveryArtistsdefaultJSONResponse) VisitSearchDiscoveryArtistsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDiscoveryBlocksRequestObject struct {
+}
+
+type ListDiscoveryBlocksResponseObject interface {
+	VisitListDiscoveryBlocksResponse(w http.ResponseWriter) error
+}
+
+type ListDiscoveryBlocks200JSONResponse []DiscoveryBlock
+
+func (response ListDiscoveryBlocks200JSONResponse) VisitListDiscoveryBlocksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDiscoveryBlocksdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListDiscoveryBlocksdefaultJSONResponse) VisitListDiscoveryBlocksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockDiscoveryArtistRequestObject struct {
+	Body *BlockDiscoveryArtistJSONRequestBody
+}
+
+type BlockDiscoveryArtistResponseObject interface {
+	VisitBlockDiscoveryArtistResponse(w http.ResponseWriter) error
+}
+
+type BlockDiscoveryArtist200JSONResponse DiscoveryBlock
+
+func (response BlockDiscoveryArtist200JSONResponse) VisitBlockDiscoveryArtistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockDiscoveryArtistdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BlockDiscoveryArtistdefaultJSONResponse) VisitBlockDiscoveryArtistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnblockDiscoveryArtistRequestObject struct {
+	ArtistKey string `json:"artistKey"`
+}
+
+type UnblockDiscoveryArtistResponseObject interface {
+	VisitUnblockDiscoveryArtistResponse(w http.ResponseWriter) error
+}
+
+type UnblockDiscoveryArtist204Response struct {
+}
+
+func (response UnblockDiscoveryArtist204Response) VisitUnblockDiscoveryArtistResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UnblockDiscoveryArtistdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UnblockDiscoveryArtistdefaultJSONResponse) VisitUnblockDiscoveryArtistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostDiscoveryFeedbackRequestObject struct {
+	Body *PostDiscoveryFeedbackJSONRequestBody
+}
+
+type PostDiscoveryFeedbackResponseObject interface {
+	VisitPostDiscoveryFeedbackResponse(w http.ResponseWriter) error
+}
+
+type PostDiscoveryFeedback204Response struct {
+}
+
+func (response PostDiscoveryFeedback204Response) VisitPostDiscoveryFeedbackResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type PostDiscoveryFeedbackdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response PostDiscoveryFeedbackdefaultJSONResponse) VisitPostDiscoveryFeedbackResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDiscoveryImageRequestObject struct {
+	Kind    string `json:"kind"`
+	ImageId string `json:"imageId"`
+	Params  GetDiscoveryImageParams
+}
+
+type GetDiscoveryImageResponseObject interface {
+	VisitGetDiscoveryImageResponse(w http.ResponseWriter) error
+}
+
+type GetDiscoveryImage200ImageResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetDiscoveryImage200ImageResponse) VisitGetDiscoveryImageResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetDiscoveryImagedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetDiscoveryImagedefaultJSONResponse) VisitGetDiscoveryImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDiscoveryLibraryRequestObject struct {
+}
+
+type GetDiscoveryLibraryResponseObject interface {
+	VisitGetDiscoveryLibraryResponse(w http.ResponseWriter) error
+}
+
+type GetDiscoveryLibrary200JSONResponse DiscoveryLibrary
+
+func (response GetDiscoveryLibrary200JSONResponse) VisitGetDiscoveryLibraryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDiscoveryLibrarydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetDiscoveryLibrarydefaultJSONResponse) VisitGetDiscoveryLibraryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefreshDiscoveryLibraryRequestObject struct {
+}
+
+type RefreshDiscoveryLibraryResponseObject interface {
+	VisitRefreshDiscoveryLibraryResponse(w http.ResponseWriter) error
+}
+
+type RefreshDiscoveryLibrary202JSONResponse DiscoveryLibrary
+
+func (response RefreshDiscoveryLibrary202JSONResponse) VisitRefreshDiscoveryLibraryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RefreshDiscoveryLibrarydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RefreshDiscoveryLibrarydefaultJSONResponse) VisitRefreshDiscoveryLibraryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDiscoveryPreviewRequestObject struct {
+	DeezerTrackId int64 `json:"deezerTrackId"`
+	Params        GetDiscoveryPreviewParams
+}
+
+type GetDiscoveryPreviewResponseObject interface {
+	VisitGetDiscoveryPreviewResponse(w http.ResponseWriter) error
+}
+
+type GetDiscoveryPreview200AudioResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetDiscoveryPreview200AudioResponse) VisitGetDiscoveryPreviewResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetDiscoveryPreview206AudioResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetDiscoveryPreview206AudioResponse) VisitGetDiscoveryPreviewResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(206)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetDiscoveryPreviewdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetDiscoveryPreviewdefaultJSONResponse) VisitGetDiscoveryPreviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDiscoverySetsRequestObject struct {
+}
+
+type ListDiscoverySetsResponseObject interface {
+	VisitListDiscoverySetsResponse(w http.ResponseWriter) error
+}
+
+type ListDiscoverySets200JSONResponse []DiscoverySetSummary
+
+func (response ListDiscoverySets200JSONResponse) VisitListDiscoverySetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDiscoverySetsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListDiscoverySetsdefaultJSONResponse) VisitListDiscoverySetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDiscoverySetRequestObject struct {
+	Body *CreateDiscoverySetJSONRequestBody
+}
+
+type CreateDiscoverySetResponseObject interface {
+	VisitCreateDiscoverySetResponse(w http.ResponseWriter) error
+}
+
+type CreateDiscoverySet201JSONResponse DiscoverySet
+
+func (response CreateDiscoverySet201JSONResponse) VisitCreateDiscoverySetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateDiscoverySetdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateDiscoverySetdefaultJSONResponse) VisitCreateDiscoverySetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteDiscoverySetRequestObject struct {
+	SetId DiscoverySetId `json:"setId"`
+}
+
+type DeleteDiscoverySetResponseObject interface {
+	VisitDeleteDiscoverySetResponse(w http.ResponseWriter) error
+}
+
+type DeleteDiscoverySet204Response struct {
+}
+
+func (response DeleteDiscoverySet204Response) VisitDeleteDiscoverySetResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteDiscoverySetdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteDiscoverySetdefaultJSONResponse) VisitDeleteDiscoverySetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDiscoverySetRequestObject struct {
+	SetId DiscoverySetId `json:"setId"`
+}
+
+type GetDiscoverySetResponseObject interface {
+	VisitGetDiscoverySetResponse(w http.ResponseWriter) error
+}
+
+type GetDiscoverySet200JSONResponse DiscoverySet
+
+func (response GetDiscoverySet200JSONResponse) VisitGetDiscoverySetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDiscoverySetdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetDiscoverySetdefaultJSONResponse) VisitGetDiscoverySetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDiscoverySetRequestObject struct {
+	SetId DiscoverySetId `json:"setId"`
+	Body  *UpdateDiscoverySetJSONRequestBody
+}
+
+type UpdateDiscoverySetResponseObject interface {
+	VisitUpdateDiscoverySetResponse(w http.ResponseWriter) error
+}
+
+type UpdateDiscoverySet200JSONResponse DiscoverySet
+
+func (response UpdateDiscoverySet200JSONResponse) VisitUpdateDiscoverySetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateDiscoverySetdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateDiscoverySetdefaultJSONResponse) VisitUpdateDiscoverySetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddDiscoverySetArtistRequestObject struct {
+	SetId DiscoverySetId `json:"setId"`
+	Body  *AddDiscoverySetArtistJSONRequestBody
+}
+
+type AddDiscoverySetArtistResponseObject interface {
+	VisitAddDiscoverySetArtistResponse(w http.ResponseWriter) error
+}
+
+type AddDiscoverySetArtist200JSONResponse DiscoverySet
+
+func (response AddDiscoverySetArtist200JSONResponse) VisitAddDiscoverySetArtistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddDiscoverySetArtistdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response AddDiscoverySetArtistdefaultJSONResponse) VisitAddDiscoverySetArtistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveDiscoverySetArtistRequestObject struct {
+	SetId     DiscoverySetId `json:"setId"`
+	ArtistKey string         `json:"artistKey"`
+}
+
+type RemoveDiscoverySetArtistResponseObject interface {
+	VisitRemoveDiscoverySetArtistResponse(w http.ResponseWriter) error
+}
+
+type RemoveDiscoverySetArtist200JSONResponse DiscoverySet
+
+func (response RemoveDiscoverySetArtist200JSONResponse) VisitRemoveDiscoverySetArtistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveDiscoverySetArtistdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RemoveDiscoverySetArtistdefaultJSONResponse) VisitRemoveDiscoverySetArtistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDiscoveryFeedRequestObject struct {
+	SetId  DiscoverySetId `json:"setId"`
+	Params GetDiscoveryFeedParams
+}
+
+type GetDiscoveryFeedResponseObject interface {
+	VisitGetDiscoveryFeedResponse(w http.ResponseWriter) error
+}
+
+type GetDiscoveryFeed200JSONResponse DiscoveryFeed
+
+func (response GetDiscoveryFeed200JSONResponse) VisitGetDiscoveryFeedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDiscoveryFeeddefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetDiscoveryFeeddefaultJSONResponse) VisitGetDiscoveryFeedResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -16667,6 +18128,57 @@ type StrictServerInterface interface {
 	// DeleteMe Delete your account
 	// (POST /me/delete)
 	DeleteMe(ctx context.Context, request DeleteMeRequestObject) (DeleteMeResponseObject, error)
+	// SearchDiscoveryArtists Find artists to seed a set with
+	// (GET /me/discover/artists)
+	SearchDiscoveryArtists(ctx context.Context, request SearchDiscoveryArtistsRequestObject) (SearchDiscoveryArtistsResponseObject, error)
+	// ListDiscoveryBlocks Artists you said aren't for you
+	// (GET /me/discover/blocks)
+	ListDiscoveryBlocks(ctx context.Context, request ListDiscoveryBlocksRequestObject) (ListDiscoveryBlocksResponseObject, error)
+	// BlockDiscoveryArtist Not for me
+	// (POST /me/discover/blocks)
+	BlockDiscoveryArtist(ctx context.Context, request BlockDiscoveryArtistRequestObject) (BlockDiscoveryArtistResponseObject, error)
+	// UnblockDiscoveryArtist Let a blocked artist back into your feeds
+	// (DELETE /me/discover/blocks/{artistKey})
+	UnblockDiscoveryArtist(ctx context.Context, request UnblockDiscoveryArtistRequestObject) (UnblockDiscoveryArtistResponseObject, error)
+	// PostDiscoveryFeedback Thumbs up or down on a song
+	// (POST /me/discover/feedback)
+	PostDiscoveryFeedback(ctx context.Context, request PostDiscoveryFeedbackRequestObject) (PostDiscoveryFeedbackResponseObject, error)
+	// GetDiscoveryImage A cover or artist picture from Deezer, through the server
+	// (GET /me/discover/images/{kind}/{imageId})
+	GetDiscoveryImage(ctx context.Context, request GetDiscoveryImageRequestObject) (GetDiscoveryImageResponseObject, error)
+	// GetDiscoveryLibrary How far your library is indexed
+	// (GET /me/discover/library)
+	GetDiscoveryLibrary(ctx context.Context, request GetDiscoveryLibraryRequestObject) (GetDiscoveryLibraryResponseObject, error)
+	// RefreshDiscoveryLibrary Index your library again now
+	// (POST /me/discover/library)
+	RefreshDiscoveryLibrary(ctx context.Context, request RefreshDiscoveryLibraryRequestObject) (RefreshDiscoveryLibraryResponseObject, error)
+	// GetDiscoveryPreview A song's 30-second preview
+	// (GET /me/discover/preview/{deezerTrackId})
+	GetDiscoveryPreview(ctx context.Context, request GetDiscoveryPreviewRequestObject) (GetDiscoveryPreviewResponseObject, error)
+	// ListDiscoverySets Your discovery sets
+	// (GET /me/discover/sets)
+	ListDiscoverySets(ctx context.Context, request ListDiscoverySetsRequestObject) (ListDiscoverySetsResponseObject, error)
+	// CreateDiscoverySet Make a discovery set
+	// (POST /me/discover/sets)
+	CreateDiscoverySet(ctx context.Context, request CreateDiscoverySetRequestObject) (CreateDiscoverySetResponseObject, error)
+	// DeleteDiscoverySet Delete a discovery set
+	// (DELETE /me/discover/sets/{setId})
+	DeleteDiscoverySet(ctx context.Context, request DeleteDiscoverySetRequestObject) (DeleteDiscoverySetResponseObject, error)
+	// GetDiscoverySet A discovery set and its artists
+	// (GET /me/discover/sets/{setId})
+	GetDiscoverySet(ctx context.Context, request GetDiscoverySetRequestObject) (GetDiscoverySetResponseObject, error)
+	// UpdateDiscoverySet Rename a set, or change how far it explores and which feeds it shows
+	// (PATCH /me/discover/sets/{setId})
+	UpdateDiscoverySet(ctx context.Context, request UpdateDiscoverySetRequestObject) (UpdateDiscoverySetResponseObject, error)
+	// AddDiscoverySetArtist Add a seed artist to a set
+	// (POST /me/discover/sets/{setId}/artists)
+	AddDiscoverySetArtist(ctx context.Context, request AddDiscoverySetArtistRequestObject) (AddDiscoverySetArtistResponseObject, error)
+	// RemoveDiscoverySetArtist Take a seed artist out of a set
+	// (DELETE /me/discover/sets/{setId}/artists/{artistKey})
+	RemoveDiscoverySetArtist(ctx context.Context, request RemoveDiscoverySetArtistRequestObject) (RemoveDiscoverySetArtistResponseObject, error)
+	// GetDiscoveryFeed A page of a set's feed
+	// (GET /me/discover/sets/{setId}/feed)
+	GetDiscoveryFeed(ctx context.Context, request GetDiscoveryFeedRequestObject) (GetDiscoveryFeedResponseObject, error)
 	// ListPasskeys Your passkeys
 	// (GET /me/passkeys)
 	ListPasskeys(ctx context.Context, request ListPasskeysRequestObject) (ListPasskeysResponseObject, error)
@@ -18554,6 +20066,474 @@ func (sh *strictHandler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(DeleteMeResponseObject); ok {
 		if err := validResponse.VisitDeleteMeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SearchDiscoveryArtists operation middleware
+func (sh *strictHandler) SearchDiscoveryArtists(w http.ResponseWriter, r *http.Request, params SearchDiscoveryArtistsParams) {
+	var request SearchDiscoveryArtistsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SearchDiscoveryArtists(ctx, request.(SearchDiscoveryArtistsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SearchDiscoveryArtists")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SearchDiscoveryArtistsResponseObject); ok {
+		if err := validResponse.VisitSearchDiscoveryArtistsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDiscoveryBlocks operation middleware
+func (sh *strictHandler) ListDiscoveryBlocks(w http.ResponseWriter, r *http.Request) {
+	var request ListDiscoveryBlocksRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDiscoveryBlocks(ctx, request.(ListDiscoveryBlocksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDiscoveryBlocks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDiscoveryBlocksResponseObject); ok {
+		if err := validResponse.VisitListDiscoveryBlocksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BlockDiscoveryArtist operation middleware
+func (sh *strictHandler) BlockDiscoveryArtist(w http.ResponseWriter, r *http.Request) {
+	var request BlockDiscoveryArtistRequestObject
+
+	var body BlockDiscoveryArtistJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BlockDiscoveryArtist(ctx, request.(BlockDiscoveryArtistRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BlockDiscoveryArtist")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BlockDiscoveryArtistResponseObject); ok {
+		if err := validResponse.VisitBlockDiscoveryArtistResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnblockDiscoveryArtist operation middleware
+func (sh *strictHandler) UnblockDiscoveryArtist(w http.ResponseWriter, r *http.Request, artistKey string) {
+	var request UnblockDiscoveryArtistRequestObject
+
+	request.ArtistKey = artistKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnblockDiscoveryArtist(ctx, request.(UnblockDiscoveryArtistRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnblockDiscoveryArtist")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnblockDiscoveryArtistResponseObject); ok {
+		if err := validResponse.VisitUnblockDiscoveryArtistResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostDiscoveryFeedback operation middleware
+func (sh *strictHandler) PostDiscoveryFeedback(w http.ResponseWriter, r *http.Request) {
+	var request PostDiscoveryFeedbackRequestObject
+
+	var body PostDiscoveryFeedbackJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostDiscoveryFeedback(ctx, request.(PostDiscoveryFeedbackRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostDiscoveryFeedback")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostDiscoveryFeedbackResponseObject); ok {
+		if err := validResponse.VisitPostDiscoveryFeedbackResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDiscoveryImage operation middleware
+func (sh *strictHandler) GetDiscoveryImage(w http.ResponseWriter, r *http.Request, kind string, imageId string, params GetDiscoveryImageParams) {
+	var request GetDiscoveryImageRequestObject
+
+	request.Kind = kind
+	request.ImageId = imageId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDiscoveryImage(ctx, request.(GetDiscoveryImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDiscoveryImage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDiscoveryImageResponseObject); ok {
+		if err := validResponse.VisitGetDiscoveryImageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDiscoveryLibrary operation middleware
+func (sh *strictHandler) GetDiscoveryLibrary(w http.ResponseWriter, r *http.Request) {
+	var request GetDiscoveryLibraryRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDiscoveryLibrary(ctx, request.(GetDiscoveryLibraryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDiscoveryLibrary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDiscoveryLibraryResponseObject); ok {
+		if err := validResponse.VisitGetDiscoveryLibraryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RefreshDiscoveryLibrary operation middleware
+func (sh *strictHandler) RefreshDiscoveryLibrary(w http.ResponseWriter, r *http.Request) {
+	var request RefreshDiscoveryLibraryRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RefreshDiscoveryLibrary(ctx, request.(RefreshDiscoveryLibraryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RefreshDiscoveryLibrary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RefreshDiscoveryLibraryResponseObject); ok {
+		if err := validResponse.VisitRefreshDiscoveryLibraryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDiscoveryPreview operation middleware
+func (sh *strictHandler) GetDiscoveryPreview(w http.ResponseWriter, r *http.Request, deezerTrackId int64, params GetDiscoveryPreviewParams) {
+	var request GetDiscoveryPreviewRequestObject
+
+	request.DeezerTrackId = deezerTrackId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDiscoveryPreview(ctx, request.(GetDiscoveryPreviewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDiscoveryPreview")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDiscoveryPreviewResponseObject); ok {
+		if err := validResponse.VisitGetDiscoveryPreviewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDiscoverySets operation middleware
+func (sh *strictHandler) ListDiscoverySets(w http.ResponseWriter, r *http.Request) {
+	var request ListDiscoverySetsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDiscoverySets(ctx, request.(ListDiscoverySetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDiscoverySets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDiscoverySetsResponseObject); ok {
+		if err := validResponse.VisitListDiscoverySetsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateDiscoverySet operation middleware
+func (sh *strictHandler) CreateDiscoverySet(w http.ResponseWriter, r *http.Request) {
+	var request CreateDiscoverySetRequestObject
+
+	var body CreateDiscoverySetJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateDiscoverySet(ctx, request.(CreateDiscoverySetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateDiscoverySet")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateDiscoverySetResponseObject); ok {
+		if err := validResponse.VisitCreateDiscoverySetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteDiscoverySet operation middleware
+func (sh *strictHandler) DeleteDiscoverySet(w http.ResponseWriter, r *http.Request, setId DiscoverySetId) {
+	var request DeleteDiscoverySetRequestObject
+
+	request.SetId = setId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteDiscoverySet(ctx, request.(DeleteDiscoverySetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteDiscoverySet")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteDiscoverySetResponseObject); ok {
+		if err := validResponse.VisitDeleteDiscoverySetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDiscoverySet operation middleware
+func (sh *strictHandler) GetDiscoverySet(w http.ResponseWriter, r *http.Request, setId DiscoverySetId) {
+	var request GetDiscoverySetRequestObject
+
+	request.SetId = setId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDiscoverySet(ctx, request.(GetDiscoverySetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDiscoverySet")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDiscoverySetResponseObject); ok {
+		if err := validResponse.VisitGetDiscoverySetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateDiscoverySet operation middleware
+func (sh *strictHandler) UpdateDiscoverySet(w http.ResponseWriter, r *http.Request, setId DiscoverySetId) {
+	var request UpdateDiscoverySetRequestObject
+
+	request.SetId = setId
+
+	var body UpdateDiscoverySetJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateDiscoverySet(ctx, request.(UpdateDiscoverySetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateDiscoverySet")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateDiscoverySetResponseObject); ok {
+		if err := validResponse.VisitUpdateDiscoverySetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddDiscoverySetArtist operation middleware
+func (sh *strictHandler) AddDiscoverySetArtist(w http.ResponseWriter, r *http.Request, setId DiscoverySetId) {
+	var request AddDiscoverySetArtistRequestObject
+
+	request.SetId = setId
+
+	var body AddDiscoverySetArtistJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddDiscoverySetArtist(ctx, request.(AddDiscoverySetArtistRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddDiscoverySetArtist")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddDiscoverySetArtistResponseObject); ok {
+		if err := validResponse.VisitAddDiscoverySetArtistResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveDiscoverySetArtist operation middleware
+func (sh *strictHandler) RemoveDiscoverySetArtist(w http.ResponseWriter, r *http.Request, setId DiscoverySetId, artistKey string) {
+	var request RemoveDiscoverySetArtistRequestObject
+
+	request.SetId = setId
+	request.ArtistKey = artistKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveDiscoverySetArtist(ctx, request.(RemoveDiscoverySetArtistRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveDiscoverySetArtist")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveDiscoverySetArtistResponseObject); ok {
+		if err := validResponse.VisitRemoveDiscoverySetArtistResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDiscoveryFeed operation middleware
+func (sh *strictHandler) GetDiscoveryFeed(w http.ResponseWriter, r *http.Request, setId DiscoverySetId, params GetDiscoveryFeedParams) {
+	var request GetDiscoveryFeedRequestObject
+
+	request.SetId = setId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDiscoveryFeed(ctx, request.(GetDiscoveryFeedRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDiscoveryFeed")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDiscoveryFeedResponseObject); ok {
+		if err := validResponse.VisitGetDiscoveryFeedResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

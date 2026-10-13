@@ -180,6 +180,19 @@ type Recommender interface {
 	RandomTracks(ctx context.Context, limit int) ([]Track, error)
 }
 
+// Cataloger is implemented by sessions that can list an account's whole
+// library, so discovery knows what a user already has (ADR 0017). Like
+// PlayChecker, it needs no capability: the core uses it when it's there.
+type Cataloger interface {
+	// CatalogSongs returns a page of every song in the library, in an order
+	// that holds while the library doesn't change. Pass "" for the first
+	// page, then the previous page's Next.
+	CatalogSongs(ctx context.Context, cursor string) (Page[Track], error)
+	// LibraryChanged returns when the library last changed (the service's
+	// last scan of it), or the zero time if the service can't say.
+	LibraryChanged(ctx context.Context) (time.Time, error)
+}
+
 // PlayChecker is implemented by sessions that can tell ahead of time that a
 // track won't play, so the queue can refuse it instead of skipping it later.
 type PlayChecker interface {

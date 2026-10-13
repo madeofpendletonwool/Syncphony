@@ -133,6 +133,27 @@ func (w *watcher) AlbumList(ctx context.Context, kind provider.AlbumListKind, li
 	return albums, w.see(ctx, err)
 }
 
+// Cataloger is on every wrapped session too, like Collection. Sessions
+// that can't list their library return ErrUnsupported.
+func (w *watcher) CatalogSongs(ctx context.Context, cursor string) (provider.Page[provider.Track], error) {
+	c, ok := w.inner.(provider.Cataloger)
+	if !ok {
+		return provider.Page[provider.Track]{}, provider.ErrUnsupported
+	}
+	p, err := c.CatalogSongs(ctx, cursor)
+	return p, w.see(ctx, err)
+}
+
+// LibraryChanged implements provider.Cataloger.
+func (w *watcher) LibraryChanged(ctx context.Context) (time.Time, error) {
+	c, ok := w.inner.(provider.Cataloger)
+	if !ok {
+		return time.Time{}, provider.ErrUnsupported
+	}
+	t, err := c.LibraryChanged(ctx)
+	return t, w.see(ctx, err)
+}
+
 type streamer struct{ *watcher }
 
 func (w streamer) Stream(ctx context.Context, trackID string, opts provider.StreamOpts) (*provider.AudioStream, error) {

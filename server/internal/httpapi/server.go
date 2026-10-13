@@ -24,7 +24,9 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
 	"github.com/madeofpendletonwool/syncphony/server/internal/backup"
 	"github.com/madeofpendletonwool/syncphony/server/internal/clips"
+	"github.com/madeofpendletonwool/syncphony/server/internal/discover"
 	"github.com/madeofpendletonwool/syncphony/server/internal/games"
+	"github.com/madeofpendletonwool/syncphony/server/internal/library"
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
@@ -77,6 +79,13 @@ type Server struct {
 	Nights *nights.Service
 	// Playlists keeps Syncphony's own playlists.
 	Playlists *playlists.Service
+	// Discover keeps users' discovery sets and makes their feeds.
+	Discover *discover.Service
+	// Library indexes what users have, for discovery. Optional.
+	Library *library.Service
+	// Deezer plays discovery's previews and loads its covers. Nil when
+	// Deezer is off.
+	Deezer *musicgraph.Deezer
 	// Games runs the rooms' party games. Nil turns them off.
 	Games *games.Engine
 	// Clips serves the games' song clips. Nil serves none.
@@ -336,7 +345,10 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var invalidBackup *backup.InvalidInputError
 	var invalidGame *games.InvalidInputError
 	var invalidPlaylist *playlists.InvalidInputError
+	var invalidDiscover *discover.InvalidInputError
 	switch {
+	case errors.As(err, &invalidDiscover):
+		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidDiscover.Error())
 	case errors.As(err, &invalidPlaylist):
 		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidPlaylist.Error())
 	case errors.As(err, &invalidGame):
@@ -416,6 +428,8 @@ var errorCodes = []struct {
 	{playlists.ErrNotFound, http.StatusNotFound, "not_found"},
 	{playlists.ErrForbidden, http.StatusForbidden, "forbidden"},
 	{playlists.ErrNothingPlayed, http.StatusConflict, "nothing_played"},
+	{discover.ErrNotFound, http.StatusNotFound, "not_found"},
+	{discover.ErrTooMany, http.StatusConflict, "too_many"},
 	{games.ErrNoRound, http.StatusConflict, "round_closed"},
 	{games.ErrRoundRunning, http.StatusConflict, "round_running"},
 	{games.ErrForbidden, http.StatusForbidden, "forbidden"},

@@ -48,6 +48,12 @@ type SongRef struct {
 	// MBID is the MusicBrainz recording ID, ISRC the song's ISRC, when known.
 	MBID string `json:"mbid,omitempty"`
 	ISRC string `json:"isrc,omitempty"`
+	// DeezerID is the song's Deezer track ID, and Album and Cover its
+	// album's title and Deezer cover image ID, when Deezer listed it.
+	// Discovery plays Deezer's previews by the ID (ADR 0017).
+	DeezerID int64  `json:"deezerId,omitempty"`
+	Album    string `json:"album,omitempty"`
+	Cover    string `json:"cover,omitempty"`
 }
 
 // Similar is an artist like another.
@@ -67,6 +73,9 @@ type Song struct {
 	// From 0 to 1, merged across sources.
 	Score   float64  `json:"score"`
 	Sources []string `json:"sources"`
+	// Rank is how popular it is across all music, from 0 to 1, when a
+	// source says (Deezer); 0 if unknown.
+	Rank float64 `json:"rank,omitempty"`
 }
 
 // Tag is a genre or descriptive tag.
@@ -87,6 +96,10 @@ type Artist struct {
 	Tags []Tag `json:"tags,omitempty"`
 	// Sources are the sources that knew them.
 	Sources []string `json:"sources,omitempty"`
+	// Fans is how many fans they have on Deezer, a measure of how well
+	// known they are; 0 if unknown. Picture is their Deezer picture's ID.
+	Fans    int64  `json:"fans,omitempty"`
+	Picture string `json:"picture,omitempty"`
 }
 
 // Track is what the sources know about a song.
@@ -673,6 +686,8 @@ func mergeArtist(ref ArtistRef, got []Artist) Artist {
 		if out.Ref.MBID == "" {
 			out.Ref.MBID = a.Ref.MBID
 		}
+		out.Fans = max(out.Fans, a.Fans)
+		out.Picture = cmp.Or(out.Picture, a.Picture)
 		if len(a.Similar) > 0 {
 			simW += w
 			for _, sim := range a.Similar {
@@ -682,7 +697,7 @@ func mergeArtist(ref ArtistRef, got []Artist) Artist {
 		if len(a.Top) > 0 {
 			topW += w
 			for _, so := range a.Top {
-				top = append(top, scored{key: match.Simplify(so.Title), score: so.Score * w, source: src, song: so.SongRef})
+				top = append(top, scored{key: match.Simplify(so.Title), score: so.Score * w, source: src, song: so.SongRef, rank: so.Rank})
 			}
 		}
 		if len(a.Tags) > 0 {
@@ -702,7 +717,7 @@ func mergeArtist(ref ArtistRef, got []Artist) Artist {
 	for _, m := range combine(top, topW, maxTop) {
 		so := m.song
 		so.Artist = out.Ref
-		out.Top = append(out.Top, Song{SongRef: so, Score: m.score, Sources: m.sources})
+		out.Top = append(out.Top, Song{SongRef: so, Score: m.score, Sources: m.sources, Rank: m.rank})
 	}
 	for _, m := range combine(tags, tagW, maxTags) {
 		out.Tags = append(out.Tags, Tag{Name: m.key, Weight: m.score})
@@ -752,6 +767,8 @@ type scored struct {
 	source string
 	artist ArtistRef
 	song   SongRef
+	// rank is a song's popularity across all music, if the source says.
+	rank float64
 }
 
 // merged is something's combined score.
@@ -776,7 +793,7 @@ func combine(in []scored, total float64, n int) []merged {
 		m, ok := byKey[s.key]
 		if !ok {
 			m = &merged{scored: s}
-			m.score = 0
+			m.score, m.rank = 0, 0
 			byKey[s.key] = m
 			order = append(order, m)
 		}
@@ -789,6 +806,10 @@ func combine(in []scored, total float64, n int) []merged {
 		m.song.MBID = cmp.Or(m.song.MBID, s.song.MBID)
 		m.song.ISRC = cmp.Or(m.song.ISRC, s.song.ISRC)
 		m.song.Artist.MBID = cmp.Or(m.song.Artist.MBID, s.song.Artist.MBID)
+		m.song.DeezerID = cmp.Or(m.song.DeezerID, s.song.DeezerID)
+		m.song.Album = cmp.Or(m.song.Album, s.song.Album)
+		m.song.Cover = cmp.Or(m.song.Cover, s.song.Cover)
+		m.rank = max(m.rank, s.rank)
 	}
 	out := make([]merged, len(order))
 	for i, m := range order {

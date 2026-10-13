@@ -208,6 +208,13 @@ type response struct {
 	Playlist      *playlist      `json:"playlist"`
 	Starred2      *starred       `json:"starred2"`
 	AlbumList2    *albumList     `json:"albumList2"`
+	ScanStatus    *scanStatus    `json:"scanStatus"`
+}
+
+// scanStatus is getScanStatus's result. lastScan is Navidrome's own.
+type scanStatus struct {
+	Scanning bool   `json:"scanning"`
+	LastScan string `json:"lastScan"`
 }
 
 // songList is the shape of the methods that return a list of songs.
