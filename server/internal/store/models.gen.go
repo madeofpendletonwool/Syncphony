@@ -9,6 +9,14 @@ import (
 	"time"
 )
 
+type ArtistRelease struct {
+	Key       string
+	Name      string
+	Releases  string
+	FetchedAt time.Time
+	ExpiresAt time.Time
+}
+
 type Avatar struct {
 	UserID      string
 	Data        []byte
@@ -78,6 +86,7 @@ type DiscoverySet struct {
 	Mode      string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	FreshDays int64
 }
 
 type DiscoverySetArtist struct {

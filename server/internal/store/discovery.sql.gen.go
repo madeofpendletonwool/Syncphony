@@ -104,7 +104,7 @@ const createDiscoverySet = `-- name: CreateDiscoverySet :one
 
 INSERT INTO discovery_sets (id, user_id, name, explore, mode, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?6, ?6)
-RETURNING id, user_id, name, explore, mode, created_at, updated_at
+RETURNING id, user_id, name, explore, mode, created_at, updated_at, fresh_days
 `
 
 type CreateDiscoverySetParams struct {
@@ -136,6 +136,7 @@ func (q *Queries) CreateDiscoverySet(ctx context.Context, arg CreateDiscoverySet
 		&i.Mode,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FreshDays,
 	)
 	return i, err
 }
@@ -189,7 +190,7 @@ func (q *Queries) GetDeezerSong(ctx context.Context, songKey string) (DeezerSong
 }
 
 const getDiscoverySet = `-- name: GetDiscoverySet :one
-SELECT id, user_id, name, explore, mode, created_at, updated_at FROM discovery_sets WHERE id = ? AND user_id = ?
+SELECT id, user_id, name, explore, mode, created_at, updated_at, fresh_days FROM discovery_sets WHERE id = ? AND user_id = ?
 `
 
 type GetDiscoverySetParams struct {
@@ -208,6 +209,7 @@ func (q *Queries) GetDiscoverySet(ctx context.Context, arg GetDiscoverySetParams
 		&i.Mode,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FreshDays,
 	)
 	return i, err
 }
@@ -227,6 +229,43 @@ func (q *Queries) GetLibraryIndex(ctx context.Context, linkID string) (LibraryIn
 		&i.Data,
 	)
 	return i, err
+}
+
+const listAllDiscoverySetArtists = `-- name: ListAllDiscoverySetArtists :many
+SELECT name, CAST(max(coalesce(mbid, '')) AS TEXT) AS mbid
+FROM discovery_set_artists
+GROUP BY lower(name)
+ORDER BY lower(name)
+`
+
+type ListAllDiscoverySetArtistsRow struct {
+	Name string
+	Mbid string
+}
+
+// ListAllDiscoverySetArtists lists every user's seed artists, once each,
+// to warm their recent releases.
+func (q *Queries) ListAllDiscoverySetArtists(ctx context.Context) ([]ListAllDiscoverySetArtistsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAllDiscoverySetArtists)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllDiscoverySetArtistsRow{}
+	for rows.Next() {
+		var i ListAllDiscoverySetArtistsRow
+		if err := rows.Scan(&i.Name, &i.Mbid); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listDiscoveryBlocks = `-- name: ListDiscoveryBlocks :many
@@ -335,7 +374,7 @@ func (q *Queries) ListDiscoverySetArtists(ctx context.Context, setID string) ([]
 }
 
 const listDiscoverySets = `-- name: ListDiscoverySets :many
-SELECT discovery_sets.id, discovery_sets.user_id, discovery_sets.name, discovery_sets.explore, discovery_sets.mode, discovery_sets.created_at, discovery_sets.updated_at,
+SELECT discovery_sets.id, discovery_sets.user_id, discovery_sets.name, discovery_sets.explore, discovery_sets.mode, discovery_sets.created_at, discovery_sets.updated_at, discovery_sets.fresh_days,
     CAST((SELECT count(*) FROM discovery_set_artists a WHERE a.set_id = discovery_sets.id) AS INTEGER) AS artists
 FROM discovery_sets
 WHERE user_id = ?
@@ -350,6 +389,7 @@ type ListDiscoverySetsRow struct {
 	Mode      string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	FreshDays int64
 	Artists   int64
 }
 
@@ -370,6 +410,7 @@ func (q *Queries) ListDiscoverySets(ctx context.Context, userID string) ([]ListD
 			&i.Mode,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.FreshDays,
 			&i.Artists,
 		); err != nil {
 			return nil, err
@@ -607,13 +648,14 @@ func (q *Queries) UnblockDiscoveryArtist(ctx context.Context, arg UnblockDiscove
 }
 
 const updateDiscoverySet = `-- name: UpdateDiscoverySet :exec
-UPDATE discovery_sets SET name = ?, explore = ?, mode = ?, updated_at = ? WHERE id = ? AND user_id = ?
+UPDATE discovery_sets SET name = ?, explore = ?, mode = ?, fresh_days = ?, updated_at = ? WHERE id = ? AND user_id = ?
 `
 
 type UpdateDiscoverySetParams struct {
 	Name      string
 	Explore   int64
 	Mode      string
+	FreshDays int64
 	UpdatedAt time.Time
 	ID        string
 	UserID    string
@@ -624,6 +666,7 @@ func (q *Queries) UpdateDiscoverySet(ctx context.Context, arg UpdateDiscoverySet
 		arg.Name,
 		arg.Explore,
 		arg.Mode,
+		arg.FreshDays,
 		arg.UpdatedAt,
 		arg.ID,
 		arg.UserID,

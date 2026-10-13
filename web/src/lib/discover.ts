@@ -17,6 +17,12 @@ export type DiscoveryLibrary = components['schemas']['DiscoveryLibrary']
 export type DiscoveryMap = components['schemas']['DiscoveryMap']
 export type DiscoveryMapNode = components['schemas']['DiscoveryMapNode']
 export type DiscoveryMapEdge = components['schemas']['DiscoveryMapEdge']
+export type DiscoveryRelease = components['schemas']['DiscoveryRelease']
+export type DiscoveryFresh = components['schemas']['DiscoveryFresh']
+export type DiscoveryFreshDays = components['schemas']['DiscoveryFreshDays']
+
+/** How far back a Fresh feed can look. */
+export const freshWindows: DiscoveryFreshDays[] = [30, 60, 90]
 
 export const setsQuery = queryOptions({
   queryKey: ['discover', 'sets'],
@@ -51,6 +57,29 @@ export async function refreshFeed(qc: QueryClient, setId: string) {
   const first = await fetchFeed(setId, '', true)
   qc.setQueryData(feedQuery(setId).queryKey, { pages: [first], pageParams: [''] })
 }
+
+export const freshQuery = (setId: string) =>
+  queryOptions({
+    queryKey: ['discover', 'fresh', setId],
+    queryFn: ({ signal }) => unwrap(api.GET('/me/discover/sets/{setId}/fresh', { params: { path: { setId } }, signal })),
+    staleTime: 10 * 60_000,
+    // Some artists' releases are being looked up: look again a few
+    // times, and the feed fills out.
+    refetchInterval: (q) => (q.state.data?.partial && q.state.dataUpdateCount < 4 ? 8_000 : false),
+  })
+
+export const releaseTracksQuery = (r: Pick<DiscoveryRelease, 'artist' | 'title' | 'deezerId'>) =>
+  queryOptions({
+    queryKey: ['discover', 'release-tracks', r.artist, r.title, r.deezerId ?? 0],
+    queryFn: ({ signal }) =>
+      unwrap(
+        api.GET('/me/discover/release-tracks', {
+          params: { query: { artist: r.artist, title: r.title, ...(r.deezerId ? { deezerId: r.deezerId } : {}) } },
+          signal,
+        }),
+      ),
+    staleTime: 60 * 60_000,
+  })
 
 export const blocksQuery = queryOptions({
   queryKey: ['discover', 'blocks'],
@@ -98,13 +127,14 @@ export function setChanged(qc: QueryClient, set: DiscoverySet) {
   void qc.invalidateQueries({ queryKey: setsQuery.queryKey, exact: true })
   void qc.resetQueries({ queryKey: feedQuery(set.id).queryKey })
   void qc.invalidateQueries({ queryKey: mapQuery({ setId: set.id }).queryKey })
+  void qc.invalidateQueries({ queryKey: freshQuery(set.id).queryKey })
 }
 
 export function createSet(name: string, artists: { name: string; mbid?: string }[] = []) {
   return unwrap(api.POST('/me/discover/sets', { body: { name, artists } }))
 }
 
-export function updateSet(id: string, body: { name?: string; explore?: number; mode?: DiscoveryMode }) {
+export function updateSet(id: string, body: { name?: string; explore?: number; mode?: DiscoveryMode; freshDays?: DiscoveryFreshDays }) {
   return unwrap(api.PATCH('/me/discover/sets/{setId}', { params: { path: { setId: id } }, body }))
 }
 
@@ -171,6 +201,69 @@ export function youtubeUrl(item: Pick<DiscoveryItem, 'artist' | 'title'>) {
 export function imageUrl(kind: 'cover' | 'artist', id: string | undefined, size = 250) {
   if (!id) return undefined
   return `/api/me/discover/images/${kind}/${encodeURIComponent(id)}?size=${size}`
+}
+
+/** A release's cover: Deezer's, else the Cover Art Archive's, through the server. */
+export function releaseCoverUrl(r: Pick<DiscoveryRelease, 'cover' | 'coverRelease' | 'mbid'>, size = 250) {
+  if (r.cover) return imageUrl('cover', r.cover, size)
+  if (r.coverRelease) return `/api/me/discover/release-art/${encodeURIComponent(r.coverRelease)}?size=${size}`
+  if (r.mbid) return `/api/me/discover/release-art/${encodeURIComponent(r.mbid)}?group=true&size=${size}`
+  return undefined
+}
+
+/** A YouTube search for a release: the whole album, or the single. */
+export function releaseYoutubeUrl(r: Pick<DiscoveryRelease, 'artist' | 'title' | 'kind'>) {
+  const q = `${r.artist} ${r.title}${r.kind === 'single' ? '' : ' full album'}`
+  return `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`
+}
+
+const kinds: Record<DiscoveryRelease['kind'], string> = {
+  album: 'Album',
+  ep: 'EP',
+  single: 'Single',
+  compilation: 'Compilation',
+  live: 'Live album',
+}
+
+/** "EP". */
+export function kindText(kind: DiscoveryRelease['kind']) {
+  return kinds[kind] ?? 'Release'
+}
+
+const day = 24 * 3600_000
+
+/** "Out today", "Out 3 days ago", "Out Sep 19", or "Out in September" when only the month is known. */
+export function releaseDateText(date: string, now = Date.now()) {
+  const [y, m, d] = date.split('-').map(Number)
+  if (!y || !m) return ''
+  if (!d) return `Out in ${new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(undefined, { month: 'long', timeZone: 'UTC' })}`
+  const at = Date.UTC(y, m - 1, d)
+  const today = new Date(now)
+  const days = Math.round((Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) - at) / day)
+  if (days <= 0) return 'Out today'
+  if (days === 1) return 'Out yesterday'
+  if (days < 7) return `Out ${days} days ago`
+  return `Out ${new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })}`
+}
+
+/** A song or a release, in a feed that mixes them. */
+export type FeedEntry = { kind: 'song'; item: DiscoveryItem } | { kind: 'release'; release: DiscoveryRelease }
+
+/**
+ * Mixes Fresh releases into a feed of songs ("Both"): the first after the
+ * first song, then one every `every` songs. Releases left over go at the
+ * end once the feed has no more pages (`done`), so they don't jump as
+ * pages load.
+ */
+export function mixFresh(songs: readonly DiscoveryItem[], releases: readonly DiscoveryRelease[], done: boolean, every = 4): FeedEntry[] {
+  const out: FeedEntry[] = []
+  let r = 0
+  songs.forEach((item, i) => {
+    out.push({ kind: 'song', item })
+    if (r < releases.length && (i === 0 || i % every === 0)) out.push({ kind: 'release', release: releases[r++] })
+  })
+  if (done) for (; r < releases.length; r++) out.push({ kind: 'release', release: releases[r] })
+  return out
 }
 
 /** "1.2M fans". */

@@ -86,6 +86,11 @@ func (c *client) backOff(d time.Duration) {
 // A throttle, from the status or from read (Last.fm's and Deezer's come in
 // the body), is waited out and tried once more, within requestTimeout.
 func (c *client) get(ctx context.Context, u string, params url.Values, read func(status int, body io.Reader) error) error {
+	return c.getUpTo(ctx, u, params, maxResponse, read)
+}
+
+// getUpTo is get, reading up to limit bytes of the body.
+func (c *client) getUpTo(ctx context.Context, u string, params url.Values, limit int64, read func(status int, body io.Reader) error) error {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 	if len(params) > 0 {
@@ -96,7 +101,7 @@ func (c *client) get(ctx context.Context, u string, params url.Values, read func
 		if err = c.wait(ctx); err != nil {
 			return err
 		}
-		err = c.once(ctx, u, read)
+		err = c.once(ctx, u, limit, read)
 		if !errors.Is(err, provider.ErrRateLimited) {
 			return err
 		}
@@ -104,7 +109,7 @@ func (c *client) get(ctx context.Context, u string, params url.Values, read func
 	return err
 }
 
-func (c *client) once(ctx context.Context, u string, read func(status int, body io.Reader) error) error {
+func (c *client) once(ctx context.Context, u string, limit int64, read func(status int, body io.Reader) error) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return err
@@ -128,7 +133,7 @@ func (c *client) once(ctx context.Context, u string, read func(status int, body 
 		c.backOff(d)
 		return fmt.Errorf("%s: %w", c.name, &provider.RateLimitError{RetryAfter: d})
 	}
-	return read(resp.StatusCode, io.LimitReader(resp.Body, maxResponse))
+	return read(resp.StatusCode, io.LimitReader(resp.Body, limit))
 }
 
 // heed follows a source's rate limit headers (ListenBrainz sends them):

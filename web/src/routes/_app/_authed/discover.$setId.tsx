@@ -8,6 +8,7 @@ import { BackButton } from '@/components/back-button'
 import { ConfirmButton } from '@/components/confirm-button'
 import { ArtistSearch } from '@/components/discover/artist-search'
 import { FeedCard } from '@/components/discover/feed-card'
+import { ReleaseCard } from '@/components/discover/release-card'
 import { SetTabs } from '@/components/discover/set-tabs'
 import { Notice } from '@/components/notice'
 import { Button } from '@/components/ui/button'
@@ -22,6 +23,9 @@ import {
   deleteSet,
   feedItems,
   feedQuery,
+  freshQuery,
+  freshWindows,
+  mixFresh,
   refreshFeed,
   removeArtist,
   setChanged,
@@ -32,6 +36,8 @@ import {
   unblock,
   updateSet,
   type DiscoveryFeed,
+  type DiscoveryFresh,
+  type DiscoveryFreshDays,
   type DiscoveryItem,
   type DiscoveryMode,
   type DiscoverySet,
@@ -75,9 +81,11 @@ function SetPage() {
       <Seeds set={set.data} />
       <Tuning set={set.data} />
       {set.data.artists.length === 0 ? (
-        <p className="mt-8 text-center text-sm text-muted-foreground">Add an artist or two, and songs near them show up here.</p>
+        <p className="mt-8 text-center text-sm text-muted-foreground">Add an artist or two, and music near them shows up here.</p>
+      ) : set.data.mode === 'fresh' ? (
+        <FreshFeed set={set.data} />
       ) : (
-        <Feed set={set.data} />
+        <Feed set={set.data} withFresh={set.data.mode === 'both'} />
       )}
     </>
   )
@@ -183,12 +191,12 @@ function Seeds({ set }: { set: DiscoverySet }) {
   )
 }
 
-/** How far the feed strays, and which feeds it shows. */
+/** How far the feed strays, which feeds it shows, and how far back Fresh looks. */
 function Tuning({ set }: { set: DiscoverySet }) {
   // While dragging, and until the change is saved.
   const [dragged, setDragged] = useState<number>()
   const explore = dragged ?? set.explore
-  const update = useSetMutation((body: { explore?: number; mode?: DiscoveryMode }) => updateSet(set.id, body))
+  const update = useSetMutation((body: { explore?: number; mode?: DiscoveryMode; freshDays?: DiscoveryFreshDays }) => updateSet(set.id, body))
   return (
     <section className="mt-3 grid gap-4 px-1 sm:grid-cols-[1fr_auto] sm:items-center">
       <label className="flex flex-col gap-1">
@@ -212,23 +220,76 @@ function Tuning({ set }: { set: DiscoverySet }) {
         onValueChange={(v) => v && update.mutate({ mode: v as DiscoveryMode })}
         aria-label="Which feeds"
       >
-        <ToggleGroupItem value="deep">Deep cuts</ToggleGroupItem>
-        <ToggleGroupItem value="fresh" title="New releases arrive in a later update">
+        <ToggleGroupItem value="deep" title="Anything new to you">
+          Deep cuts
+        </ToggleGroupItem>
+        <ToggleGroupItem value="fresh" title="Recent releases">
           Fresh
         </ToggleGroupItem>
         <ToggleGroupItem value="both">Both</ToggleGroupItem>
       </ToggleGroup>
+      {set.mode !== 'deep' && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:col-span-2 sm:justify-end">
+          <span className="text-caption text-muted-foreground">Fresh looks back</span>
+          <ToggleGroup
+            type="single"
+            value={String(set.freshDays)}
+            onValueChange={(v) => v && update.mutate({ freshDays: Number(v) as DiscoveryFreshDays })}
+            aria-label="How far back Fresh looks"
+          >
+            {freshWindows.map((d) => (
+              <ToggleGroupItem key={d} value={String(d)}>
+                {d} days
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        </div>
+      )}
     </section>
   )
 }
 
-function Feed({ set }: { set: DiscoverySet }) {
+/** "Not for me": an artist out of every feed, with an undo. */
+function useNotForMe(setId: string, onBlock: (artist: string) => void) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (artist: string) => block(artist),
+    onMutate: (artist) => {
+      tap()
+      onBlock(artist)
+      qc.setQueryData<DiscoveryFresh>(freshQuery(setId).queryKey, (d) =>
+        d ? { ...d, items: d.items.filter((r) => r.artist.toLowerCase() !== artist.toLowerCase()) } : d,
+      )
+    },
+    onSuccess: (b) => {
+      void qc.invalidateQueries({ queryKey: blocksQuery.queryKey })
+      toast({
+        message: `No more ${b.name}`,
+        action: {
+          label: 'Undo',
+          onClick: () =>
+            void unblock(b.key).then(() => {
+              void qc.invalidateQueries({ queryKey: blocksQuery.queryKey })
+              void qc.invalidateQueries({ queryKey: feedQuery(setId).queryKey })
+              void qc.invalidateQueries({ queryKey: freshQuery(setId).queryKey })
+            }),
+        },
+      })
+    },
+    onError: (e) => toast({ message: errorMessage(e), tone: 'error' }),
+  })
+}
+
+/** The set's songs, new to you; with its Fresh releases mixed in, for "Both". */
+function Feed({ set, withFresh }: { set: DiscoverySet; withFresh: boolean }) {
   const qc = useQueryClient()
   const pages = useInfiniteQuery(feedQuery(set.id))
+  const fresh = useQuery({ ...freshQuery(set.id), enabled: withFresh })
   const [thumbed, setThumbed] = useState<ReadonlySet<string>>(new Set())
   const items = feedItems(pages.data?.pages)
   const first = pages.data?.pages[0]
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = pages
+  const entries = mixFresh(items, withFresh ? (fresh.data?.items ?? []) : [], !hasNextPage)
 
   // Load the next page as the end of the list scrolls into view.
   const end = useRef<HTMLDivElement>(null)
@@ -267,28 +328,7 @@ function Feed({ set }: { set: DiscoverySet }) {
       toast({ message: kind === 'up' ? `Glad you like “${item.title}”` : `You won't see “${item.title}” again` }),
     onError: (e) => toast({ message: errorMessage(e), tone: 'error' }),
   })
-  const notForMe = useMutation({
-    mutationFn: (item: DiscoveryItem) => block(item.artist),
-    onMutate: (item) => {
-      tap()
-      drop((it) => it.artist.toLowerCase() !== item.artist.toLowerCase())
-    },
-    onSuccess: (b) => {
-      void qc.invalidateQueries({ queryKey: blocksQuery.queryKey })
-      toast({
-        message: `No more ${b.name}`,
-        action: {
-          label: 'Undo',
-          onClick: () =>
-            void unblock(b.key).then(() => {
-              void qc.invalidateQueries({ queryKey: blocksQuery.queryKey })
-              void qc.invalidateQueries({ queryKey: feedQuery(set.id).queryKey })
-            }),
-        },
-      })
-    },
-    onError: (e) => toast({ message: errorMessage(e), tone: 'error' }),
-  })
+  const notForMe = useNotForMe(set.id, (artist) => drop((it) => it.artist.toLowerCase() !== artist.toLowerCase()))
 
   return (
     <section className="mt-8">
@@ -319,21 +359,79 @@ function Feed({ set }: { set: DiscoverySet }) {
         </p>
       ) : (
         <motion.ul variants={stagger} initial="hidden" animate="show" className="flex flex-col gap-3">
-          {items.map((it) => (
-            <FeedCard
-              key={it.key}
-              item={it}
-              thumbed={thumbed.has(it.key) ? 'up' : undefined}
-              onThumb={(kind) => rate.mutate({ kind, item: it })}
-              onBlock={() => notForMe.mutate(it)}
-            />
-          ))}
+          {entries.map((e) =>
+            e.kind === 'release' ? (
+              <ReleaseCard key={`release-${e.release.key}`} release={e.release} isNew onBlock={() => notForMe.mutate(e.release.artist)} />
+            ) : (
+              <FeedCard
+                key={e.item.key}
+                item={e.item}
+                thumbed={thumbed.has(e.item.key) ? 'up' : undefined}
+                onThumb={(kind) => rate.mutate({ kind, item: e.item })}
+                onBlock={() => notForMe.mutate(e.item.artist)}
+              />
+            ),
+          )}
         </motion.ul>
       )}
       <div ref={end} className="flex justify-center py-6">
         {isFetchingNextPage && <LoaderCircle className="size-5 animate-spin text-muted-foreground" />}
         {!hasNextPage && items.length > 0 && <p className="text-caption text-muted-foreground">That&apos;s all for now. Refresh for another walk.</p>}
       </div>
+    </section>
+  )
+}
+
+/** The set's recent releases: "new releases for you". */
+function FreshFeed({ set }: { set: DiscoverySet }) {
+  const fresh = useQuery(freshQuery(set.id))
+  const notForMe = useNotForMe(set.id, () => {})
+  const data = fresh.data
+  return (
+    <section className="mt-8">
+      <div className="mb-3 flex items-center justify-between gap-3 px-1">
+        <div className="min-w-0">
+          <h2 className="text-headline">Fresh</h2>
+          <p className="text-caption text-muted-foreground">Out in the last {set.freshDays} days</p>
+        </div>
+        <Button variant="ghost" size="sm" disabled={fresh.isFetching} onClick={() => void fresh.refetch()}>
+          <RefreshCw data-icon="inline-start" className={fresh.isFetching ? 'animate-spin' : undefined} />
+          Refresh
+        </Button>
+      </div>
+      {data?.library.building && (
+        <p className="mb-3 px-1 text-caption text-muted-foreground">Still indexing your library, so a release you have might slip through.</p>
+      )}
+      {data?.partial && (data.items.length > 0 || fresh.isFetching) && (
+        <p className="mb-3 flex items-center gap-1.5 px-1 text-caption text-muted-foreground">
+          <LoaderCircle className="size-3 animate-spin" />
+          Still looking up some artists&apos; releases
+        </p>
+      )}
+      {fresh.isPending ? (
+        <div className="flex flex-col gap-3">
+          <p className="px-1 text-sm text-muted-foreground">Looking for what came out lately…</p>
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-[5.5rem] rounded-3xl" />
+          ))}
+        </div>
+      ) : fresh.isError && !data ? (
+        <Notice>{errorMessage(fresh.error)}</Notice>
+      ) : !data || data.items.length === 0 ? (
+        <p className="glass rounded-3xl p-5 text-sm text-muted-foreground">
+          {data?.noReleases
+            ? "This server has no source of new releases: its admin can turn on Deezer, ListenBrainz or MusicBrainz."
+            : data?.partial
+              ? "Looking up your artists' releases. They'll show up here shortly."
+              : `Nothing new from your artists or their neighbors in the last ${set.freshDays} days. Look further back, or add another artist.`}
+        </p>
+      ) : (
+        <motion.ul variants={stagger} initial="hidden" animate="show" className="flex flex-col gap-3">
+          {data.items.map((r) => (
+            <ReleaseCard key={r.key} release={r} onBlock={() => notForMe.mutate(r.artist)} />
+          ))}
+        </motion.ul>
+      )}
     </section>
   )
 }

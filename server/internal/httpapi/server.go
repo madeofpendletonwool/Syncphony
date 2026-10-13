@@ -30,6 +30,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/linernotes"
 	"github.com/madeofpendletonwool/syncphony/server/internal/links"
 	"github.com/madeofpendletonwool/syncphony/server/internal/lyrics"
+	"github.com/madeofpendletonwool/syncphony/server/internal/musicbrainz"
 	"github.com/madeofpendletonwool/syncphony/server/internal/musicgraph"
 	"github.com/madeofpendletonwool/syncphony/server/internal/nights"
 	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
@@ -86,6 +87,9 @@ type Server struct {
 	// Deezer plays discovery's previews and loads its covers. Nil when
 	// Deezer is off.
 	Deezer *musicgraph.Deezer
+	// MusicBrainz loads discovery's covers that Deezer doesn't have. Nil
+	// when MusicBrainz is off.
+	MusicBrainz *musicbrainz.Service
 	// Games runs the rooms' party games. Nil turns them off.
 	Games *games.Engine
 	// Clips serves the games' song clips. Nil serves none.

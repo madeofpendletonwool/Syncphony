@@ -3055,6 +3055,109 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /me/discover/sets/{setId}/fresh:
+    parameters:
+      - $ref: "#/components/parameters/DiscoverySetId"
+    get:
+      operationId: getDiscoveryFresh
+      summary: A set's Fresh feed
+      description: |
+        Releases (albums, EPs, singles) from the set's last `freshDays` by
+        its seeds and their nearest neighbors, that you don't have or
+        want, and not by an artist you blocked. The seeds' come first,
+        then the neighbors' by how near they are; albums and EPs before
+        singles, and compilations and live albums last. Releases come from
+        ListenBrainz, MusicBrainz and Deezer, cached a day per artist:
+        artists not known yet are looked up in the background
+        (`partial`).
+      tags: [discover]
+      responses:
+        "200":
+          description: The feed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoveryFresh"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/release-tracks:
+    get:
+      operationId: listDiscoveryReleaseTracks
+      summary: A release's songs, with previews
+      description: |
+        From Deezer: by `deezerId`, or found by `artist` and `title`.
+        Empty when Deezer doesn't have it, or is off.
+      tags: [discover]
+      parameters:
+        - name: artist
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+        - name: title
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 300
+        - name: deezerId
+          in: query
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        "200":
+          description: The songs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoveryReleaseTracks"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/release-art/{mbid}:
+    parameters:
+      - name: mbid
+        in: path
+        required: true
+        description: A release's MBID (`coverRelease`), or with `group`, a release group's (`mbid`).
+        schema:
+          type: string
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    get:
+      operationId: getDiscoveryReleaseArt
+      summary: A release's cover from the Cover Art Archive, through the server
+      description: For a release Deezer doesn't have. `not_found` if there's none, or MusicBrainz is off.
+      tags: [discover]
+      parameters:
+        - name: group
+          in: query
+          description: The MBID is a release group's.
+          schema:
+            type: boolean
+        - name: size
+          in: query
+          description: Wanted width in pixels; a hint.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1200
+      responses:
+        "200":
+          description: The image
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
+
   /me/discover/feedback:
     post:
       operationId: postDiscoveryFeedback
@@ -8319,13 +8422,13 @@ components:
       type: string
       description: |
         Which feeds a set shows: `deep` cuts (anything new to you), `fresh`
-        releases (coming), or `both`.
+        releases (recent albums, EPs and singles), or `both`.
       enum: [deep, fresh, both]
       x-enum-varnames: [DiscoveryModeDeep, DiscoveryModeFresh, DiscoveryModeBoth]
 
     DiscoverySetSummary:
       type: object
-      required: [id, name, explore, mode, artistCount, createdAt, updatedAt]
+      required: [id, name, explore, mode, freshDays, artistCount, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -8337,6 +8440,8 @@ components:
           maximum: 100
         mode:
           $ref: "#/components/schemas/DiscoveryMode"
+        freshDays:
+          $ref: "#/components/schemas/DiscoveryFreshDays"
         artistCount:
           type: integer
         createdAt:
@@ -8348,7 +8453,7 @@ components:
 
     DiscoverySet:
       type: object
-      required: [id, name, explore, mode, artists, createdAt, updatedAt]
+      required: [id, name, explore, mode, freshDays, artists, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -8361,6 +8466,8 @@ components:
           description: How far the feed strays from the seeds, and toward less-known artists.
         mode:
           $ref: "#/components/schemas/DiscoveryMode"
+        freshDays:
+          $ref: "#/components/schemas/DiscoveryFreshDays"
         artists:
           type: array
           items:
@@ -8428,6 +8535,89 @@ components:
           maximum: 100
         mode:
           $ref: "#/components/schemas/DiscoveryMode"
+        freshDays:
+          $ref: "#/components/schemas/DiscoveryFreshDays"
+
+    DiscoveryFreshDays:
+      type: integer
+      description: How far back a set's Fresh feed looks, in days.
+      enum: [30, 60, 90]
+      x-enum-varnames: [DiscoveryFresh30Days, DiscoveryFresh60Days, DiscoveryFresh90Days]
+
+    DiscoveryRelease:
+      type: object
+      description: A recent release near a set's seeds, that you don't have.
+      required: [key, title, artist, date, kind, sources, because, seed]
+      properties:
+        key:
+          type: string
+        title:
+          type: string
+        artist:
+          type: string
+          description: Who it's credited to.
+        date:
+          type: string
+          description: When it first came out, YYYY-MM-DD (or YYYY-MM, if that's all that's known).
+        kind:
+          type: string
+          enum: [album, ep, single, compilation, live]
+        mbid:
+          type: string
+          description: Its MusicBrainz release group.
+        coverRelease:
+          type: string
+          description: A release of it with a cover in the Cover Art Archive, for getDiscoveryReleaseArt.
+        deezerId:
+          type: integer
+          format: int64
+          description: The release on Deezer, for its songs.
+        cover:
+          type: string
+          description: Its cover's image ID on Deezer, for getDiscoveryImage (kind `cover`).
+        sources:
+          type: array
+          items:
+            type: string
+        because:
+          type: array
+          description: The seed artists it's near, nearest first; the seed itself for a seed's release.
+          items:
+            type: string
+        seed:
+          type: boolean
+          description: Whether it's a seed artist's.
+
+    DiscoveryFresh:
+      type: object
+      required: [items, days, partial, library, noGraph, noReleases]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscoveryRelease"
+        days:
+          $ref: "#/components/schemas/DiscoveryFreshDays"
+        partial:
+          type: boolean
+          description: Some artists' releases weren't known yet. They're being looked up; load it again in a while.
+        library:
+          $ref: "#/components/schemas/DiscoveryLibrary"
+        noGraph:
+          type: boolean
+          description: The server knows nothing of how music relates, so only the seeds' releases show.
+        noReleases:
+          type: boolean
+          description: The server has no source of releases (Deezer, ListenBrainz and MusicBrainz are all off).
+
+    DiscoveryReleaseTracks:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscoveryItem"
 
     DiscoveryItem:
       type: object

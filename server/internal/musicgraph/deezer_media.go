@@ -35,12 +35,13 @@ type DeezerTrack struct {
 	Rank float64
 	// HasPreview is whether Deezer has a 30-second preview of it.
 	HasPreview bool
+	ISRC       string
 }
 
 func (t dzTrack) public() DeezerTrack {
 	return DeezerTrack{
 		ID: t.ID, Title: t.Title, Artist: t.Artist.Name, Album: t.Album.Title, Cover: t.cover(),
-		Rank: min(t.Rank/deezerTopRank, 1), HasPreview: t.Preview != "",
+		Rank: min(t.Rank/deezerTopRank, 1), HasPreview: t.Preview != "", ISRC: t.ISRC,
 	}
 }
 

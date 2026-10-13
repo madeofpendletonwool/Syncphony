@@ -15,6 +15,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -45,7 +46,12 @@ const (
 	MaxName    = 100
 	// DefaultExplore is a new set's explore, 0 to 100.
 	DefaultExplore = 40
+	// DefaultFreshDays is how far back a new set's Fresh feed looks.
+	DefaultFreshDays = 60
 )
+
+// FreshWindows are how far back a Fresh feed can look, in days.
+var FreshWindows = []int{30, 60, 90}
 
 // Modes: which feeds a set shows.
 const (
@@ -96,6 +102,9 @@ type Service struct {
 	// Deezer finds songs' previews and artists by name. Nil means no
 	// previews, and artist search only offers the name typed.
 	Deezer Deezer
+	// Releases finds artists' recent releases, for Fresh feeds. Nil
+	// makes every Fresh feed empty.
+	Releases Releases
 	// Now is the clock. Default store.Now.
 	Now func() time.Time
 	// BuildFor bounds building a feed; what's found by then is the feed.
@@ -151,6 +160,13 @@ func checkMode(mode string) error {
 		return nil
 	}
 	return &InvalidInputError{"mode is deep, fresh or both"}
+}
+
+func checkFreshDays(days int) error {
+	if !slices.Contains(FreshWindows, days) {
+		return &InvalidInputError{"fresh days is 30, 60 or 90"}
+	}
+	return nil
 }
 
 func checkExplore(explore int) error {
@@ -217,19 +233,20 @@ func (s *Service) Get(ctx context.Context, userID, setID string) (Set, error) {
 
 // Changes are what Update changes; nil leaves a field as it is.
 type Changes struct {
-	Name    *string
-	Explore *int
-	Mode    *string
+	Name      *string
+	Explore   *int
+	Mode      *string
+	FreshDays *int
 }
 
-// Update renames a set, or changes its explore or mode.
+// Update renames a set, or changes its explore, mode or Fresh window.
 func (s *Service) Update(ctx context.Context, userID, setID string, c Changes) (Set, error) {
 	set, err := s.Get(ctx, userID, setID)
 	if err != nil {
 		return Set{}, err
 	}
 	p := store.UpdateDiscoverySetParams{
-		ID: setID, UserID: userID, Name: set.Name, Explore: set.Explore, Mode: set.Mode, UpdatedAt: s.Now(),
+		ID: setID, UserID: userID, Name: set.Name, Explore: set.Explore, Mode: set.Mode, FreshDays: set.FreshDays, UpdatedAt: s.Now(),
 	}
 	if c.Name != nil {
 		if p.Name, err = cleanName(*c.Name); err != nil {
@@ -247,6 +264,12 @@ func (s *Service) Update(ctx context.Context, userID, setID string, c Changes) (
 			return Set{}, err
 		}
 		p.Mode = *c.Mode
+	}
+	if c.FreshDays != nil {
+		if err := checkFreshDays(*c.FreshDays); err != nil {
+			return Set{}, err
+		}
+		p.FreshDays = int64(*c.FreshDays)
 	}
 	if err := s.db.UpdateDiscoverySet(ctx, p); err != nil {
 		return Set{}, err

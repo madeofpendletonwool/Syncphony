@@ -131,22 +131,9 @@ func (d *Deezer) Artist(ctx context.Context, a ArtistRef) (Artist, error) {
 	if a.Name == "" {
 		return Artist{}, provider.ErrUnsupported
 	}
-	var found struct {
-		Data []dzArtist `json:"data"`
-	}
-	if err := d.get(ctx, "/search/artist", url.Values{"q": {a.Name}, "limit": {"10"}}, &found); err != nil {
+	id, err := d.findArtist(ctx, a.Name)
+	if err != nil {
 		return Artist{}, err
-	}
-	// The same name can be more than one artist: take the best known.
-	want := match.Simplify(a.Name)
-	var id dzArtist
-	for _, c := range found.Data {
-		if match.Simplify(c.Name) == want && c.Fans > id.Fans {
-			id = c
-		}
-	}
-	if id.ID == 0 {
-		return Artist{}, fmt.Errorf("deezer: artist %q: %w", a.Name, provider.ErrNotFound)
 	}
 	path := "/artist/" + strconv.FormatInt(id.ID, 10)
 	out := Artist{Ref: a, Fans: id.Fans, Picture: cmp.Or(id.MD5Image, imageID(id.Picture))}
@@ -179,6 +166,28 @@ func (d *Deezer) Artist(ctx context.Context, a ArtistRef) (Artist, error) {
 		})
 	}
 	return out, nil
+}
+
+// findArtist finds an artist on Deezer by name. The same name can be
+// more than one artist: it takes the best known.
+func (d *Deezer) findArtist(ctx context.Context, name string) (dzArtist, error) {
+	var found struct {
+		Data []dzArtist `json:"data"`
+	}
+	if err := d.get(ctx, "/search/artist", url.Values{"q": {name}, "limit": {"10"}}, &found); err != nil {
+		return dzArtist{}, err
+	}
+	want := match.Simplify(name)
+	var id dzArtist
+	for _, c := range found.Data {
+		if match.Simplify(c.Name) == want && c.Fans > id.Fans {
+			id = c
+		}
+	}
+	if id.ID == 0 {
+		return dzArtist{}, fmt.Errorf("deezer: artist %q: %w", name, provider.ErrNotFound)
+	}
+	return id, nil
 }
 
 // Track implements Source: the song by ISRC, or else by searching, for

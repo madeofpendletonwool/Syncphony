@@ -15,6 +15,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/httpapi"
 	"github.com/madeofpendletonwool/syncphony/server/internal/musicgraph"
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
+	"github.com/madeofpendletonwool/syncphony/server/internal/releases"
 )
 
 // discoverGraph knows Hum, who's like Failure and Shiner.
@@ -184,5 +185,86 @@ func TestGuestsHaveNoDiscovery(t *testing.T) {
 		if r := guest.do("GET", path, nil); r.status != http.StatusForbidden {
 			t.Errorf("guest GET %s: %d %s", path, r.status, r.body)
 		}
+	}
+}
+
+func TestDiscoverFresh(t *testing.T) {
+	e := newEnv(t)
+	alice := e.admin()
+	bob := e.member(alice, "bob")
+	e.api.Discover.Graph = discoverGraph{}
+	// Deezer knows Hum and Failure, and the songs on Hum's new album.
+	recent := func(days int) string { return time.Now().AddDate(0, 0, -days).Format(time.DateOnly) }
+	dz := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path + "?" + r.URL.Query().Get("q") {
+		case "/search/artist?Hum":
+			fmt.Fprint(w, `{"data":[{"id":1,"name":"Hum","nb_fan":300000}]}`)
+		case "/search/artist?Failure":
+			fmt.Fprint(w, `{"data":[{"id":2,"name":"Failure","nb_fan":200000}]}`)
+		case "/artist/1/albums?":
+			fmt.Fprintf(w, `{"data":[{"id":10,"title":"Inlet","release_date":%q,"record_type":"album","md5_image":"0123456789abcdef0123456789abcdef"},
+				{"id":11,"title":"Downward Is Heavenward","release_date":"1998-01-27","record_type":"album"}]}`, recent(20))
+		case "/artist/2/albums?":
+			fmt.Fprintf(w, `{"data":[{"id":20,"title":"Wild Type","release_date":%q,"record_type":"single"}]}`, recent(5))
+		case "/album/10/tracks?":
+			fmt.Fprint(w, `{"data":[{"id":101,"title":"Waves","preview":"x","artist":{"name":"Hum"}},{"id":102,"title":"In the Den","artist":{"name":"Hum"}}]}`)
+		default:
+			fmt.Fprint(w, `{"error":{"code":800,"message":"no data"}}`)
+		}
+	}))
+	t.Cleanup(dz.Close)
+	rel := releases.New(e.db, releases.Options{Deezer: musicgraph.NewDeezer(musicgraph.DeezerOptions{BaseURL: dz.URL, Interval: -1})})
+	e.api.Discover.Releases = rel
+
+	var set httpapi.DiscoverySet
+	alice.want(http.StatusCreated, "POST", "/me/discover/sets", httpapi.CreateDiscoverySetRequest{
+		Name: "90s alt", Artists: &[]httpapi.DiscoverySeed{{Name: "Hum"}},
+	}).decode(t, &set)
+	if set.FreshDays != httpapi.DiscoveryFresh60Days {
+		t.Errorf("a new set looks back %d days", set.FreshDays)
+	}
+	base := "/me/discover/sets/" + set.Id
+	days := httpapi.DiscoveryFresh30Days
+	alice.want(http.StatusOK, "PATCH", base, httpapi.UpdateDiscoverySetRequest{FreshDays: &days}).decode(t, &set)
+	if set.FreshDays != httpapi.DiscoveryFresh30Days {
+		t.Errorf("updated: %+v", set)
+	}
+	if r := alice.do("PATCH", base, map[string]int{"freshDays": 45}); r.status != http.StatusBadRequest {
+		t.Errorf("45 days: %d %s", r.status, r.body)
+	}
+
+	// Hum's new album is fetched; Failure, a neighbor, is warmed.
+	var fresh httpapi.DiscoveryFresh
+	alice.want(http.StatusOK, "GET", base+"/fresh", nil).decode(t, &fresh)
+	if len(fresh.Items) != 1 || fresh.Days != 30 || fresh.NoReleases {
+		t.Fatalf("fresh: %+v", fresh)
+	}
+	inlet := fresh.Items[0]
+	if inlet.Title != "Inlet" || inlet.Kind != httpapi.DiscoveryReleaseKindAlbum || !inlet.Seed || inlet.DeezerId == nil || *inlet.DeezerId != 10 ||
+		inlet.Cover == nil || len(inlet.Because) != 1 || inlet.Because[0] != "Hum" {
+		t.Errorf("Inlet: %+v", inlet)
+	}
+	if !fresh.Partial {
+		t.Error("not partial with Failure still to look up")
+	}
+	if _, err := rel.Get(t.Context(), musicgraph.ArtistRef{Name: "Failure"}); err != nil {
+		t.Fatal(err)
+	}
+	fresh = httpapi.DiscoveryFresh{}
+	alice.want(http.StatusOK, "GET", base+"/fresh", nil).decode(t, &fresh)
+	if len(fresh.Items) != 2 || fresh.Items[1].Title != "Wild Type" || fresh.Items[1].Seed {
+		t.Errorf("with Failure's: %+v", fresh.Items)
+	}
+
+	var tracks httpapi.DiscoveryReleaseTracks
+	alice.want(http.StatusOK, "GET", "/me/discover/release-tracks?artist=Hum&title=Inlet&deezerId=10", nil).decode(t, &tracks)
+	if len(tracks.Items) != 2 || tracks.Items[0].DeezerId == nil || *tracks.Items[0].DeezerId != 101 || tracks.Items[0].Album == nil || *tracks.Items[0].Album != "Inlet" {
+		t.Errorf("tracks: %+v", tracks)
+	}
+	if r := alice.do("GET", "/me/discover/release-art/00000000-0000-4000-8000-000000000000?group=true", nil); r.status != http.StatusNotFound {
+		t.Errorf("release art without MusicBrainz: %d", r.status)
+	}
+	if r := bob.do("GET", base+"/fresh", nil); r.status != http.StatusNotFound {
+		t.Errorf("bob's look at alice's fresh feed: %d", r.status)
 	}
 }
