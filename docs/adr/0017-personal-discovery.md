@@ -2,7 +2,7 @@
 
 - **Status:** accepted
 - **Date:** 2026-10-13
-- **Issues:** MAD-814 (Phase 12), stage 1: MAD-815..819, stage 2: MAD-820, 821
+- **Issues:** MAD-814 (Phase 12), stage 1: MAD-815..819, stage 2: MAD-820, 821, stage 3: MAD-822, 823
 
 ## Context
 
@@ -56,6 +56,30 @@ Top songs from Deezer carry their Deezer ID, album and cover (`musicgraph.SongRe
 `GET /me/discover/songs?artist=` gives an artist's best-known songs that you don't have, haven't turned down and don't want yet, with previews. It's for the sheet that opens when you tap an artist on the map.
 
 The **Map** view (MAD-821) is a tab beside a set's feed, and `/discover/map?path=…` for any artist. It's laid out with d3-force, all at once off screen. Distance follows how alike two artists are, and size follows how well known they are. It's drawn in SVG, and a new layout starts from where the last one left each artist, then tweens there, so re-centering glides. Artists you have are dimmed, new ones are in full color, and seeds and the center are ringed. In a set's map, artists near several seeds get a soft halo. Each re-center is a step in the URL, so Back and the breadcrumbs retrace them. There's nothing beat-reactive: the app shell stays calm.
+
+### Fresh releases
+
+The **Fresh** feed (MAD-823) is the "new releases for you" part: what your seeds and their neighbors put out lately. `internal/releases` (MAD-822) finds an artist's recent releases from three sources and merges them by artist and title (`library.ReleaseKey`, so a deluxe edition is the same release):
+
+- **ListenBrainz's fresh releases** (`/1/explore/fresh-releases`, 90 days): every release lately, about 12 MB, read once every 6 hours and kept in memory by artist MBID and name. One request answers for every artist. It carries release group MBIDs, types and Cover Art Archive covers.
+- **MusicBrainz release groups** for an artist's MBID, searched by first-release date: one request, through the server's shared one-a-second client, retried once if MusicBrainz says it's busy. A date that's only a year doesn't count, since it can't say whether something is recent.
+- **Deezer's albums** for the artist: two requests. They carry a cover and the Deezer ID that a release's songs and previews come from. Deezer dates a reissue or deluxe edition to when it came out, so each release counts from its earliest edition on Deezer. Otherwise an old album would look new.
+
+The first source to list a release says what kind it is: MusicBrainz's types (`album`, `ep`, `single`, `compilation`, `live`) say more than Deezer's. Then the most precise date wins, and any source can fill in an ID or a cover. An artist's releases from the last 100 days are cached a day in `artist_releases` (migration 00030), or an hour if a source failed. Every 6 hours, the seeds of every set, then their ten nearest neighbors, are warmed one artist at a time, so the sources' limits hold.
+
+A set's Fresh feed (`GET /me/discover/sets/{setId}/fresh`) looks back its `fresh_days`: 30, 60 or 90, default 60. It takes the seeds and their nearest neighbors (15 of them, up to 50 for a set that explores) from the map's walk. Ranking:
+
+- Compilations and live albums come last.
+- Ahead of them, the seeds' releases come first, then albums and EPs before singles.
+- Within those, the score decides. For a neighbor, that's how near it is, with the same explore lean on how well known it is as the song feed, then the kind of release, then how recent it is.
+
+There are at most 3 releases per artist and 100 in all. Releases you have (`HasRelease`, by the artist found and the artist credited), want, or by an artist you blocked are left out.
+
+Like the map, it reads the cache. It fetches up to four seeds' releases that aren't cached, within 6 seconds, and warms the rest. Then it says it's `partial`, and the page loads it again a few times as it fills in.
+
+A release card shows its cover (Deezer's, else the Cover Art Archive's through `GET /me/discover/release-art/{mbid}`), its kind and date, and the seeds it's near. Opening it lists its songs from Deezer (`GET /me/discover/release-tracks`, by Deezer ID or found by title), each with a preview and a YouTube link. The card also has an "Open on YouTube" search for the whole release. In **Both** mode, the web app mixes Fresh cards into the deep-cuts feed with a **New** badge: one after the first song, then one every four. That keeps the song feed's pages as they are.
+
+The unread dot on the Discover tab, for releases you haven't seen yet, isn't built. Knowing what's unseen would mean working out every set's Fresh feed for the tab bar.
 
 ### Feedback stays out of rooms
 

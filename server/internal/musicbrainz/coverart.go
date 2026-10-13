@@ -52,13 +52,20 @@ func (c *coverArt) front(ctx context.Context, ids IDs, size int) (artcache.Image
 		}
 	}
 	k := artKey{release: ids.Release, size: thumb}
+	if ids.Release == "" {
+		k.release = "group:" + ids.ReleaseGroup
+	}
 	if img, ok := c.cache.Get(k); ok {
 		if len(img.Data) == 0 {
-			return artcache.Image{}, fmt.Errorf("cover art for release %s: %w", ids.Release, provider.ErrNotFound)
+			return artcache.Image{}, fmt.Errorf("cover art for release %s: %w", k.release, provider.ErrNotFound)
 		}
 		return img, nil
 	}
-	img, err := c.fetch(ctx, fmt.Sprintf("/release/%s/front-%d", ids.Release, thumb))
+	var img *artcache.Image
+	var err error
+	if ids.Release != "" {
+		img, err = c.fetch(ctx, fmt.Sprintf("/release/%s/front-%d", ids.Release, thumb))
+	}
 	if img == nil && err == nil && ids.ReleaseGroup != "" {
 		img, err = c.fetch(ctx, fmt.Sprintf("/release-group/%s/front-%d", ids.ReleaseGroup, thumb))
 	}
@@ -67,7 +74,7 @@ func (c *coverArt) front(ctx context.Context, ids IDs, size int) (artcache.Image
 	}
 	if img == nil {
 		c.cache.Put(k, artcache.Image{})
-		return artcache.Image{}, fmt.Errorf("cover art for release %s: %w", ids.Release, provider.ErrNotFound)
+		return artcache.Image{}, fmt.Errorf("cover art for release %s: %w", k.release, provider.ErrNotFound)
 	}
 	c.cache.Put(k, *img)
 	return *img, nil

@@ -198,6 +198,27 @@ func (e DiscoveryFeedbackRequestKind) Valid() bool {
 	}
 }
 
+// Defines values for DiscoveryFreshDays.
+const (
+	DiscoveryFresh30Days DiscoveryFreshDays = 30
+	DiscoveryFresh60Days DiscoveryFreshDays = 60
+	DiscoveryFresh90Days DiscoveryFreshDays = 90
+)
+
+// Valid indicates whether the value is a known member of the DiscoveryFreshDays enum.
+func (e DiscoveryFreshDays) Valid() bool {
+	switch e {
+	case DiscoveryFresh30Days:
+		return true
+	case DiscoveryFresh60Days:
+		return true
+	case DiscoveryFresh90Days:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DiscoveryMode.
 const (
 	DiscoveryModeBoth  DiscoveryMode = "both"
@@ -213,6 +234,33 @@ func (e DiscoveryMode) Valid() bool {
 	case DiscoveryModeDeep:
 		return true
 	case DiscoveryModeFresh:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DiscoveryReleaseKind.
+const (
+	DiscoveryReleaseKindAlbum       DiscoveryReleaseKind = "album"
+	DiscoveryReleaseKindCompilation DiscoveryReleaseKind = "compilation"
+	DiscoveryReleaseKindEp          DiscoveryReleaseKind = "ep"
+	DiscoveryReleaseKindLive        DiscoveryReleaseKind = "live"
+	DiscoveryReleaseKindSingle      DiscoveryReleaseKind = "single"
+)
+
+// Valid indicates whether the value is a known member of the DiscoveryReleaseKind enum.
+func (e DiscoveryReleaseKind) Valid() bool {
+	switch e {
+	case DiscoveryReleaseKindAlbum:
+		return true
+	case DiscoveryReleaseKindCompilation:
+		return true
+	case DiscoveryReleaseKindEp:
+		return true
+	case DiscoveryReleaseKindLive:
+		return true
+	case DiscoveryReleaseKindSingle:
 		return true
 	default:
 		return false
@@ -2134,6 +2182,28 @@ type DiscoveryFeedbackRequest struct {
 // DiscoveryFeedbackRequestKind defines model for DiscoveryFeedbackRequest.Kind.
 type DiscoveryFeedbackRequestKind string
 
+// DiscoveryFresh defines model for DiscoveryFresh.
+type DiscoveryFresh struct {
+	// Days How far back a set's Fresh feed looks, in days.
+	Days  DiscoveryFreshDays `json:"days"`
+	Items []DiscoveryRelease `json:"items"`
+
+	// Library How far your library (your own Navidrome links) is indexed.
+	Library DiscoveryLibrary `json:"library"`
+
+	// NoGraph The server knows nothing of how music relates, so only the seeds' releases show.
+	NoGraph bool `json:"noGraph"`
+
+	// NoReleases The server has no source of releases (Deezer, ListenBrainz and MusicBrainz are all off).
+	NoReleases bool `json:"noReleases"`
+
+	// Partial Some artists' releases weren't known yet. They're being looked up; load it again in a while.
+	Partial bool `json:"partial"`
+}
+
+// DiscoveryFreshDays How far back a set's Fresh feed looks, in days.
+type DiscoveryFreshDays int
+
 // DiscoveryItem A song you don't have, near a set's seeds.
 type DiscoveryItem struct {
 	Album  *string `json:"album,omitempty"`
@@ -2232,8 +2302,47 @@ type DiscoveryMapNode struct {
 }
 
 // DiscoveryMode Which feeds a set shows: `deep` cuts (anything new to you), `fresh`
-// releases (coming), or `both`.
+// releases (recent albums, EPs and singles), or `both`.
 type DiscoveryMode string
+
+// DiscoveryRelease A recent release near a set's seeds, that you don't have.
+type DiscoveryRelease struct {
+	// Artist Who it's credited to.
+	Artist string `json:"artist"`
+
+	// Because The seed artists it's near, nearest first; the seed itself for a seed's release.
+	Because []string `json:"because"`
+
+	// Cover Its cover's image ID on Deezer, for getDiscoveryImage (kind `cover`).
+	Cover *string `json:"cover,omitempty"`
+
+	// CoverRelease A release of it with a cover in the Cover Art Archive, for getDiscoveryReleaseArt.
+	CoverRelease *string `json:"coverRelease,omitempty"`
+
+	// Date When it first came out, YYYY-MM-DD (or YYYY-MM, if that's all that's known).
+	Date string `json:"date"`
+
+	// DeezerId The release on Deezer, for its songs.
+	DeezerId *int64               `json:"deezerId,omitempty"`
+	Key      string               `json:"key"`
+	Kind     DiscoveryReleaseKind `json:"kind"`
+
+	// Mbid Its MusicBrainz release group.
+	Mbid *string `json:"mbid,omitempty"`
+
+	// Seed Whether it's a seed artist's.
+	Seed    bool     `json:"seed"`
+	Sources []string `json:"sources"`
+	Title   string   `json:"title"`
+}
+
+// DiscoveryReleaseKind defines model for DiscoveryRelease.Kind.
+type DiscoveryReleaseKind string
+
+// DiscoveryReleaseTracks defines model for DiscoveryReleaseTracks.
+type DiscoveryReleaseTracks struct {
+	Items []DiscoveryItem `json:"items"`
+}
 
 // DiscoverySeed defines model for DiscoverySeed.
 type DiscoverySeed struct {
@@ -2247,11 +2356,14 @@ type DiscoverySet struct {
 	CreatedAt time.Time            `json:"createdAt"`
 
 	// Explore How far the feed strays from the seeds, and toward less-known artists.
-	Explore int    `json:"explore"`
-	Id      string `json:"id"`
+	Explore int `json:"explore"`
+
+	// FreshDays How far back a set's Fresh feed looks, in days.
+	FreshDays DiscoveryFreshDays `json:"freshDays"`
+	Id        string             `json:"id"`
 
 	// Mode Which feeds a set shows: `deep` cuts (anything new to you), `fresh`
-	// releases (coming), or `both`.
+	// releases (recent albums, EPs and singles), or `both`.
 	Mode      DiscoveryMode `json:"mode"`
 	Name      string        `json:"name"`
 	UpdatedAt time.Time     `json:"updatedAt"`
@@ -2276,10 +2388,13 @@ type DiscoverySetSummary struct {
 	ArtistCount int       `json:"artistCount"`
 	CreatedAt   time.Time `json:"createdAt"`
 	Explore     int       `json:"explore"`
-	Id          string    `json:"id"`
+
+	// FreshDays How far back a set's Fresh feed looks, in days.
+	FreshDays DiscoveryFreshDays `json:"freshDays"`
+	Id        string             `json:"id"`
 
 	// Mode Which feeds a set shows: `deep` cuts (anything new to you), `fresh`
-	// releases (coming), or `both`.
+	// releases (recent albums, EPs and singles), or `both`.
 	Mode      DiscoveryMode `json:"mode"`
 	Name      string        `json:"name"`
 	UpdatedAt time.Time     `json:"updatedAt"`
@@ -4562,8 +4677,11 @@ type TransferRoomRequest struct {
 type UpdateDiscoverySetRequest struct {
 	Explore *int `json:"explore,omitempty"`
 
+	// FreshDays How far back a set's Fresh feed looks, in days.
+	FreshDays *DiscoveryFreshDays `json:"freshDays,omitempty"`
+
 	// Mode Which feeds a set shows: `deep` cuts (anything new to you), `fresh`
-	// releases (coming), or `both`.
+	// releases (recent albums, EPs and singles), or `both`.
 	Mode *DiscoveryMode `json:"mode,omitempty"`
 	Name *string        `json:"name,omitempty"`
 }
@@ -4824,6 +4942,22 @@ type GetDiscoveryMapParams struct {
 // GetDiscoveryPreviewParams defines parameters for GetDiscoveryPreview.
 type GetDiscoveryPreviewParams struct {
 	Range *string `json:"Range,omitempty"`
+}
+
+// GetDiscoveryReleaseArtParams defines parameters for GetDiscoveryReleaseArt.
+type GetDiscoveryReleaseArtParams struct {
+	// Group The MBID is a release group's.
+	Group *bool `form:"group,omitempty" json:"group,omitempty"`
+
+	// Size Wanted width in pixels; a hint.
+	Size *int `form:"size,omitempty" json:"size,omitempty"`
+}
+
+// ListDiscoveryReleaseTracksParams defines parameters for ListDiscoveryReleaseTracks.
+type ListDiscoveryReleaseTracksParams struct {
+	Artist   string `form:"artist" json:"artist"`
+	Title    string `form:"title" json:"title"`
+	DeezerId *int64 `form:"deezerId,omitempty" json:"deezerId,omitempty"`
 }
 
 // GetDiscoveryFeedParams defines parameters for GetDiscoveryFeed.
@@ -5322,6 +5456,12 @@ type ServerInterface interface {
 	// GetDiscoveryPreview A song's 30-second preview
 	// (GET /me/discover/preview/{deezerTrackId})
 	GetDiscoveryPreview(w http.ResponseWriter, r *http.Request, deezerTrackId int64, params GetDiscoveryPreviewParams)
+	// GetDiscoveryReleaseArt A release's cover from the Cover Art Archive, through the server
+	// (GET /me/discover/release-art/{mbid})
+	GetDiscoveryReleaseArt(w http.ResponseWriter, r *http.Request, mbid string, params GetDiscoveryReleaseArtParams)
+	// ListDiscoveryReleaseTracks A release's songs, with previews
+	// (GET /me/discover/release-tracks)
+	ListDiscoveryReleaseTracks(w http.ResponseWriter, r *http.Request, params ListDiscoveryReleaseTracksParams)
 	// ListDiscoverySets Your discovery sets
 	// (GET /me/discover/sets)
 	ListDiscoverySets(w http.ResponseWriter, r *http.Request)
@@ -5346,6 +5486,9 @@ type ServerInterface interface {
 	// GetDiscoveryFeed A page of a set's feed
 	// (GET /me/discover/sets/{setId}/feed)
 	GetDiscoveryFeed(w http.ResponseWriter, r *http.Request, setId DiscoverySetId, params GetDiscoveryFeedParams)
+	// GetDiscoveryFresh A set's Fresh feed
+	// (GET /me/discover/sets/{setId}/fresh)
+	GetDiscoveryFresh(w http.ResponseWriter, r *http.Request, setId DiscoverySetId)
 	// ListDiscoveryArtistSongs An artist's songs you don't have
 	// (GET /me/discover/songs)
 	ListDiscoveryArtistSongs(w http.ResponseWriter, r *http.Request, params ListDiscoveryArtistSongsParams)
@@ -7327,6 +7470,120 @@ func (siw *ServerInterfaceWrapper) GetDiscoveryPreview(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// GetDiscoveryReleaseArt operation middleware
+func (siw *ServerInterfaceWrapper) GetDiscoveryReleaseArt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "mbid" -------------
+	var mbid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "mbid", r.PathValue("mbid"), &mbid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "mbid", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetDiscoveryReleaseArtParams
+
+	// ------------- Optional query parameter "group" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "group", r.URL.Query(), &params.Group, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "group"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "group", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "size", r.URL.Query(), &params.Size, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDiscoveryReleaseArt(w, r, mbid, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDiscoveryReleaseTracks operation middleware
+func (siw *ServerInterfaceWrapper) ListDiscoveryReleaseTracks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListDiscoveryReleaseTracksParams
+
+	// ------------- Required query parameter "artist" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "artist", r.URL.Query(), &params.Artist, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "artist"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "artist", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "title" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "title", r.URL.Query(), &params.Title, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "title"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "title", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "deezerId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "deezerId", r.URL.Query(), &params.DeezerId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "deezerId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "deezerId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDiscoveryReleaseTracks(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListDiscoverySets operation middleware
 func (siw *ServerInterfaceWrapper) ListDiscoverySets(w http.ResponseWriter, r *http.Request) {
 
@@ -7540,6 +7797,32 @@ func (siw *ServerInterfaceWrapper) GetDiscoveryFeed(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetDiscoveryFeed(w, r, setId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDiscoveryFresh operation middleware
+func (siw *ServerInterfaceWrapper) GetDiscoveryFresh(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "setId" -------------
+	var setId DiscoverySetId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "setId", r.PathValue("setId"), &setId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "setId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDiscoveryFresh(w, r, setId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11069,6 +11352,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/me/discover/sets/{setId}/artists", wrapper.AddDiscoverySetArtist)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/me/discover/sets/{setId}/artists/{artistKey}", wrapper.RemoveDiscoverySetArtist)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/sets/{setId}/feed", wrapper.GetDiscoveryFeed)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/sets/{setId}/fresh", wrapper.GetDiscoveryFresh)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/release-tracks", wrapper.ListDiscoveryReleaseTracks)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/release-art/{mbid}", wrapper.GetDiscoveryReleaseArt)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/me/discover/feedback", wrapper.PostDiscoveryFeedback)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/discover/blocks", wrapper.ListDiscoveryBlocks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/me/discover/blocks", wrapper.BlockDiscoveryArtist)
@@ -13704,6 +13990,92 @@ func (response GetDiscoveryPreviewdefaultJSONResponse) VisitGetDiscoveryPreviewR
 	return err
 }
 
+type GetDiscoveryReleaseArtRequestObject struct {
+	Mbid   string `json:"mbid"`
+	Params GetDiscoveryReleaseArtParams
+}
+
+type GetDiscoveryReleaseArtResponseObject interface {
+	VisitGetDiscoveryReleaseArtResponse(w http.ResponseWriter) error
+}
+
+type GetDiscoveryReleaseArt200ImageResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetDiscoveryReleaseArt200ImageResponse) VisitGetDiscoveryReleaseArtResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetDiscoveryReleaseArtdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetDiscoveryReleaseArtdefaultJSONResponse) VisitGetDiscoveryReleaseArtResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDiscoveryReleaseTracksRequestObject struct {
+	Params ListDiscoveryReleaseTracksParams
+}
+
+type ListDiscoveryReleaseTracksResponseObject interface {
+	VisitListDiscoveryReleaseTracksResponse(w http.ResponseWriter) error
+}
+
+type ListDiscoveryReleaseTracks200JSONResponse DiscoveryReleaseTracks
+
+func (response ListDiscoveryReleaseTracks200JSONResponse) VisitListDiscoveryReleaseTracksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDiscoveryReleaseTracksdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListDiscoveryReleaseTracksdefaultJSONResponse) VisitListDiscoveryReleaseTracksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListDiscoverySetsRequestObject struct {
 }
 
@@ -14002,6 +14374,45 @@ type GetDiscoveryFeeddefaultJSONResponse struct {
 }
 
 func (response GetDiscoveryFeeddefaultJSONResponse) VisitGetDiscoveryFeedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDiscoveryFreshRequestObject struct {
+	SetId DiscoverySetId `json:"setId"`
+}
+
+type GetDiscoveryFreshResponseObject interface {
+	VisitGetDiscoveryFreshResponse(w http.ResponseWriter) error
+}
+
+type GetDiscoveryFresh200JSONResponse DiscoveryFresh
+
+func (response GetDiscoveryFresh200JSONResponse) VisitGetDiscoveryFreshResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDiscoveryFreshdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetDiscoveryFreshdefaultJSONResponse) VisitGetDiscoveryFreshResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -18475,6 +18886,12 @@ type StrictServerInterface interface {
 	// GetDiscoveryPreview A song's 30-second preview
 	// (GET /me/discover/preview/{deezerTrackId})
 	GetDiscoveryPreview(ctx context.Context, request GetDiscoveryPreviewRequestObject) (GetDiscoveryPreviewResponseObject, error)
+	// GetDiscoveryReleaseArt A release's cover from the Cover Art Archive, through the server
+	// (GET /me/discover/release-art/{mbid})
+	GetDiscoveryReleaseArt(ctx context.Context, request GetDiscoveryReleaseArtRequestObject) (GetDiscoveryReleaseArtResponseObject, error)
+	// ListDiscoveryReleaseTracks A release's songs, with previews
+	// (GET /me/discover/release-tracks)
+	ListDiscoveryReleaseTracks(ctx context.Context, request ListDiscoveryReleaseTracksRequestObject) (ListDiscoveryReleaseTracksResponseObject, error)
 	// ListDiscoverySets Your discovery sets
 	// (GET /me/discover/sets)
 	ListDiscoverySets(ctx context.Context, request ListDiscoverySetsRequestObject) (ListDiscoverySetsResponseObject, error)
@@ -18499,6 +18916,9 @@ type StrictServerInterface interface {
 	// GetDiscoveryFeed A page of a set's feed
 	// (GET /me/discover/sets/{setId}/feed)
 	GetDiscoveryFeed(ctx context.Context, request GetDiscoveryFeedRequestObject) (GetDiscoveryFeedResponseObject, error)
+	// GetDiscoveryFresh A set's Fresh feed
+	// (GET /me/discover/sets/{setId}/fresh)
+	GetDiscoveryFresh(ctx context.Context, request GetDiscoveryFreshRequestObject) (GetDiscoveryFreshResponseObject, error)
 	// ListDiscoveryArtistSongs An artist's songs you don't have
 	// (GET /me/discover/songs)
 	ListDiscoveryArtistSongs(ctx context.Context, request ListDiscoveryArtistSongsRequestObject) (ListDiscoveryArtistSongsResponseObject, error)
@@ -20663,6 +21083,59 @@ func (sh *strictHandler) GetDiscoveryPreview(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// GetDiscoveryReleaseArt operation middleware
+func (sh *strictHandler) GetDiscoveryReleaseArt(w http.ResponseWriter, r *http.Request, mbid string, params GetDiscoveryReleaseArtParams) {
+	var request GetDiscoveryReleaseArtRequestObject
+
+	request.Mbid = mbid
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDiscoveryReleaseArt(ctx, request.(GetDiscoveryReleaseArtRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDiscoveryReleaseArt")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDiscoveryReleaseArtResponseObject); ok {
+		if err := validResponse.VisitGetDiscoveryReleaseArtResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDiscoveryReleaseTracks operation middleware
+func (sh *strictHandler) ListDiscoveryReleaseTracks(w http.ResponseWriter, r *http.Request, params ListDiscoveryReleaseTracksParams) {
+	var request ListDiscoveryReleaseTracksRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDiscoveryReleaseTracks(ctx, request.(ListDiscoveryReleaseTracksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDiscoveryReleaseTracks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDiscoveryReleaseTracksResponseObject); ok {
+		if err := validResponse.VisitListDiscoveryReleaseTracksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListDiscoverySets operation middleware
 func (sh *strictHandler) ListDiscoverySets(w http.ResponseWriter, r *http.Request) {
 	var request ListDiscoverySetsRequestObject
@@ -20883,6 +21356,32 @@ func (sh *strictHandler) GetDiscoveryFeed(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetDiscoveryFeedResponseObject); ok {
 		if err := validResponse.VisitGetDiscoveryFeedResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDiscoveryFresh operation middleware
+func (sh *strictHandler) GetDiscoveryFresh(w http.ResponseWriter, r *http.Request, setId DiscoverySetId) {
+	var request GetDiscoveryFreshRequestObject
+
+	request.SetId = setId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDiscoveryFresh(ctx, request.(GetDiscoveryFreshRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDiscoveryFresh")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDiscoveryFreshResponseObject); ok {
+		if err := validResponse.VisitGetDiscoveryFreshResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

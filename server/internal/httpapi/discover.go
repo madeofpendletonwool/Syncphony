@@ -19,7 +19,7 @@ import (
 
 func toDiscoverySet(set discover.Set) DiscoverySet {
 	out := DiscoverySet{
-		Id: set.ID, Name: set.Name, Explore: int(set.Explore), Mode: DiscoveryMode(set.Mode),
+		Id: set.ID, Name: set.Name, Explore: int(set.Explore), Mode: DiscoveryMode(set.Mode), FreshDays: DiscoveryFreshDays(set.FreshDays),
 		Artists: make([]DiscoverySetArtist, len(set.Artists)), CreatedAt: set.CreatedAt, UpdatedAt: set.UpdatedAt,
 	}
 	for i, a := range set.Artists {
@@ -59,7 +59,7 @@ func (s *Server) ListDiscoverySets(ctx context.Context, _ ListDiscoverySetsReque
 	out := make(ListDiscoverySets200JSONResponse, len(sets))
 	for i, set := range sets {
 		out[i] = DiscoverySetSummary{
-			Id: set.ID, Name: set.Name, Explore: int(set.Explore), Mode: DiscoveryMode(set.Mode), ArtistCount: int(set.Artists),
+			Id: set.ID, Name: set.Name, Explore: int(set.Explore), Mode: DiscoveryMode(set.Mode), FreshDays: DiscoveryFreshDays(set.FreshDays), ArtistCount: int(set.Artists),
 			CreatedAt: set.CreatedAt, UpdatedAt: set.UpdatedAt,
 		}
 	}
@@ -105,6 +105,9 @@ func (s *Server) UpdateDiscoverySet(ctx context.Context, req UpdateDiscoverySetR
 	c := discover.Changes{Name: req.Body.Name, Explore: req.Body.Explore}
 	if req.Body.Mode != nil {
 		c.Mode = ptr(string(*req.Body.Mode))
+	}
+	if req.Body.FreshDays != nil {
+		c.FreshDays = ptr(int(*req.Body.FreshDays))
 	}
 	set, err := s.Discover.Update(ctx, u.ID, req.SetId, c)
 	if err != nil {
@@ -177,6 +180,79 @@ func toDiscoveryItems(items []discover.Item) []DiscoveryItem {
 		}
 	}
 	return out
+}
+
+// GetDiscoveryFresh returns a set's recent releases.
+func (s *Server) GetDiscoveryFresh(ctx context.Context, req GetDiscoveryFreshRequestObject) (GetDiscoveryFreshResponseObject, error) {
+	u, err := member(ctx)
+	if err != nil {
+		return nil, err
+	}
+	f, err := s.Discover.Fresh(ctx, u.ID, req.SetId)
+	if err != nil {
+		return nil, err
+	}
+	out := DiscoveryFresh{
+		Items: make([]DiscoveryRelease, len(f.Items)), Days: DiscoveryFreshDays(f.Days), Partial: f.Partial,
+		Library: toDiscoveryLibrary(f.Library), NoGraph: f.NoGraph, NoReleases: f.NoReleases,
+	}
+	for i, it := range f.Items {
+		out.Items[i] = DiscoveryRelease{
+			Key: it.Key, Title: it.Title, Artist: it.Artist, Date: it.Date, Kind: DiscoveryReleaseKind(it.Kind),
+			Mbid: nonEmpty(it.MBID), CoverRelease: nonEmpty(it.CoverRelease), DeezerId: nonZero(it.DeezerID), Cover: nonEmpty(it.Cover),
+			Sources: it.Sources, Because: it.Because, Seed: it.Seed,
+		}
+		if out.Items[i].Because == nil {
+			out.Items[i].Because = []string{}
+		}
+		if out.Items[i].Sources == nil {
+			out.Items[i].Sources = []string{}
+		}
+	}
+	return GetDiscoveryFresh200JSONResponse(out), nil
+}
+
+// ListDiscoveryReleaseTracks lists a release's songs, with previews.
+func (s *Server) ListDiscoveryReleaseTracks(ctx context.Context, req ListDiscoveryReleaseTracksRequestObject) (ListDiscoveryReleaseTracksResponseObject, error) {
+	if _, err := member(ctx); err != nil {
+		return nil, err
+	}
+	var id int64
+	if req.Params.DeezerId != nil {
+		id = *req.Params.DeezerId
+	}
+	items, err := s.Discover.ReleaseTracks(ctx, req.Params.Artist, req.Params.Title, id)
+	if err != nil {
+		return nil, err
+	}
+	return ListDiscoveryReleaseTracks200JSONResponse(DiscoveryReleaseTracks{Items: toDiscoveryItems(items)}), nil
+}
+
+// GetDiscoveryReleaseArt loads a release's cover from the Cover Art Archive.
+func (s *Server) GetDiscoveryReleaseArt(ctx context.Context, req GetDiscoveryReleaseArtRequestObject) (GetDiscoveryReleaseArtResponseObject, error) {
+	if _, err := member(ctx); err != nil {
+		return nil, err
+	}
+	if s.MusicBrainz == nil {
+		return nil, provider.ErrNotFound
+	}
+	size := 250
+	if req.Params.Size != nil {
+		size = *req.Params.Size
+	}
+	release, group := req.Mbid, ""
+	if req.Params.Group != nil && *req.Params.Group {
+		release, group = "", req.Mbid
+	}
+	img, err := s.MusicBrainz.ReleaseArt(ctx, release, group, size)
+	if err != nil {
+		return nil, err
+	}
+	return artworkResponse{body: io.NopCloser(bytes.NewReader(img.Data)), ct: img.ContentType}, nil
+}
+
+func (r artworkResponse) VisitGetDiscoveryReleaseArtResponse(w http.ResponseWriter) error {
+	return r.write(w)
 }
 
 // GetDiscoveryMap returns a map of artists around an artist or a set.

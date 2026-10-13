@@ -17,7 +17,7 @@ WHERE user_id = ?
 ORDER BY updated_at DESC, id DESC;
 
 -- name: UpdateDiscoverySet :exec
-UPDATE discovery_sets SET name = ?, explore = ?, mode = ?, updated_at = ? WHERE id = ? AND user_id = ?;
+UPDATE discovery_sets SET name = ?, explore = ?, mode = ?, fresh_days = ?, updated_at = ? WHERE id = ? AND user_id = ?;
 
 -- name: TouchDiscoverySet :exec
 UPDATE discovery_sets SET updated_at = ? WHERE id = ?;
@@ -32,6 +32,14 @@ ON CONFLICT (set_id, artist_key) DO NOTHING;
 
 -- name: ListDiscoverySetArtists :many
 SELECT * FROM discovery_set_artists WHERE set_id = ? ORDER BY added_at, artist_key;
+
+-- ListAllDiscoverySetArtists lists every user's seed artists, once each,
+-- to warm their recent releases.
+-- name: ListAllDiscoverySetArtists :many
+SELECT name, CAST(max(coalesce(mbid, '')) AS TEXT) AS mbid
+FROM discovery_set_artists
+GROUP BY lower(name)
+ORDER BY lower(name);
 
 -- name: RemoveDiscoverySetArtist :execrows
 DELETE FROM discovery_set_artists WHERE set_id = ? AND artist_key = ?;

@@ -1,0 +1,4 @@
+{"created":"2026-10-05T12:00:00Z","count":2,"offset":0,"release-groups":[
+  {"id":"cc000000-0000-4000-8000-000000000001","title":"Highpass","primary-type":"Album","first-release-date":"2026-09-12"},
+  {"id":"cc000000-0000-4000-8000-000000000002","title":"Live at Leeds Again","primary-type":"Album","secondary-types":["Live"],"first-release-date":"2026-08"}
+]}

@@ -47,6 +47,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider/spotify/streaming"
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
+	"github.com/madeofpendletonwool/syncphony/server/internal/releases"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 	"github.com/madeofpendletonwool/syncphony/server/internal/suggest"
@@ -243,7 +244,7 @@ func run() error {
 	} else {
 		slog.Info("MusicBrainz is off: artwork comes only from linked services, and there are no liner notes")
 	}
-	graph, deezer := newMusicGraph(cfg, db, mb, userAgent)
+	graph, deezer, lb := newMusicGraph(cfg, db, mb, userAgent)
 	if len(graph.Sources()) > 0 {
 		go graph.Run(ctx)
 		go repairMusicGraph(ctx, graph)
@@ -389,6 +390,27 @@ func run() error {
 	} else {
 		slog.Info("Deezer is off: discovery has no previews")
 	}
+	// Recent releases, for Fresh feeds (MAD-822), from whichever of
+	// ListenBrainz, MusicBrainz and Deezer are on.
+	relOpts := releases.Options{}
+	if deezer != nil {
+		relOpts.Deezer = deezer
+	}
+	if lb != nil {
+		relOpts.ListenBrainz = lb
+	}
+	if mb != nil {
+		relOpts.MusicBrainz = mb
+		api.MusicBrainz = mb
+	}
+	rel := releases.New(db, relOpts)
+	if rel.On() {
+		api.Discover.Releases = rel
+		go rel.Run(ctx)
+		go api.Discover.Run(ctx)
+	} else {
+		slog.Info("no source of releases is on: discovery has no Fresh feed")
+	}
 	go sweep(ctx, db, accounts, roomSvc, lyricsSvc, mb, notes, graph, beatMaps)
 	go tick(ctx, api, nightSvc)
 	mux := http.NewServeMux()
@@ -450,20 +472,23 @@ func tick(ctx context.Context, api *httpapi.Server, ns *nights.Service) {
 }
 
 // newMusicGraph sets up the DJ's music knowledge (ADR 0012) from the
-// sources that are configured. It returns Deezer too, if it's on, for
-// discovery's previews (ADR 0017), which share its rate limit.
-func newMusicGraph(cfg config.Config, db *store.Store, mb *musicbrainz.Service, userAgent string) (*musicgraph.Service, *musicgraph.Deezer) {
+// sources that are configured. It returns Deezer and ListenBrainz too, if
+// they're on, for discovery's previews and recent releases (ADR 0017),
+// which share their rate limits.
+func newMusicGraph(cfg config.Config, db *store.Store, mb *musicbrainz.Service, userAgent string) (*musicgraph.Service, *musicgraph.Deezer, *musicgraph.ListenBrainz) {
 	var sources []musicgraph.Source
 	var deezer *musicgraph.Deezer
+	var lb *musicgraph.ListenBrainz
 	if cfg.LastFMKey != "" {
 		sources = append(sources, musicgraph.NewLastFM(musicgraph.LastFMOptions{Key: cfg.LastFMKey, UserAgent: userAgent}))
 	} else {
 		slog.Info("Last.fm is off: set SYNCPHONY_LASTFM_KEY for the best similar artists and songs")
 	}
 	if cfg.ListenBrainzURL != "" {
-		sources = append(sources, musicgraph.NewListenBrainz(musicgraph.ListenBrainzOptions{
+		lb = musicgraph.NewListenBrainz(musicgraph.ListenBrainzOptions{
 			BaseURL: cfg.ListenBrainzURL, Token: cfg.ListenBrainzToken, UserAgent: userAgent,
-		}))
+		})
+		sources = append(sources, lb)
 	}
 	if cfg.DeezerURL != "" {
 		deezer = musicgraph.NewDeezer(musicgraph.DeezerOptions{BaseURL: cfg.DeezerURL, UserAgent: userAgent})
@@ -481,7 +506,7 @@ func newMusicGraph(cfg config.Config, db *store.Store, mb *musicbrainz.Service, 
 	} else {
 		slog.Info("music knowledge is off: no sources are configured")
 	}
-	return graph, deezer
+	return graph, deezer, lb
 }
 
 // repairMusicGraph fetches again the music knowledge cached while a source
