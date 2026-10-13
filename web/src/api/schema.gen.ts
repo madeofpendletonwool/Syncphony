@@ -2413,6 +2413,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/discover/map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A map of artists around an artist or a set
+         * @description A graph in the spirit of music-map.com: give `artist` (any artist,
+         *     not just yours) or `setId`. Around an artist, its neighbors and,
+         *     at depth 2, their nearest neighbors. Around a set, its seeds and
+         *     their neighbors, those near the most seeds first. Edges say how
+         *     alike two artists are. Artists you blocked are left out, unless
+         *     the map is of them. It reads the music graph's cache: artists not
+         *     known yet are looked up in the background (`partial`), and loading
+         *     the map again shows more.
+         */
+        get: operations["getDiscoveryMap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/songs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An artist's songs you don't have
+         * @description Their best-known songs, without the ones you have, turned down or
+         *     blocked: for an artist on the map. Each has a preview when Deezer
+         *     has one.
+         */
+        get: operations["listDiscoveryArtistSongs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/discover/library": {
         parameters: {
             query?: never;
@@ -5616,6 +5665,60 @@ export interface components {
             next?: string;
             library: components["schemas"]["DiscoveryLibrary"];
             /** @description The server knows nothing of how music relates (no sources are on), so feeds are empty. */
+            noGraph: boolean;
+        };
+        /** @description An artist on a map. */
+        DiscoveryMapNode: {
+            /** @description How the artist is compared, and what edges name. */
+            key: string;
+            name: string;
+            mbid?: string;
+            /**
+             * Format: int64
+             * @description Fans on Deezer, a measure of how well known.
+             */
+            fans?: number;
+            /** @description Their picture's image ID, for getDiscoveryImage (kind `artist`). */
+            picture?: string;
+            /** @description Their strongest tags. */
+            tags: string[];
+            /** @description You have something of theirs on your own Navidrome. */
+            owned: boolean;
+            /** @description One of the set's seeds. */
+            seed: boolean;
+            /** @description The artist the map is of. */
+            center: boolean;
+            /** @description You said they aren't for you. Only ever the artist the map is of, or a seed. */
+            blocked: boolean;
+            /** @description Steps from the artist or seeds; 0 for those. */
+            hop: number;
+            /** @description How many of the set's seeds they're near. */
+            seeds: number;
+            /** @description How near, 0 to 1; 1 for the artist or seeds. */
+            score: number;
+            /** @description The music graph knows them yet. One it doesn't is being looked up. */
+            known: boolean;
+        };
+        DiscoveryMapEdge: {
+            from: string;
+            to: string;
+            /** @description How alike, 0 to 1. */
+            score: number;
+            sources: string[];
+        };
+        DiscoveryMap: {
+            set?: components["schemas"]["DiscoverySet"];
+            /** @description The artist or seeds first, then the rest, nearest first. */
+            nodes: components["schemas"]["DiscoveryMapNode"][];
+            edges: components["schemas"]["DiscoveryMapEdge"][];
+            /** @description Some artists aren't known yet and are being looked up; load the map again shortly for more. */
+            partial: boolean;
+            noGraph: boolean;
+            library: components["schemas"]["DiscoveryLibrary"];
+        };
+        DiscoverySongs: {
+            items: components["schemas"]["DiscoveryItem"][];
+            library: components["schemas"]["DiscoveryLibrary"];
             noGraph: boolean;
         };
         DiscoveryFeedbackRequest: {
@@ -8865,6 +8968,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DiscoveryArtist"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getDiscoveryMap: {
+        parameters: {
+            query?: {
+                /** @description The artist's name. Give this or `setId`. */
+                artist?: string;
+                /** @description The artist's MusicBrainz ID, when known. */
+                mbid?: string;
+                /** @description One of your sets. Give this or `artist`. */
+                setId?: string;
+                /** @description Steps out from the artist or seeds. Default 2 around an artist, 1 around a set. */
+                depth?: number;
+                /** @description How many artists, at most. Default 60. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The map */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryMap"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listDiscoveryArtistSongs: {
+        parameters: {
+            query: {
+                artist: string;
+                mbid?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The songs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverySongs"];
                 };
             };
             default: components["responses"]["Error"];

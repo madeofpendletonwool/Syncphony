@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { LoaderCircle, Plus, Search } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Artwork } from '@/components/artwork'
 import { Input } from '@/components/ui/input'
 import { artistSearchQuery, fansText, imageUrl } from '@/lib/discover'
@@ -15,11 +15,16 @@ export function ArtistSearch({
   have,
   autoFocus,
   className,
+  placeholder = 'Add an artist',
+  icon = <Plus className="size-4" />,
 }: {
   onPick: (name: string) => void
   have: ReadonlySet<string>
   autoFocus?: boolean
   className?: string
+  placeholder?: string
+  /** What picking an artist does, shown beside each. */
+  icon?: ReactNode
 }) {
   const [text, setText] = useState('')
   const [q, setQ] = useState('')
@@ -50,8 +55,8 @@ export function ArtistSearch({
           autoFocus={autoFocus}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Add an artist"
-          aria-label="Find an artist to add"
+          placeholder={placeholder}
+          aria-label={placeholder}
           className="pl-10"
           maxLength={200}
         />
@@ -74,7 +79,7 @@ export function ArtistSearch({
                     <span className="block truncate font-medium">{a.name}</span>
                     {a.fans ? <span className="text-caption text-muted-foreground">{fansText(a.fans)}</span> : null}
                   </span>
-                  <span className="text-caption text-muted-foreground">{added ? 'Added' : <Plus className="size-4" />}</span>
+                  <span className="text-caption text-muted-foreground">{added ? 'Added' : icon}</span>
                 </button>
               </li>
             )

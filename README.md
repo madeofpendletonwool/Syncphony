@@ -118,7 +118,7 @@ Images are published to `ghcr.io/madeofpendletonwool/syncphony`: `:main` tracks 
 
 ## Finding music you don't have
 
-The **Discover** tab is yours alone, outside any room. Make a set of artists you love ("Moody post-rock", "90s alt"), and it fills with songs near them that aren't on your own Navidrome, each saying which of your artists it's near. Play a 30-second preview, open the whole song on YouTube, give it a thumb, or say an artist isn't for you. Your library is only used to skip what you have, never to guess your taste ([ADR 0017](docs/adr/0017-personal-discovery.md)).
+The **Discover** tab is yours alone, outside any room. Make a set of artists you love ("Moody post-rock", "90s alt"), and it fills with songs near them that aren't on your own Navidrome, each saying which of your artists it's near. Play a 30-second preview, open the whole song on YouTube, give it a thumb, or say an artist isn't for you. Your library is only used to skip what you have, never to guess your taste ([ADR 0017](docs/adr/0017-personal-discovery.md)). Its **Map** draws the artists around a set, or around any artist you search for, the way music-map.com does: the ones you have are dimmed, so the new names stand out. Tap one to hear their songs, add them to a set, or re-center on them and keep wandering.
 
 What works where (and what doesn't yet) is in [docs/player-mode.md](docs/player-mode.md).
 
