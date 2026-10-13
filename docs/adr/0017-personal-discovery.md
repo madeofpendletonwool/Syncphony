@@ -2,7 +2,7 @@
 
 - **Status:** accepted
 - **Date:** 2026-10-13
-- **Issues:** MAD-814 (Phase 12), stage 1: MAD-815..819
+- **Issues:** MAD-814 (Phase 12), stage 1: MAD-815..819, stage 2: MAD-820, 821
 
 ## Context
 
@@ -42,6 +42,20 @@ Top songs from Deezer carry their Deezer ID, album and cover (`musicgraph.SongRe
 ### The full song: a YouTube search link
 
 "Open on YouTube" links to `https://www.youtube.com/results?search_query=<artist> <title>` in a new tab. It needs no API key, no embed and no yt-dlp. There are no store or buy links.
+
+### The map
+
+`GET /me/discover/map` (MAD-820) draws a graph in the spirit of music-map.com, around any artist (`artist`, with `mbid` if known) or around one of your sets (`setId`).
+
+- **Around an artist** (depth 2 by default): half the room goes to its nearest neighbors, the rest to their own nearest (four each, damped as the feed's second step is), then more neighbors if that's not enough.
+- **Around a set** (depth 1 by default): the seeds, and the union of their neighbors, the ones near the most seeds first, then the nearest.
+- **Bounded:** 60 artists by default (10 to 100). Each artist draws only its three strongest likenesses, so sixty artists don't make a hairball. The graph's merged score sets how alike they are.
+- **Fast once warm:** the map reads the music graph's cache. It fetches at most three artists that aren't cached (the artist it's of, or the first seeds), and waits for them at most 5 seconds. A fetch still going after that carries on in the background and is cached. Everyone else who isn't cached is warmed, and the map says it's `partial`, so the page loads it again a few times as it fills out. A warm map takes tens of milliseconds.
+- **What each artist says:** whether you have anything of theirs (`KnowsArtist`: for showing only), whether they're a seed or the center, how many seeds they're near, their Deezer fans, picture and top tags, and whether the graph knows them yet. Artists you blocked are left out, unless the map is of them.
+
+`GET /me/discover/songs?artist=` gives an artist's best-known songs that you don't have, haven't turned down and don't want yet, with previews. It's for the sheet that opens when you tap an artist on the map.
+
+The **Map** view (MAD-821) is a tab beside a set's feed, and `/discover/map?path=…` for any artist. It's laid out with d3-force, all at once off screen. Distance follows how alike two artists are, and size follows how well known they are. It's drawn in SVG, and a new layout starts from where the last one left each artist, then tweens there, so re-centering glides. Artists you have are dimmed, new ones are in full color, and seeds and the center are ringed. In a set's map, artists near several seeds get a soft halo. Each re-center is a step in the URL, so Back and the breadcrumbs retrace them. There's nothing beat-reactive: the app shell stays calm.
 
 ### Feedback stays out of rooms
 

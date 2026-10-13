@@ -275,31 +275,8 @@ func (s *Service) build(ctx context.Context, userID string, set Set) [][]Item {
 		keep = func(Item) bool { return true }
 	}
 
-	known := map[string]musicgraph.Artist{}
-	var missing []musicgraph.ArtistRef
-	fetches := 0
-	lookup := func(ref musicgraph.ArtistRef) (musicgraph.Artist, bool) {
-		k := library.ArtistKey(ref.Name)
-		if a, ok := known[k]; ok {
-			return a, true
-		}
-		a, ok, err := s.Graph.CachedArtist(ctx, ref)
-		if !ok && err == nil && fetches < maxFetches && ctx.Err() == nil {
-			fetches++
-			a, err = s.Graph.Artist(ctx, ref)
-			ok = err == nil
-		}
-		switch {
-		case ok && err == nil:
-			known[k] = a
-			return a, true
-		case !ok && err == nil:
-			missing = append(missing, ref)
-		case !errors.Is(err, provider.ErrNotFound) && ctx.Err() == nil:
-			slog.Debug("discover: looking up an artist", "artist", ref.Name, "err", err)
-		}
-		return musicgraph.Artist{}, false
-	}
+	lk := &looker{g: s.Graph, ctx: ctx, budget: maxFetches}
+	lookup := func(ref musicgraph.ArtistRef) (musicgraph.Artist, bool) { return lk.get(ref, true) }
 
 	names := map[string]string{}
 	nodes := map[string]*node{}
@@ -404,10 +381,90 @@ func (s *Service) build(ctx context.Context, userID string, set Set) [][]Item {
 		}
 		add(n, seedPull)
 	}
-	if len(missing) > 0 {
-		s.Graph.WarmArtist(missing...)
-	}
+	lk.warm()
 	return arrange(items)
+}
+
+// looker looks artists up in the graph for one walk: from the cache, or
+// fetched while there's budget left. Those it couldn't find are warmed
+// for next time.
+type looker struct {
+	g   Graph
+	ctx context.Context
+	// budget is how many artists that aren't cached it fetches, and
+	// fetchBy, if set, how long it waits for one: a fetch still going
+	// then carries on in the background, and the artist counts as
+	// missing.
+	budget  int
+	fetchBy time.Time
+	fetches int
+	known   map[string]musicgraph.Artist
+	missing []musicgraph.ArtistRef
+}
+
+// get returns what's known of an artist. fetch says whether one that
+// isn't cached may be fetched, within the budget; if not, they're warmed.
+func (l *looker) get(ref musicgraph.ArtistRef, fetch bool) (musicgraph.Artist, bool) {
+	k := library.ArtistKey(ref.Name)
+	if a, ok := l.known[k]; ok {
+		return a, true
+	}
+	a, ok, err := l.g.CachedArtist(l.ctx, ref)
+	if !ok && err == nil && fetch && l.fetches < l.budget && l.ctx.Err() == nil && (l.fetchBy.IsZero() || time.Now().Before(l.fetchBy)) {
+		l.fetches++
+		a, ok, err = l.fetch(ref)
+	}
+	switch {
+	case ok && err == nil:
+		if l.known == nil {
+			l.known = map[string]musicgraph.Artist{}
+		}
+		l.known[k] = a
+		return a, true
+	case !ok && err == nil:
+		if !slices.ContainsFunc(l.missing, func(m musicgraph.ArtistRef) bool { return library.ArtistKey(m.Name) == k }) {
+			l.missing = append(l.missing, ref)
+		}
+	case !errors.Is(err, provider.ErrNotFound) && l.ctx.Err() == nil:
+		slog.Debug("discover: looking up an artist", "artist", ref.Name, "err", err)
+	}
+	return musicgraph.Artist{}, false
+}
+
+func (l *looker) fetch(ref musicgraph.ArtistRef) (musicgraph.Artist, bool, error) {
+	if l.fetchBy.IsZero() {
+		a, err := l.g.Artist(l.ctx, ref)
+		return a, err == nil, err
+	}
+	type answer struct {
+		a   musicgraph.Artist
+		err error
+	}
+	got := make(chan answer, 1)
+	go func() {
+		// Not cut short: what it finds is cached for next time.
+		a, err := l.g.Artist(context.WithoutCancel(l.ctx), ref)
+		got <- answer{a, err}
+	}()
+	wait := time.NewTimer(time.Until(l.fetchBy))
+	defer wait.Stop()
+	select {
+	case r := <-got:
+		return r.a, r.err == nil, r.err
+	case <-wait.C:
+		return musicgraph.Artist{}, false, nil
+	case <-l.ctx.Done():
+		return musicgraph.Artist{}, false, l.ctx.Err()
+	}
+}
+
+// warm asks for the artists it couldn't find to be fetched, in the
+// background. It reports whether there were any.
+func (l *looker) warm() bool {
+	if len(l.missing) > 0 {
+		l.g.WarmArtist(l.missing...)
+	}
+	return len(l.missing) > 0
 }
 
 // famous is how well known an artist is, from their fans on Deezer, 0 to
@@ -513,7 +570,7 @@ func arrange(items []Item) [][]Item {
 
 // resolve finds the Deezer IDs of a page's songs that have none, so they
 // can play a preview: from the database, or by searching Deezer once.
-// What it finds is kept in the feed too.
+// What it finds is kept in the feed too, if there is one.
 func (s *Service) resolve(ctx context.Context, f *feed, items []Item) {
 	if s.Deezer == nil {
 		return
@@ -547,6 +604,9 @@ func (s *Service) resolve(ctx context.Context, f *feed, items []Item) {
 			continue
 		}
 		it.DeezerID, it.Album, it.Cover = row.DeezerID, cmp.Or(it.Album, row.Album), cmp.Or(it.Cover, row.Cover)
+	}
+	if f == nil {
+		return
 	}
 	// Keep what was found, for the next time the page is served.
 	found := map[string]Item{}

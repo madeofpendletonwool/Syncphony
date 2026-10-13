@@ -135,13 +135,33 @@ func TestDiscover(t *testing.T) {
 	var lib httpapi.DiscoveryLibrary
 	alice.want(http.StatusOK, "GET", "/me/discover/library", nil).decode(t, &lib)
 
+	// The map, of the set and of any artist, and an artist's songs.
+	var m httpapi.DiscoveryMap
+	alice.want(http.StatusOK, "GET", "/me/discover/map?setId="+set.Id, nil).decode(t, &m)
+	if m.Set == nil || len(m.Nodes) != 3 || !m.Nodes[0].Seed || m.Nodes[1].Name != "Failure" || len(m.Edges) != 2 {
+		t.Fatalf("set map: %+v", m)
+	}
+	m = httpapi.DiscoveryMap{}
+	alice.want(http.StatusOK, "GET", "/me/discover/map?artist=Hum&depth=1&limit=10", nil).decode(t, &m)
+	if m.Set != nil || len(m.Nodes) != 3 || !m.Nodes[0].Center {
+		t.Fatalf("artist map: %+v", m)
+	}
+	if r := alice.do("GET", "/me/discover/map", nil); r.status != http.StatusBadRequest {
+		t.Errorf("a map of nothing: %d", r.status)
+	}
+	var songs httpapi.DiscoverySongs
+	alice.want(http.StatusOK, "GET", "/me/discover/songs?artist=Shiner", nil).decode(t, &songs)
+	if len(songs.Items) != 3 || songs.Items[0].DeezerId == nil {
+		t.Errorf("songs: %+v", songs)
+	}
+
 	// Bob can't see alice's set, or its feed.
 	var bobs []httpapi.DiscoverySetSummary
 	bob.want(http.StatusOK, "GET", "/me/discover/sets", nil).decode(t, &bobs)
 	if len(bobs) != 0 {
 		t.Errorf("bob's sets: %+v", bobs)
 	}
-	for _, path := range []string{base, base + "/feed"} {
+	for _, path := range []string{base, base + "/feed", "/me/discover/map?setId=" + set.Id} {
 		if r := bob.do("GET", path, nil); r.status != http.StatusNotFound {
 			t.Errorf("bob GET %s: %d", path, r.status)
 		}
