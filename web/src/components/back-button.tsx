@@ -3,7 +3,7 @@ import { ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 /** Back to wherever you came from (usually search results), or to Search. */
-export function BackButton({ fallback = '/search' }: { fallback?: '/search' | '/library' }) {
+export function BackButton({ fallback = '/search' }: { fallback?: '/search' | '/library' | '/discover' }) {
   const router = useRouter()
   const canGoBack = useCanGoBack()
   return (

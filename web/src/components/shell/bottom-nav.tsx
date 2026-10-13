@@ -1,12 +1,16 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import { CircleUserRound, Disc3, Library, Search } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { CircleUserRound, Compass, Disc3, Library, Search } from 'lucide-react'
 import { motion } from 'motion/react'
+import { meQuery } from '@/lib/auth'
 import { spring } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 const tabs = [
   { to: '/room', label: 'Room', icon: Disc3, also: ['/history'] },
   { to: '/search', label: 'Search', icon: Search, also: ['/album', '/artist'] },
+  // Personal discovery (ADR 0017): members only.
+  { to: '/discover', label: 'Discover', icon: Compass, also: [], members: true },
   { to: '/library', label: 'Library', icon: Library, also: [] },
   { to: '/me', label: 'Me', icon: CircleUserRound, also: ['/settings'] },
 ] as const
@@ -15,11 +19,13 @@ const under = (pathname: string, base: string) => pathname === base || pathname.
 
 export function BottomNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const guest = !!useQuery(meQuery).data?.guest
+  const shown = tabs.filter((t) => !('members' in t) || !guest)
 
   return (
     <nav aria-label="Main" className="glass-strong h-nav rounded-3xl p-1.5 shadow-float">
-      <ul className="grid h-full grid-cols-4 gap-1">
-        {tabs.map(({ to, label, icon: Icon, also }) => {
+      <ul className={cn('grid h-full gap-1', shown.length === 5 ? 'grid-cols-5' : 'grid-cols-4')}>
+        {shown.map(({ to, label, icon: Icon, also }) => {
           const active = [to, ...also].some((base) => under(pathname, base))
           return (
             <li key={to} className="relative">

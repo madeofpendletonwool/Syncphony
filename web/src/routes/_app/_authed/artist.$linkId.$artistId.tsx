@@ -17,6 +17,7 @@ import {
 } from '@/components/artist-parts'
 import { Artwork } from '@/components/artwork'
 import { BackButton } from '@/components/back-button'
+import { AddToSetButton } from '@/components/discover/add-to-set'
 import { Notice } from '@/components/notice'
 import { ProviderIcon } from '@/components/provider-icon'
 import { Button } from '@/components/ui/button'
@@ -37,6 +38,7 @@ import {
 } from '@/lib/artist'
 import { artistQuery, artworkUrl } from '@/lib/browse'
 import { easeOutExpo, fadeUp, stagger } from '@/lib/motion'
+import { useMe } from '@/lib/auth'
 import { providersQuery, usableLinksQuery } from '@/lib/services'
 import { toast } from '@/lib/toast'
 
@@ -58,6 +60,7 @@ function Artist() {
   const elsewhere = useQuery(artistElsewhereQuery(linkId, artistId))
   const providers = useQuery(providersQuery)
   const { add, status } = useAddToLane()
+  const me = useMe()
 
   // The same artist's albums on your other services.
   const others = useQueries({
@@ -138,6 +141,7 @@ function Artist() {
             <Shuffle data-icon="inline-start" />
             Shuffle
           </Button>
+          {!me.guest && <AddToSetButton artist={a.name} />}
         </motion.div>
         {elsewhere.data && elsewhere.data.length > 0 && (
           <motion.div variants={fadeUp} className="mt-4 flex flex-wrap justify-center gap-2">

@@ -116,6 +116,10 @@ Images are published to `ghcr.io/madeofpendletonwool/syncphony`: `:main` tracks 
 6. Heart the songs you love as they play. When the host taps **End the night** (or the room goes quiet for two hours), the most-hearted song is crowned **song of the night**, on everyone's phone and the big screen, and it's kept with the night's recap.
 7. Then play the night's **Wrapped**: who brought the most, whose songs got the hearts, the genres and decades, whose tastes matched. Share it as an image, and **save tonight's playlist** to your **Library**, shared with the room, to play it again any time. The big screen plays the Wrapped on its own. Playlists live in Syncphony, so one can hold songs from everyone's services ([ADR 0016](docs/adr/0016-playlists-and-wrapped.md)).
 
+## Finding music you don't have
+
+The **Discover** tab is yours alone, outside any room. Make a set of artists you love ("Moody post-rock", "90s alt"), and it fills with songs near them that aren't on your own Navidrome, each saying which of your artists it's near. Play a 30-second preview, open the whole song on YouTube, give it a thumb, or say an artist isn't for you. Your library is only used to skip what you have, never to guess your taste ([ADR 0017](docs/adr/0017-personal-discovery.md)).
+
 What works where (and what doesn't yet) is in [docs/player-mode.md](docs/player-mode.md).
 
 ## Roadmap
