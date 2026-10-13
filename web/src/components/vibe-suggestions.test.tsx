@@ -7,6 +7,7 @@ import { providersQuery } from '@/lib/services'
 import type { Suggestion } from '@/lib/suggestions'
 import { usersQuery } from '@/lib/users'
 import { VibeSuggestions } from './vibe-suggestions'
+import { InRouter } from '@/test/router'
 
 const GET = vi.hoisted(() => vi.fn())
 vi.mock('@/api/client', () => ({ api: { GET, POST: vi.fn(), DELETE: vi.fn() } }))
@@ -37,7 +38,9 @@ function renderVibe() {
   chooseRoom('r1')
   return render(
     <QueryClientProvider client={client}>
-      <VibeSuggestions />
+      <InRouter>
+        <VibeSuggestions />
+      </InRouter>
     </QueryClientProvider>,
   )
 }

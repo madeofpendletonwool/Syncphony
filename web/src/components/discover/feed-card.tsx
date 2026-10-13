@@ -1,6 +1,7 @@
 import { ExternalLink, LoaderCircle, Pause, Play, ThumbsDown, ThumbsUp, UserX } from 'lucide-react'
 import { motion } from 'motion/react'
 import { Artwork } from '@/components/artwork'
+import { AlbumLink, ArtistLink } from '@/components/linked-names'
 import { Button } from '@/components/ui/button'
 import { becauseText, imageUrl, togglePreview, usePreview, youtubeUrl, type DiscoveryItem } from '@/lib/discover'
 import { fadeUp } from '@/lib/motion'
@@ -54,8 +55,13 @@ export function FeedCard({
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium">{item.title}</p>
           <p className="truncate text-sm text-muted-foreground">
-            {item.artist}
-            {item.album ? ` · ${item.album}` : ''}
+            <ArtistLink name={item.artist} />
+            {item.album && (
+              <>
+                {' · '}
+                <AlbumLink title={item.album} artist={item.artist} />
+              </>
+            )}
           </p>
           <p className="truncate text-caption text-primary">
             {why}

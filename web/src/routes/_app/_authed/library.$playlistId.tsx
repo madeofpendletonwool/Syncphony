@@ -8,6 +8,7 @@ import { AddButton } from '@/components/add-button'
 import { Artwork } from '@/components/artwork'
 import { BackButton } from '@/components/back-button'
 import { ConfirmButton } from '@/components/confirm-button'
+import { ArtistLinks } from '@/components/linked-names'
 import { Notice } from '@/components/notice'
 import { PlaylistCover } from '@/components/playlists/playlist-cover'
 import { Button } from '@/components/ui/button'
@@ -316,7 +317,7 @@ function SongRow({
         <p className="truncate font-medium">{s.track.title}</p>
         <p className="flex items-center gap-1.5 truncate text-sm text-muted-foreground">
           {by && <UserAvatar user={by} className="size-4 text-[0.5rem]" />}
-          <span className="truncate">{s.track.artists.join(', ')}</span>
+          <ArtistLinks track={s.track} className="truncate" />
         </p>
       </div>
       {editing ? (

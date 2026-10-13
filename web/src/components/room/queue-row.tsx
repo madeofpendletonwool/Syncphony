@@ -1,6 +1,7 @@
 import { Play } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Artwork } from '@/components/artwork'
+import { ArtistLinks } from '@/components/linked-names'
 import { ServiceGlyph } from '@/components/service-tag'
 import { AutopilotMark } from '@/components/room/autopilot-badge'
 import { UserAvatar } from '@/components/user-avatar'
@@ -72,7 +73,7 @@ export function QueueRow({
         <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <ServiceGlyph provider={item.track.provider} />
           <span className="truncate">
-            {item.track.artists.join(', ')}
+            <ArtistLinks track={item.track} />
             {byline && user && (
               <>
                 {' · '}

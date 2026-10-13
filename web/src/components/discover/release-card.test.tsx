@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DiscoveryRelease } from '@/lib/discover'
 import { ReleaseCard } from './release-card'
+import { InRouter } from '@/test/router'
 
 const GET = vi.hoisted(() => vi.fn())
 vi.mock('@/api/client', () => ({ api: { GET, POST: vi.fn(), DELETE: vi.fn() } }))
@@ -23,9 +24,11 @@ function renderCard(onBlock = vi.fn()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <ul>
-        <ReleaseCard release={inlet} isNew onBlock={onBlock} />
-      </ul>
+      <InRouter>
+        <ul>
+          <ReleaseCard release={inlet} isNew onBlock={onBlock} />
+        </ul>
+      </InRouter>
     </QueryClientProvider>,
   )
   return onBlock
@@ -43,7 +46,7 @@ afterEach(cleanup)
 describe('ReleaseCard', () => {
   it('says what it is and why, and lists its songs when opened', async () => {
     const onBlock = renderCard()
-    expect(screen.getByText('New')).toBeTruthy()
+    expect(await screen.findByText('New')).toBeTruthy()
     expect(screen.getByText(/Album · Out/)).toBeTruthy()
     expect(screen.getByText(/Near Failure/)).toBeTruthy()
     expect(GET).not.toHaveBeenCalled()
