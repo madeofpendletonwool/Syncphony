@@ -23,6 +23,8 @@ import { Route as AppAuthedHistoryRouteImport } from './routes/_app/_authed/hist
 import { Route as AppAuthedMeRouteImport } from './routes/_app/_authed/me'
 import { Route as AppAuthedRoomRouteImport } from './routes/_app/_authed/room'
 import { Route as AppAuthedSearchRouteImport } from './routes/_app/_authed/search'
+import { Route as AppAuthedDiscoverIndexRouteImport } from './routes/_app/_authed/discover.index'
+import { Route as AppAuthedDiscoverSetIdRouteImport } from './routes/_app/_authed/discover.$setId'
 import { Route as AppAuthedGenreLinkIdRouteImport } from './routes/_app/_authed/genre.$linkId'
 import { Route as AppAuthedLibraryIndexRouteImport } from './routes/_app/_authed/library.index'
 import { Route as AppAuthedLibraryPlaylistIdRouteImport } from './routes/_app/_authed/library.$playlistId'
@@ -103,6 +105,16 @@ const AppAuthedSearchRoute = AppAuthedSearchRouteImport.update({
   path: '/search',
   getParentRoute: () => AppAuthedRoute,
 } as any)
+const AppAuthedDiscoverIndexRoute = AppAuthedDiscoverIndexRouteImport.update({
+  id: '/discover/',
+  path: '/discover/',
+  getParentRoute: () => AppAuthedRoute,
+} as any)
+const AppAuthedDiscoverSetIdRoute = AppAuthedDiscoverSetIdRouteImport.update({
+  id: '/discover/$setId',
+  path: '/discover/$setId',
+  getParentRoute: () => AppAuthedRoute,
+} as any)
 const AppAuthedGenreLinkIdRoute = AppAuthedGenreLinkIdRouteImport.update({
   id: '/genre/$linkId',
   path: '/genre/$linkId',
@@ -179,6 +191,7 @@ export interface FileRoutesByFullPath {
   '/me': typeof AppAuthedMeRoute
   '/room': typeof AppAuthedRoomRoute
   '/search': typeof AppAuthedSearchRoute
+  '/discover/$setId': typeof AppAuthedDiscoverSetIdRoute
   '/genre/$linkId': typeof AppAuthedGenreLinkIdRoute
   '/library/$playlistId': typeof AppAuthedLibraryPlaylistIdRoute
   '/settings/people': typeof AppAuthedSettingsPeopleRoute
@@ -186,6 +199,7 @@ export interface FileRoutesByFullPath {
   '/settings/security': typeof AppAuthedSettingsSecurityRoute
   '/settings/server': typeof AppAuthedSettingsServerRoute
   '/settings/services': typeof AppAuthedSettingsServicesRoute
+  '/discover/': typeof AppAuthedDiscoverIndexRoute
   '/library/': typeof AppAuthedLibraryIndexRoute
   '/album/$linkId/$albumId': typeof AppAuthedAlbumLinkIdAlbumIdRoute
   '/artist/$linkId/$artistId': typeof AppAuthedArtistLinkIdArtistIdRoute
@@ -204,6 +218,7 @@ export interface FileRoutesByTo {
   '/me': typeof AppAuthedMeRoute
   '/room': typeof AppAuthedRoomRoute
   '/search': typeof AppAuthedSearchRoute
+  '/discover/$setId': typeof AppAuthedDiscoverSetIdRoute
   '/genre/$linkId': typeof AppAuthedGenreLinkIdRoute
   '/library/$playlistId': typeof AppAuthedLibraryPlaylistIdRoute
   '/settings/people': typeof AppAuthedSettingsPeopleRoute
@@ -211,6 +226,7 @@ export interface FileRoutesByTo {
   '/settings/security': typeof AppAuthedSettingsSecurityRoute
   '/settings/server': typeof AppAuthedSettingsServerRoute
   '/settings/services': typeof AppAuthedSettingsServicesRoute
+  '/discover': typeof AppAuthedDiscoverIndexRoute
   '/library': typeof AppAuthedLibraryIndexRoute
   '/album/$linkId/$albumId': typeof AppAuthedAlbumLinkIdAlbumIdRoute
   '/artist/$linkId/$artistId': typeof AppAuthedArtistLinkIdArtistIdRoute
@@ -232,6 +248,7 @@ export interface FileRoutesById {
   '/_app/_authed/room': typeof AppAuthedRoomRoute
   '/_app/_authed/search': typeof AppAuthedSearchRoute
   '/_app/_authed/': typeof AppAuthedIndexRoute
+  '/_app/_authed/discover/$setId': typeof AppAuthedDiscoverSetIdRoute
   '/_app/_authed/genre/$linkId': typeof AppAuthedGenreLinkIdRoute
   '/_app/_authed/library/$playlistId': typeof AppAuthedLibraryPlaylistIdRoute
   '/_app/_authed/settings/people': typeof AppAuthedSettingsPeopleRoute
@@ -239,6 +256,7 @@ export interface FileRoutesById {
   '/_app/_authed/settings/security': typeof AppAuthedSettingsSecurityRoute
   '/_app/_authed/settings/server': typeof AppAuthedSettingsServerRoute
   '/_app/_authed/settings/services': typeof AppAuthedSettingsServicesRoute
+  '/_app/_authed/discover/': typeof AppAuthedDiscoverIndexRoute
   '/_app/_authed/library/': typeof AppAuthedLibraryIndexRoute
   '/_app/_authed/album/$linkId/$albumId': typeof AppAuthedAlbumLinkIdAlbumIdRoute
   '/_app/_authed/artist/$linkId/$artistId': typeof AppAuthedArtistLinkIdArtistIdRoute
@@ -259,6 +277,7 @@ export interface FileRouteTypes {
     | '/me'
     | '/room'
     | '/search'
+    | '/discover/$setId'
     | '/genre/$linkId'
     | '/library/$playlistId'
     | '/settings/people'
@@ -266,6 +285,7 @@ export interface FileRouteTypes {
     | '/settings/security'
     | '/settings/server'
     | '/settings/services'
+    | '/discover/'
     | '/library/'
     | '/album/$linkId/$albumId'
     | '/artist/$linkId/$artistId'
@@ -284,6 +304,7 @@ export interface FileRouteTypes {
     | '/me'
     | '/room'
     | '/search'
+    | '/discover/$setId'
     | '/genre/$linkId'
     | '/library/$playlistId'
     | '/settings/people'
@@ -291,6 +312,7 @@ export interface FileRouteTypes {
     | '/settings/security'
     | '/settings/server'
     | '/settings/services'
+    | '/discover'
     | '/library'
     | '/album/$linkId/$albumId'
     | '/artist/$linkId/$artistId'
@@ -311,6 +333,7 @@ export interface FileRouteTypes {
     | '/_app/_authed/room'
     | '/_app/_authed/search'
     | '/_app/_authed/'
+    | '/_app/_authed/discover/$setId'
     | '/_app/_authed/genre/$linkId'
     | '/_app/_authed/library/$playlistId'
     | '/_app/_authed/settings/people'
@@ -318,6 +341,7 @@ export interface FileRouteTypes {
     | '/_app/_authed/settings/security'
     | '/_app/_authed/settings/server'
     | '/_app/_authed/settings/services'
+    | '/_app/_authed/discover/'
     | '/_app/_authed/library/'
     | '/_app/_authed/album/$linkId/$albumId'
     | '/_app/_authed/artist/$linkId/$artistId'
@@ -434,6 +458,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAuthedSearchRouteImport
       parentRoute: typeof AppAuthedRoute
     }
+    '/_app/_authed/discover/': {
+      id: '/_app/_authed/discover/'
+      path: '/discover'
+      fullPath: '/discover/'
+      preLoaderRoute: typeof AppAuthedDiscoverIndexRouteImport
+      parentRoute: typeof AppAuthedRoute
+    }
+    '/_app/_authed/discover/$setId': {
+      id: '/_app/_authed/discover/$setId'
+      path: '/discover/$setId'
+      fullPath: '/discover/$setId'
+      preLoaderRoute: typeof AppAuthedDiscoverSetIdRouteImport
+      parentRoute: typeof AppAuthedRoute
+    }
     '/_app/_authed/genre/$linkId': {
       id: '/_app/_authed/genre/$linkId'
       path: '/genre/$linkId'
@@ -520,6 +558,7 @@ interface AppAuthedRouteChildren {
   AppAuthedRoomRoute: typeof AppAuthedRoomRoute
   AppAuthedSearchRoute: typeof AppAuthedSearchRoute
   AppAuthedIndexRoute: typeof AppAuthedIndexRoute
+  AppAuthedDiscoverSetIdRoute: typeof AppAuthedDiscoverSetIdRoute
   AppAuthedGenreLinkIdRoute: typeof AppAuthedGenreLinkIdRoute
   AppAuthedLibraryPlaylistIdRoute: typeof AppAuthedLibraryPlaylistIdRoute
   AppAuthedSettingsPeopleRoute: typeof AppAuthedSettingsPeopleRoute
@@ -527,6 +566,7 @@ interface AppAuthedRouteChildren {
   AppAuthedSettingsSecurityRoute: typeof AppAuthedSettingsSecurityRoute
   AppAuthedSettingsServerRoute: typeof AppAuthedSettingsServerRoute
   AppAuthedSettingsServicesRoute: typeof AppAuthedSettingsServicesRoute
+  AppAuthedDiscoverIndexRoute: typeof AppAuthedDiscoverIndexRoute
   AppAuthedLibraryIndexRoute: typeof AppAuthedLibraryIndexRoute
   AppAuthedAlbumLinkIdAlbumIdRoute: typeof AppAuthedAlbumLinkIdAlbumIdRoute
   AppAuthedArtistLinkIdArtistIdRoute: typeof AppAuthedArtistLinkIdArtistIdRoute
@@ -539,6 +579,7 @@ const AppAuthedRouteChildren: AppAuthedRouteChildren = {
   AppAuthedRoomRoute: AppAuthedRoomRoute,
   AppAuthedSearchRoute: AppAuthedSearchRoute,
   AppAuthedIndexRoute: AppAuthedIndexRoute,
+  AppAuthedDiscoverSetIdRoute: AppAuthedDiscoverSetIdRoute,
   AppAuthedGenreLinkIdRoute: AppAuthedGenreLinkIdRoute,
   AppAuthedLibraryPlaylistIdRoute: AppAuthedLibraryPlaylistIdRoute,
   AppAuthedSettingsPeopleRoute: AppAuthedSettingsPeopleRoute,
@@ -546,6 +587,7 @@ const AppAuthedRouteChildren: AppAuthedRouteChildren = {
   AppAuthedSettingsSecurityRoute: AppAuthedSettingsSecurityRoute,
   AppAuthedSettingsServerRoute: AppAuthedSettingsServerRoute,
   AppAuthedSettingsServicesRoute: AppAuthedSettingsServicesRoute,
+  AppAuthedDiscoverIndexRoute: AppAuthedDiscoverIndexRoute,
   AppAuthedLibraryIndexRoute: AppAuthedLibraryIndexRoute,
   AppAuthedAlbumLinkIdAlbumIdRoute: AppAuthedAlbumLinkIdAlbumIdRoute,
   AppAuthedArtistLinkIdArtistIdRoute: AppAuthedArtistLinkIdArtistIdRoute,

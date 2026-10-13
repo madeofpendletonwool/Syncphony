@@ -2883,6 +2883,390 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  # --- Personal discovery (ADR 0017) ------------------------------------------
+
+  /me/discover/sets:
+    get:
+      operationId: listDiscoverySets
+      summary: Your discovery sets
+      description: |
+        Seed sets (ADR 0017): named lists of artists, each its own feed of
+        music you don't have yet. Yours alone, most recently changed first.
+        Guests have no discovery.
+      tags: [discover]
+      responses:
+        "200":
+          description: Sets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DiscoverySetSummary"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: createDiscoverySet
+      summary: Make a discovery set
+      description: With seed artists, if given. At most 50 sets, of 50 artists each (`too_many`).
+      tags: [discover]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDiscoverySetRequest"
+      responses:
+        "201":
+          description: The set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoverySet"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/sets/{setId}:
+    parameters:
+      - $ref: "#/components/parameters/DiscoverySetId"
+    get:
+      operationId: getDiscoverySet
+      summary: A discovery set and its artists
+      tags: [discover]
+      responses:
+        "200":
+          description: The set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoverySet"
+        default:
+          $ref: "#/components/responses/Error"
+    patch:
+      operationId: updateDiscoverySet
+      summary: Rename a set, or change how far it explores and which feeds it shows
+      tags: [discover]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDiscoverySetRequest"
+      responses:
+        "200":
+          description: The set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoverySet"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deleteDiscoverySet
+      summary: Delete a discovery set
+      description: Its thumbs stay. A song you turned down stays down.
+      tags: [discover]
+      responses:
+        "204":
+          description: Deleted
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/sets/{setId}/artists:
+    parameters:
+      - $ref: "#/components/parameters/DiscoverySetId"
+    post:
+      operationId: addDiscoverySetArtist
+      summary: Add a seed artist to a set
+      description: |
+        Any artist, whether or not it's in your library. Adding one that's
+        there already changes nothing.
+      tags: [discover]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiscoverySeed"
+      responses:
+        "200":
+          description: The set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoverySet"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/sets/{setId}/artists/{artistKey}:
+    parameters:
+      - $ref: "#/components/parameters/DiscoverySetId"
+      - name: artistKey
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: removeDiscoverySetArtist
+      summary: Take a seed artist out of a set
+      tags: [discover]
+      responses:
+        "200":
+          description: The set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoverySet"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/sets/{setId}/feed:
+    parameters:
+      - $ref: "#/components/parameters/DiscoverySetId"
+    get:
+      operationId: getDiscoveryFeed
+      summary: A page of a set's feed
+      description: |
+        Songs near the set's seeds that you don't have: not on your own
+        Navidrome links, not turned down, not by an artist you blocked.
+        Each says which seeds it's near. A feed is built at most every 10
+        minutes (or now, with `refresh`), within 15 seconds; artists the
+        music graph didn't know yet are fetched for next time. What you
+        thumb down or block leaves every page at once.
+      tags: [discover]
+      parameters:
+        - name: cursor
+          in: query
+          description: The previous page's `next`.
+          schema:
+            type: string
+        - name: refresh
+          in: query
+          description: Build the feed again now, for the first page.
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: A page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoveryFeed"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/feedback:
+    post:
+      operationId: postDiscoveryFeedback
+      summary: Thumbs up or down on a song
+      description: |
+        A thumbs-down hides the song from all your feeds, for good; a later
+        thumbs-up replaces it. Thumbs here never touch a room's DJ.
+      tags: [discover]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiscoveryFeedbackRequest"
+      responses:
+        "204":
+          description: Kept
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/blocks:
+    get:
+      operationId: listDiscoveryBlocks
+      summary: Artists you said aren't for you
+      tags: [discover]
+      responses:
+        "200":
+          description: Blocked artists
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DiscoveryBlock"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: blockDiscoveryArtist
+      summary: Not for me
+      description: Keeps an artist out of every one of your feeds.
+      tags: [discover]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlockDiscoveryArtistRequest"
+      responses:
+        "200":
+          description: The block
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoveryBlock"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/blocks/{artistKey}:
+    parameters:
+      - name: artistKey
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: unblockDiscoveryArtist
+      summary: Let a blocked artist back into your feeds
+      tags: [discover]
+      responses:
+        "204":
+          description: Unblocked
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/artists:
+    get:
+      operationId: searchDiscoveryArtists
+      summary: Find artists to seed a set with
+      description: |
+        Any artist, from Deezer, not only ones in your library. Without
+        Deezer it offers the name as typed, which seeds as well as any.
+      tags: [discover]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 200
+      responses:
+        "200":
+          description: Artists
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DiscoveryArtist"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/library:
+    get:
+      operationId: getDiscoveryLibrary
+      summary: How far your library is indexed
+      description: |
+        Discovery leaves out what's on your own Navidrome links. They're
+        indexed the first time you ask, then daily.
+      tags: [discover]
+      responses:
+        "200":
+          description: The index
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoveryLibrary"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: refreshDiscoveryLibrary
+      summary: Index your library again now
+      description: In the background; you just added music, say.
+      tags: [discover]
+      responses:
+        "202":
+          description: Started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoveryLibrary"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/preview/{deezerTrackId}:
+    parameters:
+      - name: deezerTrackId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    get:
+      operationId: getDiscoveryPreview
+      summary: A song's 30-second preview
+      description: |
+        Deezer's preview, through the server: its URL is asked for fresh
+        each time (Deezer's expire) and never kept, and the browser never
+        talks to Deezer. Supports byte ranges. `not_found` if Deezer has
+        no preview of the song, or Deezer is off.
+      tags: [discover]
+      parameters:
+        - name: Range
+          in: header
+          schema:
+            type: string
+          example: bytes=0-
+      responses:
+        "200":
+          description: The preview
+          content:
+            audio/*:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: Part of the preview (see Content-Range)
+          content:
+            audio/*:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/images/{kind}/{imageId}:
+    parameters:
+      - name: kind
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [cover, artist]
+      - name: imageId
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: "^[0-9a-f]{32}$"
+    get:
+      operationId: getDiscoveryImage
+      summary: A cover or artist picture from Deezer, through the server
+      tags: [discover]
+      parameters:
+        - name: size
+          in: query
+          description: Wanted width in pixels; a hint.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1000
+      responses:
+        "200":
+          description: The image
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
+
   /rooms/{roomId}/games/round:
     parameters:
       - $ref: "#/components/parameters/RoomId"
@@ -3934,6 +4318,13 @@ components:
 
     PlaylistSongId:
       name: songId
+      in: path
+      required: true
+      schema:
+        type: string
+
+    DiscoverySetId:
+      name: setId
       in: path
       required: true
       schema:
@@ -7837,3 +8228,241 @@ components:
           $ref: "#/components/schemas/RoomPermissionsChange"
         skipVotePercent:
           $ref: "#/components/schemas/SkipVotePercent"
+
+    DiscoveryMode:
+      type: string
+      description: |
+        Which feeds a set shows: `deep` cuts (anything new to you), `fresh`
+        releases (coming), or `both`.
+      enum: [deep, fresh, both]
+      x-enum-varnames: [DiscoveryModeDeep, DiscoveryModeFresh, DiscoveryModeBoth]
+
+    DiscoverySetSummary:
+      type: object
+      required: [id, name, explore, mode, artistCount, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        explore:
+          type: integer
+          minimum: 0
+          maximum: 100
+        mode:
+          $ref: "#/components/schemas/DiscoveryMode"
+        artistCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DiscoverySet:
+      type: object
+      required: [id, name, explore, mode, artists, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        explore:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: How far the feed strays from the seeds, and toward less-known artists.
+        mode:
+          $ref: "#/components/schemas/DiscoveryMode"
+        artists:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscoverySetArtist"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DiscoverySetArtist:
+      type: object
+      required: [key, name, addedFrom, addedAt]
+      properties:
+        key:
+          type: string
+          description: Their MBID, else their simplified name. Removes them from the set.
+        name:
+          type: string
+        mbid:
+          type: string
+        addedFrom:
+          type: string
+          enum: [manual, thumb, starred, room]
+        addedAt:
+          type: string
+          format: date-time
+
+    DiscoverySeed:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        mbid:
+          type: string
+
+    CreateDiscoverySetRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        artists:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/DiscoverySeed"
+
+    UpdateDiscoverySetRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        explore:
+          type: integer
+          minimum: 0
+          maximum: 100
+        mode:
+          $ref: "#/components/schemas/DiscoveryMode"
+
+    DiscoveryItem:
+      type: object
+      description: A song you don't have, near a set's seeds.
+      required: [key, title, artist, because, seed]
+      properties:
+        key:
+          type: string
+        title:
+          type: string
+        artist:
+          type: string
+        album:
+          type: string
+        mbid:
+          type: string
+        isrc:
+          type: string
+        deezerId:
+          type: integer
+          format: int64
+          description: The song on Deezer, for its preview. Absent when it isn't there, or isn't found yet.
+        cover:
+          type: string
+          description: Its cover's image ID, for getDiscoveryImage (kind `cover`).
+        because:
+          type: array
+          description: The seed artists it's near, nearest first.
+          items:
+            type: string
+        seed:
+          type: boolean
+          description: Whether it's a seed artist's own song.
+
+    DiscoveryLibrary:
+      type: object
+      description: How far your library (your own Navidrome links) is indexed.
+      required: [links, songs, building]
+      properties:
+        links:
+          type: integer
+        songs:
+          type: integer
+        builtAt:
+          type: string
+          format: date-time
+        building:
+          type: boolean
+
+    DiscoveryFeed:
+      type: object
+      required: [items, library, noGraph]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscoveryItem"
+        next:
+          type: string
+          description: The cursor for the next page. Absent at the end.
+        library:
+          $ref: "#/components/schemas/DiscoveryLibrary"
+        noGraph:
+          type: boolean
+          description: The server knows nothing of how music relates (no sources are on), so feeds are empty.
+
+    DiscoveryFeedbackRequest:
+      type: object
+      required: [kind, title, artist]
+      properties:
+        kind:
+          type: string
+          enum: [up, down]
+        setId:
+          type: string
+          description: The set whose feed it was in.
+        title:
+          type: string
+          minLength: 1
+        artist:
+          type: string
+          minLength: 1
+        mbid:
+          type: string
+        isrc:
+          type: string
+        deezerId:
+          type: integer
+          format: int64
+
+    DiscoveryBlock:
+      type: object
+      required: [key, name, createdAt]
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    BlockDiscoveryArtistRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+    DiscoveryArtist:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        fans:
+          type: integer
+          format: int64
+          description: Fans on Deezer, a measure of how well known.
+        picture:
+          type: string
+          description: Their picture's image ID, for getDiscoveryImage (kind `artist`).

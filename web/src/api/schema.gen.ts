@@ -2211,6 +2211,278 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/discover/sets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your discovery sets
+         * @description Seed sets (ADR 0017): named lists of artists, each its own feed of
+         *     music you don't have yet. Yours alone, most recently changed first.
+         *     Guests have no discovery.
+         */
+        get: operations["listDiscoverySets"];
+        put?: never;
+        /**
+         * Make a discovery set
+         * @description With seed artists, if given. At most 50 sets, of 50 artists each (`too_many`).
+         */
+        post: operations["createDiscoverySet"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/sets/{setId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+            };
+            cookie?: never;
+        };
+        /** A discovery set and its artists */
+        get: operations["getDiscoverySet"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a discovery set
+         * @description Its thumbs stay. A song you turned down stays down.
+         */
+        delete: operations["deleteDiscoverySet"];
+        options?: never;
+        head?: never;
+        /** Rename a set, or change how far it explores and which feeds it shows */
+        patch: operations["updateDiscoverySet"];
+        trace?: never;
+    };
+    "/me/discover/sets/{setId}/artists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a seed artist to a set
+         * @description Any artist, whether or not it's in your library. Adding one that's
+         *     there already changes nothing.
+         */
+        post: operations["addDiscoverySetArtist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/sets/{setId}/artists/{artistKey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+                artistKey: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Take a seed artist out of a set */
+        delete: operations["removeDiscoverySetArtist"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/sets/{setId}/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * A page of a set's feed
+         * @description Songs near the set's seeds that you don't have: not on your own
+         *     Navidrome links, not turned down, not by an artist you blocked.
+         *     Each says which seeds it's near. A feed is built at most every 10
+         *     minutes (or now, with `refresh`), within 15 seconds; artists the
+         *     music graph didn't know yet are fetched for next time. What you
+         *     thumb down or block leaves every page at once.
+         */
+        get: operations["getDiscoveryFeed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Thumbs up or down on a song
+         * @description A thumbs-down hides the song from all your feeds, for good; a later
+         *     thumbs-up replaces it. Thumbs here never touch a room's DJ.
+         */
+        post: operations["postDiscoveryFeedback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/blocks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Artists you said aren't for you */
+        get: operations["listDiscoveryBlocks"];
+        put?: never;
+        /**
+         * Not for me
+         * @description Keeps an artist out of every one of your feeds.
+         */
+        post: operations["blockDiscoveryArtist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/blocks/{artistKey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artistKey: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Let a blocked artist back into your feeds */
+        delete: operations["unblockDiscoveryArtist"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/artists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find artists to seed a set with
+         * @description Any artist, from Deezer, not only ones in your library. Without
+         *     Deezer it offers the name as typed, which seeds as well as any.
+         */
+        get: operations["searchDiscoveryArtists"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How far your library is indexed
+         * @description Discovery leaves out what's on your own Navidrome links. They're
+         *     indexed the first time you ask, then daily.
+         */
+        get: operations["getDiscoveryLibrary"];
+        put?: never;
+        /**
+         * Index your library again now
+         * @description In the background; you just added music, say.
+         */
+        post: operations["refreshDiscoveryLibrary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/preview/{deezerTrackId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deezerTrackId: number;
+            };
+            cookie?: never;
+        };
+        /**
+         * A song's 30-second preview
+         * @description Deezer's preview, through the server: its URL is asked for fresh
+         *     each time (Deezer's expire) and never kept, and the browser never
+         *     talks to Deezer. Supports byte ranges. `not_found` if Deezer has
+         *     no preview of the song, or Deezer is off.
+         */
+        get: operations["getDiscoveryPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/images/{kind}/{imageId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "cover" | "artist";
+                imageId: string;
+            };
+            cookie?: never;
+        };
+        /** A cover or artist picture from Deezer, through the server */
+        get: operations["getDiscoveryImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/games/round": {
         parameters: {
             query?: never;
@@ -5258,6 +5530,125 @@ export interface components {
             permissions?: components["schemas"]["RoomPermissionsChange"];
             skipVotePercent?: components["schemas"]["SkipVotePercent"];
         };
+        /**
+         * @description Which feeds a set shows: `deep` cuts (anything new to you), `fresh`
+         *     releases (coming), or `both`.
+         * @enum {string}
+         */
+        DiscoveryMode: "deep" | "fresh" | "both";
+        DiscoverySetSummary: {
+            id: string;
+            name: string;
+            explore: number;
+            mode: components["schemas"]["DiscoveryMode"];
+            artistCount: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        DiscoverySet: {
+            id: string;
+            name: string;
+            /** @description How far the feed strays from the seeds, and toward less-known artists. */
+            explore: number;
+            mode: components["schemas"]["DiscoveryMode"];
+            artists: components["schemas"]["DiscoverySetArtist"][];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        DiscoverySetArtist: {
+            /** @description Their MBID, else their simplified name. Removes them from the set. */
+            key: string;
+            name: string;
+            mbid?: string;
+            /** @enum {string} */
+            addedFrom: "manual" | "thumb" | "starred" | "room";
+            /** Format: date-time */
+            addedAt: string;
+        };
+        DiscoverySeed: {
+            name: string;
+            mbid?: string;
+        };
+        CreateDiscoverySetRequest: {
+            name: string;
+            artists?: components["schemas"]["DiscoverySeed"][];
+        };
+        UpdateDiscoverySetRequest: {
+            name?: string;
+            explore?: number;
+            mode?: components["schemas"]["DiscoveryMode"];
+        };
+        /** @description A song you don't have, near a set's seeds. */
+        DiscoveryItem: {
+            key: string;
+            title: string;
+            artist: string;
+            album?: string;
+            mbid?: string;
+            isrc?: string;
+            /**
+             * Format: int64
+             * @description The song on Deezer, for its preview. Absent when it isn't there, or isn't found yet.
+             */
+            deezerId?: number;
+            /** @description Its cover's image ID, for getDiscoveryImage (kind `cover`). */
+            cover?: string;
+            /** @description The seed artists it's near, nearest first. */
+            because: string[];
+            /** @description Whether it's a seed artist's own song. */
+            seed: boolean;
+        };
+        /** @description How far your library (your own Navidrome links) is indexed. */
+        DiscoveryLibrary: {
+            links: number;
+            songs: number;
+            /** Format: date-time */
+            builtAt?: string;
+            building: boolean;
+        };
+        DiscoveryFeed: {
+            items: components["schemas"]["DiscoveryItem"][];
+            /** @description The cursor for the next page. Absent at the end. */
+            next?: string;
+            library: components["schemas"]["DiscoveryLibrary"];
+            /** @description The server knows nothing of how music relates (no sources are on), so feeds are empty. */
+            noGraph: boolean;
+        };
+        DiscoveryFeedbackRequest: {
+            /** @enum {string} */
+            kind: "up" | "down";
+            /** @description The set whose feed it was in. */
+            setId?: string;
+            title: string;
+            artist: string;
+            mbid?: string;
+            isrc?: string;
+            /** Format: int64 */
+            deezerId?: number;
+        };
+        DiscoveryBlock: {
+            key: string;
+            name: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        BlockDiscoveryArtistRequest: {
+            name: string;
+        };
+        DiscoveryArtist: {
+            name: string;
+            /**
+             * Format: int64
+             * @description Fans on Deezer, a measure of how well known.
+             */
+            fans?: number;
+            /** @description Their picture's image ID, for getDiscoveryImage (kind `artist`). */
+            picture?: string;
+        };
     };
     responses: {
         /**
@@ -5299,6 +5690,7 @@ export interface components {
         RoomId: string;
         PlaylistId: string;
         PlaylistSongId: string;
+        DiscoverySetId: string;
         QueueGameId: string;
     };
     requestBodies: never;
@@ -8152,6 +8544,419 @@ export interface operations {
             path: {
                 playlistId: components["parameters"]["PlaylistId"];
                 songId: components["parameters"]["PlaylistSongId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listDiscoverySets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverySetSummary"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createDiscoverySet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDiscoverySetRequest"];
+            };
+        };
+        responses: {
+            /** @description The set */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverySet"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getDiscoverySet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The set */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverySet"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteDiscoverySet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateDiscoverySet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDiscoverySetRequest"];
+            };
+        };
+        responses: {
+            /** @description The set */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverySet"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    addDiscoverySetArtist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscoverySeed"];
+            };
+        };
+        responses: {
+            /** @description The set */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverySet"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    removeDiscoverySetArtist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+                artistKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The set */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverySet"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getDiscoveryFeed: {
+        parameters: {
+            query?: {
+                /** @description The previous page's `next`. */
+                cursor?: string;
+                /** @description Build the feed again now, for the first page. */
+                refresh?: boolean;
+            };
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryFeed"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    postDiscoveryFeedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscoveryFeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Kept */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listDiscoveryBlocks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Blocked artists */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryBlock"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    blockDiscoveryArtist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlockDiscoveryArtistRequest"];
+            };
+        };
+        responses: {
+            /** @description The block */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryBlock"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    unblockDiscoveryArtist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artistKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unblocked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    searchDiscoveryArtists: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Artists */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryArtist"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getDiscoveryLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The index */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryLibrary"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    refreshDiscoveryLibrary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Started */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryLibrary"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getDiscoveryPreview: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @example bytes=0- */
+                Range?: string;
+            };
+            path: {
+                deezerTrackId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/*": string;
+                };
+            };
+            /** @description Part of the preview (see Content-Range) */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/*": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getDiscoveryImage: {
+        parameters: {
+            query?: {
+                /** @description Wanted width in pixels; a hint. */
+                size?: number;
+            };
+            header?: never;
+            path: {
+                kind: "cover" | "artist";
+                imageId: string;
             };
             cookie?: never;
         };

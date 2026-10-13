@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -19,6 +20,11 @@ import (
 
 // DefaultDeezerURL is Deezer's public API.
 const DefaultDeezerURL = "https://api.deezer.com"
+
+// DefaultDeezerImageURL is Deezer's image CDN.
+const DefaultDeezerImageURL = "https://e-cdns-images.dzcdn.net/images"
+
+var imagePath = regexp.MustCompile(`/images/(?:cover|artist)/([0-9a-f]{32})/`)
 
 // Deezer error codes we tell apart.
 const (
@@ -34,8 +40,9 @@ const deezerTopRank = 1_000_000
 // related artists and top songs, and a song's tempo and popularity. It
 // keeps under Deezer's 50 requests per 5 seconds.
 type Deezer struct {
-	base string
-	c    *client
+	base   string
+	images string
+	c      *client
 }
 
 // DeezerOptions configure a Deezer.
@@ -43,6 +50,8 @@ type DeezerOptions struct {
 	UserAgent string
 	// BaseURL is the API. Default DefaultDeezerURL.
 	BaseURL string
+	// ImageURL is the image CDN. Default DefaultDeezerImageURL.
+	ImageURL string
 	// Client makes the requests. Default http.DefaultClient.
 	Client *http.Client
 	// Interval is the least time between requests. Default 120ms;
@@ -55,10 +64,13 @@ func NewDeezer(opts DeezerOptions) *Deezer {
 	if opts.BaseURL == "" {
 		opts.BaseURL = DefaultDeezerURL
 	}
+	if opts.ImageURL == "" {
+		opts.ImageURL = DefaultDeezerImageURL
+	}
 	if opts.Interval == 0 {
 		opts.Interval = 120 * time.Millisecond
 	}
-	return &Deezer{base: trimSlash(opts.BaseURL), c: newClient("deezer", opts.UserAgent, opts.Client, opts.Interval)}
+	return &Deezer{base: trimSlash(opts.BaseURL), images: trimSlash(opts.ImageURL), c: newClient("deezer", opts.UserAgent, opts.Client, opts.Interval)}
 }
 
 // Name implements Source.
@@ -68,6 +80,9 @@ type dzArtist struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
 	Fans int64  `json:"nb_fan"`
+	// MD5Image is their picture's ID on Deezer's image CDN.
+	MD5Image string `json:"md5_image"`
+	Picture  string `json:"picture_medium"`
 }
 
 type dzTrack struct {
@@ -78,9 +93,36 @@ type dzTrack struct {
 	Rank        float64 `json:"rank"`
 	BPM         float64 `json:"bpm"`
 	ReleaseDate string  `json:"release_date"`
-	Artist      struct {
+	// Preview is a 30-second MP3. Its URL is signed and expires, so it's
+	// never kept: ask for the track again to play it.
+	Preview  string `json:"preview"`
+	MD5Image string `json:"md5_image"`
+	Artist   struct {
 		Name string `json:"name"`
 	} `json:"artist"`
+	Album struct {
+		ID          int64  `json:"id"`
+		Title       string `json:"title"`
+		CoverMedium string `json:"cover_medium"`
+		MD5Image    string `json:"md5_image"`
+	} `json:"album"`
+}
+
+// cover is the ID of a song's cover on Deezer's image CDN.
+func (t dzTrack) cover() string {
+	if id := cmp.Or(t.Album.MD5Image, t.MD5Image); id != "" {
+		return id
+	}
+	return imageID(t.Album.CoverMedium)
+}
+
+// imageID pulls the image ID out of a Deezer CDN URL
+// (https://e-cdns-images.dzcdn.net/images/cover/<id>/250x250-...).
+func imageID(u string) string {
+	if m := imagePath.FindStringSubmatch(u); m != nil {
+		return m[1]
+	}
+	return ""
 }
 
 // Artist implements Source with artist search, then the artist's related
@@ -107,7 +149,7 @@ func (d *Deezer) Artist(ctx context.Context, a ArtistRef) (Artist, error) {
 		return Artist{}, fmt.Errorf("deezer: artist %q: %w", a.Name, provider.ErrNotFound)
 	}
 	path := "/artist/" + strconv.FormatInt(id.ID, 10)
-	out := Artist{Ref: a}
+	out := Artist{Ref: a, Fans: id.Fans, Picture: cmp.Or(id.MD5Image, imageID(id.Picture))}
 
 	var related struct {
 		Data []dzArtist `json:"data"`
@@ -131,7 +173,10 @@ func (d *Deezer) Artist(ctx context.Context, a ArtistRef) (Artist, error) {
 	}
 	for _, t := range top.Data {
 		// Deezer's rank is already a compressed score, so it's compared as is.
-		out.Top = append(out.Top, Song{SongRef: SongRef{Title: t.Title, Artist: a, ISRC: t.ISRC}, Score: t.Rank / most})
+		out.Top = append(out.Top, Song{
+			SongRef: SongRef{Title: t.Title, Artist: a, ISRC: t.ISRC, DeezerID: t.ID, Album: t.Album.Title, Cover: t.cover()},
+			Score:   t.Rank / most, Rank: min(t.Rank/deezerTopRank, 1),
+		})
 	}
 	return out, nil
 }
@@ -169,23 +214,29 @@ func (d *Deezer) Track(ctx context.Context, s SongRef) (Track, error) {
 // search finds a song's Deezer ID by its artist and title, matched the
 // way cross-service matching matches.
 func (d *Deezer) search(ctx context.Context, s SongRef) (int64, error) {
+	t, err := d.searchFor(ctx, s, s.Artist.Name+" "+s.Title)
+	return t.ID, err
+}
+
+// searchFor searches Deezer with q and returns the best match for s.
+func (d *Deezer) searchFor(ctx context.Context, s SongRef, q string) (dzTrack, error) {
 	var found struct {
 		Data []dzTrack `json:"data"`
 	}
-	if err := d.get(ctx, "/search", url.Values{"q": {s.Artist.Name + " " + s.Title}, "limit": {"10"}}, &found); err != nil {
-		return 0, err
+	if err := d.get(ctx, "/search", url.Values{"q": {q}, "limit": {"10"}}, &found); err != nil {
+		return dzTrack{}, err
 	}
 	want := provider.Track{Title: s.Title, ISRC: s.ISRC, Artists: []provider.ArtistCredit{{Name: s.Artist.Name}}}
-	var best int64
+	var best dzTrack
 	top := 0.0
 	for _, t := range found.Data {
 		got := provider.Track{Title: t.Title, Artists: []provider.ArtistCredit{{Name: t.Artist.Name}}}
 		if sc, ok := match.Score(want, got); ok && sc > top {
-			best, top = t.ID, sc
+			best, top = t, sc
 		}
 	}
-	if best == 0 {
-		return 0, fmt.Errorf("deezer: song %q: %w", s.Title, provider.ErrNotFound)
+	if best.ID == 0 {
+		return dzTrack{}, fmt.Errorf("deezer: song %q: %w", s.Title, provider.ErrNotFound)
 	}
 	return best, nil
 }

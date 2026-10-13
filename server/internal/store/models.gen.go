@@ -41,6 +41,54 @@ type CredentialsPassword struct {
 	UpdatedAt time.Time
 }
 
+type DeezerSong struct {
+	SongKey   string
+	DeezerID  int64
+	Album     string
+	Cover     string
+	CheckedAt time.Time
+}
+
+type DiscoveryBlock struct {
+	UserID    string
+	ArtistKey string
+	Name      string
+	CreatedAt time.Time
+}
+
+type DiscoveryFeedback struct {
+	ID        string
+	UserID    string
+	SetID     sql.NullString
+	Kind      string
+	SongKey   string
+	Title     string
+	Artist    string
+	Mbid      sql.NullString
+	Isrc      sql.NullString
+	DeezerID  sql.NullInt64
+	CreatedAt time.Time
+}
+
+type DiscoverySet struct {
+	ID        string
+	UserID    string
+	Name      string
+	Explore   int64
+	Mode      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type DiscoverySetArtist struct {
+	SetID     string
+	ArtistKey string
+	Name      string
+	Mbid      sql.NullString
+	AddedFrom string
+	AddedAt   time.Time
+}
+
 type Display struct {
 	ID         string
 	TokenHash  []byte
@@ -125,6 +173,14 @@ type Invite struct {
 	ExpiresAt time.Time
 	UsedBy    sql.NullString
 	UsedAt    sql.NullTime
+}
+
+type LibraryIndex struct {
+	LinkID    string
+	ScannedAt sql.NullTime
+	BuiltAt   time.Time
+	Songs     int64
+	Data      []byte
 }
 
 type LinerNotesCache struct {
@@ -357,4 +413,21 @@ type UserAudit struct {
 	Action     string
 	Detail     string
 	CreatedAt  time.Time
+}
+
+type WantItem struct {
+	ID           string
+	UserID       string
+	SetID        sql.NullString
+	Kind         string
+	ItemKey      string
+	Artist       string
+	Title        string
+	ReleaseTitle string
+	Mbid         sql.NullString
+	Isrc         sql.NullString
+	DeezerID     sql.NullInt64
+	Status       string
+	GotAt        sql.NullTime
+	AddedAt      time.Time
 }
