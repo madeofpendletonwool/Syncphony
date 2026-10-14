@@ -40,6 +40,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/queue"
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
+	"github.com/madeofpendletonwool/syncphony/server/internal/savedartists"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 	"github.com/madeofpendletonwool/syncphony/server/internal/suggest"
 	"github.com/madeofpendletonwool/syncphony/server/internal/transcode"
@@ -80,6 +81,8 @@ type Server struct {
 	Nights *nights.Service
 	// Playlists keeps Syncphony's own playlists.
 	Playlists *playlists.Service
+	// SavedArtists keeps the artists people saved to their Library.
+	SavedArtists *savedartists.Service
 	// Discover keeps users' discovery sets and makes their feeds.
 	Discover *discover.Service
 	// Library indexes what users have, for discovery. Optional.
@@ -350,7 +353,10 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var invalidGame *games.InvalidInputError
 	var invalidPlaylist *playlists.InvalidInputError
 	var invalidDiscover *discover.InvalidInputError
+	var invalidSaved *savedartists.InvalidInputError
 	switch {
+	case errors.As(err, &invalidSaved):
+		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidSaved.Error())
 	case errors.As(err, &invalidDiscover):
 		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidDiscover.Error())
 	case errors.As(err, &invalidPlaylist):
@@ -433,6 +439,7 @@ var errorCodes = []struct {
 	{playlists.ErrForbidden, http.StatusForbidden, "forbidden"},
 	{playlists.ErrNothingPlayed, http.StatusConflict, "nothing_played"},
 	{discover.ErrNotFound, http.StatusNotFound, "not_found"},
+	{savedartists.ErrNotFound, http.StatusNotFound, "not_found"},
 	{discover.ErrTooMany, http.StatusConflict, "too_many"},
 	{games.ErrNoRound, http.StatusConflict, "round_closed"},
 	{games.ErrRoundRunning, http.StatusConflict, "round_running"},

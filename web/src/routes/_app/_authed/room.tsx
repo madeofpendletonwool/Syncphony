@@ -6,6 +6,7 @@ import { DropdownMenu } from 'radix-ui'
 import { useEffect, useState, type ReactNode } from 'react'
 import { errorMessage } from '@/api/errors'
 import { Artwork } from '@/components/artwork'
+import { SaveArtistButton } from '@/components/library/save-artist'
 import { PageHeader } from '@/components/page-header'
 import { SaveToPlaylistButton } from '@/components/playlists/save-to-playlist'
 import { AutopilotBadge } from '@/components/room/autopilot-badge'
@@ -46,6 +47,7 @@ import { can, playbackQuery, songsBeforeYours, type QueueItem } from '@/lib/play
 import { chooseRoom, leaveRoom, queueQuery, useCurrentRoom, type Room as RoomInfo } from '@/lib/room'
 import { live } from '@/lib/room-socket'
 import { useStore } from '@/lib/store'
+import { nowPlayingArtists } from '@/lib/saved-artists'
 import { relativeTime } from '@/lib/time'
 import { toast } from '@/lib/toast'
 import { usersQuery } from '@/lib/users'
@@ -430,6 +432,7 @@ function NowPlayingCard({ room, waiting }: { room: RoomInfo; waiting: number }) 
             {np.autopilot && <AutopilotBadge pick={np.autopilot} />}
             <SourceTag provider={np.track.provider} via={np.via} className="py-1" />
             <HeartButton room={room} np={np} className="ml-auto" />
+            {!isGuest(me) && <SaveArtistButton artists={nowPlayingArtists(np)} />}
             {np.itemId && !isGuest(me) && <SaveToPlaylistButton song={{ itemId: np.itemId }} title={np.track.title} />}
           </div>
         </div>

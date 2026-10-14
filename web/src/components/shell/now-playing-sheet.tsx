@@ -6,6 +6,7 @@ import { Artwork } from '@/components/artwork'
 import { LyricsView } from '@/components/lyrics/lyrics-view'
 import { AutopilotBadge, AutopilotWhy } from '@/components/room/autopilot-badge'
 import { SourceTag } from '@/components/service-tag'
+import { SaveArtistButton } from '@/components/library/save-artist'
 import { AlbumLink, ArtistLinks } from '@/components/linked-names'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,10 +14,13 @@ import { Slider } from '@/components/ui/slider'
 import { UserAvatar } from '@/components/user-avatar'
 import { useBeat } from '@/hooks/use-beat'
 import { usePosition } from '@/hooks/use-position'
+import { useMe } from '@/lib/auth'
+import { isGuest } from '@/lib/guests'
 import { laneStyle } from '@/lib/lane'
 import { lightsOpen, visualizerOpen } from '@/lib/beat'
 import { easeOutExpo, spring } from '@/lib/motion'
 import { formatDuration, usePlayer } from '@/lib/now-playing'
+import { nowPlayingArtists } from '@/lib/saved-artists'
 import { AlbumBackdrop } from './album-backdrop'
 import { TransportControls } from './player-controls'
 import { BeatLab } from './beat-lab'
@@ -40,6 +44,7 @@ export function NowPlayingSheet({
   onLyricsChange: (toggle: (lyrics: boolean) => boolean) => void
 }) {
   const { nowPlaying: np, commands } = usePlayer()
+  const me = useMe()
   const position = usePosition(np)
   const drag = useDragControls()
   // While scrubbing, show the thumb where the finger is, not the live position.
@@ -181,6 +186,7 @@ export function NowPlayingSheet({
                           )}
                           {np.autopilot && <AutopilotBadge pick={np.autopilot} />}
                           <SourceTag provider={np.track.provider} via={np.via} className="py-1" />
+                          {!isGuest(me) && <SaveArtistButton artists={nowPlayingArtists(np)} className="ml-auto" />}
                         </div>
                         {np.autopilot && <AutopilotWhy pick={np.autopilot} className="mt-2 text-sm" />}
                       </motion.div>

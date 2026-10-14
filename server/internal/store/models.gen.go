@@ -366,6 +366,18 @@ type RoomMember struct {
 	CreatedAt time.Time
 }
 
+type SavedArtist struct {
+	ID       string
+	UserID   string
+	Key      string
+	Name     string
+	Refs     string
+	Picture  sql.NullString
+	RoomID   sql.NullString
+	QueuedBy sql.NullString
+	SavedAt  time.Time
+}
+
 type ServerKey struct {
 	Name      string
 	Key       []byte

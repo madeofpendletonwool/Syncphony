@@ -49,6 +49,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/realtime"
 	"github.com/madeofpendletonwool/syncphony/server/internal/releases"
 	"github.com/madeofpendletonwool/syncphony/server/internal/rooms"
+	"github.com/madeofpendletonwool/syncphony/server/internal/savedartists"
 	"github.com/madeofpendletonwool/syncphony/server/internal/store"
 	"github.com/madeofpendletonwool/syncphony/server/internal/suggest"
 	"github.com/madeofpendletonwool/syncphony/server/internal/transcode"
@@ -373,8 +374,11 @@ func run() error {
 		Bus: a.bus, Presence: presence,
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	}
+	api.SavedArtists = savedartists.New(db, roomSvc, nil)
 	if len(graph.Sources()) > 0 {
 		api.Graph = graph
+		// Saved artists' pictures come from the graph's Deezer answers.
+		api.SavedArtists = savedartists.New(db, roomSvc, graph)
 	}
 	// Personal discovery (ADR 0017): seed sets, minus what's in your library.
 	lib := library.New(db, a.links)
