@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { SHOWS } from '@/hooks/use-scene'
+import type { ChatLook } from '@/lib/chat'
 import { roomsQuery, type Room } from '@/lib/room'
 import { toast } from '@/lib/toast'
 
@@ -15,6 +16,12 @@ const looks: { value: Screens['look']; label: string; hint: string }[] = [
   { value: 'auto', label: 'Auto', hint: 'Lyrics and what’s next, with the visualizer for songs with no words.' },
   { value: 'stage', label: 'Stage', hint: 'Now playing, lyrics and what’s next.' },
   { value: 'visualizer', label: 'Visualizer', hint: 'Full-screen visuals, with what’s playing in a corner.' },
+]
+
+const chatLooks: { value: ChatLook; label: string; hint: string }[] = [
+  { value: 'floating', label: 'Floating', hint: 'Messages drift across the top of the screen, then fade.' },
+  { value: 'log', label: 'Side log', hint: 'The last few messages in a corner.' },
+  { value: 'off', label: 'Off', hint: 'The room’s chat stays on phones.' },
 ]
 
 /**
@@ -41,6 +48,7 @@ export function BigScreenLook({ room, editable }: { room: Room; editable: boolea
   const s = room.screens
   const set = (next: Partial<Screens>) => update.mutate({ ...s, ...next })
   const shown = intensity ?? s.intensity
+  const chat = s.chat ?? 'floating'
 
   return (
     <section className="flex flex-col gap-3">
@@ -92,6 +100,24 @@ export function BigScreenLook({ room, editable }: { room: Room; editable: boolea
           onValueCommit={([v]) => set({ intensity: v })}
         />
       </label>
+      <div className="flex flex-col gap-2">
+        <span className="text-sm text-muted-foreground">Chat on the big screen</span>
+        <ToggleGroup
+          type="single"
+          value={chat}
+          disabled={!editable}
+          onValueChange={(v) => v && set({ chat: v as ChatLook })}
+          aria-label="Chat on the big screen"
+          className="grid w-full grid-cols-3"
+        >
+          {chatLooks.map((l) => (
+            <ToggleGroupItem key={l.value} value={l.value}>
+              {l.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+        <p className="text-caption text-muted-foreground">{chatLooks.find((l) => l.value === chat)?.hint}</p>
+      </div>
       {!editable && <p className="text-caption text-muted-foreground">Whoever runs the room can change these.</p>}
     </section>
   )
