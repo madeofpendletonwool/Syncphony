@@ -45,6 +45,8 @@ var displayOps = map[string]bool{
 	"GetGameScores":          true,
 	"GetGameClip":            true,
 	"GetQueueGames":          true,
+	// The room's chat, floating by (ADR 0018).
+	"ListChatMessages": true,
 	// The night's Wrapped, played at the end of the night.
 	"GetRoomRecap": true,
 	// Playing the room's audio, for displays with audio on (audioOps).
@@ -94,6 +96,8 @@ func displayRoom(req any) (roomID string, ok bool) {
 	case GetQueueItemLinerNotesRequestObject:
 		return r.RoomId, true
 	case GetHeartsRequestObject:
+		return r.RoomId, true
+	case ListChatMessagesRequestObject:
 		return r.RoomId, true
 	case GetGuestPassRequestObject:
 		return r.RoomId, true
@@ -382,43 +386,46 @@ var reactionEmoji = map[ReactionEmoji]bool{
 	"🔥": true, "❤️": true, "🙌": true, "😂": true, "💃": true, "🎉": true, "😮": true, "👏": true,
 }
 
-// Reactions per person: a burst, refilling a few a second.
-const (
-	reactionBurst = 8
-	reactionEvery = 300 * time.Millisecond
-)
+// reactionRate: reactions per person, a burst refilling a few a second.
+var reactionRate = rate{burst: 8, every: 300 * time.Millisecond}
 
-// reactionLimiter is a token bucket per user.
-type reactionLimiter struct {
-	mu      sync.Mutex
-	buckets map[string]*reactionBucket
+// rate is a token bucket's size, and how often it gains a token.
+type rate struct {
+	burst float64
+	every time.Duration
 }
 
-type reactionBucket struct {
+// userLimiter is a token bucket per user.
+type userLimiter struct {
+	mu      sync.Mutex
+	buckets map[string]*bucket
+}
+
+type bucket struct {
 	tokens float64
 	at     time.Time
 }
 
 // allow takes a token from userID's bucket, reporting how long to wait if
 // there's none.
-func (l *reactionLimiter) allow(userID string, now time.Time) (time.Duration, bool) {
+func (l *userLimiter) allow(userID string, now time.Time, r rate) (time.Duration, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.buckets == nil {
-		l.buckets = map[string]*reactionBucket{}
+		l.buckets = map[string]*bucket{}
 	}
 	b := l.buckets[userID]
 	if b == nil {
 		if len(l.buckets) > 10_000 {
 			clear(l.buckets)
 		}
-		b = &reactionBucket{tokens: reactionBurst, at: now}
+		b = &bucket{tokens: r.burst, at: now}
 		l.buckets[userID] = b
 	}
-	b.tokens = min(reactionBurst, b.tokens+float64(now.Sub(b.at))/float64(reactionEvery))
+	b.tokens = min(r.burst, b.tokens+float64(now.Sub(b.at))/float64(r.every))
 	b.at = now
 	if b.tokens < 1 {
-		return time.Duration((1 - b.tokens) * float64(reactionEvery)), false
+		return time.Duration((1 - b.tokens) * float64(r.every)), false
 	}
 	b.tokens--
 	return 0, true
@@ -434,7 +441,7 @@ func (s *Server) SendReaction(ctx context.Context, req SendReactionRequestObject
 	}
 	u := sessionFrom(ctx).User
 	now := time.Now()
-	if wait, ok := s.reactions.allow(u.ID, now); !ok {
+	if wait, ok := s.reactions.allow(u.ID, now, reactionRate); !ok {
 		return nil, &auth.RateLimitError{RetryAfter: wait}
 	}
 	r := Reaction{Id: store.NewID(), RoomId: req.RoomId, UserId: u.ID, Emoji: req.Body.Emoji, At: now.UTC()}

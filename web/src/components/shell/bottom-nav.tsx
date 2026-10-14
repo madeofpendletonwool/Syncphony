@@ -2,7 +2,10 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { CircleUserRound, Compass, Disc3, Library, Search } from 'lucide-react'
 import { motion } from 'motion/react'
+import { UnreadBadge } from '@/components/chat/chat-button'
+import { useChatUnread } from '@/hooks/use-chat'
 import { meQuery } from '@/lib/auth'
+import { useCurrentRoom } from '@/lib/room'
 import { spring } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
@@ -19,7 +22,11 @@ const under = (pathname: string, base: string) => pathname === base || pathname.
 
 export function BottomNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const guest = !!useQuery(meQuery).data?.guest
+  const me = useQuery(meQuery).data
+  const guest = !!me?.guest
+  const { room } = useCurrentRoom()
+  // The room's unread chat shows on the Room tab, wherever you are.
+  const unread = useChatUnread(room?.id, me?.id ?? '')
   const shown = tabs.filter((t) => !('members' in t) || !guest)
 
   return (
@@ -39,13 +46,15 @@ export function BottomNav() {
               <Link
                 to={to}
                 aria-current={active ? 'page' : undefined}
+                aria-label={to === '/room' && unread > 0 ? `${label}, ${unread} unread messages` : undefined}
                 className={cn(
                   'relative flex h-full flex-col items-center justify-center gap-0.5 rounded-[1.1rem] text-[0.7rem] font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
                   active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                <motion.span animate={{ scale: active ? 1.08 : 1 }} transition={spring}>
+                <motion.span animate={{ scale: active ? 1.08 : 1 }} transition={spring} className="relative">
                   <Icon className="size-[1.375rem]" strokeWidth={active ? 2.25 : 1.75} />
+                  {to === '/room' && unread > 0 && <UnreadBadge count={unread} className="-top-1 -right-2" />}
                 </motion.span>
                 {label}
               </Link>

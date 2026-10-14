@@ -17,6 +17,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
+	"github.com/madeofpendletonwool/syncphony/server/internal/chat"
 	"github.com/madeofpendletonwool/syncphony/server/internal/games"
 	"github.com/madeofpendletonwool/syncphony/server/internal/nights"
 	"github.com/madeofpendletonwool/syncphony/server/internal/palette"
@@ -349,6 +350,10 @@ func (rc *roomConn) send(ctx context.Context, e realtime.Event) error {
 		data = map[string]string{"roomId": d.RoomID}
 	case Reaction:
 		data = d
+	case chat.Message:
+		data = toChatMessage(d)
+	case chat.Deleted:
+		data = ChatMessageDeleted{RoomId: d.RoomID, Id: d.ID}
 	case nights.Hearts:
 		data = toHearts(d)
 	case nights.Night:

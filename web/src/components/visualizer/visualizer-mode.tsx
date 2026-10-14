@@ -1,14 +1,18 @@
 import { ChevronLeft, ChevronRight, Pause, Play, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Artwork } from '@/components/artwork'
+import { BigScreenChat } from '@/components/tv/big-screen-chat'
 import { Button } from '@/components/ui/button'
 import { usePosition } from '@/hooks/use-position'
 import { SHOWS, useShow } from '@/hooks/use-scene'
 import { beatSettings, setBeatSettings, visualizerOpen } from '@/lib/beat'
 import { formatDuration, usePlayer } from '@/lib/now-playing'
+import { useCurrentRoom } from '@/lib/room'
 import { useStore } from '@/lib/store'
+import { usersQuery } from '@/lib/users'
 import { cn } from '@/lib/utils'
 import { Visualizer } from './visualizer'
 
@@ -25,6 +29,9 @@ export function VisualizerMode() {
 
 function Mode() {
   const { nowPlaying: np, commands } = usePlayer()
+  // The room's chat floats by, as on its big screens.
+  const { room } = useCurrentRoom()
+  const users = useQuery(usersQuery)
   const position = usePosition(np)
   const { show: setting } = useStore(beatSettings)
   const show = useShow(setting)
@@ -100,6 +107,7 @@ function Mode() {
       className={cn('fixed inset-0 z-[70] bg-black text-white', idle && 'cursor-none')}
     >
       <Visualizer show={show} artworkUrl={np?.artworkUrl} />
+      {room && <BigScreenChat roomId={room.id} look={room.screens.chat} users={users.data} />}
 
       <div className={cn('absolute inset-0 transition-opacity duration-700', idle ? 'opacity-0' : 'opacity-100')}>
         <div className="absolute top-[calc(env(safe-area-inset-top)+1rem)] right-4 flex gap-2">

@@ -144,7 +144,7 @@ func toRoom(r store.Room) Room {
 	out.Autopilot = RoomAutopilot{On: st.Autopilot.On, Adventure: RoomAutopilotAdventure(st.Autopilot.Adventure), Explore: new(st.Autopilot.ExploreLevel()), EnergyCurve: new(st.Autopilot.EnergyCurveOn())}
 	out.Guests = RoomGuests{Allowed: st.Guests.Allowed, MaxSongs: st.Guests.SongLimit(), CanVote: st.Guests.CanVote()}
 	sc := st.Screens.Normal()
-	out.Screens = RoomScreens{Look: RoomScreensLook(sc.Look), Scene: sc.Scene, Intensity: float32(*sc.Intensity)}
+	out.Screens = RoomScreens{Look: RoomScreensLook(sc.Look), Scene: sc.Scene, Intensity: float32(*sc.Intensity), Chat: ptr(RoomScreensChat(sc.Chat))}
 	out.Games = toRoomGames(st.Games)
 	if out.Fairness.Weights == nil {
 		out.Fairness.Weights = map[string]int{}
@@ -161,7 +161,11 @@ func fromAutopilot(a RoomAutopilot) rooms.Autopilot {
 }
 
 func fromScreens(s RoomScreens) rooms.Screens {
-	return rooms.Screens{Look: string(s.Look), Scene: s.Scene, Intensity: ptr(math.Round(float64(s.Intensity)*100) / 100)}
+	out := rooms.Screens{Look: string(s.Look), Scene: s.Scene, Intensity: ptr(math.Round(float64(s.Intensity)*100) / 100)}
+	if s.Chat != nil {
+		out.Chat = string(*s.Chat)
+	}
+	return out
 }
 
 func fromGuests(g RoomGuests) rooms.Guests {

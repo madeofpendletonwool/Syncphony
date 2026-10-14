@@ -1868,6 +1868,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The room's chat, newest first
+         * @description A page of the room's chat (ADR 0018), newest first, across nights.
+         *     For the next (older) page, pass the last message's `id` as
+         *     `before`. Deleted messages are left out. New messages arrive on the
+         *     room socket as `chat.message`, deletions as `chat.deleted`. Paired
+         *     displays can read the chat too.
+         */
+        get: operations["listChatMessages"];
+        put?: never;
+        /**
+         * Send a message to the room's chat
+         * @description Plain text, trimmed, 1–500 characters (`invalid_input` otherwise).
+         *     Remembers the song playing. Reaches everyone on the room socket as
+         *     `chat.message`. Members and guests can chat; limited to a burst of
+         *     a few, then one every couple of seconds per person (`rate_limited`).
+         */
+        post: operations["sendChatMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/messages/{messageId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a chat message
+         * @description Your own, or anyone's if you own the room or are an admin
+         *     (`forbidden` otherwise). It leaves every screen (`chat.deleted`).
+         */
+        delete: operations["deleteChatMessage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/displays": {
         parameters: {
             query?: never;
@@ -3751,6 +3808,15 @@ export interface components {
              * @default 1.5
              */
             intensity: number;
+            /**
+             * @description How the room's chat shows on big screens (ADR 0018). `floating`:
+             *     messages drift up the sides like reactions. `log`: the last few
+             *     in a corner column. `off`: not at all. Left out of an update, it
+             *     stays as it was.
+             * @default floating
+             * @enum {string}
+             */
+            chat: "floating" | "log" | "off";
         };
         /**
          * @description The room's music party games (ADR 0015). Off by default. The level
@@ -4969,6 +5035,29 @@ export interface components {
             /** Format: date-time */
             at: string;
         };
+        ChatMessageRequest: {
+            /** @description Plain text; trimmed, then 1–500 characters. */
+            body: string;
+        };
+        /** @description A message in a room's chat (ADR 0018). */
+        ChatMessage: {
+            /** @description Time-ordered, so IDs sort as the messages were sent. */
+            id: string;
+            roomId: string;
+            userId: string;
+            body: string;
+            /** @description The night it was sent in, once that night has ended. */
+            nightId?: string;
+            /** @description The song playing when it was sent. */
+            itemId?: string;
+            track?: components["schemas"]["QueuedTrack"];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ChatMessageDeleted: {
+            roomId: string;
+            id: string;
+        };
         Display: {
             id: string;
             roomId: string;
@@ -5314,6 +5403,8 @@ export interface components {
          *       your own while the room's scores are `private`.
          *     - `game.queue`: QueueGame. A queue game started, changed, or is
          *       done. Sent after hello for each that's up.
+         *     - `chat.message`: ChatMessage. Someone sent a message to the room.
+         *     - `chat.deleted`: ChatMessageDeleted. A message was deleted.
          *
          *     A paired display connects with its display cookie instead, to its
          *     own room only. So does a signed-in user with `display=1`: either way
@@ -5329,7 +5420,7 @@ export interface components {
          */
         RoomEvent: {
             /** @enum {string} */
-            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "room.deleted" | "reaction.sent" | "hearts.updated" | "night.ended" | "guests.updated" | "members.updated" | "game.round" | "game.scores" | "game.queue";
+            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "room.deleted" | "reaction.sent" | "hearts.updated" | "night.ended" | "guests.updated" | "members.updated" | "game.round" | "game.scores" | "game.queue" | "chat.message" | "chat.deleted";
             /**
              * Format: int64
              * @description Queue version, on `queue.updated` only.
@@ -8649,6 +8740,82 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Reaction"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listChatMessages: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Only messages older than this message. */
+                before?: string;
+            };
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Messages, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatMessage"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    sendChatMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Sent */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatMessage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteChatMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };

@@ -37,6 +37,7 @@ import { live, useRoomSocket } from '@/lib/room-socket'
 import { useStore } from '@/lib/store'
 import { usersQuery } from '@/lib/users'
 import { cn } from '@/lib/utils'
+import { BigScreenChat } from './big-screen-chat'
 import { FloatingReactions } from './floating-reactions'
 import { LinerCards } from './liner-cards'
 import { QrCode } from './qr-code'
@@ -159,6 +160,7 @@ export function TvStage({
         )}
       </AnimatePresence>
       <FloatingReactions users={users.data} />
+      <BigScreenChat roomId={roomId} look={screens.chat} users={users.data} />
       <TvKeys
         roomId={roomId}
         playback={playback.data}

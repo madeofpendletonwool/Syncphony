@@ -22,6 +22,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
 	"github.com/madeofpendletonwool/syncphony/server/internal/backup"
+	"github.com/madeofpendletonwool/syncphony/server/internal/chat"
 	"github.com/madeofpendletonwool/syncphony/server/internal/clips"
 	"github.com/madeofpendletonwool/syncphony/server/internal/config"
 	"github.com/madeofpendletonwool/syncphony/server/internal/discover"
@@ -375,6 +376,7 @@ func run() error {
 		BaseURL: cfg.BaseURL, TrustedProxies: cfg.TrustedProxies,
 	}
 	api.SavedArtists = savedartists.New(db, roomSvc, nil)
+	api.Chat = chat.New(db, a.bus)
 	if len(graph.Sources()) > 0 {
 		api.Graph = graph
 		// Saved artists' pictures come from the graph's Deezer answers.
