@@ -18,6 +18,7 @@ import {
 import { Artwork } from '@/components/artwork'
 import { BackButton } from '@/components/back-button'
 import { AddToSetButton } from '@/components/discover/add-to-set'
+import { SaveArtistButton } from '@/components/library/save-artist'
 import { Notice } from '@/components/notice'
 import { ProviderIcon } from '@/components/provider-icon'
 import { Button } from '@/components/ui/button'
@@ -141,6 +142,7 @@ function Artist() {
             <Shuffle data-icon="inline-start" />
             Shuffle
           </Button>
+          {!me.guest && <SaveArtistButton artists={[{ name: a.name, linkId, artistId }]} variant="button" />}
           {!me.guest && <AddToSetButton artist={a.name} />}
         </motion.div>
         {elsewhere.data && elsewhere.data.length > 0 && (
