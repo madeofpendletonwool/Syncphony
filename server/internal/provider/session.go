@@ -193,6 +193,21 @@ type Cataloger interface {
 	LibraryChanged(ctx context.Context) (time.Time, error)
 }
 
+// Starrer is implemented by sessions that can list everything the account
+// starred: artists, albums and songs. Discovery offers their artists as
+// seeds to pick from, only when asked (ADR 0017). Like Cataloger, it needs
+// no capability.
+type Starrer interface {
+	Starred(ctx context.Context) (Starred, error)
+}
+
+// Starred is what an account starred.
+type Starred struct {
+	Artists []Artist
+	Albums  []Album
+	Songs   []Track
+}
+
 // PlayChecker is implemented by sessions that can tell ahead of time that a
 // track won't play, so the queue can refuse it instead of skipping it later.
 type PlayChecker interface {

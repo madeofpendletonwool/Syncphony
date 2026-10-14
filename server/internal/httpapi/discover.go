@@ -22,6 +22,10 @@ func toDiscoverySet(set discover.Set) DiscoverySet {
 		Id: set.ID, Name: set.Name, Explore: int(set.Explore), Mode: DiscoveryMode(set.Mode), FreshDays: DiscoveryFreshDays(set.FreshDays),
 		Artists: make([]DiscoverySetArtist, len(set.Artists)), CreatedAt: set.CreatedAt, UpdatedAt: set.UpdatedAt,
 	}
+	out.GrowAuto, out.RoomWeight = set.GrowAuto != 0, DiscoveryRoomWeight(set.RoomWeight)
+	if set.RoomID.Valid {
+		out.RoomId = &set.RoomID.String
+	}
 	for i, a := range set.Artists {
 		out.Artists[i] = DiscoverySetArtist{
 			Key: a.ArtistKey, Name: a.Name, Mbid: nonEmpty(a.Mbid.String), AddedFrom: DiscoverySetArtistAddedFrom(a.AddedFrom), AddedAt: a.AddedAt,
@@ -60,7 +64,10 @@ func (s *Server) ListDiscoverySets(ctx context.Context, _ ListDiscoverySetsReque
 	for i, set := range sets {
 		out[i] = DiscoverySetSummary{
 			Id: set.ID, Name: set.Name, Explore: int(set.Explore), Mode: DiscoveryMode(set.Mode), FreshDays: DiscoveryFreshDays(set.FreshDays), ArtistCount: int(set.Artists),
-			CreatedAt: set.CreatedAt, UpdatedAt: set.UpdatedAt,
+			Wanted: int(set.Wanted), Got: int(set.Got), CreatedAt: set.CreatedAt, UpdatedAt: set.UpdatedAt,
+		}
+		if set.RoomID.Valid {
+			out[i].RoomId = &set.RoomID.String
 		}
 	}
 	return out, nil
@@ -102,7 +109,10 @@ func (s *Server) UpdateDiscoverySet(ctx context.Context, req UpdateDiscoverySetR
 	if err != nil {
 		return nil, err
 	}
-	c := discover.Changes{Name: req.Body.Name, Explore: req.Body.Explore}
+	c := discover.Changes{Name: req.Body.Name, Explore: req.Body.Explore, GrowAuto: req.Body.GrowAuto, RoomID: req.Body.RoomId}
+	if req.Body.RoomWeight != nil {
+		c.RoomWeight = ptr(string(*req.Body.RoomWeight))
+	}
 	if req.Body.Mode != nil {
 		c.Mode = ptr(string(*req.Body.Mode))
 	}
@@ -318,14 +328,19 @@ func (s *Server) PostDiscoveryFeedback(ctx context.Context, req PostDiscoveryFee
 		return nil, err
 	}
 	b := req.Body
-	song := discover.Song{Title: b.Title, Artist: b.Artist, MBID: deref(b.Mbid), ISRC: deref(b.Isrc)}
+	song := discover.Song{Title: b.Title, Artist: b.Artist, Album: deref(b.Album), Cover: deref(b.Cover), MBID: deref(b.Mbid), ISRC: deref(b.Isrc)}
 	if b.DeezerId != nil {
 		song.DeezerID = *b.DeezerId
 	}
-	if err := s.Discover.Thumb(ctx, u.ID, deref(b.SetId), string(b.Kind), song); err != nil {
+	did, err := s.Discover.Thumb(ctx, u.ID, deref(b.SetId), string(b.Kind), song)
+	if err != nil {
 		return nil, err
 	}
-	return PostDiscoveryFeedback204Response{}, nil
+	out := DiscoveryThumbResult{Grew: nonEmpty(did.Grew)}
+	if did.Want != nil {
+		out.Want = ptr(toWantItem(*did.Want))
+	}
+	return PostDiscoveryFeedback200JSONResponse(out), nil
 }
 
 // ListDiscoveryBlocks lists the artists the caller blocked.
@@ -467,4 +482,163 @@ func (s *Server) GetDiscoveryImage(ctx context.Context, req GetDiscoveryImageReq
 
 func (r artworkResponse) VisitGetDiscoveryImageResponse(w http.ResponseWriter) error {
 	return r.write(w)
+}
+
+// Stage 4 (MAD-824..826): the Want list, sets that learn, and rooms as a
+// set's source.
+
+func toWantItem(w store.WantItem) WantItem {
+	out := WantItem{
+		Id: w.ID, Kind: WantKind(w.Kind), Artist: w.Artist, Title: w.Title, Release: nonEmpty(w.ReleaseTitle),
+		Mbid: nonEmpty(w.Mbid.String), Isrc: nonEmpty(w.Isrc.String), DeezerId: nonZero(w.DeezerID.Int64), Cover: nonEmpty(w.Cover),
+		SetId: nonEmpty(w.SetID.String), Status: WantStatus(w.Status), GotAt: timePtr(w.GotAt.Time, w.GotAt.Valid), AddedAt: w.AddedAt,
+	}
+	if w.GotBy.Valid {
+		out.GotBy = ptr(WantItemGotBy(w.GotBy.String))
+	}
+	return out
+}
+
+// ListDiscoveryWants returns the caller's Want list.
+func (s *Server) ListDiscoveryWants(ctx context.Context, _ ListDiscoveryWantsRequestObject) (ListDiscoveryWantsResponseObject, error) {
+	u, err := member(ctx)
+	if err != nil {
+		return nil, err
+	}
+	l, err := s.Discover.Wants(ctx, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	out := WantList{Items: make([]WantItem, len(l.Items)), Landed: l.Landed}
+	for i, w := range l.Items {
+		out.Items[i] = toWantItem(w)
+	}
+	return ListDiscoveryWants200JSONResponse(out), nil
+}
+
+// AddDiscoveryWant puts a song or release on the caller's Want list.
+func (s *Server) AddDiscoveryWant(ctx context.Context, req AddDiscoveryWantRequestObject) (AddDiscoveryWantResponseObject, error) {
+	u, err := member(ctx)
+	if err != nil {
+		return nil, err
+	}
+	b := req.Body
+	w := discover.Want{
+		Kind: string(b.Kind), Artist: b.Artist, Title: b.Title, Release: deref(b.Release),
+		MBID: deref(b.Mbid), ISRC: deref(b.Isrc), Cover: deref(b.Cover), SetID: deref(b.SetId),
+	}
+	if b.DeezerId != nil {
+		w.DeezerID = *b.DeezerId
+	}
+	it, err := s.Discover.AddWant(ctx, u.ID, w)
+	if err != nil {
+		return nil, err
+	}
+	return AddDiscoveryWant200JSONResponse(toWantItem(it)), nil
+}
+
+// UpdateDiscoveryWant marks a thing wanted, got or dismissed.
+func (s *Server) UpdateDiscoveryWant(ctx context.Context, req UpdateDiscoveryWantRequestObject) (UpdateDiscoveryWantResponseObject, error) {
+	u, err := member(ctx)
+	if err != nil {
+		return nil, err
+	}
+	it, err := s.Discover.SetWant(ctx, u.ID, req.WantId, string(req.Body.Status))
+	if err != nil {
+		return nil, err
+	}
+	return UpdateDiscoveryWant200JSONResponse(toWantItem(it)), nil
+}
+
+// SeeDiscoveryLanded notes the caller saw what landed in their library.
+func (s *Server) SeeDiscoveryLanded(ctx context.Context, _ SeeDiscoveryLandedRequestObject) (SeeDiscoveryLandedResponseObject, error) {
+	u, err := member(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.Discover.SeeLanded(ctx, u.ID); err != nil {
+		return nil, err
+	}
+	return SeeDiscoveryLanded204Response{}, nil
+}
+
+func toOffers(os []discover.Offer) []DiscoveryOffer {
+	out := make([]DiscoveryOffer, len(os))
+	for i, o := range os {
+		out[i] = DiscoveryOffer{Key: o.Key, Name: o.Name, Thumbs: o.Thumbs}
+	}
+	return out
+}
+
+// GetDiscoverySuggestions returns what a set's thumbs suggest.
+func (s *Server) GetDiscoverySuggestions(ctx context.Context, req GetDiscoverySuggestionsRequestObject) (GetDiscoverySuggestionsResponseObject, error) {
+	u, err := member(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sg, err := s.Discover.Suggestions(ctx, u.ID, req.SetId)
+	if err != nil {
+		return nil, err
+	}
+	return GetDiscoverySuggestions200JSONResponse(DiscoverySuggestions{Grow: toOffers(sg.Grow), Block: toOffers(sg.Block)}), nil
+}
+
+// DismissDiscoverySuggestion says no to a suggestion.
+func (s *Server) DismissDiscoverySuggestion(ctx context.Context, req DismissDiscoverySuggestionRequestObject) (DismissDiscoverySuggestionResponseObject, error) {
+	u, err := member(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.Discover.Dismiss(ctx, u.ID, req.SetId, string(req.Body.Kind), req.Body.Artist); err != nil {
+		return nil, err
+	}
+	return DismissDiscoverySuggestion204Response{}, nil
+}
+
+// ImportDiscoverySetArtists adds the artists the caller picked to a set.
+func (s *Server) ImportDiscoverySetArtists(ctx context.Context, req ImportDiscoverySetArtistsRequestObject) (ImportDiscoverySetArtistsResponseObject, error) {
+	u, err := member(ctx)
+	if err != nil {
+		return nil, err
+	}
+	set, err := s.Discover.Import(ctx, u.ID, req.SetId, string(req.Body.From), toSeeds(req.Body.Artists))
+	if err != nil {
+		return nil, err
+	}
+	return ImportDiscoverySetArtists200JSONResponse(toDiscoverySet(set)), nil
+}
+
+// ListDiscoveryStarred lists the artists the caller starred on Navidrome.
+func (s *Server) ListDiscoveryStarred(ctx context.Context, _ ListDiscoveryStarredRequestObject) (ListDiscoveryStarredResponseObject, error) {
+	u, err := member(ctx)
+	if err != nil {
+		return nil, err
+	}
+	as, err := s.Discover.Starred(ctx, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(ListDiscoveryStarred200JSONResponse, len(as))
+	for i, a := range as {
+		out[i] = DiscoveryStarredArtist{Name: a.Name, Artist: a.Artist, Albums: a.Albums, Songs: a.Songs}
+	}
+	return out, nil
+}
+
+// GetDiscoveryRoomTaste returns a room's favorite artists, or a night's.
+func (s *Server) GetDiscoveryRoomTaste(ctx context.Context, req GetDiscoveryRoomTasteRequestObject) (GetDiscoveryRoomTasteResponseObject, error) {
+	u, err := member(ctx)
+	if err != nil {
+		return nil, err
+	}
+	p := req.Params
+	as, err := s.Discover.RoomTaste(ctx, u.ID, p.RoomId, deref(p.NightId), p.Mine != nil && *p.Mine)
+	if err != nil {
+		return nil, err
+	}
+	out := make(GetDiscoveryRoomTaste200JSONResponse, len(as))
+	for i, a := range as {
+		out[i] = DiscoveryTasteArtist{Name: a.Name, Weight: float32(a.Weight), Plays: a.Plays}
+	}
+	return out, nil
 }

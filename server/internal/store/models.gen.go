@@ -64,6 +64,14 @@ type DiscoveryBlock struct {
 	CreatedAt time.Time
 }
 
+type DiscoveryDismissed struct {
+	UserID    string
+	Kind      string
+	Scope     string
+	ArtistKey string
+	CreatedAt time.Time
+}
+
 type DiscoveryFeedback struct {
 	ID        string
 	UserID    string
@@ -79,14 +87,17 @@ type DiscoveryFeedback struct {
 }
 
 type DiscoverySet struct {
-	ID        string
-	UserID    string
-	Name      string
-	Explore   int64
-	Mode      string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	FreshDays int64
+	ID         string
+	UserID     string
+	Name       string
+	Explore    int64
+	Mode       string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	FreshDays  int64
+	GrowAuto   int64
+	RoomID     sql.NullString
+	RoomWeight string
 }
 
 type DiscoverySetArtist struct {
@@ -451,4 +462,7 @@ type WantItem struct {
 	Status       string
 	GotAt        sql.NullTime
 	AddedAt      time.Time
+	Cover        string
+	GotBy        sql.NullString
+	GotSeen      int64
 }

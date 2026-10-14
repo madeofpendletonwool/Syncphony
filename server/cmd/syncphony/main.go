@@ -382,13 +382,24 @@ func run() error {
 	}
 	// Personal discovery (ADR 0017): seed sets, minus what's in your library.
 	lib := library.New(db, a.links)
-	go lib.Run(ctx)
 	api.Library = lib
 	api.Discover = discover.New(db)
-	api.Discover.Library = lib
+	api.Discover.Library, api.Discover.Stars = lib, lib
+	// Each index built marks what its user wanted and now has as got
+	// (MAD-824).
+	lib.Built = func(ctx context.Context, userID string) {
+		if _, err := api.Discover.CheckWants(ctx, userID); err != nil && ctx.Err() == nil {
+			slog.Warn("discover: checking the Want list", "user", userID, "err", err)
+		}
+	}
+	go lib.Run(ctx)
+	// A room's taste as a set's source (MAD-826): read only.
+	roomTaste := &discover.RoomSource{DB: db, CanEnter: roomSvc.CanEnter}
 	if len(graph.Sources()) > 0 {
 		api.Discover.Graph = graph
+		roomTaste.Graph = graph
 	}
+	api.Discover.Rooms = roomTaste
 	if deezer != nil {
 		api.Deezer, api.Discover.Deezer = deezer, deezer
 	} else {

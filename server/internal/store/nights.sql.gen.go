@@ -90,6 +90,33 @@ func (q *Queries) FirstPlayOf(ctx context.Context, queueItemID string) (PlayHist
 	return i, err
 }
 
+const getNight = `-- name: GetNight :one
+SELECT id, room_id, started_at, ended_at, ended_by, plays, queue_item_id, hearts, awards, bracket FROM nights WHERE id = ? AND room_id = ?
+`
+
+type GetNightParams struct {
+	ID     string
+	RoomID string
+}
+
+func (q *Queries) GetNight(ctx context.Context, arg GetNightParams) (Night, error) {
+	row := q.db.QueryRowContext(ctx, getNight, arg.ID, arg.RoomID)
+	var i Night
+	err := row.Scan(
+		&i.ID,
+		&i.RoomID,
+		&i.StartedAt,
+		&i.EndedAt,
+		&i.EndedBy,
+		&i.Plays,
+		&i.QueueItemID,
+		&i.Hearts,
+		&i.Awards,
+		&i.Bracket,
+	)
+	return i, err
+}
+
 const heartCountsSince = `-- name: HeartCountsSince :many
 SELECT hearts.queue_item_id, count(*) AS hearts
 FROM hearts

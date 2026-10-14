@@ -39,8 +39,8 @@ func (q *Queries) AddDiscoverySetArtist(ctx context.Context, arg AddDiscoverySet
 }
 
 const addWantItem = `-- name: AddWantItem :exec
-INSERT INTO want_items (id, user_id, set_id, kind, item_key, artist, title, release_title, mbid, isrc, deezer_id, added_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO want_items (id, user_id, set_id, kind, item_key, artist, title, release_title, mbid, isrc, deezer_id, cover, added_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (user_id, kind, item_key) DO NOTHING
 `
 
@@ -56,6 +56,7 @@ type AddWantItemParams struct {
 	Mbid         sql.NullString
 	Isrc         sql.NullString
 	DeezerID     sql.NullInt64
+	Cover        string
 	AddedAt      time.Time
 }
 
@@ -72,6 +73,7 @@ func (q *Queries) AddWantItem(ctx context.Context, arg AddWantItemParams) error 
 		arg.Mbid,
 		arg.Isrc,
 		arg.DeezerID,
+		arg.Cover,
 		arg.AddedAt,
 	)
 	return err
@@ -100,11 +102,22 @@ func (q *Queries) BlockDiscoveryArtist(ctx context.Context, arg BlockDiscoveryAr
 	return err
 }
 
+const countLandedWantItems = `-- name: CountLandedWantItems :one
+SELECT count(*) FROM want_items WHERE user_id = ? AND status = 'got' AND got_by = 'auto' AND got_seen = 0
+`
+
+func (q *Queries) CountLandedWantItems(ctx context.Context, userID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countLandedWantItems, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createDiscoverySet = `-- name: CreateDiscoverySet :one
 
 INSERT INTO discovery_sets (id, user_id, name, explore, mode, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?6, ?6)
-RETURNING id, user_id, name, explore, mode, created_at, updated_at, fresh_days
+RETURNING id, user_id, name, explore, mode, created_at, updated_at, fresh_days, grow_auto, room_id, room_weight
 `
 
 type CreateDiscoverySetParams struct {
@@ -137,6 +150,9 @@ func (q *Queries) CreateDiscoverySet(ctx context.Context, arg CreateDiscoverySet
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.FreshDays,
+		&i.GrowAuto,
+		&i.RoomID,
+		&i.RoomWeight,
 	)
 	return i, err
 }
@@ -172,6 +188,31 @@ func (q *Queries) DeleteDiscoverySet(ctx context.Context, arg DeleteDiscoverySet
 	return result.RowsAffected()
 }
 
+const dismissDiscoverySuggestion = `-- name: DismissDiscoverySuggestion :exec
+INSERT INTO discovery_dismissed (user_id, kind, scope, artist_key, created_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (user_id, kind, scope, artist_key) DO NOTHING
+`
+
+type DismissDiscoverySuggestionParams struct {
+	UserID    string
+	Kind      string
+	Scope     string
+	ArtistKey string
+	CreatedAt time.Time
+}
+
+func (q *Queries) DismissDiscoverySuggestion(ctx context.Context, arg DismissDiscoverySuggestionParams) error {
+	_, err := q.db.ExecContext(ctx, dismissDiscoverySuggestion,
+		arg.UserID,
+		arg.Kind,
+		arg.Scope,
+		arg.ArtistKey,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const getDeezerSong = `-- name: GetDeezerSong :one
 SELECT song_key, deezer_id, album, cover, checked_at FROM deezer_songs WHERE song_key = ?
 `
@@ -190,7 +231,7 @@ func (q *Queries) GetDeezerSong(ctx context.Context, songKey string) (DeezerSong
 }
 
 const getDiscoverySet = `-- name: GetDiscoverySet :one
-SELECT id, user_id, name, explore, mode, created_at, updated_at, fresh_days FROM discovery_sets WHERE id = ? AND user_id = ?
+SELECT id, user_id, name, explore, mode, created_at, updated_at, fresh_days, grow_auto, room_id, room_weight FROM discovery_sets WHERE id = ? AND user_id = ?
 `
 
 type GetDiscoverySetParams struct {
@@ -210,6 +251,9 @@ func (q *Queries) GetDiscoverySet(ctx context.Context, arg GetDiscoverySetParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.FreshDays,
+		&i.GrowAuto,
+		&i.RoomID,
+		&i.RoomWeight,
 	)
 	return i, err
 }
@@ -227,6 +271,75 @@ func (q *Queries) GetLibraryIndex(ctx context.Context, linkID string) (LibraryIn
 		&i.BuiltAt,
 		&i.Songs,
 		&i.Data,
+	)
+	return i, err
+}
+
+const getWantItem = `-- name: GetWantItem :one
+SELECT id, user_id, set_id, kind, item_key, artist, title, release_title, mbid, isrc, deezer_id, status, got_at, added_at, cover, got_by, got_seen FROM want_items WHERE id = ? AND user_id = ?
+`
+
+type GetWantItemParams struct {
+	ID     string
+	UserID string
+}
+
+func (q *Queries) GetWantItem(ctx context.Context, arg GetWantItemParams) (WantItem, error) {
+	row := q.db.QueryRowContext(ctx, getWantItem, arg.ID, arg.UserID)
+	var i WantItem
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.SetID,
+		&i.Kind,
+		&i.ItemKey,
+		&i.Artist,
+		&i.Title,
+		&i.ReleaseTitle,
+		&i.Mbid,
+		&i.Isrc,
+		&i.DeezerID,
+		&i.Status,
+		&i.GotAt,
+		&i.AddedAt,
+		&i.Cover,
+		&i.GotBy,
+		&i.GotSeen,
+	)
+	return i, err
+}
+
+const getWantItemByKey = `-- name: GetWantItemByKey :one
+SELECT id, user_id, set_id, kind, item_key, artist, title, release_title, mbid, isrc, deezer_id, status, got_at, added_at, cover, got_by, got_seen FROM want_items WHERE user_id = ? AND kind = ? AND item_key = ?
+`
+
+type GetWantItemByKeyParams struct {
+	UserID  string
+	Kind    string
+	ItemKey string
+}
+
+func (q *Queries) GetWantItemByKey(ctx context.Context, arg GetWantItemByKeyParams) (WantItem, error) {
+	row := q.db.QueryRowContext(ctx, getWantItemByKey, arg.UserID, arg.Kind, arg.ItemKey)
+	var i WantItem
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.SetID,
+		&i.Kind,
+		&i.ItemKey,
+		&i.Artist,
+		&i.Title,
+		&i.ReleaseTitle,
+		&i.Mbid,
+		&i.Isrc,
+		&i.DeezerID,
+		&i.Status,
+		&i.GotAt,
+		&i.AddedAt,
+		&i.Cover,
+		&i.GotBy,
+		&i.GotSeen,
 	)
 	return i, err
 }
@@ -374,23 +487,32 @@ func (q *Queries) ListDiscoverySetArtists(ctx context.Context, setID string) ([]
 }
 
 const listDiscoverySets = `-- name: ListDiscoverySets :many
-SELECT discovery_sets.id, discovery_sets.user_id, discovery_sets.name, discovery_sets.explore, discovery_sets.mode, discovery_sets.created_at, discovery_sets.updated_at, discovery_sets.fresh_days,
-    CAST((SELECT count(*) FROM discovery_set_artists a WHERE a.set_id = discovery_sets.id) AS INTEGER) AS artists
+SELECT discovery_sets.id, discovery_sets.user_id, discovery_sets.name, discovery_sets.explore, discovery_sets.mode, discovery_sets.created_at, discovery_sets.updated_at, discovery_sets.fresh_days, discovery_sets.grow_auto, discovery_sets.room_id, discovery_sets.room_weight,
+    CAST((SELECT count(*) FROM discovery_set_artists a WHERE a.set_id = discovery_sets.id) AS INTEGER) AS artists,
+    -- What the set has yielded: things wanted from its feeds, and of
+    -- those, how many you got.
+    CAST((SELECT count(*) FROM want_items w WHERE w.set_id = discovery_sets.id AND w.status != 'dismissed') AS INTEGER) AS wanted,
+    CAST((SELECT count(*) FROM want_items w WHERE w.set_id = discovery_sets.id AND w.status = 'got') AS INTEGER) AS got
 FROM discovery_sets
-WHERE user_id = ?
+WHERE discovery_sets.user_id = ?
 ORDER BY updated_at DESC, id DESC
 `
 
 type ListDiscoverySetsRow struct {
-	ID        string
-	UserID    string
-	Name      string
-	Explore   int64
-	Mode      string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	FreshDays int64
-	Artists   int64
+	ID         string
+	UserID     string
+	Name       string
+	Explore    int64
+	Mode       string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	FreshDays  int64
+	GrowAuto   int64
+	RoomID     sql.NullString
+	RoomWeight string
+	Artists    int64
+	Wanted     int64
+	Got        int64
 }
 
 func (q *Queries) ListDiscoverySets(ctx context.Context, userID string) ([]ListDiscoverySetsRow, error) {
@@ -411,7 +533,45 @@ func (q *Queries) ListDiscoverySets(ctx context.Context, userID string) ([]ListD
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.FreshDays,
+			&i.GrowAuto,
+			&i.RoomID,
+			&i.RoomWeight,
 			&i.Artists,
+			&i.Wanted,
+			&i.Got,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDismissedDiscoverySuggestions = `-- name: ListDismissedDiscoverySuggestions :many
+SELECT user_id, kind, scope, artist_key, created_at FROM discovery_dismissed WHERE user_id = ?
+`
+
+func (q *Queries) ListDismissedDiscoverySuggestions(ctx context.Context, userID string) ([]DiscoveryDismissed, error) {
+	rows, err := q.db.QueryContext(ctx, listDismissedDiscoverySuggestions, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DiscoveryDismissed{}
+	for rows.Next() {
+		var i DiscoveryDismissed
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Kind,
+			&i.Scope,
+			&i.ArtistKey,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -427,7 +587,7 @@ func (q *Queries) ListDiscoverySets(ctx context.Context, userID string) ([]ListD
 }
 
 const listWantItems = `-- name: ListWantItems :many
-SELECT id, user_id, set_id, kind, item_key, artist, title, release_title, mbid, isrc, deezer_id, status, got_at, added_at FROM want_items WHERE user_id = ? ORDER BY added_at DESC, id
+SELECT id, user_id, set_id, kind, item_key, artist, title, release_title, mbid, isrc, deezer_id, status, got_at, added_at, cover, got_by, got_seen FROM want_items WHERE user_id = ? ORDER BY added_at DESC, id
 `
 
 func (q *Queries) ListWantItems(ctx context.Context, userID string) ([]WantItem, error) {
@@ -454,6 +614,9 @@ func (q *Queries) ListWantItems(ctx context.Context, userID string) ([]WantItem,
 			&i.Status,
 			&i.GotAt,
 			&i.AddedAt,
+			&i.Cover,
+			&i.GotBy,
+			&i.GotSeen,
 		); err != nil {
 			return nil, err
 		}
@@ -466,6 +629,25 @@ func (q *Queries) ListWantItems(ctx context.Context, userID string) ([]WantItem,
 		return nil, err
 	}
 	return items, nil
+}
+
+const markWantItemGot = `-- name: MarkWantItemGot :execrows
+UPDATE want_items SET status = 'got', got_at = ?, got_by = 'auto', got_seen = 0 WHERE id = ? AND status = 'wanted'
+`
+
+type MarkWantItemGotParams struct {
+	GotAt sql.NullTime
+	ID    string
+}
+
+// MarkWantItemGot marks a wanted item got because it turned up in the
+// library; one dismissed or got already stays as it is.
+func (q *Queries) MarkWantItemGot(ctx context.Context, arg MarkWantItemGotParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markWantItemGot, arg.GotAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const putDeezerSong = `-- name: PutDeezerSong :exec
@@ -578,21 +760,34 @@ func (q *Queries) RemoveDiscoverySetArtist(ctx context.Context, arg RemoveDiscov
 	return result.RowsAffected()
 }
 
+const seeLandedWantItems = `-- name: SeeLandedWantItems :exec
+UPDATE want_items SET got_seen = 1 WHERE user_id = ? AND status = 'got' AND got_seen = 0
+`
+
+func (q *Queries) SeeLandedWantItems(ctx context.Context, userID string) error {
+	_, err := q.db.ExecContext(ctx, seeLandedWantItems, userID)
+	return err
+}
+
 const setWantItemStatus = `-- name: SetWantItemStatus :execrows
-UPDATE want_items SET status = ?, got_at = ? WHERE id = ? AND user_id = ?
+UPDATE want_items SET status = ?, got_at = ?, got_by = ?, got_seen = ? WHERE id = ? AND user_id = ?
 `
 
 type SetWantItemStatusParams struct {
-	Status string
-	GotAt  sql.NullTime
-	ID     string
-	UserID string
+	Status  string
+	GotAt   sql.NullTime
+	GotBy   sql.NullString
+	GotSeen int64
+	ID      string
+	UserID  string
 }
 
 func (q *Queries) SetWantItemStatus(ctx context.Context, arg SetWantItemStatusParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, setWantItemStatus,
 		arg.Status,
 		arg.GotAt,
+		arg.GotBy,
+		arg.GotSeen,
 		arg.ID,
 		arg.UserID,
 	)
@@ -648,17 +843,21 @@ func (q *Queries) UnblockDiscoveryArtist(ctx context.Context, arg UnblockDiscove
 }
 
 const updateDiscoverySet = `-- name: UpdateDiscoverySet :exec
-UPDATE discovery_sets SET name = ?, explore = ?, mode = ?, fresh_days = ?, updated_at = ? WHERE id = ? AND user_id = ?
+UPDATE discovery_sets SET name = ?, explore = ?, mode = ?, fresh_days = ?, grow_auto = ?, room_id = ?, room_weight = ?, updated_at = ?
+WHERE id = ? AND user_id = ?
 `
 
 type UpdateDiscoverySetParams struct {
-	Name      string
-	Explore   int64
-	Mode      string
-	FreshDays int64
-	UpdatedAt time.Time
-	ID        string
-	UserID    string
+	Name       string
+	Explore    int64
+	Mode       string
+	FreshDays  int64
+	GrowAuto   int64
+	RoomID     sql.NullString
+	RoomWeight string
+	UpdatedAt  time.Time
+	ID         string
+	UserID     string
 }
 
 func (q *Queries) UpdateDiscoverySet(ctx context.Context, arg UpdateDiscoverySetParams) error {
@@ -667,6 +866,9 @@ func (q *Queries) UpdateDiscoverySet(ctx context.Context, arg UpdateDiscoverySet
 		arg.Explore,
 		arg.Mode,
 		arg.FreshDays,
+		arg.GrowAuto,
+		arg.RoomID,
+		arg.RoomWeight,
 		arg.UpdatedAt,
 		arg.ID,
 		arg.UserID,

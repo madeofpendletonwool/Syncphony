@@ -243,7 +243,7 @@ func TestThumbsDownIsForGood(t *testing.T) {
 	other := e.set(t, "Duster")
 	f, _ := e.svc.Feed(t.Context(), e.alice, set.ID, "", false)
 	down := f.Items[0]
-	if err := e.svc.Thumb(t.Context(), e.alice, set.ID, discover.ThumbDown, discover.Song{Title: down.Title, Artist: down.Artist}); err != nil {
+	if _, err := e.svc.Thumb(t.Context(), e.alice, set.ID, discover.ThumbDown, discover.Song{Title: down.Title, Artist: down.Artist}); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{set.ID, other.ID} {
@@ -373,7 +373,7 @@ func TestSets(t *testing.T) {
 	if sets, _ := e.svc.Sets(ctx, e.alice); len(sets) != 0 {
 		t.Errorf("sets after deleting: %+v", sets)
 	}
-	if err := e.svc.Thumb(ctx, e.alice, "", "sideways", discover.Song{Title: "x", Artist: "y"}); !isInvalid(err) {
+	if _, err := e.svc.Thumb(ctx, e.alice, "", "sideways", discover.Song{Title: "x", Artist: "y"}); !isInvalid(err) {
 		t.Errorf("a sideways thumb: %v", err)
 	}
 }

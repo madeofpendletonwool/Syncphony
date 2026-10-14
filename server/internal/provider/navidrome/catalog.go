@@ -12,7 +12,10 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/provider"
 )
 
-var _ provider.Cataloger = (*session)(nil)
+var (
+	_ provider.Cataloger = (*session)(nil)
+	_ provider.Starrer   = (*session)(nil)
+)
 
 // catalogPage is how many songs a page of the catalog holds: search3's
 // most, so a big library takes few requests.

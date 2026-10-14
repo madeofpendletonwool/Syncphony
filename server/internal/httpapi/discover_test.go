@@ -100,7 +100,7 @@ func TestDiscover(t *testing.T) {
 		t.Fatalf("feed: %+v", feed)
 	}
 	first := feed.Items[0]
-	alice.want(http.StatusNoContent, "POST", "/me/discover/feedback", httpapi.DiscoveryFeedbackRequest{
+	alice.want(http.StatusOK, "POST", "/me/discover/feedback", httpapi.DiscoveryFeedbackRequest{
 		Kind: httpapi.DiscoveryFeedbackRequestKindDown, SetId: &set.Id, Title: first.Title, Artist: first.Artist,
 	})
 	alice.want(http.StatusOK, "GET", base+"/feed", nil).decode(t, &feed)
@@ -266,5 +266,96 @@ func TestDiscoverFresh(t *testing.T) {
 	}
 	if r := bob.do("GET", base+"/fresh", nil); r.status != http.StatusNotFound {
 		t.Errorf("bob's look at alice's fresh feed: %d", r.status)
+	}
+}
+
+func TestDiscoverWantsAndLearning(t *testing.T) {
+	e := newEnv(t)
+	alice := e.admin()
+	bob := e.member(alice, "bob")
+	e.api.Discover.Graph = discoverGraph{}
+	var set httpapi.DiscoverySet
+	alice.want(http.StatusCreated, "POST", "/me/discover/sets", httpapi.CreateDiscoverySetRequest{
+		Name: "90s alt", Artists: &[]httpapi.DiscoverySeed{{Name: "Hum"}},
+	}).decode(t, &set)
+	if set.GrowAuto || set.RoomWeight != httpapi.RoomWeightMedium || set.RoomId != nil {
+		t.Fatalf("a new set: %+v", set)
+	}
+	base := "/me/discover/sets/" + set.Id
+
+	// Two thumbs-up on Failure: both wanted, and Failure suggested.
+	var did httpapi.DiscoveryThumbResult
+	for _, title := range []string{"Failure 1", "Failure 2"} {
+		alice.want(http.StatusOK, "POST", "/me/discover/feedback", httpapi.DiscoveryFeedbackRequest{
+			Kind: httpapi.DiscoveryFeedbackRequestKindUp, SetId: &set.Id, Title: title, Artist: "Failure", Album: ptr("Fantastic Planet"),
+		}).decode(t, &did)
+	}
+	if did.Want == nil || did.Want.Status != httpapi.WantWanted || did.Want.Release == nil || *did.Want.Release != "Fantastic Planet" || did.Grew != nil {
+		t.Fatalf("thumbs-up: %+v", did)
+	}
+	var sg httpapi.DiscoverySuggestions
+	alice.want(http.StatusOK, "GET", base+"/suggestions", nil).decode(t, &sg)
+	if len(sg.Grow) != 1 || sg.Grow[0].Name != "Failure" || sg.Grow[0].Thumbs != 2 || len(sg.Block) != 0 {
+		t.Fatalf("suggestions: %+v", sg)
+	}
+	alice.want(http.StatusOK, "POST", base+"/import", httpapi.ImportDiscoveryArtistsRequest{
+		From: httpapi.ImportThumb, Artists: []httpapi.DiscoverySeed{{Name: "Failure"}},
+	}).decode(t, &set)
+	if len(set.Artists) != 2 || set.Artists[1].AddedFrom != httpapi.DiscoverySetArtistAddedFromThumb {
+		t.Fatalf("after taking the suggestion: %+v", set.Artists)
+	}
+	alice.want(http.StatusNoContent, "POST", base+"/suggestions/dismiss", httpapi.DismissDiscoverySuggestionRequest{Kind: httpapi.SuggestBlock, Artist: "Shiner"})
+
+	// The Want list, and a release wanted from Fresh.
+	var w httpapi.WantItem
+	alice.want(http.StatusOK, "POST", "/me/discover/want", httpapi.AddWantRequest{
+		Kind: httpapi.WantRelease, Artist: "Shiner", Title: "The Egg", Cover: ptr("abc"), SetId: &set.Id,
+	}).decode(t, &w)
+	var list httpapi.WantList
+	alice.want(http.StatusOK, "GET", "/me/discover/want", nil).decode(t, &list)
+	if len(list.Items) != 3 || list.Items[0].Title != "The Egg" || list.Landed != 0 {
+		t.Fatalf("want list: %+v", list)
+	}
+	alice.want(http.StatusOK, "PATCH", "/me/discover/want/"+w.Id, httpapi.UpdateWantRequest{Status: httpapi.WantGot}).decode(t, &w)
+	if w.Status != httpapi.WantGot || w.GotBy == nil || *w.GotBy != httpapi.WantGotManual || w.GotAt == nil {
+		t.Fatalf("got: %+v", w)
+	}
+	alice.want(http.StatusNoContent, "POST", "/me/discover/want/seen", nil)
+	var sums []httpapi.DiscoverySetSummary
+	alice.want(http.StatusOK, "GET", "/me/discover/sets", nil).decode(t, &sums)
+	if len(sums) != 1 || sums[0].Wanted != 3 || sums[0].Got != 1 {
+		t.Errorf("set stats: %+v", sums)
+	}
+	if r := bob.do("PATCH", "/me/discover/want/"+w.Id, httpapi.UpdateWantRequest{Status: httpapi.WantDismissed}); r.status != http.StatusNotFound {
+		t.Errorf("bob changed alice's want: %d", r.status)
+	}
+	var starred []httpapi.DiscoveryStarredArtist
+	alice.want(http.StatusOK, "GET", "/me/discover/starred", nil).decode(t, &starred)
+
+	// A room's taste: a room alice can open, and link to; bob's private
+	// room, neither.
+	var room httpapi.Room
+	alice.want(http.StatusCreated, "POST", "/rooms", httpapi.CreateRoomRequest{Name: "Living room"}).decode(t, &room)
+	var taste []httpapi.DiscoveryTasteArtist
+	alice.want(http.StatusOK, "GET", "/me/discover/room-taste?roomId="+room.Id, nil).decode(t, &taste)
+	weight := httpapi.RoomWeightHigh
+	alice.want(http.StatusOK, "PATCH", base, httpapi.UpdateDiscoverySetRequest{RoomId: &room.Id, RoomWeight: &weight}).decode(t, &set)
+	if set.RoomId == nil || *set.RoomId != room.Id || set.RoomWeight != httpapi.RoomWeightHigh {
+		t.Fatalf("linked: %+v", set)
+	}
+	var private httpapi.Room
+	bob.want(http.StatusCreated, "POST", "/rooms", httpapi.CreateRoomRequest{Name: "Bob's"}).decode(t, &private)
+	vis := httpapi.RoomVisibilityPrivate
+	bob.want(http.StatusOK, "PATCH", "/rooms/"+private.Id, httpapi.UpdateRoomRequest{Visibility: &vis})
+	if r := alice.do("GET", "/me/discover/room-taste?roomId="+private.Id, nil); r.status != http.StatusNotFound {
+		t.Errorf("alice read a private room's taste: %d %s", r.status, r.body)
+	}
+	if r := alice.do("PATCH", base, httpapi.UpdateDiscoverySetRequest{RoomId: &private.Id}); r.status != http.StatusNotFound {
+		t.Errorf("alice linked a private room: %d %s", r.status, r.body)
+	}
+	set = httpapi.DiscoverySet{}
+	alice.want(http.StatusOK, "PATCH", base, httpapi.UpdateDiscoverySetRequest{RoomId: ptr("")}).decode(t, &set)
+	if set.RoomId != nil {
+		t.Errorf("still linked: %+v", set.RoomId)
 	}
 }

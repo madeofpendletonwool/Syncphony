@@ -128,6 +128,25 @@ func (s *session) AlbumList(ctx context.Context, kind provider.AlbumListKind, li
 	return out, nil
 }
 
+// Starred implements provider.Starrer with getStarred2.
+func (s *session) Starred(ctx context.Context) (provider.Starred, error) {
+	starred, err := s.starred(ctx)
+	if err != nil {
+		return provider.Starred{}, err
+	}
+	var out provider.Starred
+	for _, ar := range starred.Artist {
+		out.Artists = append(out.Artists, toArtist(ar))
+	}
+	for _, al := range starred.Album {
+		out.Albums = append(out.Albums, toAlbum(al))
+	}
+	for _, so := range starred.Song {
+		out.Songs = append(out.Songs, s.track(so))
+	}
+	return out, nil
+}
+
 // starred returns what the account has starred.
 func (s *session) starred(ctx context.Context) (starred, error) {
 	r, err := s.api.call(ctx, "getStarred2", nil)

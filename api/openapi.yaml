@@ -3209,6 +3209,209 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /me/discover/sets/{setId}/suggestions:
+    parameters:
+      - $ref: "#/components/parameters/DiscoverySetId"
+    get:
+      operationId: getDiscoverySuggestions
+      summary: What a set's thumbs suggest
+      description: |
+        Artists you thumbed up twice from the set's feed, to add to it, and
+        artists you thumbed down three times in any feed, to block. Ones in
+        the set, blocked, or that you said no to are left out.
+      tags: [discover]
+      responses:
+        "200":
+          description: Suggestions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoverySuggestions"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/sets/{setId}/suggestions/dismiss:
+    parameters:
+      - $ref: "#/components/parameters/DiscoverySetId"
+    post:
+      operationId: dismissDiscoverySuggestion
+      summary: Say no to a suggestion
+      description: It isn't made again. A block suggestion is dismissed for every set.
+      tags: [discover]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DismissDiscoverySuggestionRequest"
+      responses:
+        "204":
+          description: Dismissed
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/sets/{setId}/import:
+    parameters:
+      - $ref: "#/components/parameters/DiscoverySetId"
+    post:
+      operationId: importDiscoverySetArtists
+      summary: Add artists you picked to a set at once
+      description: |
+        From a suggestion, your Navidrome stars, or a room's taste, noted as
+        coming from there. Artists in the set already are skipped. More than
+        the set has room for is `too_many`, and adds none.
+      tags: [discover]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportDiscoveryArtistsRequest"
+      responses:
+        "200":
+          description: The set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoverySet"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/starred:
+    get:
+      operationId: listDiscoveryStarred
+      summary: Artists you starred on your Navidrome, to pick seeds from
+      description: |
+        Starred artists, and the artists of starred albums and songs, from
+        your own links: starred artists first. Only a list to pick from;
+        nothing joins a set unless you pick it.
+      tags: [discover]
+      responses:
+        "200":
+          description: Artists
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DiscoveryStarredArtist"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/room-taste:
+    get:
+      operationId: getDiscoveryRoomTaste
+      summary: A room's favorite artists, to make a set from
+      description: |
+        The room's taste as its DJ reads it, over past nights and lately,
+        or one past night's (`nightId`). Only rooms you can open. It only
+        reads the room.
+      tags: [discover]
+      parameters:
+        - name: roomId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: nightId
+          in: query
+          description: One of the room's past nights.
+          schema:
+            type: string
+        - name: mine
+          in: query
+          description: Only from songs you picked.
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Artists, most liked first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DiscoveryTasteArtist"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/want:
+    get:
+      operationId: listDiscoveryWants
+      summary: Your Want list
+      description: |
+        Songs and releases you liked in Discover, newest first: wanted,
+        got (they turned up in your library, or you said so) and
+        dismissed. `landed` is how many turned up since you last looked.
+      tags: [discover]
+      responses:
+        "200":
+          description: The list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WantList"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: addDiscoveryWant
+      summary: Want a song or release
+      description: Wanting one that's on the list already returns it; one dismissed is wanted again.
+      tags: [discover]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddWantRequest"
+      responses:
+        "200":
+          description: It, on the list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WantItem"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/want/seen:
+    post:
+      operationId: seeDiscoveryLanded
+      summary: You saw what landed in your library
+      tags: [discover]
+      responses:
+        "204":
+          description: Noted
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/discover/want/{wantId}:
+    parameters:
+      - name: wantId
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      operationId: updateDiscoveryWant
+      summary: Mark a thing wanted, got or dismissed
+      tags: [discover]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWantRequest"
+      responses:
+        "200":
+          description: It
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WantItem"
+        default:
+          $ref: "#/components/responses/Error"
+
   /me/discover/release-tracks:
     get:
       operationId: listDiscoveryReleaseTracks
@@ -3291,8 +3494,11 @@ paths:
       operationId: postDiscoveryFeedback
       summary: Thumbs up or down on a song
       description: |
-        A thumbs-down hides the song from all your feeds, for good; a later
-        thumbs-up replaces it. Thumbs here never touch a room's DJ.
+        A thumbs-down hides the song from all your feeds, for good, and
+        lowers its artist in the set's feed; a later thumbs-up replaces it.
+        A thumbs-up puts the song on your Want list, and in a set that
+        grows by itself, adds an artist you thumbed up twice from its feed.
+        Thumbs here never touch a room's DJ.
       tags: [discover]
       requestBody:
         required: true
@@ -3301,8 +3507,12 @@ paths:
             schema:
               $ref: "#/components/schemas/DiscoveryFeedbackRequest"
       responses:
-        "204":
-          description: Kept
+        "200":
+          description: Kept, and what it did
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoveryThumbResult"
         default:
           $ref: "#/components/responses/Error"
 
@@ -8615,7 +8825,7 @@ components:
 
     DiscoverySetSummary:
       type: object
-      required: [id, name, explore, mode, freshDays, artistCount, createdAt, updatedAt]
+      required: [id, name, explore, mode, freshDays, artistCount, wanted, got, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -8631,6 +8841,15 @@ components:
           $ref: "#/components/schemas/DiscoveryFreshDays"
         artistCount:
           type: integer
+        wanted:
+          type: integer
+          description: Songs and releases wanted from its feeds (not dismissed).
+        got:
+          type: integer
+          description: Of those, how many you got.
+        roomId:
+          type: string
+          description: The room whose taste it mixes in, if linked.
         createdAt:
           type: string
           format: date-time
@@ -8640,7 +8859,7 @@ components:
 
     DiscoverySet:
       type: object
-      required: [id, name, explore, mode, freshDays, artists, createdAt, updatedAt]
+      required: [id, name, explore, mode, freshDays, growAuto, roomWeight, artists, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -8655,6 +8874,14 @@ components:
           $ref: "#/components/schemas/DiscoveryMode"
         freshDays:
           $ref: "#/components/schemas/DiscoveryFreshDays"
+        growAuto:
+          type: boolean
+          description: Artists you thumb up twice from its feed join it without asking.
+        roomId:
+          type: string
+          description: A room whose taste its feed mixes in (read only), if linked.
+        roomWeight:
+          $ref: "#/components/schemas/DiscoveryRoomWeight"
         artists:
           type: array
           items:
@@ -8724,6 +8951,20 @@ components:
           $ref: "#/components/schemas/DiscoveryMode"
         freshDays:
           $ref: "#/components/schemas/DiscoveryFreshDays"
+        growAuto:
+          type: boolean
+        roomId:
+          type: string
+          description: Link a room you can open, or "" to unlink.
+          maxLength: 64
+        roomWeight:
+          $ref: "#/components/schemas/DiscoveryRoomWeight"
+
+    DiscoveryRoomWeight:
+      type: string
+      description: How much a linked room's taste counts against the set's own artists.
+      enum: [low, medium, high]
+      x-enum-varnames: [RoomWeightLow, RoomWeightMedium, RoomWeightHigh]
 
     DiscoveryFreshDays:
       type: integer
@@ -8995,6 +9236,206 @@ components:
         deezerId:
           type: integer
           format: int64
+        album:
+          type: string
+          description: Its album, for the Want list.
+        cover:
+          type: string
+          description: Its Deezer cover, for the Want list.
+
+    DiscoveryThumbResult:
+      type: object
+      properties:
+        want:
+          $ref: "#/components/schemas/WantItem"
+        grew:
+          type: string
+          description: The artist who joined the set by themselves, if any.
+
+    DiscoveryOffer:
+      type: object
+      required: [key, name, thumbs]
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        thumbs:
+          type: integer
+
+    DiscoverySuggestions:
+      type: object
+      required: [grow, block]
+      properties:
+        grow:
+          type: array
+          description: Artists to add to the set.
+          items:
+            $ref: "#/components/schemas/DiscoveryOffer"
+        block:
+          type: array
+          description: Artists to block.
+          items:
+            $ref: "#/components/schemas/DiscoveryOffer"
+
+    DismissDiscoverySuggestionRequest:
+      type: object
+      required: [kind, artist]
+      properties:
+        kind:
+          type: string
+          enum: [grow, block]
+          x-enum-varnames: [SuggestGrow, SuggestBlock]
+        artist:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+    ImportDiscoveryArtistsRequest:
+      type: object
+      required: [from, artists]
+      properties:
+        from:
+          type: string
+          enum: [manual, thumb, starred, room]
+          x-enum-varnames: [ImportManual, ImportThumb, ImportStarred, ImportRoom]
+        artists:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/DiscoverySeed"
+
+    DiscoveryStarredArtist:
+      type: object
+      required: [name, artist, albums, songs]
+      properties:
+        name:
+          type: string
+        artist:
+          type: boolean
+          description: You starred the artist.
+        albums:
+          type: integer
+          description: How many of their albums you starred.
+        songs:
+          type: integer
+          description: How many of their songs you starred.
+
+    DiscoveryTasteArtist:
+      type: object
+      required: [name, weight, plays]
+      properties:
+        name:
+          type: string
+        weight:
+          type: number
+          description: How much the room likes them, 0 to 1 against its favorite.
+        plays:
+          type: integer
+          description: Their songs played lately, or that night.
+
+    WantItem:
+      type: object
+      required: [id, kind, artist, title, status, addedAt]
+      properties:
+        id:
+          type: string
+        kind:
+          $ref: "#/components/schemas/WantKind"
+        artist:
+          type: string
+        title:
+          type: string
+          description: The song's title, or the release's.
+        release:
+          type: string
+          description: A song's album, if known.
+        mbid:
+          type: string
+          description: A song's recording, or a release's release group.
+        isrc:
+          type: string
+        deezerId:
+          type: integer
+          format: int64
+          description: The song or release on Deezer, for a preview or its songs.
+        cover:
+          type: string
+          description: Its Deezer cover's image ID.
+        setId:
+          type: string
+          description: The set whose feed it came from, if it's still there.
+        status:
+          $ref: "#/components/schemas/WantStatus"
+        gotAt:
+          type: string
+          format: date-time
+        gotBy:
+          type: string
+          enum: [auto, manual]
+          x-enum-varnames: [WantGotAuto, WantGotManual]
+          description: It turned up in your library (auto), or you said you got it.
+        addedAt:
+          type: string
+          format: date-time
+
+    WantList:
+      type: object
+      required: [items, landed]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WantItem"
+        landed:
+          type: integer
+          description: How many turned up in your library since you last looked.
+
+    AddWantRequest:
+      type: object
+      required: [kind, artist, title]
+      properties:
+        kind:
+          $ref: "#/components/schemas/WantKind"
+        artist:
+          type: string
+          minLength: 1
+          maxLength: 200
+        title:
+          type: string
+          minLength: 1
+          maxLength: 300
+        release:
+          type: string
+          maxLength: 300
+        mbid:
+          type: string
+        isrc:
+          type: string
+        deezerId:
+          type: integer
+          format: int64
+        cover:
+          type: string
+        setId:
+          type: string
+
+    UpdateWantRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: "#/components/schemas/WantStatus"
+
+    WantStatus:
+      type: string
+      enum: [wanted, got, dismissed]
+      x-enum-varnames: [WantWanted, WantGot, WantDismissed]
+
+    WantKind:
+      type: string
+      enum: [track, release]
+      x-enum-varnames: [WantTrack, WantRelease]
 
     DiscoveryBlock:
       type: object

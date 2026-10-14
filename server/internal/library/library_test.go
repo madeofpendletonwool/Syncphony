@@ -59,6 +59,9 @@ func (s *subsonic) serve(w http.ResponseWriter, r *http.Request) {
 		off, _ := strconv.Atoi(q.Get("songOffset"))
 		page := s.songs[min(off, len(s.songs)):min(off+n, len(s.songs))]
 		ok(`"searchResult3":{"song":[` + strings.Join(page, ",") + `]}`)
+	case "getStarred2":
+		ok(`"starred2":{"artist":[{"id":"ar1","name":"Low"}],"album":[{"id":"al1","name":"Souvlaki","artist":"Slowdive","artists":[{"name":"Slowdive"}]}],"song":[` +
+			song("9", "Codeine", "D", "Frigid Stars", "") + `]}`)
 	default:
 		http.NotFound(w, r)
 	}
@@ -257,5 +260,49 @@ func TestBigLibrary(t *testing.T) {
 	}
 	if per > time.Millisecond {
 		t.Errorf("a lookup takes %v, want under a millisecond", per)
+	}
+}
+
+func TestBuiltTellsWhoseLibraryChanged(t *testing.T) {
+	e := newEnv(t)
+	srv := newSubsonic(t, []string{song("1", "Slowdive", "Alison", "Souvlaki", "")})
+	link := e.link(t, srv)
+	var mu sync.Mutex
+	var users []string
+	e.svc.Built = func(_ context.Context, userID string) {
+		mu.Lock()
+		defer mu.Unlock()
+		users = append(users, userID)
+	}
+	if err := e.svc.Build(t.Context(), link, false); err != nil {
+		t.Fatal(err)
+	}
+	// Even a build that finds nothing changed: something wanted since may
+	// be there.
+	if err := e.svc.Build(t.Context(), link, false); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(users) != 2 || users[0] != e.user || users[1] != e.user {
+		t.Errorf("built for %v", users)
+	}
+}
+
+func TestStarred(t *testing.T) {
+	e := newEnv(t)
+	e.link(t, newSubsonic(t, nil))
+	st, err := e.svc.Starred(t.Context(), e.user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Artists) != 1 || st.Artists[0].Name != "Low" {
+		t.Errorf("artists: %+v", st.Artists)
+	}
+	if len(st.Albums) != 1 || st.Albums[0].Title != "Souvlaki" || len(st.Albums[0].Artists) == 0 || st.Albums[0].Artists[0].Name != "Slowdive" {
+		t.Errorf("albums: %+v", st.Albums)
+	}
+	if len(st.Songs) != 1 || st.Songs[0].Artists[0].Name != "Codeine" {
+		t.Errorf("songs: %+v", st.Songs)
 	}
 }

@@ -11,13 +11,18 @@ SELECT * FROM discovery_sets WHERE id = ? AND user_id = ?;
 
 -- name: ListDiscoverySets :many
 SELECT discovery_sets.*,
-    CAST((SELECT count(*) FROM discovery_set_artists a WHERE a.set_id = discovery_sets.id) AS INTEGER) AS artists
+    CAST((SELECT count(*) FROM discovery_set_artists a WHERE a.set_id = discovery_sets.id) AS INTEGER) AS artists,
+    -- What the set has yielded: things wanted from its feeds, and of
+    -- those, how many you got.
+    CAST((SELECT count(*) FROM want_items w WHERE w.set_id = discovery_sets.id AND w.status != 'dismissed') AS INTEGER) AS wanted,
+    CAST((SELECT count(*) FROM want_items w WHERE w.set_id = discovery_sets.id AND w.status = 'got') AS INTEGER) AS got
 FROM discovery_sets
-WHERE user_id = ?
+WHERE discovery_sets.user_id = ?
 ORDER BY updated_at DESC, id DESC;
 
 -- name: UpdateDiscoverySet :exec
-UPDATE discovery_sets SET name = ?, explore = ?, mode = ?, fresh_days = ?, updated_at = ? WHERE id = ? AND user_id = ?;
+UPDATE discovery_sets SET name = ?, explore = ?, mode = ?, fresh_days = ?, grow_auto = ?, room_id = ?, room_weight = ?, updated_at = ?
+WHERE id = ? AND user_id = ?;
 
 -- name: TouchDiscoverySet :exec
 UPDATE discovery_sets SET updated_at = ? WHERE id = ?;
@@ -71,15 +76,40 @@ DELETE FROM discovery_blocks WHERE user_id = ? AND artist_key = ?;
 SELECT * FROM discovery_blocks WHERE user_id = ? ORDER BY name, artist_key;
 
 -- name: AddWantItem :exec
-INSERT INTO want_items (id, user_id, set_id, kind, item_key, artist, title, release_title, mbid, isrc, deezer_id, added_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO want_items (id, user_id, set_id, kind, item_key, artist, title, release_title, mbid, isrc, deezer_id, cover, added_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (user_id, kind, item_key) DO NOTHING;
+
+-- name: GetWantItem :one
+SELECT * FROM want_items WHERE id = ? AND user_id = ?;
+
+-- name: GetWantItemByKey :one
+SELECT * FROM want_items WHERE user_id = ? AND kind = ? AND item_key = ?;
 
 -- name: ListWantItems :many
 SELECT * FROM want_items WHERE user_id = ? ORDER BY added_at DESC, id;
 
 -- name: SetWantItemStatus :execrows
-UPDATE want_items SET status = ?, got_at = ? WHERE id = ? AND user_id = ?;
+UPDATE want_items SET status = ?, got_at = ?, got_by = ?, got_seen = ? WHERE id = ? AND user_id = ?;
+
+-- MarkWantItemGot marks a wanted item got because it turned up in the
+-- library; one dismissed or got already stays as it is.
+-- name: MarkWantItemGot :execrows
+UPDATE want_items SET status = 'got', got_at = ?, got_by = 'auto', got_seen = 0 WHERE id = ? AND status = 'wanted';
+
+-- name: CountLandedWantItems :one
+SELECT count(*) FROM want_items WHERE user_id = ? AND status = 'got' AND got_by = 'auto' AND got_seen = 0;
+
+-- name: SeeLandedWantItems :exec
+UPDATE want_items SET got_seen = 1 WHERE user_id = ? AND status = 'got' AND got_seen = 0;
+
+-- name: DismissDiscoverySuggestion :exec
+INSERT INTO discovery_dismissed (user_id, kind, scope, artist_key, created_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (user_id, kind, scope, artist_key) DO NOTHING;
+
+-- name: ListDismissedDiscoverySuggestions :many
+SELECT * FROM discovery_dismissed WHERE user_id = ?;
 
 -- name: PutLibraryIndex :exec
 INSERT INTO library_indexes (link_id, scanned_at, built_at, songs, data)

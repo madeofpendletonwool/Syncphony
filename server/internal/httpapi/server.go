@@ -439,6 +439,7 @@ var errorCodes = []struct {
 	{playlists.ErrForbidden, http.StatusForbidden, "forbidden"},
 	{playlists.ErrNothingPlayed, http.StatusConflict, "nothing_played"},
 	{discover.ErrNotFound, http.StatusNotFound, "not_found"},
+	{discover.ErrRoomNotFound, http.StatusNotFound, "not_found"},
 	{savedartists.ErrNotFound, http.StatusNotFound, "not_found"},
 	{discover.ErrTooMany, http.StatusConflict, "too_many"},
 	{games.ErrNoRound, http.StatusConflict, "round_closed"},
