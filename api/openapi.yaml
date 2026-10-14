@@ -2756,6 +2756,75 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /me/saved-artists:
+    get:
+      operationId: listSavedArtists
+      summary: Artists you saved
+      description: |
+        Artists you saved to remember, most recently saved first. They
+        belong to no service: one is known by its name, and `refs` are the
+        links it was seen on, as hints for opening its page.
+      tags: [library]
+      responses:
+        "200":
+          description: Your saved artists
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SavedArtist"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: saveArtist
+      summary: Save an artist
+      description: |
+        Saves an artist by `name` (with `linkId` and `artistId` if you know
+        where it's from), or as the `artistIndex`-th artist of a room's song
+        (`itemId`), which also remembers the room and who queued it.
+        Saving one you already saved, from anywhere, returns it (200) and
+        remembers this link too.
+      tags: [library]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveArtistRequest"
+      responses:
+        "200":
+          description: Already saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedArtist"
+        "201":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedArtist"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /me/saved-artists/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: unsaveArtist
+      summary: Unsave an artist
+      tags: [library]
+      responses:
+        "204":
+          description: Unsaved
+        default:
+          $ref: "#/components/responses/Error"
+
   /playlists:
     get:
       operationId: listSavedPlaylists
@@ -7173,6 +7242,55 @@ components:
           type: string
         artist:
           $ref: "#/components/schemas/ArtistResult"
+
+    SavedArtist:
+      type: object
+      required: [id, name, key, refs, savedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        key:
+          type: string
+          description: |
+            The simplified name it's known by: another name with the same
+            key is the same artist.
+        refs:
+          type: array
+          description: Links it was seen on, newest first. A link may since be gone or not yours to use.
+          items:
+            $ref: "#/components/schemas/ResolvedRef"
+        picture:
+          type: string
+          description: A Deezer picture, through `/me/discover/images/artist/{picture}`.
+        roomId:
+          type: string
+          description: The room it was heard in, when saved from a room's song.
+        queuedBy:
+          type: string
+          description: Who queued the song it was saved from (user ID).
+        savedAt:
+          type: string
+          format: date-time
+
+    SaveArtistRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        linkId:
+          type: string
+        artistId:
+          type: string
+        itemId:
+          type: string
+          description: A room's song; saves its `artistIndex`-th artist instead of `name`.
+        artistIndex:
+          type: integer
+          minimum: 0
+          default: 0
 
     ResolvedRef:
       type: object

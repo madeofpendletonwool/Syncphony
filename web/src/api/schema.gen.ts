@@ -2117,6 +2117,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/saved-artists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Artists you saved
+         * @description Artists you saved to remember, most recently saved first. They
+         *     belong to no service: one is known by its name, and `refs` are the
+         *     links it was seen on, as hints for opening its page.
+         */
+        get: operations["listSavedArtists"];
+        put?: never;
+        /**
+         * Save an artist
+         * @description Saves an artist by `name` (with `linkId` and `artistId` if you know
+         *     where it's from), or as the `artistIndex`-th artist of a room's song
+         *     (`itemId`), which also remembers the room and who queued it.
+         *     Saving one you already saved, from anywhere, returns it (200) and
+         *     remembers this link too.
+         */
+        post: operations["saveArtist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/saved-artists/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Unsave an artist */
+        delete: operations["unsaveArtist"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/playlists": {
         parameters: {
             query?: never;
@@ -4876,6 +4925,34 @@ export interface components {
             provider: string;
             accountLabel: string;
             artist: components["schemas"]["ArtistResult"];
+        };
+        SavedArtist: {
+            id: string;
+            name: string;
+            /**
+             * @description The simplified name it's known by: another name with the same
+             *     key is the same artist.
+             */
+            key: string;
+            /** @description Links it was seen on, newest first. A link may since be gone or not yours to use. */
+            refs: components["schemas"]["ResolvedRef"][];
+            /** @description A Deezer picture, through `/me/discover/images/artist/{picture}`. */
+            picture?: string;
+            /** @description The room it was heard in, when saved from a room's song. */
+            roomId?: string;
+            /** @description Who queued the song it was saved from (user ID). */
+            queuedBy?: string;
+            /** Format: date-time */
+            savedAt: string;
+        };
+        SaveArtistRequest: {
+            name?: string;
+            linkId?: string;
+            artistId?: string;
+            /** @description A room's song; saves its `artistIndex`-th artist instead of `name`. */
+            itemId?: string;
+            /** @default 0 */
+            artistIndex: number;
         };
         /** @description An artist or album to open with `linkId` and `id`. */
         ResolvedRef: {
@@ -8655,6 +8732,82 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SavedPlaylist"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listSavedArtists: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your saved artists */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedArtist"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    saveArtist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveArtistRequest"];
+            };
+        };
+        responses: {
+            /** @description Already saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedArtist"];
+                };
+            };
+            /** @description Saved */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedArtist"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    unsaveArtist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unsaved */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };

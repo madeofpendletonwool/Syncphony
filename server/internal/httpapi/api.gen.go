@@ -4354,6 +4354,17 @@ type RoomTaste struct {
 // in. The owner is always in.
 type RoomVisibility string
 
+// SaveArtistRequest defines model for SaveArtistRequest.
+type SaveArtistRequest struct {
+	ArtistId    *string `json:"artistId,omitempty"`
+	ArtistIndex *int    `json:"artistIndex,omitempty"`
+
+	// ItemId A room's song; saves its `artistIndex`-th artist instead of `name`.
+	ItemId *string `json:"itemId,omitempty"`
+	LinkId *string `json:"linkId,omitempty"`
+	Name   *string `json:"name,omitempty"`
+}
+
 // SaveNightRequest defines model for SaveNightRequest.
 type SaveNightRequest struct {
 	From time.Time `json:"from"`
@@ -4368,6 +4379,29 @@ type SaveNightRequest struct {
 	// Share Share it with the room.
 	Share *bool     `json:"share,omitempty"`
 	To    time.Time `json:"to"`
+}
+
+// SavedArtist defines model for SavedArtist.
+type SavedArtist struct {
+	Id string `json:"id"`
+
+	// Key The simplified name it's known by: another name with the same
+	// key is the same artist.
+	Key  string `json:"key"`
+	Name string `json:"name"`
+
+	// Picture A Deezer picture, through `/me/discover/images/artist/{picture}`.
+	Picture *string `json:"picture,omitempty"`
+
+	// QueuedBy Who queued the song it was saved from (user ID).
+	QueuedBy *string `json:"queuedBy,omitempty"`
+
+	// Refs Links it was seen on, newest first. A link may since be gone or not yours to use.
+	Refs []ResolvedRef `json:"refs"`
+
+	// RoomId The room it was heard in, when saved from a room's song.
+	RoomId  *string   `json:"roomId,omitempty"`
+	SavedAt time.Time `json:"savedAt"`
 }
 
 // SavedPlaylist A Syncphony playlist and its songs, in order.
@@ -5186,6 +5220,9 @@ type RenamePasskeyJSONRequestBody RenamePasskeyJSONBody
 // SetPasswordJSONRequestBody defines body for SetPassword for application/json ContentType.
 type SetPasswordJSONRequestBody = SetPasswordRequest
 
+// SaveArtistJSONRequestBody defines body for SaveArtist for application/json ContentType.
+type SaveArtistJSONRequestBody = SaveArtistRequest
+
 // BeginPairingJSONRequestBody defines body for BeginPairing for application/json ContentType.
 type BeginPairingJSONRequestBody = BeginPairingRequest
 
@@ -5533,6 +5570,15 @@ type ServerInterface interface {
 	// BeginReauth Start confirming it's you with a passkey
 	// (POST /me/reauth/begin)
 	BeginReauth(w http.ResponseWriter, r *http.Request)
+	// ListSavedArtists Artists you saved
+	// (GET /me/saved-artists)
+	ListSavedArtists(w http.ResponseWriter, r *http.Request)
+	// SaveArtist Save an artist
+	// (POST /me/saved-artists)
+	SaveArtist(w http.ResponseWriter, r *http.Request)
+	// UnsaveArtist Unsave an artist
+	// (DELETE /me/saved-artists/{id})
+	UnsaveArtist(w http.ResponseWriter, r *http.Request, id string)
 	// RevokeOtherSessions Sign out everywhere else
 	// (DELETE /me/sessions)
 	RevokeOtherSessions(w http.ResponseWriter, r *http.Request)
@@ -8028,6 +8074,60 @@ func (siw *ServerInterfaceWrapper) BeginReauth(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.BeginReauth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSavedArtists operation middleware
+func (siw *ServerInterfaceWrapper) ListSavedArtists(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSavedArtists(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SaveArtist operation middleware
+func (siw *ServerInterfaceWrapper) SaveArtist(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SaveArtist(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnsaveArtist operation middleware
+func (siw *ServerInterfaceWrapper) UnsaveArtist(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnsaveArtist(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11439,6 +11539,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/nights", wrapper.EndNight)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/recap", wrapper.GetRoomRecap)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/playlists", wrapper.SaveNightPlaylist)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/me/saved-artists", wrapper.ListSavedArtists)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/me/saved-artists", wrapper.SaveArtist)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/me/saved-artists/{id}", wrapper.UnsaveArtist)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/playlists", wrapper.ListSavedPlaylists)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/playlists", wrapper.CreateSavedPlaylist)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/playlists/{playlistId}", wrapper.DeleteSavedPlaylist)
@@ -14841,6 +14944,130 @@ type BeginReauthdefaultJSONResponse struct {
 }
 
 func (response BeginReauthdefaultJSONResponse) VisitBeginReauthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSavedArtistsRequestObject struct {
+}
+
+type ListSavedArtistsResponseObject interface {
+	VisitListSavedArtistsResponse(w http.ResponseWriter) error
+}
+
+type ListSavedArtists200JSONResponse []SavedArtist
+
+func (response ListSavedArtists200JSONResponse) VisitListSavedArtistsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSavedArtistsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListSavedArtistsdefaultJSONResponse) VisitListSavedArtistsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveArtistRequestObject struct {
+	Body *SaveArtistJSONRequestBody
+}
+
+type SaveArtistResponseObject interface {
+	VisitSaveArtistResponse(w http.ResponseWriter) error
+}
+
+type SaveArtist200JSONResponse SavedArtist
+
+func (response SaveArtist200JSONResponse) VisitSaveArtistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveArtist201JSONResponse SavedArtist
+
+func (response SaveArtist201JSONResponse) VisitSaveArtistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveArtistdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SaveArtistdefaultJSONResponse) VisitSaveArtistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnsaveArtistRequestObject struct {
+	Id string `json:"id"`
+}
+
+type UnsaveArtistResponseObject interface {
+	VisitUnsaveArtistResponse(w http.ResponseWriter) error
+}
+
+type UnsaveArtist204Response struct {
+}
+
+func (response UnsaveArtist204Response) VisitUnsaveArtistResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UnsaveArtistdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UnsaveArtistdefaultJSONResponse) VisitUnsaveArtistResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -19128,6 +19355,15 @@ type StrictServerInterface interface {
 	// BeginReauth Start confirming it's you with a passkey
 	// (POST /me/reauth/begin)
 	BeginReauth(ctx context.Context, request BeginReauthRequestObject) (BeginReauthResponseObject, error)
+	// ListSavedArtists Artists you saved
+	// (GET /me/saved-artists)
+	ListSavedArtists(ctx context.Context, request ListSavedArtistsRequestObject) (ListSavedArtistsResponseObject, error)
+	// SaveArtist Save an artist
+	// (POST /me/saved-artists)
+	SaveArtist(ctx context.Context, request SaveArtistRequestObject) (SaveArtistResponseObject, error)
+	// UnsaveArtist Unsave an artist
+	// (DELETE /me/saved-artists/{id})
+	UnsaveArtist(ctx context.Context, request UnsaveArtistRequestObject) (UnsaveArtistResponseObject, error)
 	// RevokeOtherSessions Sign out everywhere else
 	// (DELETE /me/sessions)
 	RevokeOtherSessions(ctx context.Context, request RevokeOtherSessionsRequestObject) (RevokeOtherSessionsResponseObject, error)
@@ -21813,6 +22049,87 @@ func (sh *strictHandler) BeginReauth(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(BeginReauthResponseObject); ok {
 		if err := validResponse.VisitBeginReauthResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSavedArtists operation middleware
+func (sh *strictHandler) ListSavedArtists(w http.ResponseWriter, r *http.Request) {
+	var request ListSavedArtistsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSavedArtists(ctx, request.(ListSavedArtistsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSavedArtists")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSavedArtistsResponseObject); ok {
+		if err := validResponse.VisitListSavedArtistsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SaveArtist operation middleware
+func (sh *strictHandler) SaveArtist(w http.ResponseWriter, r *http.Request) {
+	var request SaveArtistRequestObject
+
+	var body SaveArtistJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SaveArtist(ctx, request.(SaveArtistRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SaveArtist")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SaveArtistResponseObject); ok {
+		if err := validResponse.VisitSaveArtistResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnsaveArtist operation middleware
+func (sh *strictHandler) UnsaveArtist(w http.ResponseWriter, r *http.Request, id string) {
+	var request UnsaveArtistRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnsaveArtist(ctx, request.(UnsaveArtistRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnsaveArtist")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnsaveArtistResponseObject); ok {
+		if err := validResponse.VisitUnsaveArtistResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
