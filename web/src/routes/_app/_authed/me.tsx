@@ -27,14 +27,17 @@ import { Notice } from '@/components/notice'
 import { PageHeader } from '@/components/page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { UserAvatar } from '@/components/user-avatar'
 import { useMe, useSignedOut, useSignOut, type Me } from '@/lib/auth'
+import { chatPopupsMuted, setChatPopupsMuted } from '@/lib/chat'
 import { laneStyle } from '@/lib/lane'
 import { easeOutExpo } from '@/lib/motion'
 import { useInstall } from '@/lib/pwa'
 import { appTitle, serverSettingsQuery } from '@/lib/server'
 import { linksQuery } from '@/lib/services'
+import { useStore } from '@/lib/store'
 import { setPreference, useThemePreference, type ThemePreference } from '@/lib/theme'
 import { relativeTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
@@ -117,6 +120,8 @@ function Me() {
           </ToggleGroup>
         </section>
 
+        <ChatPopupsSetting />
+
         <nav aria-label="More" className="glass flex flex-col rounded-3xl p-1.5">
           <SettingsRow to="/design" icon={<Palette />}>
             Design system
@@ -128,6 +133,20 @@ function Me() {
         <ServerStatus />
       </div>
     </>
+  )
+}
+
+/** Chat popups on this device (ADR 0018): on by default; the unread count counts either way. */
+function ChatPopupsSetting() {
+  const muted = useStore(chatPopupsMuted)
+  return (
+    <section className="glass flex items-center gap-4 rounded-3xl p-5">
+      <div className="min-w-0 flex-1">
+        <h2 className="text-headline">Chat popups</h2>
+        <p className="mt-1 text-sm text-muted-foreground">New messages in your room pop up on any screen. Just on this device.</p>
+      </div>
+      <Switch checked={!muted} onChange={(on) => setChatPopupsMuted(!on)} label="Show chat popups" />
+    </section>
   )
 }
 

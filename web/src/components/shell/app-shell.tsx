@@ -7,6 +7,8 @@ import { useBeatSync } from '@/hooks/use-beat-sync'
 import { easeOutExpo } from '@/lib/motion'
 import { usePlayer } from '@/lib/now-playing'
 import { useOnline } from '@/lib/pwa'
+import { ChatPanel } from '@/components/chat/chat-panel'
+import { ChatPopup } from '@/components/chat/chat-popup'
 import { PlayNowRequest } from '@/components/room/play-now-request'
 import { Toaster } from '@/components/toaster'
 import { LightsMode } from '@/components/visualizer/lights-mode'
@@ -75,6 +77,8 @@ export function AppShell() {
           </div>
         </div>
 
+        <ChatPopup />
+        <ChatPanel />
         <RoundSheet />
         <QueueGameDock />
         <NowPlayingSheet open={expanded} onOpenChange={setExpanded} lyrics={lyrics} onLyricsChange={setLyrics} />

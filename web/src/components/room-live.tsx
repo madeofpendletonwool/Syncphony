@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
+import { useChatSync } from '@/hooks/use-chat'
 import { useRoomControls } from '@/hooks/use-room-controls'
 import { useMe } from '@/lib/auth'
 import { player } from '@/lib/now-playing'
@@ -17,6 +18,7 @@ export function RoomLive() {
   const me = useMe()
   const { room, rooms } = useCurrentRoom()
   useRoomSocket(room?.id)
+  useChatSync(room?.id)
   const playback = useQuery({ ...playbackQuery(room?.id ?? ''), enabled: !!room })
   const users = useQuery(usersQuery)
   const commands = useRoomControls(room, playback.data, me, !!me.guest)

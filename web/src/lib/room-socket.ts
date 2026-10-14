@@ -2,6 +2,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import type { components } from '@/api/schema.gen'
 import { invitesQuery, membersQuery } from './access'
+import { chatQuery, dropChatMessage, putChatMessage, type ChatMessage } from './chat'
 import { meQuery } from './auth'
 import { syncServerClock } from './clock'
 import { displayMeQuery } from './displays'
@@ -136,6 +137,8 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
       // The games still up follow, one event each.
       queryClient.setQueryData(queueGamesQuery(roomId).queryKey, [])
       hello.members.forEach((u) => upsertUser(queryClient, u))
+      // Chat sent while we were away.
+      void queryClient.invalidateQueries({ queryKey: chatQuery(roomId).queryKey })
       break
     }
     case 'queue.updated': {
@@ -180,6 +183,12 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
     }
     case 'reaction.sent':
       addReaction(ev.data as Reaction)
+      break
+    case 'chat.message':
+      putChatMessage(queryClient, roomId, ev.data as ChatMessage)
+      break
+    case 'chat.deleted':
+      dropChatMessage(queryClient, roomId, (ev.data as components['schemas']['ChatMessageDeleted']).id)
       break
     case 'hearts.updated': {
       const h = ev.data as Hearts

@@ -6,6 +6,7 @@ import { DropdownMenu } from 'radix-ui'
 import { useEffect, useState, type ReactNode } from 'react'
 import { errorMessage } from '@/api/errors'
 import { Artwork } from '@/components/artwork'
+import { ChatButton } from '@/components/chat/chat-button'
 import { SaveArtistButton } from '@/components/library/save-artist'
 import { PageHeader } from '@/components/page-header'
 import { SaveToPlaylistButton } from '@/components/playlists/save-to-playlist'
@@ -320,6 +321,8 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
           )}
         </p>
       </div>
+      <div className="flex shrink-0 items-center gap-3">
+      <ChatButton roomId={room.id} />
       <div className="flex shrink-0 -space-x-2" aria-label="Here now">
         <AnimatePresence initial={false}>
           {members.slice(0, 5).map((m) => (
@@ -340,6 +343,7 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
             +{members.length - 5}
           </span>
         )}
+      </div>
       </div>
     </header>
   )
