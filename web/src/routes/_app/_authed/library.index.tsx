@@ -1,14 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { Moon, Plus, Users } from 'lucide-react'
+import { ListMusic, Moon, Plus, Star, Users } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState } from 'react'
 import { errorMessage } from '@/api/errors'
+import { SavedArtists } from '@/components/library/saved-artists'
 import { PageHeader } from '@/components/page-header'
 import { PlaylistCover } from '@/components/playlists/playlist-cover'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useMe } from '@/lib/auth'
 import { fadeUp, stagger } from '@/lib/motion'
 import { createPlaylist, playlistChanged, savedPlaylistsQuery, type SavedPlaylistSummary } from '@/lib/playlists'
@@ -16,31 +18,65 @@ import { roomsQuery } from '@/lib/room'
 import { toast } from '@/lib/toast'
 import { usersQuery } from '@/lib/users'
 
+type Section = 'playlists' | 'artists'
+
 export const Route = createFileRoute('/_app/_authed/library/')({
+  validateSearch: (search: Record<string, unknown>): { show?: 'artists' } => (search.show === 'artists' ? { show: 'artists' } : {}),
   loader: ({ context }) => context.queryClient.prefetchQuery(savedPlaylistsQuery),
   component: Library,
 })
 
-/** Your Syncphony playlists, and the ones friends shared with your rooms. */
+/** Your Syncphony playlists and saved artists. */
 function Library() {
+  const { show } = Route.useSearch()
+  const navigate = useNavigate({ from: Route.fullPath })
+  const section: Section = show ?? 'playlists'
+  const [naming, setNaming] = useState(false)
+
+  return (
+    <>
+      <PageHeader
+        title="Library"
+        subtitle={section === 'artists' ? 'Artists you saved to remember' : 'Playlists kept in Syncphony, from any service'}
+        actions={
+          section === 'playlists' && (
+            <Button variant="glass" size="icon" aria-label="New playlist" onClick={() => setNaming((n) => !n)}>
+              <Plus className="size-5" />
+            </Button>
+          )
+        }
+      />
+      <ToggleGroup
+        type="single"
+        value={section}
+        onValueChange={(v) => v && void navigate({ search: v === 'artists' ? { show: 'artists' } : {}, replace: true })}
+        aria-label="Library section"
+        className="mb-5"
+      >
+        <ToggleGroupItem value="playlists">
+          <ListMusic />
+          Playlists
+        </ToggleGroupItem>
+        <ToggleGroupItem value="artists">
+          <Star />
+          Artists
+        </ToggleGroupItem>
+      </ToggleGroup>
+      {section === 'artists' ? <SavedArtists /> : <Playlists naming={naming} setNaming={setNaming} />}
+    </>
+  )
+}
+
+/** Your Syncphony playlists, and the ones friends shared with your rooms. */
+function Playlists({ naming, setNaming }: { naming: boolean; setNaming: (naming: boolean) => void }) {
   const me = useMe()
   const lists = useQuery(savedPlaylistsQuery)
-  const [naming, setNaming] = useState(false)
   const all = lists.data ?? []
   const mine = all.filter((p) => p.ownerId === me.id)
   const shared = all.filter((p) => p.ownerId !== me.id)
 
   return (
     <>
-      <PageHeader
-        title="Library"
-        subtitle="Playlists kept in Syncphony, from any service"
-        actions={
-          <Button variant="glass" size="icon" aria-label="New playlist" onClick={() => setNaming((n) => !n)}>
-            <Plus className="size-5" />
-          </Button>
-        }
-      />
       {naming && <NewPlaylist onDone={() => setNaming(false)} />}
       {lists.isPending ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">

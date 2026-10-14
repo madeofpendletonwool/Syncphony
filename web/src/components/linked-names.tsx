@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Fragment, useState, type MouseEvent } from 'react'
+import { Fragment, useState, type MouseEvent, type ReactNode } from 'react'
 import type { Track } from '@/lib/now-playing'
 import {
   albumTarget,
@@ -37,7 +37,7 @@ function LookupLink({
   target,
   className,
 }: {
-  children: string
+  children: ReactNode
   search: { q: string; tab: 'artists' | 'albums' }
   target: () => Promise<NameTarget>
   className?: string
@@ -66,14 +66,20 @@ function LookupLink({
   )
 }
 
-/** One artist's name, as a link to them. */
-export function ArtistLink({ name, id, linkId, className }: Credit & { linkId?: string; className?: string }) {
+/** One artist's name, as a link to them. `children` replaces the name, for a bigger target like a card. */
+export function ArtistLink({
+  name,
+  id,
+  linkId,
+  className,
+  children,
+}: Credit & { linkId?: string; className?: string; children?: ReactNode }) {
   const qc = useQueryClient()
   const direct = useDirect(linkId, id)
   if (direct && id) {
     return (
       <Link to="/artist/$linkId/$artistId" params={{ linkId: direct, artistId: id }} onClick={stop} className={cn(linkClass, className)}>
-        {name}
+        {children ?? name}
       </Link>
     )
   }
@@ -83,7 +89,7 @@ export function ArtistLink({ name, id, linkId, className }: Credit & { linkId?: 
       target={() => artistTarget(name, () => qc.fetchQuery(resolveArtistQuery(name)))}
       className={className}
     >
-      {name}
+      {children ?? name}
     </LookupLink>
   )
 }
