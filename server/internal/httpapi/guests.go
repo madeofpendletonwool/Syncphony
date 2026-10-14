@@ -67,7 +67,11 @@ var guestOps = map[string]bool{
 	// (the playback engine checks).
 	"ControlPlayback": true,
 	"SendReaction":    true,
-	"GetHearts":       true,
+	// Chat (ADR 0018): guests are part of the night.
+	"ListChatMessages":  true,
+	"SendChatMessage":   true,
+	"DeleteChatMessage": true,
+	"GetHearts":         true,
 	// Games, when the room lets guests play (the games engine checks).
 	"GetGameRound":           true,
 	"GetGameRoundArtwork":    true,

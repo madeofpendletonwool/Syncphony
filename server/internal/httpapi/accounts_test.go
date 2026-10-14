@@ -27,6 +27,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
 	"github.com/madeofpendletonwool/syncphony/server/internal/avatar"
 	"github.com/madeofpendletonwool/syncphony/server/internal/backup"
+	"github.com/madeofpendletonwool/syncphony/server/internal/chat"
 	"github.com/madeofpendletonwool/syncphony/server/internal/clips"
 	"github.com/madeofpendletonwool/syncphony/server/internal/discover"
 	"github.com/madeofpendletonwool/syncphony/server/internal/dj"
@@ -148,7 +149,7 @@ func newEnv(t *testing.T) *env {
 	pilot.Now, pilot.Memory = e.clock, &dj.Memory{DB: db, Now: e.clock}
 	t.Cleanup(pilot.Close)
 	api := &httpapi.Server{
-		Version: "test", StartedAt: e.clock(), Admin: e.server, Backups: e.backups, Auth: e.svc, Links: e.links, Lyrics: ly, LinerNotes: notes, Artwork: art, Palettes: e.palettes, BeatMaps: beatMaps, Rooms: e.rooms, Queue: qs, Playback: e.playback, Nights: e.nights, Playlists: playlists.New(db, e.rooms, e.links), SavedArtists: savedartists.New(db, e.rooms, nil), Games: e.games, Bus: e.bus, Presence: presence,
+		Version: "test", StartedAt: e.clock(), Admin: e.server, Backups: e.backups, Auth: e.svc, Links: e.links, Lyrics: ly, LinerNotes: notes, Artwork: art, Palettes: e.palettes, BeatMaps: beatMaps, Rooms: e.rooms, Queue: qs, Playback: e.playback, Nights: e.nights, Playlists: playlists.New(db, e.rooms, e.links), SavedArtists: savedartists.New(db, e.rooms, nil), Chat: chat.New(db, e.bus), Games: e.games, Bus: e.bus, Presence: presence,
 		Suggest: suggest.New(db, e.rooms, e.links), Autopilot: pilot, Discover: discover.New(db),
 		BaseURL: e.base, PingEvery: 50 * time.Millisecond,
 	}
@@ -156,6 +157,7 @@ func newEnv(t *testing.T) *env {
 		api.Clips = clips.New(e.links, ff, clips.Config{})
 		t.Cleanup(api.Clips.Close)
 	}
+	api.Chat.Now = e.clock
 	api.Discover.Rooms = &discover.RoomSource{DB: db, CanEnter: e.rooms.CanEnter, Now: e.clock}
 	e.api = api
 	mux := http.NewServeMux()

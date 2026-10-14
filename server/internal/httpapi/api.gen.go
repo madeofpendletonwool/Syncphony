@@ -1109,6 +1109,8 @@ func (e RoomAutopilotAdventure) Valid() bool {
 
 // Defines values for RoomEventType.
 const (
+	RoomEventTypeChatDeleted       RoomEventType = "chat.deleted"
+	RoomEventTypeChatMessage       RoomEventType = "chat.message"
 	RoomEventTypeGameQueue         RoomEventType = "game.queue"
 	RoomEventTypeGameRound         RoomEventType = "game.round"
 	RoomEventTypeGameScores        RoomEventType = "game.scores"
@@ -1131,6 +1133,10 @@ const (
 // Valid indicates whether the value is a known member of the RoomEventType enum.
 func (e RoomEventType) Valid() bool {
 	switch e {
+	case RoomEventTypeChatDeleted:
+		return true
+	case RoomEventTypeChatMessage:
+		return true
 	case RoomEventTypeGameQueue:
 		return true
 	case RoomEventTypeGameRound:
@@ -1422,6 +1428,27 @@ func (e RoomMembersChangedChange) Valid() bool {
 	case RoomMembersChangedChangeRemoved:
 		return true
 	case RoomMembersChangedChangeRequested:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RoomScreensChat.
+const (
+	RoomScreensChatFloating RoomScreensChat = "floating"
+	RoomScreensChatLog      RoomScreensChat = "log"
+	RoomScreensChatOff      RoomScreensChat = "off"
+)
+
+// Valid indicates whether the value is a known member of the RoomScreensChat enum.
+func (e RoomScreensChat) Valid() bool {
+	switch e {
+	case RoomScreensChatFloating:
+		return true
+	case RoomScreensChatLog:
+		return true
+	case RoomScreensChatOff:
 		return true
 	default:
 		return false
@@ -2139,6 +2166,38 @@ type Ceremony struct {
 	// `PublicKeyCredential.parseCreationOptionsFromJSON` or
 	// `parseRequestOptionsFromJSON`.
 	Options map[string]interface{} `json:"options"`
+}
+
+// ChatMessage A message in a room's chat (ADR 0018).
+type ChatMessage struct {
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Id Time-ordered, so IDs sort as the messages were sent.
+	Id string `json:"id"`
+
+	// ItemId The song playing when it was sent.
+	ItemId *string `json:"itemId,omitempty"`
+
+	// NightId The night it was sent in, once that night has ended.
+	NightId *string `json:"nightId,omitempty"`
+	RoomId  string  `json:"roomId"`
+
+	// Track The track as it was when queued; still shown if its service is offline.
+	Track  *QueuedTrack `json:"track,omitempty"`
+	UserId string       `json:"userId"`
+}
+
+// ChatMessageDeleted defines model for ChatMessageDeleted.
+type ChatMessageDeleted struct {
+	Id     string `json:"id"`
+	RoomId string `json:"roomId"`
+}
+
+// ChatMessageRequest defines model for ChatMessageRequest.
+type ChatMessageRequest struct {
+	// Body Plain text; trimmed, then 1–500 characters.
+	Body string `json:"body"`
 }
 
 // ClaimPlayerRequest defines model for ClaimPlayerRequest.
@@ -4209,6 +4268,8 @@ type RoomAutopilotAdventure string
 //     your own while the room's scores are `private`.
 //   - `game.queue`: QueueGame. A queue game started, changed, or is
 //     done. Sent after hello for each that's up.
+//   - `chat.message`: ChatMessage. Someone sent a message to the room.
+//   - `chat.deleted`: ChatMessageDeleted. A message was deleted.
 //
 // A paired display connects with its display cookie instead, to its
 // own room only. So does a signed-in user with `display=1`: either way
@@ -4517,6 +4578,12 @@ type RoomPermissionsChange struct {
 // RoomScreens How the room's big screens show the music (MAD-779). Set from any
 // phone by whoever manages the room; every screen follows.
 type RoomScreens struct {
+	// Chat How the room's chat shows on big screens (ADR 0018). `floating`:
+	// messages drift up the sides like reactions. `log`: the last few
+	// in a corner column. `off`: not at all. Left out of an update, it
+	// stays as it was.
+	Chat *RoomScreensChat `json:"chat,omitempty"`
+
 	// Intensity How strongly the screens move with the music.
 	Intensity float32 `json:"intensity"`
 
@@ -4528,6 +4595,12 @@ type RoomScreens struct {
 	// Scene The visualizer's scene, or "" to pick one that suits each song.
 	Scene string `json:"scene"`
 }
+
+// RoomScreensChat How the room's chat shows on big screens (ADR 0018). `floating`:
+// messages drift up the sides like reactions. `log`: the last few
+// in a corner column. `off`: not at all. Left out of an update, it
+// stays as it was.
+type RoomScreensChat string
 
 // RoomScreensLook `stage`: now playing, lyrics and what's next. `visualizer`:
 // full-screen visuals with now playing small. `auto`: the stage,
@@ -5361,6 +5434,14 @@ type GetHistoryParams struct {
 	UserId *string `form:"userId,omitempty" json:"userId,omitempty"`
 }
 
+// ListChatMessagesParams defines parameters for ListChatMessages.
+type ListChatMessagesParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Before Only messages older than this message.
+	Before *string `form:"before,omitempty" json:"before,omitempty"`
+}
+
 // ListNightsParams defines parameters for ListNights.
 type ListNightsParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
@@ -5581,6 +5662,9 @@ type CreateGuestPassJSONRequestBody = CreateGuestPassRequest
 
 // CreateRoomInviteJSONRequestBody defines body for CreateRoomInvite for application/json ContentType.
 type CreateRoomInviteJSONRequestBody = CreateRoomInviteRequest
+
+// SendChatMessageJSONRequestBody defines body for SendChatMessage for application/json ContentType.
+type SendChatMessageJSONRequestBody = ChatMessageRequest
 
 // TransferRoomJSONRequestBody defines body for TransferRoom for application/json ContentType.
 type TransferRoomJSONRequestBody = TransferRoomRequest
@@ -6100,6 +6184,15 @@ type ServerInterface interface {
 	// AddRoomMember Let someone into the room (owner or admin)
 	// (PUT /rooms/{roomId}/members/{userId})
 	AddRoomMember(w http.ResponseWriter, r *http.Request, roomId RoomId, userId string)
+	// ListChatMessages The room's chat, newest first
+	// (GET /rooms/{roomId}/messages)
+	ListChatMessages(w http.ResponseWriter, r *http.Request, roomId RoomId, params ListChatMessagesParams)
+	// SendChatMessage Send a message to the room's chat
+	// (POST /rooms/{roomId}/messages)
+	SendChatMessage(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// DeleteChatMessage Delete a chat message
+	// (DELETE /rooms/{roomId}/messages/{messageId})
+	DeleteChatMessage(w http.ResponseWriter, r *http.Request, roomId RoomId, messageId string)
 	// ListNights The room's past nights, and their songs of the night
 	// (GET /rooms/{roomId}/nights)
 	ListNights(w http.ResponseWriter, r *http.Request, roomId RoomId, params ListNightsParams)
@@ -10494,6 +10587,122 @@ func (siw *ServerInterfaceWrapper) AddRoomMember(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListChatMessages operation middleware
+func (siw *ServerInterfaceWrapper) ListChatMessages(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListChatMessagesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "before" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "before", r.URL.Query(), &params.Before, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "before"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "before", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListChatMessages(w, r, roomId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendChatMessage operation middleware
+func (siw *ServerInterfaceWrapper) SendChatMessage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendChatMessage(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteChatMessage operation middleware
+func (siw *ServerInterfaceWrapper) DeleteChatMessage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "messageId" -------------
+	var messageId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "messageId", r.PathValue("messageId"), &messageId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "messageId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteChatMessage(w, r, roomId, messageId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListNights operation middleware
 func (siw *ServerInterfaceWrapper) ListNights(w http.ResponseWriter, r *http.Request) {
 
@@ -12077,6 +12286,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/lyrics", wrapper.GetQueueItemLyrics)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/queue/{itemId}/liner-notes", wrapper.GetQueueItemLinerNotes)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/reactions", wrapper.SendReaction)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/messages", wrapper.ListChatMessages)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/messages", wrapper.SendChatMessage)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/messages/{messageId}", wrapper.DeleteChatMessage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/displays", wrapper.ListDisplays)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/displays", wrapper.PairDisplay)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/displays/{displayId}", wrapper.UnpairDisplay)
@@ -18409,6 +18621,120 @@ func (response AddRoomMemberdefaultJSONResponse) VisitAddRoomMemberResponse(w ht
 	return err
 }
 
+type ListChatMessagesRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Params ListChatMessagesParams
+}
+
+type ListChatMessagesResponseObject interface {
+	VisitListChatMessagesResponse(w http.ResponseWriter) error
+}
+
+type ListChatMessages200JSONResponse []ChatMessage
+
+func (response ListChatMessages200JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatMessagesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListChatMessagesdefaultJSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessageRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+	Body   *SendChatMessageJSONRequestBody
+}
+
+type SendChatMessageResponseObject interface {
+	VisitSendChatMessageResponse(w http.ResponseWriter) error
+}
+
+type SendChatMessage201JSONResponse ChatMessage
+
+func (response SendChatMessage201JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessagedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SendChatMessagedefaultJSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteChatMessageRequestObject struct {
+	RoomId    RoomId `json:"roomId"`
+	MessageId string `json:"messageId"`
+}
+
+type DeleteChatMessageResponseObject interface {
+	VisitDeleteChatMessageResponse(w http.ResponseWriter) error
+}
+
+type DeleteChatMessage204Response struct {
+}
+
+func (response DeleteChatMessage204Response) VisitDeleteChatMessageResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteChatMessagedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteChatMessagedefaultJSONResponse) VisitDeleteChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListNightsRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 	Params ListNightsParams
@@ -20485,6 +20811,15 @@ type StrictServerInterface interface {
 	// AddRoomMember Let someone into the room (owner or admin)
 	// (PUT /rooms/{roomId}/members/{userId})
 	AddRoomMember(ctx context.Context, request AddRoomMemberRequestObject) (AddRoomMemberResponseObject, error)
+	// ListChatMessages The room's chat, newest first
+	// (GET /rooms/{roomId}/messages)
+	ListChatMessages(ctx context.Context, request ListChatMessagesRequestObject) (ListChatMessagesResponseObject, error)
+	// SendChatMessage Send a message to the room's chat
+	// (POST /rooms/{roomId}/messages)
+	SendChatMessage(ctx context.Context, request SendChatMessageRequestObject) (SendChatMessageResponseObject, error)
+	// DeleteChatMessage Delete a chat message
+	// (DELETE /rooms/{roomId}/messages/{messageId})
+	DeleteChatMessage(ctx context.Context, request DeleteChatMessageRequestObject) (DeleteChatMessageResponseObject, error)
 	// ListNights The room's past nights, and their songs of the night
 	// (GET /rooms/{roomId}/nights)
 	ListNights(ctx context.Context, request ListNightsRequestObject) (ListNightsResponseObject, error)
@@ -25057,6 +25392,93 @@ func (sh *strictHandler) AddRoomMember(w http.ResponseWriter, r *http.Request, r
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AddRoomMemberResponseObject); ok {
 		if err := validResponse.VisitAddRoomMemberResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListChatMessages operation middleware
+func (sh *strictHandler) ListChatMessages(w http.ResponseWriter, r *http.Request, roomId RoomId, params ListChatMessagesParams) {
+	var request ListChatMessagesRequestObject
+
+	request.RoomId = roomId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListChatMessages(ctx, request.(ListChatMessagesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListChatMessages")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListChatMessagesResponseObject); ok {
+		if err := validResponse.VisitListChatMessagesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SendChatMessage operation middleware
+func (sh *strictHandler) SendChatMessage(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request SendChatMessageRequestObject
+
+	request.RoomId = roomId
+
+	var body SendChatMessageJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendChatMessage(ctx, request.(SendChatMessageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendChatMessage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendChatMessageResponseObject); ok {
+		if err := validResponse.VisitSendChatMessageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteChatMessage operation middleware
+func (sh *strictHandler) DeleteChatMessage(w http.ResponseWriter, r *http.Request, roomId RoomId, messageId string) {
+	var request DeleteChatMessageRequestObject
+
+	request.RoomId = roomId
+	request.MessageId = messageId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteChatMessage(ctx, request.(DeleteChatMessageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteChatMessage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteChatMessageResponseObject); ok {
+		if err := validResponse.VisitDeleteChatMessageResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

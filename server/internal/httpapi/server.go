@@ -23,6 +23,7 @@ import (
 	"github.com/madeofpendletonwool/syncphony/server/internal/auth"
 	"github.com/madeofpendletonwool/syncphony/server/internal/autopilot"
 	"github.com/madeofpendletonwool/syncphony/server/internal/backup"
+	"github.com/madeofpendletonwool/syncphony/server/internal/chat"
 	"github.com/madeofpendletonwool/syncphony/server/internal/clips"
 	"github.com/madeofpendletonwool/syncphony/server/internal/discover"
 	"github.com/madeofpendletonwool/syncphony/server/internal/games"
@@ -81,6 +82,8 @@ type Server struct {
 	Nights *nights.Service
 	// Playlists keeps Syncphony's own playlists.
 	Playlists *playlists.Service
+	// Chat keeps rooms' chat.
+	Chat *chat.Service
 	// SavedArtists keeps the artists people saved to their Library.
 	SavedArtists *savedartists.Service
 	// Discover keeps users' discovery sets and makes their feeds.
@@ -114,7 +117,8 @@ type Server struct {
 	// believed, for rate limiting by client IP.
 	TrustedProxies []netip.Prefix
 
-	reactions reactionLimiter
+	reactions userLimiter
+	chats     userLimiter
 	playlists playlistCache
 }
 
@@ -354,7 +358,10 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var invalidPlaylist *playlists.InvalidInputError
 	var invalidDiscover *discover.InvalidInputError
 	var invalidSaved *savedartists.InvalidInputError
+	var invalidChat *chat.InvalidInputError
 	switch {
+	case errors.As(err, &invalidChat):
+		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidChat.Error())
 	case errors.As(err, &invalidSaved):
 		writeJSONError(w, http.StatusBadRequest, "invalid_input", invalidSaved.Error())
 	case errors.As(err, &invalidDiscover):
@@ -441,6 +448,8 @@ var errorCodes = []struct {
 	{discover.ErrNotFound, http.StatusNotFound, "not_found"},
 	{discover.ErrRoomNotFound, http.StatusNotFound, "not_found"},
 	{savedartists.ErrNotFound, http.StatusNotFound, "not_found"},
+	{chat.ErrNotFound, http.StatusNotFound, "not_found"},
+	{chat.ErrForbidden, http.StatusForbidden, "forbidden"},
 	{discover.ErrTooMany, http.StatusConflict, "too_many"},
 	{games.ErrNoRound, http.StatusConflict, "round_closed"},
 	{games.ErrRoundRunning, http.StatusConflict, "round_running"},

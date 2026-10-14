@@ -131,7 +131,18 @@ type Screens struct {
 	// Intensity is how strongly the screens move with the music,
 	// MinIntensity to MaxIntensity. Nil means DefaultIntensity.
 	Intensity *float64 `json:"intensity,omitempty"`
+	// Chat is how the room's chat shows (ADR 0018): ChatFloating, ChatLog
+	// or ChatOff. Empty means ChatFloating.
+	Chat string `json:"chat,omitempty"`
 }
+
+// How chat shows on the big screen: drifting up the sides, the last few in
+// a corner, or not at all.
+const (
+	ChatFloating = "floating"
+	ChatLog      = "log"
+	ChatOff      = "off"
+)
 
 // Big screen looks: now playing and lyrics, full-screen visuals, or the
 // stage with visuals taking over for songs with no words to sing.
@@ -160,6 +171,9 @@ func (s Screens) Normal() Screens {
 	if len(s.Scene) > maxSceneLen {
 		s.Scene = ""
 	}
+	if s.Chat != ChatLog && s.Chat != ChatOff {
+		s.Chat = ChatFloating
+	}
 	return s
 }
 
@@ -168,6 +182,11 @@ func (s Screens) validate() error {
 	case "", LookStage, LookVisualizer, LookAuto:
 	default:
 		return &InvalidInputError{"a big screen's look is stage, visualizer or auto"}
+	}
+	switch s.Chat {
+	case "", ChatFloating, ChatLog, ChatOff:
+	default:
+		return &InvalidInputError{"chat on a big screen is floating, log or off"}
 	}
 	if s.Intensity != nil && (*s.Intensity < MinIntensity || *s.Intensity > MaxIntensity) {
 		return &InvalidInputError{fmt.Sprintf("big screen intensity is %v to %v", MinIntensity, MaxIntensity)}
@@ -517,7 +536,12 @@ func (s *Service) Update(ctx context.Context, by Actor, id string, u Update) (st
 		st.ApproveJoins = *u.ApproveJoins
 	}
 	if u.Screens != nil {
+		chat := st.Screens.Chat
 		st.Screens = *u.Screens
+		// Left out, how chat shows stays as it was.
+		if st.Screens.Chat == "" {
+			st.Screens.Chat = chat
+		}
 	}
 	if u.Games != nil {
 		st.Games = *u.Games

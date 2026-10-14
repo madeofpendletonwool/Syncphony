@@ -244,6 +244,11 @@ func (s *Service) end(ctx context.Context, roomID, by string, at time.Time) (Nig
 		if err != nil {
 			return err
 		}
+		// The room's chat since the last night is this night's (ADR 0018).
+		err = q.AssignChatToNight(ctx, store.AssignChatToNightParams{NightID: sql.NullString{String: row.ID, Valid: true}, RoomID: roomID, EndedAt: at})
+		if err != nil {
+			return err
+		}
 		out = Night{Night: row}
 		if row.QueueItemID.Valid {
 			it, err := q.GetQueueItem(ctx, row.QueueItemID.String)

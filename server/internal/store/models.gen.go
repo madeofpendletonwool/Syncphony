@@ -34,6 +34,17 @@ type BeatMap struct {
 	UsedAt     time.Time
 }
 
+type ChatMessage struct {
+	ID          string
+	RoomID      string
+	NightID     sql.NullString
+	UserID      string
+	Body        string
+	QueueItemID sql.NullString
+	CreatedAt   time.Time
+	DeletedAt   sql.NullTime
+}
+
 type CredentialsPasskey struct {
 	ID         []byte
 	UserID     string

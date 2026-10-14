@@ -56,6 +56,10 @@ const (
 	// GameQueue carries a queue game (connect the artists, a theme round,
 	// a bracket) whenever it changes.
 	GameQueue = "game.queue"
+	// ChatMessage carries a message someone sent to the room's chat.
+	ChatMessage = "chat.message"
+	// ChatMessageDeleted carries a chat message that was deleted.
+	ChatMessageDeleted = "chat.deleted"
 )
 
 // Event is something that happened. Data holds domain values (store rows,
