@@ -214,5 +214,18 @@ func TestElsewhere(t *testing.T) {
 	}
 }
 
+func TestAlbumElsewhere(t *testing.T) {
+	sess, caps := open(t, fake.Options{})
+	if a := artistpage.AlbumElsewhere(t.Context(), sess, caps, "zero zero", "Null Island"); a == nil || a.Title != "Zero Zero" {
+		t.Errorf("AlbumElsewhere = %+v", a)
+	}
+	if a := artistpage.AlbumElsewhere(t.Context(), sess, caps, "A440", ""); a == nil || a.Title != "A440" {
+		t.Errorf("without an artist = %+v", a)
+	}
+	if a := artistpage.AlbumElsewhere(t.Context(), sess, caps, "Zero Zero", "Sine Language"); a != nil {
+		t.Errorf("another artist's album found %+v", a)
+	}
+}
+
 // seeded is the same "random" order every run.
 func seeded() *rand.Rand { return rand.New(rand.NewPCG(1, 2)) } //nolint:gosec // a test's fixed order

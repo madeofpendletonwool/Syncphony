@@ -1491,6 +1491,65 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /resolve/artist:
+    get:
+      operationId: resolveArtist
+      summary: Find an artist on a service you can use
+      description: |
+        For a name that came from somewhere you can't browse (a song queued
+        from someone else's service, or one without an artist ID). Looks
+        for the artist by name on your links, then on shared ones, and
+        returns the first exact match. 404 when none has it.
+      tags: [browse]
+      parameters:
+        - name: name
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      responses:
+        "200":
+          description: Where to open the artist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolvedRef"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /resolve/album:
+    get:
+      operationId: resolveAlbum
+      summary: Find an album on a service you can use
+      description: |
+        Like `resolveArtist`, for an album by its title and, when known, its
+        artist.
+      tags: [browse]
+      parameters:
+        - name: title
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+        - name: artist
+          in: query
+          schema:
+            type: string
+            maxLength: 200
+      responses:
+        "200":
+          description: Where to open the album
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolvedRef"
+        default:
+          $ref: "#/components/responses/Error"
+
   /links/{id}/artists/{artistId}/shuffle:
     parameters:
       - name: id
@@ -7114,6 +7173,16 @@ components:
           type: string
         artist:
           $ref: "#/components/schemas/ArtistResult"
+
+    ResolvedRef:
+      type: object
+      description: An artist or album to open with `linkId` and `id`.
+      required: [linkId, id]
+      properties:
+        linkId:
+          type: string
+        id:
+          type: string
 
     AlbumAbout:
       type: object

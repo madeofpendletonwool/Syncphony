@@ -433,6 +433,29 @@ func Elsewhere(ctx context.Context, sess provider.Session, caps provider.Capabil
 	return nil
 }
 
+// AlbumElsewhere finds an album by title on another link, by the same
+// artist when artist isn't empty, or nil.
+func AlbumElsewhere(ctx context.Context, sess provider.Session, caps provider.Capabilities, title, artist string) *provider.Album {
+	if !caps.CanSearch(provider.KindAlbum) {
+		return nil
+	}
+	page, err := sess.Search(ctx, provider.SearchQuery{Text: title, Kinds: []provider.EntityKind{provider.KindAlbum}, Limit: 10})
+	if err != nil {
+		slog.Debug("artistpage: looking for an album elsewhere", "album", title, "err", err)
+		return nil
+	}
+	want, by := match.Simplify(title), match.Simplify(artist)
+	for _, a := range page.Albums {
+		if match.Simplify(a.Title) != want {
+			continue
+		}
+		if by == "" || slices.ContainsFunc(a.Artists, func(c provider.ArtistCredit) bool { return match.Simplify(c.Name) == by }) {
+			return &a
+		}
+	}
+	return nil
+}
+
 // each runs f for 0..n-1, a few at a time.
 func each(n int, f func(i int)) {
 	sem := make(chan struct{}, parallel)

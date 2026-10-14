@@ -1,4 +1,3 @@
-import { Link } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { useEffect, useRef } from 'react'
 import { AddButton } from '@/components/add-button'
@@ -7,11 +6,12 @@ import { SaveToPlaylistButton } from '@/components/playlists/save-to-playlist'
 import { ProviderIcon } from '@/components/provider-icon'
 import type { LaneStatus } from '@/hooks/use-add-to-lane'
 import { useMe } from '@/lib/auth'
-import { artistNames, artworkUrl, type TrackResult } from '@/lib/browse'
+import { artworkUrl, type TrackResult } from '@/lib/browse'
 import { isGuest } from '@/lib/guests'
 import { fadeUp } from '@/lib/motion'
 import { formatDuration } from '@/lib/now-playing'
 import { cn } from '@/lib/utils'
+import { AlbumLink, ArtistLinks } from '@/components/linked-names'
 
 type Props = {
   track: TrackResult
@@ -32,7 +32,6 @@ type Props = {
 /** A song in a list, with its one-tap add, and a bookmark to save it to a playlist. */
 export function TrackRow({ track, status, onAdd, providerIcon, number, hideAlbum, note, active }: Props) {
   const me = useMe()
-  const albumId = track.album?.id
   const ref = useRef<HTMLLIElement>(null)
   useEffect(() => {
     if (active) ref.current?.scrollIntoView({ block: 'nearest' })
@@ -60,22 +59,12 @@ export function TrackRow({ track, status, onAdd, providerIcon, number, hideAlbum
         <p className="flex items-center gap-1.5 truncate text-sm text-muted-foreground">
           {providerIcon && <ProviderIcon icon={providerIcon} className="size-4 rounded-[0.3rem] [&_svg]:size-2.5" />}
           <span className="truncate">
-            {artistNames(track.artists)}
+            <ArtistLinks artists={track.artists} linkId={track.linkId} />
             {note && ` · ${note}`}
             {!note && !hideAlbum && track.album && (
               <>
                 {' · '}
-                {albumId ? (
-                  <Link
-                    to="/album/$linkId/$albumId"
-                    params={{ linkId: track.linkId, albumId }}
-                    className="hover:text-foreground hover:underline"
-                  >
-                    {track.album.title}
-                  </Link>
-                ) : (
-                  track.album.title
-                )}
+                <AlbumLink title={track.album.title} id={track.album.id} artist={track.artists[0]?.name} linkId={track.linkId} />
               </>
             )}
           </span>

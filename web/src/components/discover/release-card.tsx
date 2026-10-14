@@ -4,6 +4,7 @@ import { motion } from 'motion/react'
 import { useId, useState } from 'react'
 import { errorMessage } from '@/api/errors'
 import { Artwork } from '@/components/artwork'
+import { ArtistLink } from '@/components/linked-names'
 import { Notice } from '@/components/notice'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -31,7 +32,9 @@ export function ReleaseCard({ release, isNew, onBlock }: { release: DiscoveryRel
               {isNew && <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-caption font-medium text-primary-foreground">New</span>}
               <span className="truncate font-medium">{release.title}</span>
             </p>
-            <p className="truncate text-sm text-muted-foreground">{release.artist}</p>
+            <p className="truncate text-sm text-muted-foreground">
+              <ArtistLink name={release.artist} />
+            </p>
             <p className="truncate text-caption">
               <span className="text-muted-foreground">
                 {kindText(release.kind)} · {releaseDateText(release.date)}

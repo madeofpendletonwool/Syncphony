@@ -44,6 +44,9 @@ var guestOps = map[string]bool{
 	"GetRandomTracks":   true,
 	"GetLinkArtwork":    true,
 	"GetTrackLyrics":    true,
+	// Artist and album names link to their pages.
+	"ResolveArtist": true,
+	"ResolveAlbum":  true,
 	// Suggestions come from the links the guest can add from.
 	"GetSuggestions": true,
 	// The room.

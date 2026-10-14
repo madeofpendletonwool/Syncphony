@@ -1,4 +1,4 @@
-import { Outlet, useRouterState } from '@tanstack/react-router'
+import { Outlet, useRouter, useRouterState } from '@tanstack/react-router'
 import { WifiOff } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { useEffect, useState, type ReactNode } from 'react'
@@ -28,6 +28,16 @@ import { NowPlayingSheet } from './now-playing-sheet'
 export function AppShell() {
   const { nowPlaying } = usePlayer()
   const [expanded, setExpanded] = useState(false)
+  // Going to another page (an artist's name in the queue, say) closes now
+  // playing, so the page isn't opened behind it.
+  const router = useRouter()
+  useEffect(
+    () =>
+      router.subscribe('onBeforeNavigate', (e) => {
+        if (e.pathChanged) setExpanded(false)
+      }),
+    [router],
+  )
   // Lyrics take the artwork's place in now playing.
   const [lyrics, setLyrics] = useState(false)
   // Once now playing has slid all the way up it covers everything, so the

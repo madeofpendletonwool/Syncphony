@@ -7,6 +7,7 @@ import { AlbumCard } from '@/components/album-card'
 import { Bio, GenreChips, PageSection } from '@/components/artist-parts'
 import { Artwork } from '@/components/artwork'
 import { BackButton } from '@/components/back-button'
+import { ArtistLinks } from '@/components/linked-names'
 import { Notice } from '@/components/notice'
 import { ProviderIcon } from '@/components/provider-icon'
 import { TrackRow } from '@/components/track-row'
@@ -87,22 +88,7 @@ function Album() {
           {a.title}
         </motion.h1>
         <motion.p variants={fadeUp} className="mt-1 text-muted-foreground">
-          {a.artists.map((ar, i) => (
-            <span key={ar.id ?? ar.name}>
-              {i > 0 && ', '}
-              {ar.id ? (
-                <Link
-                  to="/artist/$linkId/$artistId"
-                  params={{ linkId, artistId: ar.id }}
-                  className="font-medium text-foreground hover:underline"
-                >
-                  {ar.name}
-                </Link>
-              ) : (
-                ar.name
-              )}
-            </span>
-          ))}
+          <ArtistLinks artists={a.artists} linkId={linkId} className="font-medium text-foreground" />
         </motion.p>
         <motion.p variants={fadeUp} className="mt-1 flex items-center gap-1.5 text-caption text-muted-foreground">
           {p && <ProviderIcon icon={p.icon} className="size-4 rounded-[0.3rem] [&_svg]:size-2.5" />}

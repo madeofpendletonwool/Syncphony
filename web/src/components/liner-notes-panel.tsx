@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { BookOpen, Dices, ExternalLink, Sparkles } from 'lucide-react'
 import { motion } from 'motion/react'
+import { ArtistLink } from '@/components/linked-names'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useHidden } from '@/lib/games'
 import { linerNotesQuery, releaseLine, type LinerNotesFact } from '@/lib/liner-notes'
 import { fadeUp, stagger } from '@/lib/motion'
+import { trackCredits } from '@/lib/names'
 import type { NowPlaying } from '@/lib/now-playing'
 import { cn } from '@/lib/utils'
 
@@ -102,7 +104,7 @@ export function LinerNotesPanel({ np, className }: { np: NowPlaying; className?:
         <motion.section variants={fadeUp} className="flex flex-col gap-1.5">
           <h3 className="flex items-center gap-1.5 text-headline">
             <Sparkles className="size-4 text-(--pal-text)" />
-            {n.artist.name}
+            <ArtistLink name={n.artist.name} {...trackCredits(np.track).find((c) => c.name === n.artist?.name)} linkId={np.track.linkId} />
           </h3>
           {n.artist.about && <p className="text-caption text-muted-foreground">{n.artist.about}</p>}
           {n.artist.bio && <p className="text-sm/relaxed text-foreground/90">{n.artist.bio}</p>}

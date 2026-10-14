@@ -100,6 +100,30 @@ func TestArtistElsewhere(t *testing.T) {
 	}
 }
 
+func TestResolveArtistAndAlbum(t *testing.T) {
+	e := newEnv(t)
+	alice := e.admin()
+	bob := e.member(alice, "bob")
+	theirs := linkFake(t, bob)
+	// Bob's link isn't shared yet: Alice has nothing to look on.
+	alice.want(http.StatusNotFound, "GET", "/resolve/artist?name="+url.QueryEscape("null island"), nil)
+	bob.want(http.StatusOK, "PATCH", "/links/"+theirs, map[string]any{"shared": true})
+	mine := linkFake(t, alice)
+
+	var ref httpapi.ResolvedRef
+	alice.want(http.StatusOK, "GET", "/resolve/artist?name="+url.QueryEscape("null island"), nil).decode(t, &ref)
+	if ref.LinkId != mine || ref.Id != "ar2" {
+		t.Errorf("artist: %+v, want her own link %s", ref, mine)
+	}
+	alice.want(http.StatusOK, "GET", "/resolve/album?title="+url.QueryEscape("Zero Zero")+"&artist="+url.QueryEscape("Null Island"), nil).decode(t, &ref)
+	if ref.LinkId != mine || ref.Id == "" {
+		t.Errorf("album: %+v", ref)
+	}
+	alice.want(http.StatusNotFound, "GET", "/resolve/album?title="+url.QueryEscape("Zero Zero")+"&artist="+url.QueryEscape("Sine Language"), nil)
+	alice.want(http.StatusNotFound, "GET", "/resolve/artist?name=Null", nil)
+	alice.want(http.StatusBadRequest, "GET", "/resolve/artist?name=+", nil)
+}
+
 func TestRoomArtistPlays(t *testing.T) {
 	e := newEnv(t)
 	alice := e.admin()
