@@ -20,6 +20,15 @@ export type DiscoveryMapEdge = components['schemas']['DiscoveryMapEdge']
 export type DiscoveryRelease = components['schemas']['DiscoveryRelease']
 export type DiscoveryFresh = components['schemas']['DiscoveryFresh']
 export type DiscoveryFreshDays = components['schemas']['DiscoveryFreshDays']
+export type DiscoveryRoomWeight = components['schemas']['DiscoveryRoomWeight']
+export type DiscoverySuggestions = components['schemas']['DiscoverySuggestions']
+export type DiscoveryOffer = components['schemas']['DiscoveryOffer']
+export type DiscoveryStarredArtist = components['schemas']['DiscoveryStarredArtist']
+export type DiscoveryTasteArtist = components['schemas']['DiscoveryTasteArtist']
+export type DiscoveryThumbResult = components['schemas']['DiscoveryThumbResult']
+export type WantItem = components['schemas']['WantItem']
+export type WantList = components['schemas']['WantList']
+export type WantStatus = components['schemas']['WantStatus']
 
 /** How far back a Fresh feed can look. */
 export const freshWindows: DiscoveryFreshDays[] = [30, 60, 90]
@@ -128,13 +137,25 @@ export function setChanged(qc: QueryClient, set: DiscoverySet) {
   void qc.resetQueries({ queryKey: feedQuery(set.id).queryKey })
   void qc.invalidateQueries({ queryKey: mapQuery({ setId: set.id }).queryKey })
   void qc.invalidateQueries({ queryKey: freshQuery(set.id).queryKey })
+  void qc.invalidateQueries({ queryKey: ['discover', 'suggestions', set.id] })
 }
 
 export function createSet(name: string, artists: { name: string; mbid?: string }[] = []) {
   return unwrap(api.POST('/me/discover/sets', { body: { name, artists } }))
 }
 
-export function updateSet(id: string, body: { name?: string; explore?: number; mode?: DiscoveryMode; freshDays?: DiscoveryFreshDays }) {
+export function updateSet(
+  id: string,
+  body: {
+    name?: string
+    explore?: number
+    mode?: DiscoveryMode
+    freshDays?: DiscoveryFreshDays
+    growAuto?: boolean
+    roomId?: string
+    roomWeight?: DiscoveryRoomWeight
+  },
+) {
   return unwrap(api.PATCH('/me/discover/sets/{setId}', { params: { path: { setId: id } }, body }))
 }
 
@@ -150,10 +171,21 @@ export function removeArtist(id: string, key: string) {
   return unwrap(api.DELETE('/me/discover/sets/{setId}/artists/{artistKey}', { params: { path: { setId: id, artistKey: key } } }))
 }
 
+/** A thumb on a song. A thumbs-up wants it, and may grow the set (`grew`). */
 export function thumb(kind: 'up' | 'down', item: DiscoveryItem, setId?: string) {
   return unwrap(
     api.POST('/me/discover/feedback', {
-      body: { kind, setId, title: item.title, artist: item.artist, mbid: item.mbid, isrc: item.isrc, deezerId: item.deezerId },
+      body: {
+        kind,
+        setId,
+        title: item.title,
+        artist: item.artist,
+        album: item.album,
+        cover: item.cover,
+        mbid: item.mbid,
+        isrc: item.isrc,
+        deezerId: item.deezerId,
+      },
     }),
   )
 }
@@ -168,6 +200,126 @@ export function unblock(key: string) {
 
 export function refreshLibrary() {
   return unwrap(api.POST('/me/discover/library'))
+}
+
+// --- The Want list (MAD-824) -------------------------------------------------
+
+export const wantQuery = queryOptions({
+  queryKey: ['discover', 'want'],
+  queryFn: () => unwrap(api.GET('/me/discover/want')),
+})
+
+/** Wants a release from a Fresh feed. */
+export function wantRelease(r: DiscoveryRelease, setId?: string) {
+  return unwrap(
+    api.POST('/me/discover/want', {
+      body: { kind: 'release', artist: r.artist, title: r.title, mbid: r.mbid, deezerId: r.deezerId, cover: r.cover, setId },
+    }),
+  )
+}
+
+export function setWant(id: string, status: WantStatus) {
+  return unwrap(api.PATCH('/me/discover/want/{wantId}', { params: { path: { wantId: id } }, body: { status } }))
+}
+
+/** Notes that you saw what landed in your library. */
+export function seeLanded() {
+  return unwrap(api.POST('/me/discover/want/seen'))
+}
+
+/** A changed Want-list item, in the cached list. */
+export function wantChanged(qc: QueryClient, item: WantItem) {
+  qc.setQueryData<WantList>(wantQuery.queryKey, (l) => {
+    if (!l) return l
+    const i = l.items.findIndex((w) => w.id === item.id)
+    return { ...l, items: i < 0 ? [item, ...l.items] : l.items.map((w) => (w.id === item.id ? item : w)) }
+  })
+  void qc.invalidateQueries({ queryKey: setsQuery.queryKey, exact: true })
+}
+
+/** A Want list's items with a status, grouped by artist: artists A to Z, each newest first. */
+export function groupWants(items: readonly WantItem[], status: WantStatus) {
+  const by = new Map<string, { artist: string; items: WantItem[] }>()
+  for (const it of items) {
+    if (it.status !== status) continue
+    const k = it.artist.toLowerCase()
+    const g = by.get(k) ?? { artist: it.artist, items: [] }
+    g.items.push(it)
+    by.set(k, g)
+  }
+  return [...by.values()].sort((a, b) => a.artist.localeCompare(b.artist, undefined, { sensitivity: 'base' }))
+}
+
+/** "3 wanted things landed in your library". */
+export function landedText(n: number) {
+  return `${n} wanted thing${n === 1 ? '' : 's'} landed in your library`
+}
+
+/** What a set has yielded: "2 of 5 wanted got", or "" if nothing yet. */
+export function yieldText(s: Pick<DiscoverySetSummary, 'wanted' | 'got'>) {
+  if (s.wanted === 0) return ''
+  return `${s.got} of ${s.wanted} wanted got`
+}
+
+// --- Sets that learn (MAD-825) and rooms as a source (MAD-826) --------------
+
+export const suggestionsQuery = (setId: string) =>
+  queryOptions({
+    queryKey: ['discover', 'suggestions', setId],
+    queryFn: () => unwrap(api.GET('/me/discover/sets/{setId}/suggestions', { params: { path: { setId } } })),
+  })
+
+export function dismissSuggestion(setId: string, kind: 'grow' | 'block', artist: string) {
+  return unwrap(api.POST('/me/discover/sets/{setId}/suggestions/dismiss', { params: { path: { setId } }, body: { kind, artist } }))
+}
+
+export type ArtistSource = 'manual' | 'thumb' | 'starred' | 'room'
+
+/** Adds the artists you picked to a set, noted as coming from where you picked them. */
+export function importArtists(setId: string, from: ArtistSource, names: string[]) {
+  return unwrap(
+    api.POST('/me/discover/sets/{setId}/import', { params: { path: { setId } }, body: { from, artists: names.map((name) => ({ name })) } }),
+  )
+}
+
+export const starredQuery = queryOptions({
+  queryKey: ['discover', 'starred'],
+  queryFn: () => unwrap(api.GET('/me/discover/starred')),
+  staleTime: 5 * 60_000,
+})
+
+export const roomTasteQuery = (q: { roomId: string; nightId?: string; mine?: boolean }) =>
+  queryOptions({
+    queryKey: ['discover', 'room-taste', q],
+    queryFn: () =>
+      unwrap(
+        api.GET('/me/discover/room-taste', {
+          params: { query: { roomId: q.roomId, ...(q.nightId ? { nightId: q.nightId } : {}), ...(q.mine ? { mine: true } : {}) } },
+        }),
+      ),
+    enabled: !!q.roomId,
+    staleTime: 60_000,
+  })
+
+/** "Starred · 2 albums · 1 song". */
+export function starredText(a: DiscoveryStarredArtist) {
+  const parts: string[] = []
+  if (a.artist) parts.push('Starred')
+  if (a.albums) parts.push(`${a.albums} album${a.albums === 1 ? '' : 's'}`)
+  if (a.songs) parts.push(`${a.songs} song${a.songs === 1 ? '' : 's'}`)
+  return parts.join(' · ')
+}
+
+const fromText: Record<ArtistSource, string> = {
+  manual: '',
+  thumb: 'Joined from your thumbs-up',
+  starred: 'From your Navidrome stars',
+  room: "From a room's taste",
+}
+
+/** Where a seed artist came from, for a hint; "" for ones you added. */
+export function sourceText(from: ArtistSource) {
+  return fromText[from] ?? ''
 }
 
 /** A feed's songs, once each: a feed rebuilt between pages can repeat one. */

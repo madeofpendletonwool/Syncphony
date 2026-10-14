@@ -2453,6 +2453,182 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/discover/sets/{setId}/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What a set's thumbs suggest
+         * @description Artists you thumbed up twice from the set's feed, to add to it, and
+         *     artists you thumbed down three times in any feed, to block. Ones in
+         *     the set, blocked, or that you said no to are left out.
+         */
+        get: operations["getDiscoverySuggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/sets/{setId}/suggestions/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Say no to a suggestion
+         * @description It isn't made again. A block suggestion is dismissed for every set.
+         */
+        post: operations["dismissDiscoverySuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/sets/{setId}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add artists you picked to a set at once
+         * @description From a suggestion, your Navidrome stars, or a room's taste, noted as
+         *     coming from there. Artists in the set already are skipped. More than
+         *     the set has room for is `too_many`, and adds none.
+         */
+        post: operations["importDiscoverySetArtists"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/starred": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Artists you starred on your Navidrome, to pick seeds from
+         * @description Starred artists, and the artists of starred albums and songs, from
+         *     your own links: starred artists first. Only a list to pick from;
+         *     nothing joins a set unless you pick it.
+         */
+        get: operations["listDiscoveryStarred"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/room-taste": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A room's favorite artists, to make a set from
+         * @description The room's taste as its DJ reads it, over past nights and lately,
+         *     or one past night's (`nightId`). Only rooms you can open. It only
+         *     reads the room.
+         */
+        get: operations["getDiscoveryRoomTaste"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/want": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your Want list
+         * @description Songs and releases you liked in Discover, newest first: wanted,
+         *     got (they turned up in your library, or you said so) and
+         *     dismissed. `landed` is how many turned up since you last looked.
+         */
+        get: operations["listDiscoveryWants"];
+        put?: never;
+        /**
+         * Want a song or release
+         * @description Wanting one that's on the list already returns it; one dismissed is wanted again.
+         */
+        post: operations["addDiscoveryWant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/want/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** You saw what landed in your library */
+        post: operations["seeDiscoveryLanded"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/discover/want/{wantId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wantId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Mark a thing wanted, got or dismissed */
+        patch: operations["updateDiscoveryWant"];
+        trace?: never;
+    };
     "/me/discover/release-tracks": {
         parameters: {
             query?: never;
@@ -2508,8 +2684,11 @@ export interface paths {
         put?: never;
         /**
          * Thumbs up or down on a song
-         * @description A thumbs-down hides the song from all your feeds, for good; a later
-         *     thumbs-up replaces it. Thumbs here never touch a room's DJ.
+         * @description A thumbs-down hides the song from all your feeds, for good, and
+         *     lowers its artist in the set's feed; a later thumbs-up replaces it.
+         *     A thumbs-up puts the song on your Want list, and in a set that
+         *     grows by itself, adds an artist you thumbed up twice from its feed.
+         *     Thumbs here never touch a room's DJ.
          */
         post: operations["postDiscoveryFeedback"];
         delete?: never;
@@ -5791,6 +5970,12 @@ export interface components {
             mode: components["schemas"]["DiscoveryMode"];
             freshDays: components["schemas"]["DiscoveryFreshDays"];
             artistCount: number;
+            /** @description Songs and releases wanted from its feeds (not dismissed). */
+            wanted: number;
+            /** @description Of those, how many you got. */
+            got: number;
+            /** @description The room whose taste it mixes in, if linked. */
+            roomId?: string;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -5803,6 +5988,11 @@ export interface components {
             explore: number;
             mode: components["schemas"]["DiscoveryMode"];
             freshDays: components["schemas"]["DiscoveryFreshDays"];
+            /** @description Artists you thumb up twice from its feed join it without asking. */
+            growAuto: boolean;
+            /** @description A room whose taste its feed mixes in (read only), if linked. */
+            roomId?: string;
+            roomWeight: components["schemas"]["DiscoveryRoomWeight"];
             artists: components["schemas"]["DiscoverySetArtist"][];
             /** Format: date-time */
             createdAt: string;
@@ -5832,7 +6022,16 @@ export interface components {
             explore?: number;
             mode?: components["schemas"]["DiscoveryMode"];
             freshDays?: components["schemas"]["DiscoveryFreshDays"];
+            growAuto?: boolean;
+            /** @description Link a room you can open, or "" to unlink. */
+            roomId?: string;
+            roomWeight?: components["schemas"]["DiscoveryRoomWeight"];
         };
+        /**
+         * @description How much a linked room's taste counts against the set's own artists.
+         * @enum {string}
+         */
+        DiscoveryRoomWeight: "low" | "medium" | "high";
         /**
          * @description How far back a set's Fresh feed looks, in days.
          * @enum {integer}
@@ -5980,7 +6179,108 @@ export interface components {
             isrc?: string;
             /** Format: int64 */
             deezerId?: number;
+            /** @description Its album, for the Want list. */
+            album?: string;
+            /** @description Its Deezer cover, for the Want list. */
+            cover?: string;
         };
+        DiscoveryThumbResult: {
+            want?: components["schemas"]["WantItem"];
+            /** @description The artist who joined the set by themselves, if any. */
+            grew?: string;
+        };
+        DiscoveryOffer: {
+            key: string;
+            name: string;
+            thumbs: number;
+        };
+        DiscoverySuggestions: {
+            /** @description Artists to add to the set. */
+            grow: components["schemas"]["DiscoveryOffer"][];
+            /** @description Artists to block. */
+            block: components["schemas"]["DiscoveryOffer"][];
+        };
+        DismissDiscoverySuggestionRequest: {
+            /** @enum {string} */
+            kind: "grow" | "block";
+            artist: string;
+        };
+        ImportDiscoveryArtistsRequest: {
+            /** @enum {string} */
+            from: "manual" | "thumb" | "starred" | "room";
+            artists: components["schemas"]["DiscoverySeed"][];
+        };
+        DiscoveryStarredArtist: {
+            name: string;
+            /** @description You starred the artist. */
+            artist: boolean;
+            /** @description How many of their albums you starred. */
+            albums: number;
+            /** @description How many of their songs you starred. */
+            songs: number;
+        };
+        DiscoveryTasteArtist: {
+            name: string;
+            /** @description How much the room likes them, 0 to 1 against its favorite. */
+            weight: number;
+            /** @description Their songs played lately, or that night. */
+            plays: number;
+        };
+        WantItem: {
+            id: string;
+            kind: components["schemas"]["WantKind"];
+            artist: string;
+            /** @description The song's title, or the release's. */
+            title: string;
+            /** @description A song's album, if known. */
+            release?: string;
+            /** @description A song's recording, or a release's release group. */
+            mbid?: string;
+            isrc?: string;
+            /**
+             * Format: int64
+             * @description The song or release on Deezer, for a preview or its songs.
+             */
+            deezerId?: number;
+            /** @description Its Deezer cover's image ID. */
+            cover?: string;
+            /** @description The set whose feed it came from, if it's still there. */
+            setId?: string;
+            status: components["schemas"]["WantStatus"];
+            /** Format: date-time */
+            gotAt?: string;
+            /**
+             * @description It turned up in your library (auto), or you said you got it.
+             * @enum {string}
+             */
+            gotBy?: "auto" | "manual";
+            /** Format: date-time */
+            addedAt: string;
+        };
+        WantList: {
+            items: components["schemas"]["WantItem"][];
+            /** @description How many turned up in your library since you last looked. */
+            landed: number;
+        };
+        AddWantRequest: {
+            kind: components["schemas"]["WantKind"];
+            artist: string;
+            title: string;
+            release?: string;
+            mbid?: string;
+            isrc?: string;
+            /** Format: int64 */
+            deezerId?: number;
+            cover?: string;
+            setId?: string;
+        };
+        UpdateWantRequest: {
+            status: components["schemas"]["WantStatus"];
+        };
+        /** @enum {string} */
+        WantStatus: "wanted" | "got" | "dismissed";
+        /** @enum {string} */
+        WantKind: "track" | "release";
         DiscoveryBlock: {
             key: string;
             name: string;
@@ -9254,6 +9554,221 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    getDiscoverySuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Suggestions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverySuggestions"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    dismissDiscoverySuggestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DismissDiscoverySuggestionRequest"];
+            };
+        };
+        responses: {
+            /** @description Dismissed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    importDiscoverySetArtists: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setId: components["parameters"]["DiscoverySetId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportDiscoveryArtistsRequest"];
+            };
+        };
+        responses: {
+            /** @description The set */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverySet"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listDiscoveryStarred: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Artists */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryStarredArtist"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getDiscoveryRoomTaste: {
+        parameters: {
+            query: {
+                roomId: string;
+                /** @description One of the room's past nights. */
+                nightId?: string;
+                /** @description Only from songs you picked. */
+                mine?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Artists, most liked first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryTasteArtist"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listDiscoveryWants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WantList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    addDiscoveryWant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddWantRequest"];
+            };
+        };
+        responses: {
+            /** @description It, on the list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WantItem"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    seeDiscoveryLanded: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Noted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateDiscoveryWant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wantId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateWantRequest"];
+            };
+        };
+        responses: {
+            /** @description It */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WantItem"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     listDiscoveryReleaseTracks: {
         parameters: {
             query: {
@@ -9321,12 +9836,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Kept */
-            204: {
+            /** @description Kept, and what it did */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DiscoveryThumbResult"];
+                };
             };
             default: components["responses"]["Error"];
         };

@@ -64,4 +64,26 @@ describe('ReleaseCard', () => {
     fireEvent.click(screen.getByRole('button', { name: "Hum isn't for me" }))
     expect(onBlock).toHaveBeenCalled()
   })
+
+  it('can be wanted, once', async () => {
+    const client = new QueryClient()
+    const onWant = vi.fn()
+    const card = (wanted: boolean) => (
+      <QueryClientProvider client={client}>
+        <InRouter>
+          <ul>
+            <ReleaseCard release={inlet} wanted={wanted} onWant={onWant} onBlock={vi.fn()} />
+          </ul>
+        </InRouter>
+      </QueryClientProvider>
+    )
+    render(card(false))
+    fireEvent.click(await screen.findByRole('button', { name: 'Want Inlet' }))
+    expect(onWant).toHaveBeenCalledTimes(1)
+    cleanup()
+    render(card(true))
+    const on = await screen.findByRole('button', { name: 'Inlet is on your Want list' })
+    expect(on.getAttribute('aria-pressed')).toBe('true')
+    expect((on as HTMLButtonElement).disabled).toBe(true)
+  })
 })
