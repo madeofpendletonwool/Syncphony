@@ -56,6 +56,10 @@ type Service struct {
 	Every time.Duration
 	// Now is the clock. Default store.Now.
 	Now func() time.Time
+	// Built, if set, is called after each index build, with the link's
+	// user, so what waits on their library (the Want list) can look
+	// again.
+	Built func(ctx context.Context, userID string)
 
 	// build runs one build at a time, so indexing a big library never
 	// takes more than one request's worth of the server at once.
@@ -385,6 +389,18 @@ func (s *Service) refreshStale(ctx context.Context) {
 // it only notes the time when the service says the library hasn't been
 // scanned since the last build.
 func (s *Service) Build(ctx context.Context, linkID string, force bool) error {
+	if err := s.buildIndex(ctx, linkID, force); err != nil || s.Built == nil {
+		return err
+	}
+	l, err := s.db.GetServiceLink(ctx, linkID)
+	if err != nil {
+		return err
+	}
+	s.Built(ctx, l.UserID)
+	return nil
+}
+
+func (s *Service) buildIndex(ctx context.Context, linkID string, force bool) error {
 	s.build.Lock()
 	defer s.build.Unlock()
 	sess, err := s.links.Open(ctx, linkID)
@@ -455,6 +471,45 @@ func (s *Service) Build(ctx context.Context, linkID string, force bool) error {
 	s.mu.Unlock()
 	slog.Debug("library: indexed a link", "link", linkID, "songs", ix.count)
 	return nil
+}
+
+// Starred lists what a user starred on their own links that can say:
+// artists, albums and songs, from each link in turn. A link that fails is
+// skipped, unless they all do.
+func (s *Service) Starred(ctx context.Context, userID string) (provider.Starred, error) {
+	rows, err := s.libraryLinks(ctx, userID)
+	if err != nil {
+		return provider.Starred{}, err
+	}
+	var out provider.Starred
+	var errs []error
+	for _, l := range rows {
+		st, err := s.starred(ctx, l.ID)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		out.Artists = append(out.Artists, st.Artists...)
+		out.Albums = append(out.Albums, st.Albums...)
+		out.Songs = append(out.Songs, st.Songs...)
+	}
+	if len(errs) > 0 && len(errs) == len(rows) {
+		return out, errors.Join(errs...)
+	}
+	return out, nil
+}
+
+func (s *Service) starred(ctx context.Context, linkID string) (provider.Starred, error) {
+	sess, err := s.links.Open(ctx, linkID)
+	if err != nil {
+		return provider.Starred{}, err
+	}
+	defer sess.Close()
+	st, ok := sess.(provider.Starrer)
+	if !ok {
+		return provider.Starred{}, nil
+	}
+	return st.Starred(ctx)
 }
 
 func (s *Service) cannotList(linkID string) {

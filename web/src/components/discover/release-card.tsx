@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, ExternalLink, UserX } from 'lucide-react'
+import { ChevronDown, ExternalLink, Heart, UserX } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useId, useState } from 'react'
 import { errorMessage } from '@/api/errors'
@@ -18,7 +18,19 @@ import { SongRow } from './song-row'
  * it's here. Open it for its songs, each with a preview, or search
  * YouTube for the whole thing.
  */
-export function ReleaseCard({ release, isNew, onBlock }: { release: DiscoveryRelease; isNew?: boolean; onBlock: () => void }) {
+export function ReleaseCard({
+  release,
+  isNew,
+  wanted,
+  onWant,
+  onBlock,
+}: {
+  release: DiscoveryRelease
+  isNew?: boolean
+  wanted?: boolean
+  onWant?: () => void
+  onBlock: () => void
+}) {
   const [open, setOpen] = useState(false)
   const songsId = useId()
   const why = release.seed ? '' : becauseText(release)
@@ -54,6 +66,20 @@ export function ReleaseCard({ release, isNew, onBlock }: { release: DiscoveryRel
               YouTube
             </a>
           </Button>
+          {onWant && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={wanted ? `${release.title} is on your Want list` : `Want ${release.title}`}
+              title={wanted ? 'On your Want list' : 'Want'}
+              aria-pressed={wanted}
+              disabled={wanted}
+              onClick={onWant}
+              className={cn(wanted && 'text-primary disabled:opacity-100')}
+            >
+              <Heart className={cn(wanted && 'fill-current')} />
+            </Button>
+          )}
           <Button variant="ghost" size="icon-sm" aria-label={`${release.artist} isn't for me`} title={`${release.artist} isn't for me`} onClick={onBlock}>
             <UserX />
           </Button>

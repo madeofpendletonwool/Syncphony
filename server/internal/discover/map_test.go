@@ -156,7 +156,7 @@ func TestArtistSongs(t *testing.T) {
 	e := newEnv(t)
 	credit := []provider.ArtistCredit{{Name: "Hum"}}
 	e.svc.Library = owned{library.Holding(provider.Track{Title: "Hum song 1", Artists: credit})}
-	if err := e.svc.Thumb(t.Context(), e.alice, "", discover.ThumbDown, discover.Song{Title: "Hum song 2", Artist: "Hum"}); err != nil {
+	if _, err := e.svc.Thumb(t.Context(), e.alice, "", discover.ThumbDown, discover.Song{Title: "Hum song 2", Artist: "Hum"}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := e.svc.ArtistSongs(t.Context(), e.alice, "hum", "")

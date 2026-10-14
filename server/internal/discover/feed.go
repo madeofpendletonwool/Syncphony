@@ -263,7 +263,7 @@ func (n *node) because(names map[string]string) []string {
 // pages, best first and taking turns between the seeds, without songs the
 // user has or turned down, within BuildFor.
 func (s *Service) build(ctx context.Context, userID string, set Set) [][]Item {
-	if s.Graph == nil || len(set.Artists) == 0 {
+	if s.Graph == nil || (len(set.Artists) == 0 && !set.RoomID.Valid) {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.BuildFor)
@@ -273,6 +273,12 @@ func (s *Service) build(ctx context.Context, userID string, set Set) [][]Item {
 	if err != nil {
 		slog.Warn("discover: reading what to leave out", "set", set.ID, "err", err)
 		keep = func(Item) bool { return true }
+	}
+
+	// Thumbs-down from this set's feed lower their artists in it.
+	var setDowns map[string]int
+	if tc, err := s.thumbCounts(ctx, userID, set.ID); err == nil {
+		setDowns = tc.setDowns
 	}
 
 	lk := &looker{g: s.Graph, ctx: ctx, budget: maxFetches}
@@ -309,6 +315,8 @@ func (s *Service) build(ctx context.Context, userID string, set Set) [][]Item {
 			reach(sim.Artist, k, sim.Score, 1)
 		}
 	}
+	// A linked room's favorite artists pull too, less than the seeds.
+	walkRoom(s.roomSeeds(ctx, userID, set), lookup, names, reach)
 	for _, n := range seeds {
 		delete(nodes, library.ArtistKey(n.ref.Name)) // a seed isn't a new artist
 	}
@@ -365,7 +373,7 @@ func (s *Service) build(ctx context.Context, userID string, set Set) [][]Item {
 			if so.Rank > 0 {
 				pop = 0.6*so.Rank + 0.4*fame
 			}
-			it.Score = score(pull, pop, so.Score, explore)
+			it.Score = score(pull, pop, so.Score, explore) * downWeight(setDowns[library.ArtistKey(artist)])
 			items = append(items, it)
 		}
 	}

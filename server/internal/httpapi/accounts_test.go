@@ -156,6 +156,7 @@ func newEnv(t *testing.T) *env {
 		api.Clips = clips.New(e.links, ff, clips.Config{})
 		t.Cleanup(api.Clips.Close)
 	}
+	api.Discover.Rooms = &discover.RoomSource{DB: db, CanEnter: e.rooms.CanEnter, Now: e.clock}
 	e.api = api
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api.Handler())

@@ -39,6 +39,9 @@ RETURNING *;
 -- name: LastNight :one
 SELECT * FROM nights WHERE room_id = ? ORDER BY ended_at DESC, id DESC LIMIT 1;
 
+-- name: GetNight :one
+SELECT * FROM nights WHERE id = ? AND room_id = ?;
+
 -- name: ListNights :many
 SELECT * FROM nights WHERE room_id = ? ORDER BY ended_at DESC, id DESC LIMIT ?;
 

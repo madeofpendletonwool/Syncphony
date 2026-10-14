@@ -3,15 +3,20 @@ import {
   becauseText,
   fansText,
   feedItems,
+  groupWants,
   imageUrl,
   kindText,
+  landedText,
   mixFresh,
   releaseCoverUrl,
   releaseDateText,
   releaseYoutubeUrl,
+  starredText,
+  yieldText,
   youtubeUrl,
   type DiscoveryFeed,
   type DiscoveryRelease,
+  type WantItem,
 } from './discover'
 
 const item = (key: string) => ({ key, title: key, artist: 'A', because: ['Slowdive'], seed: false })
@@ -130,5 +135,37 @@ describe('kindText', () => {
   it('names kinds of release', () => {
     expect(kindText('ep')).toBe('EP')
     expect(kindText('live')).toBe('Live album')
+  })
+})
+
+describe('the Want list', () => {
+  const want = (id: string, artist: string, status: WantItem['status']): WantItem => ({
+    id,
+    kind: 'track',
+    artist,
+    title: id,
+    status,
+    addedAt: '2026-10-14T00:00:00Z',
+  })
+
+  it('groups by artist, A to Z, each keeping its order', () => {
+    const items = [want('a', 'slowdive', 'wanted'), want('b', 'Hum', 'wanted'), want('c', 'Slowdive', 'wanted'), want('d', 'Hum', 'got')]
+    const groups = groupWants(items, 'wanted')
+    expect(groups.map((g) => g.artist)).toEqual(['Hum', 'slowdive'])
+    expect(groups[1].items.map((w) => w.id)).toEqual(['a', 'c'])
+    expect(groupWants(items, 'got').map((g) => g.items.length)).toEqual([1])
+    expect(groupWants(items, 'dismissed')).toEqual([])
+  })
+
+  it('says what landed and what a set yielded', () => {
+    expect(landedText(1)).toBe('1 wanted thing landed in your library')
+    expect(landedText(3)).toBe('3 wanted things landed in your library')
+    expect(yieldText({ wanted: 0, got: 0 })).toBe('')
+    expect(yieldText({ wanted: 5, got: 2 })).toBe('2 of 5 wanted got')
+  })
+
+  it('says what of an artist you starred', () => {
+    expect(starredText({ name: 'Low', artist: true, albums: 0, songs: 0 })).toBe('Starred')
+    expect(starredText({ name: 'Slowdive', artist: false, albums: 2, songs: 1 })).toBe('2 albums · 1 song')
   })
 })

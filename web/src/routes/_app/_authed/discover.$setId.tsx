@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Check, LoaderCircle, Pencil, RefreshCw, Trash2, X } from 'lucide-react'
+import { Check, LoaderCircle, Pencil, RefreshCw, Star, Trash2, Users, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { errorMessage } from '@/api/errors'
@@ -8,13 +8,16 @@ import { BackButton } from '@/components/back-button'
 import { ConfirmButton } from '@/components/confirm-button'
 import { ArtistSearch } from '@/components/discover/artist-search'
 import { FeedCard } from '@/components/discover/feed-card'
+import { RoomSheet, StarredSheet } from '@/components/discover/import-sheets'
 import { ReleaseCard } from '@/components/discover/release-card'
 import { SetTabs } from '@/components/discover/set-tabs'
+import { Suggestions } from '@/components/discover/suggestions'
 import { Notice } from '@/components/notice'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Slider } from '@/components/ui/slider'
+import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import {
   addArtist,
@@ -31,17 +34,24 @@ import {
   setChanged,
   setQuery,
   setsQuery,
+  sourceText,
   stopPreview,
+  suggestionsQuery,
   thumb,
   unblock,
   updateSet,
+  wantChanged,
+  wantRelease,
   type DiscoveryFeed,
   type DiscoveryFresh,
   type DiscoveryFreshDays,
   type DiscoveryItem,
   type DiscoveryMode,
+  type DiscoveryRelease,
+  type DiscoveryRoomWeight,
   type DiscoverySet,
 } from '@/lib/discover'
+import { roomsQuery } from '@/lib/room'
 import { tap } from '@/lib/haptics'
 import { stagger } from '@/lib/motion'
 import { toast } from '@/lib/toast'
@@ -80,7 +90,8 @@ function SetPage() {
       <Header set={set.data} />
       <Seeds set={set.data} />
       <Tuning set={set.data} />
-      {set.data.artists.length === 0 ? (
+      <Suggestions set={set.data} />
+      {set.data.artists.length === 0 && !set.data.roomId ? (
         <p className="mt-8 text-center text-sm text-muted-foreground">Add an artist or two, and music near them shows up here.</p>
       ) : set.data.mode === 'fresh' ? (
         <FreshFeed set={set.data} />
@@ -160,12 +171,17 @@ function Seeds({ set }: { set: DiscoverySet }) {
   const add = useSetMutation((name: string) => addArtist(set.id, name))
   const remove = useSetMutation((key: string) => removeArtist(set.id, key))
   const have = useMemo(() => new Set(set.artists.map((a) => a.name.toLowerCase())), [set.artists])
+  const [sheet, setSheet] = useState<'starred' | 'room'>()
   return (
     <section className="glass flex flex-col gap-3 rounded-3xl p-4">
       {set.artists.length > 0 && (
         <ul className="flex flex-wrap gap-2" aria-label="Seed artists">
           {set.artists.map((a) => (
-            <li key={a.key} className="flex items-center gap-1 rounded-full bg-primary/15 py-1 pr-1 pl-3 text-sm font-medium text-primary">
+            <li
+              key={a.key}
+              title={sourceText(a.addedFrom) || undefined}
+              className="flex items-center gap-1 rounded-full bg-primary/15 py-1 pr-1 pl-3 text-sm font-medium text-primary"
+            >
               {a.name}
               <Button
                 variant="ghost"
@@ -187,6 +203,18 @@ function Seeds({ set }: { set: DiscoverySet }) {
         </ul>
       )}
       <ArtistSearch have={have} autoFocus={set.artists.length === 0} onPick={(name) => add.mutate(name)} />
+      <div className="flex flex-wrap gap-2">
+        <Button variant="ghost" size="sm" onClick={() => setSheet('starred')}>
+          <Star data-icon="inline-start" />
+          From your stars
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setSheet('room')}>
+          <Users data-icon="inline-start" />
+          From a room
+        </Button>
+      </div>
+      <StarredSheet set={set} open={sheet === 'starred'} onOpenChange={(o) => setSheet(o ? 'starred' : undefined)} />
+      <RoomSheet set={set} open={sheet === 'room'} onOpenChange={(o) => setSheet(o ? 'room' : undefined)} />
     </section>
   )
 }
@@ -196,7 +224,11 @@ function Tuning({ set }: { set: DiscoverySet }) {
   // While dragging, and until the change is saved.
   const [dragged, setDragged] = useState<number>()
   const explore = dragged ?? set.explore
-  const update = useSetMutation((body: { explore?: number; mode?: DiscoveryMode; freshDays?: DiscoveryFreshDays }) => updateSet(set.id, body))
+  const update = useSetMutation(
+    (body: { explore?: number; mode?: DiscoveryMode; freshDays?: DiscoveryFreshDays; growAuto?: boolean; roomId?: string; roomWeight?: DiscoveryRoomWeight }) =>
+      updateSet(set.id, body),
+  )
+  const rooms = useQuery(roomsQuery)
   return (
     <section className="mt-3 grid gap-4 px-1 sm:grid-cols-[1fr_auto] sm:items-center">
       <label className="flex flex-col gap-1">
@@ -243,6 +275,47 @@ function Tuning({ set }: { set: DiscoverySet }) {
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-3 sm:col-span-2">
+        <span className="min-w-0">
+          <span className="block text-sm">Grow by itself</span>
+          <span className="block text-caption text-muted-foreground">Artists you thumb up twice here join without asking.</span>
+        </span>
+        <Switch checked={set.growAuto} onChange={(on) => update.mutate({ growAuto: on })} label="Grow by itself" />
+      </div>
+      {(!!rooms.data?.length || set.roomId) && (
+        <div className="flex flex-col gap-2 sm:col-span-2 sm:flex-row sm:items-center">
+          <label className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="text-sm">Mix in a room&apos;s taste</span>
+            <select
+              aria-label="Mix in a room's taste"
+              value={set.roomId ?? ''}
+              onChange={(e) => update.mutate({ roomId: e.target.value })}
+              className="h-10 w-full rounded-xl border border-input bg-transparent px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              <option value="">No room</option>
+              {rooms.data?.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+              {set.roomId && !rooms.data?.some((r) => r.id === set.roomId) && <option value={set.roomId}>A room you left</option>}
+            </select>
+          </label>
+          {set.roomId && (
+            <ToggleGroup
+              type="single"
+              value={set.roomWeight}
+              onValueChange={(v) => v && update.mutate({ roomWeight: v as DiscoveryRoomWeight })}
+              aria-label="How much the room counts"
+              className="self-end"
+            >
+              <ToggleGroupItem value="low">A little</ToggleGroupItem>
+              <ToggleGroupItem value="medium">Some</ToggleGroupItem>
+              <ToggleGroupItem value="high">A lot</ToggleGroupItem>
+            </ToggleGroup>
+          )}
         </div>
       )}
     </section>
@@ -324,10 +397,22 @@ function Feed({ set, withFresh }: { set: DiscoverySet; withFresh: boolean }) {
       if (kind === 'down') drop((it) => it.key !== item.key)
       else setThumbed((s) => new Set(s).add(item.key))
     },
-    onSuccess: (_, { kind, item }) =>
-      toast({ message: kind === 'up' ? `Glad you like “${item.title}”` : `You won't see “${item.title}” again` }),
+    onSuccess: (did, { kind, item }) => {
+      void qc.invalidateQueries({ queryKey: suggestionsQuery(set.id).queryKey })
+      if (did.want) wantChanged(qc, did.want)
+      if (did.grew) void qc.invalidateQueries({ queryKey: setQuery(set.id).queryKey })
+      toast({
+        message:
+          kind === 'down'
+            ? `You won't see “${item.title}” again`
+            : did.grew
+              ? `“${item.title}” is on your Want list, and ${did.grew} joined this set`
+              : `“${item.title}” is on your Want list`,
+      })
+    },
     onError: (e) => toast({ message: errorMessage(e), tone: 'error' }),
   })
+  const want = useWantRelease(set.id)
   const notForMe = useNotForMe(set.id, (artist) => drop((it) => it.artist.toLowerCase() !== artist.toLowerCase()))
 
   return (
@@ -361,7 +446,14 @@ function Feed({ set, withFresh }: { set: DiscoverySet; withFresh: boolean }) {
         <motion.ul variants={stagger} initial="hidden" animate="show" className="flex flex-col gap-3">
           {entries.map((e) =>
             e.kind === 'release' ? (
-              <ReleaseCard key={`release-${e.release.key}`} release={e.release} isNew onBlock={() => notForMe.mutate(e.release.artist)} />
+              <ReleaseCard
+                key={`release-${e.release.key}`}
+                release={e.release}
+                isNew
+                wanted={want.wanted.has(e.release.key)}
+                onWant={() => want.mutate(e.release)}
+                onBlock={() => notForMe.mutate(e.release.artist)}
+              />
             ) : (
               <FeedCard
                 key={e.item.key}
@@ -386,6 +478,7 @@ function Feed({ set, withFresh }: { set: DiscoverySet; withFresh: boolean }) {
 function FreshFeed({ set }: { set: DiscoverySet }) {
   const fresh = useQuery(freshQuery(set.id))
   const notForMe = useNotForMe(set.id, () => {})
+  const want = useWantRelease(set.id)
   const data = fresh.data
   return (
     <section className="mt-8">
@@ -428,10 +521,42 @@ function FreshFeed({ set }: { set: DiscoverySet }) {
       ) : (
         <motion.ul variants={stagger} initial="hidden" animate="show" className="flex flex-col gap-3">
           {data.items.map((r) => (
-            <ReleaseCard key={r.key} release={r} onBlock={() => notForMe.mutate(r.artist)} />
+            <ReleaseCard
+              key={r.key}
+              release={r}
+              wanted={want.wanted.has(r.key)}
+              onWant={() => want.mutate(r)}
+              onBlock={() => notForMe.mutate(r.artist)}
+            />
           ))}
         </motion.ul>
       )}
     </section>
   )
+}
+
+/** "Want" on a release: onto the Want list, until it's in your library. */
+function useWantRelease(setId: string) {
+  const qc = useQueryClient()
+  const [wanted, setWanted] = useState<ReadonlySet<string>>(new Set())
+  const m = useMutation({
+    mutationFn: (r: DiscoveryRelease) => wantRelease(r, setId),
+    onMutate: (r) => {
+      tap()
+      setWanted((s) => new Set(s).add(r.key))
+    },
+    onSuccess: (item) => {
+      wantChanged(qc, item)
+      toast({ message: `“${item.title}” is on your Want list` })
+    },
+    onError: (e, r) => {
+      setWanted((s) => {
+        const next = new Set(s)
+        next.delete(r.key)
+        return next
+      })
+      toast({ message: errorMessage(e), tone: 'error' })
+    },
+  })
+  return { mutate: m.mutate, wanted }
 }

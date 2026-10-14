@@ -2,11 +2,11 @@
 
 - **Status:** accepted
 - **Date:** 2026-10-13
-- **Issues:** MAD-814 (Phase 12), stage 1: MAD-815..819, stage 2: MAD-820, 821, stage 3: MAD-822, 823
+- **Issues:** MAD-814 (Phase 12), stage 1: MAD-815..819, stage 2: MAD-820, 821, stage 3: MAD-822, 823, stage 4: MAD-824..826
 
 ## Context
 
-Phase 12 adds a way to find music you **don't have yet**, the way Google Play Music's "new releases for you" did. Everything stays on the server. You hear a 30-second preview, follow a link out to YouTube for the whole song, and later (stage 4) keep what you like on a Want list until it turns up in your library.
+Phase 12 adds a way to find music you **don't have yet**, the way Google Play Music's "new releases for you" did. Everything stays on the server. You hear a 30-second preview, follow a link out to YouTube for the whole song, and keep what you like on a Want list until it turns up in your library.
 
 The obvious seed is your library. It's the wrong one. A Navidrome library holds plenty of music its owner doesn't love, so recommending from it recommends the wrong things. Syncphony's own history is still short, too.
 
@@ -81,9 +81,39 @@ A release card shows its cover (Deezer's, else the Cover Art Archive's through `
 
 The unread dot on the Discover tab, for releases you haven't seen yet, isn't built. Knowing what's unseen would mean working out every set's Fresh feed for the tab bar.
 
+### The Want list
+
+A thumbs-up on a song, or **Want** on a release, puts it on the Want list (`want_items`), noting the set whose feed it came from (MAD-824). Wanted things are left out of every feed and Fresh feed. Syncphony never gets them for you. You follow the YouTube link, add what you like to your Navidrome, and Syncphony notices.
+
+- **Automatic got-it.** `library.Service` calls its `Built` hook after every index build of a link, with the link's user. That includes a build skipped because Navidrome hadn't rescanned, since something wanted since then may already be there. `discover.CheckWants` then matches each wanted thing against the user's index: a song with `Has` (ISRC or MBID first, then artist and title), a release with `HasRelease` (artist and title, so a deluxe edition counts). A match is marked `got`, `got_by = auto`, with `got_at`. Discover then says "3 wanted things landed in your library" until you open the Want list (`got_seen`). Marking something got yourself (`got_by = manual`) doesn't count as landing.
+- **The screen** (`/discover/want`) groups by artist, with Wanted, Got and Dismissed. A wanted song plays its preview and links to YouTube, and anything can be marked got or dismissed. Got releases link to the album in Syncphony (the linked-names lookup, ADR 0013 and MAD-837), and got songs to a song search, to queue or play right away. There are no store links. Wanting a dismissed thing again brings it back.
+- **What a set yields.** The set list counts what each set's feeds led you to want, and how much of that you got (`wanted`, `got` on `listDiscoverySets`). That shows which sets pay off. The counts follow `want_items.set_id`, which is cleared when a set is deleted.
+
+Migration 00032 adds `want_items.cover`, `got_by` and `got_seen`.
+
+### Sets that learn
+
+Thumbs still never reach a room (MAD-825). Within discovery, they now do three things:
+
+- **Growing.** An artist you thumbed up twice from a set's feed is offered for the set ("You liked 2 songs by Failure. Add them?"). A set with **Grow by itself** on (`grow_auto`, off by default) adds them at the second thumbs-up, and the thumb's answer says who joined (`grew`). Either way they're stored with `added_from = thumb`. Offers you turn down are kept in `discovery_dismissed` and aren't made again.
+- **Thumbs-down.** Each thumbs-down from a set's feed lowers that artist's songs in that feed by 0.6×, so three take them to about a fifth. That happens when the feed is next built, within 10 minutes or on refresh, not on every thumb, because a rebuild mid-scroll would restart the pages. The song turned down still leaves every feed at once. Three thumbs-down for one artist, in any feeds, offers to block them.
+- **Not for me** is the global block list. It and the library's status now live on a Discover settings screen (`/discover/settings`), where you can unblock.
+- **Starred import** is a one-time, opt-in pick list. `GET /me/discover/starred` lists the artists you starred on your own Navidrome links, and the artists of the albums and songs you starred, through a new optional `provider.Starrer` (Navidrome's `getStarred2`). Starred artists come first, then by how much of theirs you starred. Only the ones you check are added (`importDiscoverySetArtists`, `added_from = starred`). It's never automatic: starring something doesn't make it a set's taste.
+
+`importDiscoverySetArtists` adds the artists you picked at once, from a suggestion, your stars or a room. Ones in the set already are skipped. More than the set has room for is `too_many`, and adds none.
+
+### A room's taste as a source
+
+A set can draw on a room you can open (`rooms.CanEnter`: open rooms, yours, or ones you're a member of) in two ways (MAD-826):
+
+- **Snapshot.** `GET /me/discover/room-taste` lists a room's favorite artists, or one past night's (`nightId`), optionally from only your own picks (`mine`). You check the ones to keep, into a set or a new one, with `added_from = room`. A room's taste is its long-term taste as the DJ keeps it (`dj.Peek`) merged with a profile of its latest 200 plays (`dj.NewProfile`), whichever likes an artist more. Artists the room turned away lately are left out. A night's taste is that night's plays alone (`dj.NightInput`). With `mine`, the long-term rows are narrowed to your own (`dj_affinities.member`), and the profile to your share of each artist (`ByMember`).
+- **Live.** A set can link to one room (`discovery_sets.room_id`) with a weight: low 0.3, medium 0.55 or high 0.85. Building the feed then walks out from the room's 12 favorite artists that aren't seeds, as from seeds that pull that much less, times how much the room likes each one. As the room's taste moves, so does the feed, at its next build. A set linked to a room can have no seeds of its own. Fresh feeds and maps still follow only the seeds.
+
+Both are read only. `dj.Peek` reads the DJ's stored rows without folding in nights that ended since, which `Memory.Load` would do, so discovery never writes a room's DJ memory. Room skips don't affect a set. A room you can no longer open is dropped from the walk, and `room_id` is cleared if the room is deleted.
+
 ### Feedback stays out of rooms
 
-Discovery thumbs and blocks never reach a room's DJ (`dj_affinity`), and a room's skips never touch a set. Stage 1 stores thumbs-up. Stage 4 turns them into Want-list entries and growing sets.
+Discovery thumbs and blocks never reach a room's DJ (`dj_affinity`), and a room's skips never touch a set. Reading a room's taste for a set doesn't change it either.
 
 ## Consequences
 

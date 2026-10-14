@@ -79,16 +79,37 @@ func (m *Memory) Load(ctx context.Context, roomID string) (LongTerm, error) {
 	return readLongTerm(room, rows), err
 }
 
-// night reads what the room did in a night: its plays, newest first, and
-// their hearts.
+// Peek returns a room's long-term taste as it's kept, without folding in
+// nights since: it never writes, for readers outside the room (personal
+// discovery). member, if set, narrows it to that member's own likes.
+func Peek(ctx context.Context, db *store.Store, roomID, member string) (LongTerm, error) {
+	room, err := db.GetDJRoom(ctx, roomID)
+	if err != nil && !store.IsNotFound(err) {
+		return LongTerm{}, err
+	}
+	room.RoomID = roomID
+	rows, err := db.ListDJAffinities(ctx, roomID)
+	if member != "" {
+		rows = slices.DeleteFunc(rows, func(r store.DjAffinity) bool { return r.Member != member })
+	}
+	return readLongTerm(room, rows), err
+}
+
+// night reads what the room did in a night.
 func (m *Memory) night(ctx context.Context, n store.Night) (Input, error) {
-	plays, err := m.DB.ListPlaysBetween(ctx, store.ListPlaysBetweenParams{
+	return NightInput(ctx, m.DB, m.Graph, n)
+}
+
+// NightInput reads what a room did in a night: its plays, newest first,
+// and their hearts. graph, if set, says which artists are alike.
+func NightInput(ctx context.Context, db *store.Store, graph Graph, n store.Night) (Input, error) {
+	plays, err := db.ListPlaysBetween(ctx, store.ListPlaysBetweenParams{
 		RoomID: n.RoomID, FromTime: n.StartedAt, ToTime: n.EndedAt.Add(time.Microsecond), Limit: maxNightPlays,
 	})
 	if err != nil {
 		return Input{}, err
 	}
-	counts, err := m.DB.HeartCountsSince(ctx, store.HeartCountsSinceParams{RoomID: n.RoomID, Since: n.StartedAt})
+	counts, err := db.HeartCountsSince(ctx, store.HeartCountsSinceParams{RoomID: n.RoomID, Since: n.StartedAt})
 	if err != nil {
 		return Input{}, err
 	}
@@ -99,8 +120,8 @@ func (m *Memory) night(ctx context.Context, n store.Night) (Input, error) {
 	for _, c := range counts {
 		in.Hearts[c.QueueItemID] = int(c.Hearts)
 	}
-	if m.Graph != nil {
-		in.Related = Related(ctx, m.Graph)
+	if graph != nil {
+		in.Related = Related(ctx, graph)
 	}
 	return in, nil
 }

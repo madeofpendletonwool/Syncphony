@@ -105,6 +105,12 @@ type Service struct {
 	// Releases finds artists' recent releases, for Fresh feeds. Nil
 	// makes every Fresh feed empty.
 	Releases Releases
+	// Stars lists what users starred on their own links, to pick seeds
+	// from. Nil lists nothing.
+	Stars Stars
+	// Rooms reads rooms' taste, for sets made from one or linked to one.
+	// Nil means no room can be a source.
+	Rooms RoomTaste
 	// Now is the clock. Default store.Now.
 	Now func() time.Time
 	// BuildFor bounds building a feed; what's found by then is the feed.
@@ -237,6 +243,12 @@ type Changes struct {
 	Explore   *int
 	Mode      *string
 	FreshDays *int
+	// GrowAuto is whether artists thumbed up twice join by themselves.
+	GrowAuto *bool
+	// RoomID links the set to a room whose taste it mixes in; "" unlinks
+	// it. RoomWeight is how much: RoomLow, RoomMedium or RoomHigh.
+	RoomID     *string
+	RoomWeight *string
 }
 
 // Update renames a set, or changes its explore, mode or Fresh window.
@@ -246,7 +258,8 @@ func (s *Service) Update(ctx context.Context, userID, setID string, c Changes) (
 		return Set{}, err
 	}
 	p := store.UpdateDiscoverySetParams{
-		ID: setID, UserID: userID, Name: set.Name, Explore: set.Explore, Mode: set.Mode, FreshDays: set.FreshDays, UpdatedAt: s.Now(),
+		ID: setID, UserID: userID, Name: set.Name, Explore: set.Explore, Mode: set.Mode, FreshDays: set.FreshDays,
+		GrowAuto: set.GrowAuto, RoomID: set.RoomID, RoomWeight: set.RoomWeight, UpdatedAt: s.Now(),
 	}
 	if c.Name != nil {
 		if p.Name, err = cleanName(*c.Name); err != nil {
@@ -270,6 +283,29 @@ func (s *Service) Update(ctx context.Context, userID, setID string, c Changes) (
 			return Set{}, err
 		}
 		p.FreshDays = int64(*c.FreshDays)
+	}
+	if c.GrowAuto != nil {
+		p.GrowAuto = 0
+		if *c.GrowAuto {
+			p.GrowAuto = 1
+		}
+	}
+	if c.RoomWeight != nil {
+		if !slices.Contains([]string{RoomLow, RoomMedium, RoomHigh}, *c.RoomWeight) {
+			return Set{}, &InvalidInputError{"a room's weight is low, medium or high"}
+		}
+		p.RoomWeight = *c.RoomWeight
+	}
+	if c.RoomID != nil {
+		p.RoomID = sql.NullString{String: *c.RoomID, Valid: *c.RoomID != ""}
+		if p.RoomID.Valid {
+			if s.Rooms == nil {
+				return Set{}, &InvalidInputError{"rooms can't be a set's source on this server"}
+			}
+			if err := s.Rooms.MayRead(ctx, userID, *c.RoomID); err != nil {
+				return Set{}, err
+			}
+		}
 	}
 	if err := s.db.UpdateDiscoverySet(ctx, p); err != nil {
 		return Set{}, err
@@ -310,13 +346,17 @@ func (s *Service) AddArtist(ctx context.Context, userID, setID string, a Seed) (
 }
 
 func (s *Service) addArtist(ctx context.Context, setID string, a Seed, from string) error {
+	return s.addArtistWith(ctx, s.db.Queries, setID, a, from)
+}
+
+func (s *Service) addArtistWith(ctx context.Context, q *store.Queries, setID string, a Seed, from string) error {
 	name := strings.Join(strings.Fields(a.Name), " ")
 	key := ArtistKey(name, a.MBID)
 	if name == "" || key == "" || utf8.RuneCountInString(name) > MaxName*2 {
 		return &InvalidInputError{"an artist's name is needed"}
 	}
 	mbid := strings.ToLower(strings.TrimSpace(a.MBID))
-	return s.db.AddDiscoverySetArtist(ctx, store.AddDiscoverySetArtistParams{
+	return q.AddDiscoverySetArtist(ctx, store.AddDiscoverySetArtistParams{
 		SetID: setID, ArtistKey: key, Name: name, Mbid: sql.NullString{String: mbid, Valid: mbid != ""},
 		AddedFrom: from, AddedAt: s.Now(),
 	})
@@ -348,26 +388,61 @@ func (s *Service) touch(ctx context.Context, setID string) error {
 // Song is a song given a thumb.
 type Song struct {
 	Title, Artist string
-	MBID, ISRC    string
-	DeezerID      int64
+	// Album and Cover are its album's title and Deezer cover, if known,
+	// for the Want list.
+	Album, Cover string
+	MBID, ISRC   string
+	DeezerID     int64
+}
+
+// Thumbed is what a thumb did besides being kept.
+type Thumbed struct {
+	// Want is the song on the Want list, for a thumbs-up.
+	Want *store.WantItem
+	// Grew is the artist who joined the set, if the set grows by itself
+	// and this was their second thumbs-up in it.
+	Grew string
 }
 
 // Thumb records a thumbs-up or -down on a song, from a set's feed if
 // setID is given. A thumbs-down hides the song from every one of the
-// user's feeds, for good; a later thumbs-up replaces it.
-func (s *Service) Thumb(ctx context.Context, userID, setID, kind string, song Song) error {
+// user's feeds, for good, and lowers its artist in that set's feed; a
+// later thumbs-up replaces it. A thumbs-up puts the song on the Want
+// list, and may grow the set (see Suggestions).
+func (s *Service) Thumb(ctx context.Context, userID, setID, kind string, song Song) (Thumbed, error) {
 	if kind != ThumbUp && kind != ThumbDown {
-		return &InvalidInputError{"a thumb is up or down"}
+		return Thumbed{}, &InvalidInputError{"a thumb is up or down"}
 	}
 	key := SongKey(song.Artist, song.Title)
 	if strings.TrimSpace(song.Title) == "" || strings.TrimSpace(song.Artist) == "" || strings.HasPrefix(key, "\x00") {
-		return &InvalidInputError{"a song's title and artist are needed"}
+		return Thumbed{}, &InvalidInputError{"a song's title and artist are needed"}
 	}
+	var set Set
 	if setID != "" {
-		if _, err := s.Get(ctx, userID, setID); err != nil {
-			return err
+		var err error
+		if set, err = s.Get(ctx, userID, setID); err != nil {
+			return Thumbed{}, err
 		}
 	}
+	if err := s.putThumb(ctx, userID, setID, kind, key, song); err != nil {
+		return Thumbed{}, err
+	}
+	var out Thumbed
+	if kind != ThumbUp {
+		return out, nil
+	}
+	w, err := s.AddWant(ctx, userID, wantFromSong(setID, song))
+	if err != nil {
+		return out, err
+	}
+	out.Want = &w
+	if setID != "" && set.GrowAuto != 0 {
+		out.Grew, err = s.growBy(ctx, userID, set, song.Artist)
+	}
+	return out, err
+}
+
+func (s *Service) putThumb(ctx context.Context, userID, setID, kind, key string, song Song) error {
 	return s.db.PutDiscoveryFeedback(ctx, store.PutDiscoveryFeedbackParams{
 		ID: store.NewID(), UserID: userID, SetID: sql.NullString{String: setID, Valid: setID != ""}, Kind: kind,
 		SongKey: key, Title: song.Title, Artist: song.Artist,
