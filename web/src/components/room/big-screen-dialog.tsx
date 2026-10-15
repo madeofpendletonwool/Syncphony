@@ -1,33 +1,51 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { MonitorPlay, Speaker, Trash2, X } from 'lucide-react'
+import { CircleAlert, ExternalLink, MonitorPlay, Power, RotateCw, Speaker, Trash2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Dialog } from 'radix-ui'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { errorMessage } from '@/api/errors'
+import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { BigScreenLook } from './big-screen-look'
 import { useMe } from '@/lib/auth'
-import { displayPairingLookupQuery, displaysQuery, pairDisplay, setDisplayAudio, unpairDisplay } from '@/lib/displays'
+import {
+  boxSummary,
+  boxWarnings,
+  displayPairingLookupQuery,
+  displaysQuery,
+  pairDisplay,
+  reloadDisplay,
+  restartDisplay,
+  setDisplayAudio,
+  unpairDisplay,
+} from '@/lib/displays'
 import { easeOutExpo } from '@/lib/motion'
 import { can } from '@/lib/playback'
 import type { Room } from '@/lib/room'
 import { relativeTime } from '@/lib/time'
 import { toast } from '@/lib/toast'
 
+/** What a Syncphony box is and how to make one (docs/box.md). */
+const BOX_DOCS = 'https://github.com/madeofpendletonwool/Syncphony/blob/main/docs/box.md'
+
 /**
  * Pairs a TV, projector or spare tablet with the room: open /tv on it,
  * type in the code it shows, and choose whether it plays the room's audio
  * too. A box (ADR 0016) says so while it waits, so the defaults fit it:
  * its name, and audio on — the choices here are still final. Lists the
- * room's screens, turns their audio on and off, and unpairs them.
+ * room's screens, turns their audio on and off, and unpairs them. A box
+ * shows what it reported (version, temperature, warnings), and whoever may
+ * manage a screen can reload it, or restart a box, from here (MAD-811).
  */
 export function BigScreenDialog({ room, open, onOpenChange }: { room: Room; open: boolean; onOpenChange: (open: boolean) => void }) {
   const me = useMe()
   const queryClient = useQueryClient()
-  const displays = useQuery({ ...displaysQuery(room.id), enabled: open })
+  // Polled while open, so a box's temperature stays current; comings and
+  // goings arrive on the room socket (displays.updated).
+  const displays = useQuery({ ...displaysQuery(room.id), enabled: open, refetchInterval: open ? 30_000 : false })
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [audio, setAudio] = useState(false)
@@ -73,6 +91,13 @@ export function BigScreenDialog({ room, open, onOpenChange }: { room: Room; open
   const unpair = useMutation({
     mutationFn: (id: string) => unpairDisplay(room.id, id),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: displaysQuery(room.id).queryKey }),
+    onError: (e) => toast({ message: errorMessage(e), tone: 'error' }),
+  })
+  const care = useMutation({
+    mutationFn: ({ id, action }: { id: string; name: string; action: 'reload' | 'restart' }) =>
+      action === 'restart' ? restartDisplay(room.id, id) : reloadDisplay(room.id, id),
+    onSuccess: (_, { name, action }) =>
+      toast({ message: action === 'restart' ? `${name} is restarting. It'll be back in about a minute.` : `${name} is reloading` }),
     onError: (e) => toast({ message: errorMessage(e), tone: 'error' }),
   })
   const submit = (e: FormEvent) => {
@@ -170,6 +195,16 @@ export function BigScreenDialog({ room, open, onOpenChange }: { room: Room; open
                   <Link to="/tv">Or show it on this device</Link>
                 </Button>
 
+                <a
+                  href={BOX_DOCS}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="-mt-3 flex items-center justify-center gap-1.5 self-center text-caption text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                >
+                  Make a dedicated box for this TV
+                  <ExternalLink className="size-3" />
+                </a>
+
                 <BigScreenLook room={room} editable={me.role === 'admin' || room.ownerId === me.id} />
 
                 {(displays.data?.length ?? 0) > 0 && (
@@ -178,36 +213,74 @@ export function BigScreenDialog({ room, open, onOpenChange }: { room: Room; open
                     <ul className="flex flex-col gap-1">
                       {displays.data?.map((d) => {
                         const mayManage = me.role === 'admin' || room.ownerId === me.id || d.pairedBy === me.id
+                        const warnings = d.box ? boxWarnings(d.box) : []
+                        const canRestart = !!d.box?.capabilities.includes('reboot')
                         return (
-                          <li key={d.id} className="flex items-center gap-3 rounded-2xl bg-muted/60 px-3.5 py-2.5">
-                            {d.audio ? (
-                              <Speaker className="size-4 shrink-0 text-primary" />
-                            ) : (
-                              <MonitorPlay className="size-4 shrink-0 text-muted-foreground" />
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium">{d.name}</p>
-                              <p className="text-caption text-muted-foreground">
-                                {d.audio ? 'Screen and audio' : 'Screen only'} · Paired {relativeTime(d.createdAt)}
-                              </p>
+                          <li key={d.id} className="flex flex-col gap-2 rounded-2xl bg-muted/60 px-3.5 py-2.5">
+                            <div className="flex items-center gap-3">
+                              {d.audio ? (
+                                <Speaker className="size-4 shrink-0 text-primary" />
+                              ) : (
+                                <MonitorPlay className="size-4 shrink-0 text-muted-foreground" />
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium">{d.name}</p>
+                                <p className="text-caption text-muted-foreground">
+                                  {d.box
+                                    ? boxSummary(d.box, d.online)
+                                    : `${d.audio ? 'Screen and audio' : 'Screen only'} · ${d.online ? 'online' : `Paired ${relativeTime(d.createdAt)}`}`}
+                                </p>
+                              </div>
+                              {mayManage && (
+                                <Switch
+                                  checked={d.audio}
+                                  onChange={(on) => !toggleAudio.isPending && toggleAudio.mutate({ id: d.id, on })}
+                                  label={`Play the audio on ${d.name}`}
+                                />
+                              )}
+                              {mayManage && (
+                                <Button
+                                  size="icon-sm"
+                                  variant="ghost"
+                                  aria-label={`Unpair ${d.name}`}
+                                  disabled={unpair.isPending}
+                                  onClick={() => unpair.mutate(d.id)}
+                                >
+                                  <Trash2 />
+                                </Button>
+                              )}
                             </div>
-                            {mayManage && (
-                              <Switch
-                                checked={d.audio}
-                                onChange={(on) => !toggleAudio.isPending && toggleAudio.mutate({ id: d.id, on })}
-                                label={`Play the audio on ${d.name}`}
-                              />
+                            {warnings.length > 0 && (
+                              <ul className="flex flex-col gap-0.5 pl-7">
+                                {warnings.map((w) => (
+                                  <li key={w} className="flex items-center gap-1.5 text-caption text-amber-600 dark:text-amber-400">
+                                    <CircleAlert className="size-3.5 shrink-0" />
+                                    {w}
+                                  </li>
+                                ))}
+                              </ul>
                             )}
-                            {mayManage && (
-                              <Button
-                                size="icon-sm"
-                                variant="ghost"
-                                aria-label={`Unpair ${d.name}`}
-                                disabled={unpair.isPending}
-                                onClick={() => unpair.mutate(d.id)}
-                              >
-                                <Trash2 />
-                              </Button>
+                            {mayManage && d.online && (
+                              <div className="flex flex-wrap gap-1 pl-5">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={care.isPending}
+                                  onClick={() => care.mutate({ id: d.id, name: d.name, action: 'reload' })}
+                                >
+                                  <RotateCw data-icon="inline-start" />
+                                  Reload
+                                </Button>
+                                {canRestart && (
+                                  <ConfirmButton
+                                    label="Restart box"
+                                    confirmLabel="Tap again to restart"
+                                    icon={<Power data-icon="inline-start" />}
+                                    pending={care.isPending && care.variables?.id === d.id && care.variables.action === 'restart'}
+                                    onConfirm={() => care.mutate({ id: d.id, name: d.name, action: 'restart' })}
+                                  />
+                                )}
+                              </div>
                             )}
                           </li>
                         )

@@ -2,10 +2,11 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import type { components } from '@/api/schema.gen'
 import { invitesQuery, membersQuery } from './access'
+import { box, isBox, runDisplayCommand, type BoxInfo, type DisplayCommand } from './box'
 import { chatQuery, dropChatMessage, putChatMessage, type ChatMessage } from './chat'
 import { meQuery } from './auth'
 import { syncServerClock } from './clock'
-import { displayMeQuery } from './displays'
+import { displayMeQuery, displaysQuery } from './displays'
 import { playRoundClips } from './game-clips'
 import { gameRoundQuery, gameScoresQuery, type GameRound, type GameScores } from './games'
 import { guestPassQuery, guestsQuery } from './guests'
@@ -80,6 +81,11 @@ export function useRoomSocket(roomId: string | undefined, { display = false, onS
       const url = `${proto}://${location.host}/ws/rooms/${encodeURIComponent(roomId)}${qs ? `?${qs}` : ''}`
       const sock = new WebSocket(url)
       ws = sock
+      // A box tells the room what it is, for the Screens list (MAD-811):
+      // as soon as it's connected, and whenever boxd says something new.
+      sock.onopen = () => {
+        if (reportBox && box.info) sendBoxStatus(sock, box.info)
+      }
       sock.onmessage = (e) => {
         attempt = 0
         handle(queryClient, roomId, JSON.parse(e.data as string) as RoomEvent)
@@ -116,16 +122,24 @@ export function useRoomSocket(roomId: string | undefined, { display = false, onS
     }
     document.addEventListener('visibilitychange', wake)
     window.addEventListener('online', wake)
+    const reportBox = display && isBox()
+    const offInfo = reportBox ? box.onInfo((info) => ws && sendBoxStatus(ws, info)) : undefined
     connect()
 
     return () => {
       closed = true
+      offInfo?.()
       clearTimeout(retry)
       document.removeEventListener('visibilitychange', wake)
       window.removeEventListener('online', wake)
       ws?.close()
     }
   }, [roomId, display, device, queryClient])
+}
+
+/** A box's status, up the socket (BoxStatusReport in the API). */
+function sendBoxStatus(sock: WebSocket, info: BoxInfo) {
+  if (sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify({ type: 'box.status', data: info }))
 }
 
 function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
@@ -238,6 +252,15 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
       }
       break
     }
+    case 'displays.updated':
+      // A screen came or went, or a box said something new: an open
+      // Screens list refetches.
+      void queryClient.invalidateQueries({ queryKey: displaysQuery(roomId).queryKey })
+      break
+    case 'display.command':
+      // Only ever sent to this display: reload, or (a box) restart.
+      void runDisplayCommand(ev.data as DisplayCommand)
+      break
     case 'link.status': {
       const link = ev.data as ServiceLink
       queryClient.setQueryData(linksQuery.queryKey, (ls) => ls?.map((l) => (l.id === link.id ? link : l)))

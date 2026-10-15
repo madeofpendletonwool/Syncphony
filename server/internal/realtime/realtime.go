@@ -60,6 +60,13 @@ const (
 	ChatMessage = "chat.message"
 	// ChatMessageDeleted carries a chat message that was deleted.
 	ChatMessageDeleted = "chat.deleted"
+	// DisplaysUpdated says one of a room's displays connected, went away,
+	// or reported something new about its box (ADR 0016). It carries the
+	// room's ID.
+	DisplaysUpdated = "displays.updated"
+	// DisplayCommand carries a command for one display (reload, restart),
+	// on that display's own topic.
+	DisplayCommand = "display.command"
 )
 
 // Event is something that happened. Data holds domain values (store rows,
@@ -76,6 +83,10 @@ func RoomTopic(roomID string) string { return "room:" + roomID }
 
 // UserTopic is the topic for events for one user, wherever they are.
 func UserTopic(userID string) string { return "user:" + userID }
+
+// DisplayTopic is the topic for events for one paired display: only its
+// own connections subscribe.
+func DisplayTopic(displayID string) string { return "display:" + displayID }
 
 // Bus delivers events to subscribers of a topic.
 type Bus interface {

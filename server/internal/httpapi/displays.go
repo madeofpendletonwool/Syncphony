@@ -277,7 +277,7 @@ func (s *Server) GetDisplay(ctx context.Context, _ GetDisplayRequestObject) (Get
 	if err != nil {
 		return nil, err
 	}
-	return GetDisplay200JSONResponse{Display: toDisplay(d.Display), Room: toRoom(room)}, nil
+	return GetDisplay200JSONResponse{Display: s.toDisplay(d.Display), Room: toRoom(room)}, nil
 }
 
 // LeaveDisplay unpairs this device.
@@ -301,7 +301,7 @@ func (s *Server) ListDisplays(ctx context.Context, req ListDisplaysRequestObject
 	}
 	out := make(ListDisplays200JSONResponse, len(ds))
 	for i, d := range ds {
-		out[i] = toDisplay(d)
+		out[i] = s.toDisplay(d)
 	}
 	return out, nil
 }
@@ -320,7 +320,7 @@ func (s *Server) PairDisplay(ctx context.Context, req PairDisplayRequestObject) 
 	if err != nil {
 		return nil, err
 	}
-	return PairDisplay201JSONResponse(toDisplay(d)), nil
+	return PairDisplay201JSONResponse(s.toDisplay(d)), nil
 }
 
 // manageableDisplay returns one of a room's displays, if the caller may
@@ -359,7 +359,7 @@ func (s *Server) UpdateDisplay(ctx context.Context, req UpdateDisplayRequestObje
 			return nil, err
 		}
 	}
-	return UpdateDisplay200JSONResponse(toDisplay(d)), nil
+	return UpdateDisplay200JSONResponse(s.toDisplay(d)), nil
 }
 
 // UnpairDisplay removes a display: the room's owner, whoever paired it,
@@ -372,6 +372,7 @@ func (s *Server) UnpairDisplay(ctx context.Context, req UnpairDisplayRequestObje
 	if err := s.Auth.UnpairDisplay(ctx, d.ID); err != nil {
 		return nil, err
 	}
+	s.boxes.forget(d.ID)
 	if err := s.Playback.Drop(ctx, d.RoomID, d.ID); err != nil {
 		return nil, err
 	}

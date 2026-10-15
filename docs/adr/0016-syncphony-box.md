@@ -24,12 +24,52 @@ When the `box` query parameter is present, `/tv` runs in kiosk mode. All of the 
 
 The page talks to `boxd` at **`http://127.0.0.1:8099`**, paths under `/v1`, JSON bodies. Loopback counts as a secure origin, so an HTTPS page may call it without a mixed-content error. Every call is optional and fails silently: if `/v1/info` doesn't answer, the page behaves like a normal `/tv` — pairing, playback and the speaker never depend on `boxd`.
 
-- **`GET /v1/info`** → `{version, name, capabilities: ["cec", "reboot", ...]}`. What the box is and what it can do; the page probes it when it starts (and keeps trying alongside heartbeats until it answers).
+- **`GET /v1/info`** → `{version, name, capabilities: ["cec", "reboot", ...]}`. What the box is and what it can do, plus, when the box has them, its thermals, uptime and last update (see stage 4 below). The page probes it when it starts, keeps trying alongside heartbeats until it answers, and then asks again every minute.
 - **`POST /v1/events`** ← `{type: "playing" | "paused" | "idle" | "paired" | "unpaired", roomId?}`. Sent when the room's playback changes (playing, paused, or nothing queued) and when the display is paired or unpaired. The box uses `playing` for CEC — switch the TV on and to this input when music starts — and all of them for health. Consecutive repeats aren't sent.
 - **`POST /v1/heartbeat`** every 30 s while the page is healthy. If heartbeats stop while the server's `/healthz` answers, `boxd`'s watchdog restarts Chromium (that policy is the box repo's, stage 3).
-- **`POST /v1/reboot`** and **`POST /v1/reload`** reboot the box or reload its page. They're for remote care from the room's Screens list (stage 4): the server tells the page over its room socket, and the page relays. Nothing calls them before that.
+- **`POST /v1/reboot`** and **`POST /v1/reload`** reboot the box or reload its page. They're for remote care from the room's Screens list (stage 4, below): the server tells the page over its room socket, and the page relays.
 
 `boxd` listens on loopback only, checks every request's `Origin` against the configured server's origin, and answers CORS preflights — including the Private Network Access preflight Chromium sends before an HTTPS page posts to loopback — with `Access-Control-Allow-Origin: <that origin>` and `Access-Control-Allow-Private-Network: true`. Requests from any other origin are refused. The bridge is versioned (`/v1`) so the page (which updates with the server) and the box (which updates with the image) can drift briefly without breaking each other.
+
+### Boxes in the Screens list (MAD-811, stage 4)
+
+- **The box reports itself on its room socket.** The room socket stays
+  server-push for everyone else, but a paired display may send one
+  message: `{"type": "box.status", "data": <the bridge's /v1/info, as is>}`.
+  `/tv` on a box sends it when the socket opens and whenever `/v1/info`
+  says something new (the page asks every minute). The fields are
+  `version`, `name`, `capabilities`, and, when the box has them,
+  `temperatureC`, `throttled`, `underVoltage`, `throttleOccurred`,
+  `uptimeSeconds`, and `update: {at, result, error?}` (the box's last
+  nightly update). The server keeps the latest report per display **in
+  memory only** (no migration): a box reports again whenever it
+  connects. It accepts at most one report every 5 s, and messages up to
+  8 KiB.
+- **Online** means the display has a room socket open right now. The
+  room hears `displays.updated` when a display comes or goes, or when a
+  box's report changes something the Screens list shows (its version, its
+  update result, or whether it's hot, throttled or under-voltage, but not
+  every degree), and an open Screens list refetches `GET .../displays`.
+  Each display there now has `online` and, for a box, `box`
+  (BoxStatus).
+- **Remote care.** `POST /rooms/{roomId}/displays/{displayId}/reload` and
+  `.../restart` are for whoever may manage the screen (the room's owner,
+  whoever paired it, or an admin, the same rule as unpairing). The server
+  publishes `display.command` (`{action: "reload" | "restart"}`) on that
+  display's own topic, which only that display's connections subscribe
+  to. `/tv` passes it on to `boxd` (`POST /v1/reload` restarts the
+  browser, `POST /v1/reboot` reboots). A plain screen, or a box whose
+  `boxd` doesn't answer, reloads the page itself. Restart is only for a
+  box that listed `reboot` among its capabilities (`not_a_box`
+  otherwise). Either needs the display connected (`display_offline`).
+- **The minimum box version.** The server expects box software of at
+  least **0.2.0** (`MinBoxVersion` in `server/internal/httpapi/boxes.go`;
+  this line and that constant change together). An older box shows
+  "box software older than this server expects". A version the server
+  can't read (a dev build) never warns.
+- The Screens list's other warnings come from the report: *running hot /
+  throttled* (80 °C or more, throttled now, or under-voltage) and *update
+  failed*.
 
 ## Consequences
 

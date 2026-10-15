@@ -2562,6 +2562,56 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /rooms/{roomId}/displays/{displayId}/reload:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: displayId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: reloadDisplay
+      summary: Reload a display's page
+      description: |
+        Remote care from the Screens list (ADR 0016): the server tells that
+        display, and only that display, over its room socket, to reload. A
+        Syncphony box restarts its browser through its bridge; any other
+        screen reloads the page. `display_offline` if the display isn't
+        connected right now. The room's owner, whoever paired it, or an
+        admin.
+      tags: [displays]
+      responses:
+        "202":
+          description: Sent to the display
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/displays/{displayId}/restart:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: displayId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      operationId: restartDisplay
+      summary: Restart a Syncphony box
+      description: |
+        Reboots a Syncphony box (ADR 0016): the server tells that display,
+        and only that display, over its room socket, and its page asks the
+        box's bridge to reboot. Only for a box that says it can
+        (`not_a_box` otherwise: a plain screen only reloads), and only
+        while it's connected (`display_offline`). The room's owner,
+        whoever paired it, or an admin.
+      tags: [displays]
+      responses:
+        "202":
+          description: Sent to the box
+        default:
+          $ref: "#/components/responses/Error"
+
   /rooms/{roomId}/displays/pairing/{code}:
     parameters:
       - $ref: "#/components/parameters/RoomId"
@@ -7320,7 +7370,7 @@ components:
 
     Display:
       type: object
-      required: [id, roomId, name, audio, createdAt, lastSeenAt]
+      required: [id, roomId, name, audio, createdAt, lastSeenAt, online]
       properties:
         id:
           type: string
@@ -7340,6 +7390,126 @@ components:
         lastSeenAt:
           type: string
           format: date-time
+        online:
+          type: boolean
+          description: Its room socket is connected right now.
+        box:
+          $ref: "#/components/schemas/BoxStatus"
+
+    BoxStatus:
+      type: object
+      description: |
+        What a Syncphony box last reported about itself on its room socket
+        (ADR 0016), from its bridge's `/v1/info`. Kept in the server's
+        memory only: a box reports again whenever it connects. Absent for
+        a screen that isn't a box, or a box that hasn't reported since the
+        server started.
+      required: [version, capabilities, outdated, reportedAt]
+      properties:
+        version:
+          type: string
+          description: The box software's version, like `v1.3.0`.
+        name:
+          type: string
+          description: What the box calls itself (its `syncphony.txt` name).
+        capabilities:
+          type: array
+          items:
+            type: string
+          description: What its bridge can do, like `reboot`, `reload`, `cec`.
+        temperatureC:
+          type: number
+          format: double
+        throttled:
+          type: boolean
+          description: The board is slowing itself down right now (heat or power).
+        underVoltage:
+          type: boolean
+          description: The power supply is too weak right now.
+        throttleOccurred:
+          type: boolean
+          description: It has throttled or been under-voltage since it booted.
+        uptimeSeconds:
+          type: integer
+          format: int64
+        update:
+          $ref: "#/components/schemas/BoxUpdate"
+        outdated:
+          type: boolean
+          description: |
+            Its software is older than this server expects (the server's
+            minimum box version, in ADR 0016). Unknown versions (a dev
+            build) aren't outdated.
+        reportedAt:
+          type: string
+          format: date-time
+
+    BoxUpdate:
+      type: object
+      description: The box's last nightly update.
+      required: [at, result]
+      properties:
+        at:
+          type: string
+          format: date-time
+        result:
+          type: string
+          enum: [updated, current, failed]
+        error:
+          type: string
+          description: Why it failed, when it did.
+
+    BoxStatusReport:
+      type: object
+      description: |
+        Sent by a paired display that is a Syncphony box, up its room
+        socket, as `{"type": "box.status", "data": BoxStatusReport}`: its
+        bridge's `/v1/info`, as is. Fields the server doesn't know are
+        ignored.
+      required: [version]
+      properties:
+        version:
+          type: string
+          maxLength: 64
+        name:
+          type: string
+          maxLength: 80
+        capabilities:
+          type: array
+          maxItems: 16
+          items:
+            type: string
+            maxLength: 32
+        temperatureC:
+          type: number
+          format: double
+        throttled:
+          type: boolean
+        underVoltage:
+          type: boolean
+        throttleOccurred:
+          type: boolean
+        uptimeSeconds:
+          type: integer
+          format: int64
+        update:
+          $ref: "#/components/schemas/BoxUpdate"
+
+    DisplayCommand:
+      type: object
+      description: A command for one display, from someone caring for it remotely.
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [reload, restart]
+
+    DisplaysChanged:
+      type: object
+      required: [roomId]
+      properties:
+        roomId:
+          type: string
 
     PairDisplayRequest:
       type: object
@@ -7941,8 +8111,8 @@ components:
       type: object
       description: |
         A message on the room WebSocket, `GET /ws/rooms/{roomId}?since=<version>`.
-        The socket needs the session cookie and is server-push only: send
-        changes over the REST API.
+        The socket needs the session cookie and is server-push only (but for
+        a box's status, below): send changes over the REST API.
 
         `data` by `type`:
         - `hello`: RoomHello. Always first.
@@ -7972,10 +8142,21 @@ components:
           done. Sent after hello for each that's up.
         - `chat.message`: ChatMessage. Someone sent a message to the room.
         - `chat.deleted`: ChatMessageDeleted. A message was deleted.
+        - `displays.updated`: DisplaysChanged. One of the room's displays
+          connected, went away, or reported something new about its box:
+          fetch the displays again.
+        - `display.command`: DisplayCommand. To one paired display only:
+          reload, or (a box) restart. See reloadDisplay and restartDisplay.
 
         A paired display connects with its display cookie instead, to its
         own room only. So does a signed-in user with `display=1`: either way
         the connection doesn't count as being in the room.
+
+        The one message a client may send: a paired display that is a
+        Syncphony box sends `{"type": "box.status", "data": BoxStatusReport}`
+        when it connects and whenever its status changes (ADR 0016). The
+        server keeps the latest per display, for the room's Screens list.
+        Anything else, and anything from other connections, is ignored.
 
         Close code 1013 (try again later) means the client fell behind and
         missed events: reconnect with `since` set to the last version seen.
@@ -7988,7 +8169,7 @@ components:
       properties:
         type:
           type: string
-          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated, room.deleted, reaction.sent, hearts.updated, night.ended, guests.updated, members.updated, game.round, game.scores, game.queue, chat.message, chat.deleted]
+          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated, room.deleted, reaction.sent, hearts.updated, night.ended, guests.updated, members.updated, game.round, game.scores, game.queue, chat.message, chat.deleted, displays.updated, display.command]
         version:
           type: integer
           format: int64

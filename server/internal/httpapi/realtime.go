@@ -68,7 +68,7 @@ func (s *Server) RoomSocket() http.Handler {
 				writeError(w, r, auth.ErrForbidden)
 				return
 			}
-			rc.token, rc.paired, rc.display = c.Value, true, true
+			rc.token, rc.paired, rc.display, rc.displayID = c.Value, true, true, d.Display.ID
 		} else {
 			writeError(w, r, err)
 			return
@@ -123,6 +123,10 @@ type roomConn struct {
 	room                   store.Room
 	// sent is the last queue version the client has.
 	sent int64
+	// displayID is the paired display's ID: its own topic carries the
+	// commands meant for it alone (reload, restart), and it may send its
+	// box's status up the socket (ADR 0016).
+	displayID string
 	// device is the client's device ID, if it said; player is the room's
 	// speaker, as of the last playback state sent. The speaker sees what
 	// a game round hides: its lock screen shows the song anyway.
@@ -138,17 +142,38 @@ func (rc *roomConn) speaker() bool {
 
 func (rc *roomConn) serve(ctx context.Context) {
 	s, roomID, userID := rc.s, rc.room.ID, rc.user.ID
-	// Server push only: reading just handles pings and close frames, and
-	// ctx ends when the client goes away.
-	ctx = rc.c.CloseRead(ctx)
+	if rc.paired {
+		// A paired display may send its box's status; anything else up
+		// the socket is ignored. ctx ends when the client goes away.
+		ctx = rc.readDisplay(ctx)
+	} else {
+		// Server push only: reading just handles pings and close frames,
+		// and ctx ends when the client goes away.
+		ctx = rc.c.CloseRead(ctx)
+	}
 
 	// Subscribe before reading snapshots, so nothing falls in between.
 	topics := []string{realtime.RoomTopic(roomID)}
-	if !rc.paired {
+	if rc.paired {
+		topics = append(topics, realtime.DisplayTopic(rc.displayID))
+	} else {
 		topics = append(topics, realtime.UserTopic(userID))
 	}
 	sub := s.Bus.Subscribe(topics...)
 	defer sub.Close()
+
+	// A paired display is online while any of its connections is open:
+	// the room's Screens list shows it.
+	if rc.paired {
+		if s.boxes.connect(rc.displayID) {
+			s.displaysChanged(roomID)
+		}
+		defer func() {
+			if s.boxes.disconnect(rc.displayID) {
+				s.displaysChanged(roomID)
+			}
+		}()
+	}
 
 	// A big screen watches the room without being in it: it doesn't
 	// count toward who's here, or skip votes.
@@ -362,6 +387,10 @@ func (rc *roomConn) send(ctx context.Context, e realtime.Event) error {
 		data = d
 	case rooms.MembersChanged:
 		data = RoomMembersChanged{RoomId: d.RoomID, UserId: d.UserID, Change: RoomMembersChangedChange(d.Change)}
+	case DisplaysChanged:
+		data = d
+	case DisplayCommand:
+		data = d
 	default:
 		slog.Error("realtime: no API form for event", "type", e.Type, "data", e.Data)
 		return nil
@@ -380,6 +409,25 @@ func (rc *roomConn) write(ctx context.Context, typ string, version int64, data a
 	ctx, cancel := context.WithTimeout(ctx, wsWriteTimeout)
 	defer cancel()
 	return wsjson.Write(ctx, rc.c, envelope{Type: typ, Version: version, Data: data})
+}
+
+// readDisplay reads a paired display's messages until the connection
+// ends: its box's status, handed to the server. The returned context ends
+// with the connection, like CloseRead's.
+func (rc *roomConn) readDisplay(ctx context.Context) context.Context {
+	ctx, cancel := context.WithCancel(ctx)
+	rc.c.SetReadLimit(boxReportLimit)
+	go func() {
+		defer cancel()
+		for {
+			_, msg, err := rc.c.Read(ctx)
+			if err != nil {
+				return
+			}
+			rc.s.handleDisplayMessage(rc.room.ID, rc.displayID, msg)
+		}
+	}()
+	return ctx
 }
 
 // fail closes the connection after an unexpected error.

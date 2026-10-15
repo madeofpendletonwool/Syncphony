@@ -180,6 +180,27 @@ func (e BeginDisplayPairingRequestKind) Valid() bool {
 	}
 }
 
+// Defines values for BoxUpdateResult.
+const (
+	Current BoxUpdateResult = "current"
+	Failed  BoxUpdateResult = "failed"
+	Updated BoxUpdateResult = "updated"
+)
+
+// Valid indicates whether the value is a known member of the BoxUpdateResult enum.
+func (e BoxUpdateResult) Valid() bool {
+	switch e {
+	case Current:
+		return true
+	case Failed:
+		return true
+	case Updated:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DiscoveryFeedbackRequestKind.
 const (
 	DiscoveryFeedbackRequestKindDown DiscoveryFeedbackRequestKind = "down"
@@ -324,6 +345,24 @@ func (e DismissDiscoverySuggestionRequestKind) Valid() bool {
 	case SuggestBlock:
 		return true
 	case SuggestGrow:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DisplayCommandAction.
+const (
+	Reload  DisplayCommandAction = "reload"
+	Restart DisplayCommandAction = "restart"
+)
+
+// Valid indicates whether the value is a known member of the DisplayCommandAction enum.
+func (e DisplayCommandAction) Valid() bool {
+	switch e {
+	case Reload:
+		return true
+	case Restart:
 		return true
 	default:
 		return false
@@ -1111,6 +1150,8 @@ func (e RoomAutopilotAdventure) Valid() bool {
 const (
 	RoomEventTypeChatDeleted       RoomEventType = "chat.deleted"
 	RoomEventTypeChatMessage       RoomEventType = "chat.message"
+	RoomEventTypeDisplayCommand    RoomEventType = "display.command"
+	RoomEventTypeDisplaysUpdated   RoomEventType = "displays.updated"
 	RoomEventTypeGameQueue         RoomEventType = "game.queue"
 	RoomEventTypeGameRound         RoomEventType = "game.round"
 	RoomEventTypeGameScores        RoomEventType = "game.scores"
@@ -1136,6 +1177,10 @@ func (e RoomEventType) Valid() bool {
 	case RoomEventTypeChatDeleted:
 		return true
 	case RoomEventTypeChatMessage:
+		return true
+	case RoomEventTypeDisplayCommand:
+		return true
+	case RoomEventTypeDisplaysUpdated:
 		return true
 	case RoomEventTypeGameQueue:
 		return true
@@ -2157,6 +2202,72 @@ type BlockDiscoveryArtistRequest struct {
 	Name string `json:"name"`
 }
 
+// BoxStatus What a Syncphony box last reported about itself on its room socket
+// (ADR 0016), from its bridge's `/v1/info`. Kept in the server's
+// memory only: a box reports again whenever it connects. Absent for
+// a screen that isn't a box, or a box that hasn't reported since the
+// server started.
+type BoxStatus struct {
+	// Capabilities What its bridge can do, like `reboot`, `reload`, `cec`.
+	Capabilities []string `json:"capabilities"`
+
+	// Name What the box calls itself (its `syncphony.txt` name).
+	Name *string `json:"name,omitempty"`
+
+	// Outdated Its software is older than this server expects (the server's
+	// minimum box version, in ADR 0016). Unknown versions (a dev
+	// build) aren't outdated.
+	Outdated     bool      `json:"outdated"`
+	ReportedAt   time.Time `json:"reportedAt"`
+	TemperatureC *float64  `json:"temperatureC,omitempty"`
+
+	// ThrottleOccurred It has throttled or been under-voltage since it booted.
+	ThrottleOccurred *bool `json:"throttleOccurred,omitempty"`
+
+	// Throttled The board is slowing itself down right now (heat or power).
+	Throttled *bool `json:"throttled,omitempty"`
+
+	// UnderVoltage The power supply is too weak right now.
+	UnderVoltage *bool `json:"underVoltage,omitempty"`
+
+	// Update The box's last nightly update.
+	Update        *BoxUpdate `json:"update,omitempty"`
+	UptimeSeconds *int64     `json:"uptimeSeconds,omitempty"`
+
+	// Version The box software's version, like `v1.3.0`.
+	Version string `json:"version"`
+}
+
+// BoxStatusReport Sent by a paired display that is a Syncphony box, up its room
+// socket, as `{"type": "box.status", "data": BoxStatusReport}`: its
+// bridge's `/v1/info`, as is. Fields the server doesn't know are
+// ignored.
+type BoxStatusReport struct {
+	Capabilities     *[]string `json:"capabilities,omitempty"`
+	Name             *string   `json:"name,omitempty"`
+	TemperatureC     *float64  `json:"temperatureC,omitempty"`
+	ThrottleOccurred *bool     `json:"throttleOccurred,omitempty"`
+	Throttled        *bool     `json:"throttled,omitempty"`
+	UnderVoltage     *bool     `json:"underVoltage,omitempty"`
+
+	// Update The box's last nightly update.
+	Update        *BoxUpdate `json:"update,omitempty"`
+	UptimeSeconds *int64     `json:"uptimeSeconds,omitempty"`
+	Version       string     `json:"version"`
+}
+
+// BoxUpdate The box's last nightly update.
+type BoxUpdate struct {
+	At time.Time `json:"at"`
+
+	// Error Why it failed, when it did.
+	Error  *string         `json:"error,omitempty"`
+	Result BoxUpdateResult `json:"result"`
+}
+
+// BoxUpdateResult defines model for BoxUpdate.Result.
+type BoxUpdateResult string
+
 // Ceremony defines model for Ceremony.
 type Ceremony struct {
 	// CeremonyId Pass back to the matching finish endpoint within 5 minutes.
@@ -2686,16 +2797,34 @@ type DismissDiscoverySuggestionRequestKind string
 // Display defines model for Display.
 type Display struct {
 	// Audio It may play the room's audio, as the speaker.
-	Audio      bool      `json:"audio"`
-	CreatedAt  time.Time `json:"createdAt"`
-	Id         string    `json:"id"`
-	LastSeenAt time.Time `json:"lastSeenAt"`
-	Name       string    `json:"name"`
+	Audio bool `json:"audio"`
+
+	// Box What a Syncphony box last reported about itself on its room socket
+	// (ADR 0016), from its bridge's `/v1/info`. Kept in the server's
+	// memory only: a box reports again whenever it connects. Absent for
+	// a screen that isn't a box, or a box that hasn't reported since the
+	// server started.
+	Box        *BoxStatus `json:"box,omitempty"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	Id         string     `json:"id"`
+	LastSeenAt time.Time  `json:"lastSeenAt"`
+	Name       string     `json:"name"`
+
+	// Online Its room socket is connected right now.
+	Online bool `json:"online"`
 
 	// PairedBy The user who paired it, if they're still around.
 	PairedBy *string `json:"pairedBy,omitempty"`
 	RoomId   string  `json:"roomId"`
 }
+
+// DisplayCommand A command for one display, from someone caring for it remotely.
+type DisplayCommand struct {
+	Action DisplayCommandAction `json:"action"`
+}
+
+// DisplayCommandAction defines model for DisplayCommand.Action.
+type DisplayCommandAction string
 
 // DisplayMe defines model for DisplayMe.
 type DisplayMe struct {
@@ -2733,6 +2862,11 @@ type DisplayPairingStatus struct {
 
 // DisplayPairingStatusStatus defines model for DisplayPairingStatus.Status.
 type DisplayPairingStatusStatus string
+
+// DisplaysChanged defines model for DisplaysChanged.
+type DisplaysChanged struct {
+	RoomId string `json:"roomId"`
+}
 
 // Error defines model for Error.
 type Error struct {
@@ -4239,8 +4373,8 @@ type RoomAutopilot struct {
 type RoomAutopilotAdventure string
 
 // RoomEvent A message on the room WebSocket, `GET /ws/rooms/{roomId}?since=<version>`.
-// The socket needs the session cookie and is server-push only: send
-// changes over the REST API.
+// The socket needs the session cookie and is server-push only (but for
+// a box's status, below): send changes over the REST API.
 //
 // `data` by `type`:
 //   - `hello`: RoomHello. Always first.
@@ -4270,10 +4404,21 @@ type RoomAutopilotAdventure string
 //     done. Sent after hello for each that's up.
 //   - `chat.message`: ChatMessage. Someone sent a message to the room.
 //   - `chat.deleted`: ChatMessageDeleted. A message was deleted.
+//   - `displays.updated`: DisplaysChanged. One of the room's displays
+//     connected, went away, or reported something new about its box:
+//     fetch the displays again.
+//   - `display.command`: DisplayCommand. To one paired display only:
+//     reload, or (a box) restart. See reloadDisplay and restartDisplay.
 //
 // A paired display connects with its display cookie instead, to its
 // own room only. So does a signed-in user with `display=1`: either way
 // the connection doesn't count as being in the room.
+//
+// The one message a client may send: a paired display that is a
+// Syncphony box sends `{"type": "box.status", "data": BoxStatusReport}`
+// when it connects and whenever its status changes (ADR 0016). The
+// server keeps the latest per display, for the room's Screens list.
+// Anything else, and anything from other connections, is ignored.
 //
 // Close code 1013 (try again later) means the client fell behind and
 // missed events: reconnect with `since` set to the last version seen.
@@ -6109,6 +6254,12 @@ type ServerInterface interface {
 	// UpdateDisplay Turn a display's audio on or off
 	// (PATCH /rooms/{roomId}/displays/{displayId})
 	UpdateDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId, displayId string)
+	// ReloadDisplay Reload a display's page
+	// (POST /rooms/{roomId}/displays/{displayId}/reload)
+	ReloadDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId, displayId string)
+	// RestartDisplay Restart a Syncphony box
+	// (POST /rooms/{roomId}/displays/{displayId}/restart)
+	RestartDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId, displayId string)
 	// GetGameClip A clip of a song, for a round
 	// (GET /rooms/{roomId}/games/clips/{clipId})
 	GetGameClip(w http.ResponseWriter, r *http.Request, roomId RoomId, clipId string)
@@ -9771,6 +9922,76 @@ func (siw *ServerInterfaceWrapper) UpdateDisplay(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ReloadDisplay operation middleware
+func (siw *ServerInterfaceWrapper) ReloadDisplay(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "displayId" -------------
+	var displayId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "displayId", r.PathValue("displayId"), &displayId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "displayId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReloadDisplay(w, r, roomId, displayId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RestartDisplay operation middleware
+func (siw *ServerInterfaceWrapper) RestartDisplay(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "displayId" -------------
+	var displayId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "displayId", r.PathValue("displayId"), &displayId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "displayId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RestartDisplay(w, r, roomId, displayId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetGameClip operation middleware
 func (siw *ServerInterfaceWrapper) GetGameClip(w http.ResponseWriter, r *http.Request) {
 
@@ -12293,6 +12514,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/displays", wrapper.PairDisplay)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/displays/{displayId}", wrapper.UnpairDisplay)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/rooms/{roomId}/displays/{displayId}", wrapper.UpdateDisplay)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/displays/{displayId}/reload", wrapper.ReloadDisplay)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/displays/{displayId}/restart", wrapper.RestartDisplay)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/displays/pairing/{code}", wrapper.LookupDisplayPairing)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/display/pairing", wrapper.PollDisplayPairing)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/display/pairing", wrapper.BeginDisplayPairing)
@@ -17635,6 +17858,74 @@ func (response UpdateDisplaydefaultJSONResponse) VisitUpdateDisplayResponse(w ht
 	return err
 }
 
+type ReloadDisplayRequestObject struct {
+	RoomId    RoomId `json:"roomId"`
+	DisplayId string `json:"displayId"`
+}
+
+type ReloadDisplayResponseObject interface {
+	VisitReloadDisplayResponse(w http.ResponseWriter) error
+}
+
+type ReloadDisplay202Response struct {
+}
+
+func (response ReloadDisplay202Response) VisitReloadDisplayResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
+}
+
+type ReloadDisplaydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ReloadDisplaydefaultJSONResponse) VisitReloadDisplayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestartDisplayRequestObject struct {
+	RoomId    RoomId `json:"roomId"`
+	DisplayId string `json:"displayId"`
+}
+
+type RestartDisplayResponseObject interface {
+	VisitRestartDisplayResponse(w http.ResponseWriter) error
+}
+
+type RestartDisplay202Response struct {
+}
+
+func (response RestartDisplay202Response) VisitRestartDisplayResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
+}
+
+type RestartDisplaydefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RestartDisplaydefaultJSONResponse) VisitRestartDisplayResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetGameClipRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 	ClipId string `json:"clipId"`
@@ -20736,6 +21027,12 @@ type StrictServerInterface interface {
 	// UpdateDisplay Turn a display's audio on or off
 	// (PATCH /rooms/{roomId}/displays/{displayId})
 	UpdateDisplay(ctx context.Context, request UpdateDisplayRequestObject) (UpdateDisplayResponseObject, error)
+	// ReloadDisplay Reload a display's page
+	// (POST /rooms/{roomId}/displays/{displayId}/reload)
+	ReloadDisplay(ctx context.Context, request ReloadDisplayRequestObject) (ReloadDisplayResponseObject, error)
+	// RestartDisplay Restart a Syncphony box
+	// (POST /rooms/{roomId}/displays/{displayId}/restart)
+	RestartDisplay(ctx context.Context, request RestartDisplayRequestObject) (RestartDisplayResponseObject, error)
 	// GetGameClip A clip of a song, for a round
 	// (GET /rooms/{roomId}/games/clips/{clipId})
 	GetGameClip(ctx context.Context, request GetGameClipRequestObject) (GetGameClipResponseObject, error)
@@ -24683,6 +24980,60 @@ func (sh *strictHandler) UpdateDisplay(w http.ResponseWriter, r *http.Request, r
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateDisplayResponseObject); ok {
 		if err := validResponse.VisitUpdateDisplayResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReloadDisplay operation middleware
+func (sh *strictHandler) ReloadDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId, displayId string) {
+	var request ReloadDisplayRequestObject
+
+	request.RoomId = roomId
+	request.DisplayId = displayId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReloadDisplay(ctx, request.(ReloadDisplayRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReloadDisplay")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReloadDisplayResponseObject); ok {
+		if err := validResponse.VisitReloadDisplayResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RestartDisplay operation middleware
+func (sh *strictHandler) RestartDisplay(w http.ResponseWriter, r *http.Request, roomId RoomId, displayId string) {
+	var request RestartDisplayRequestObject
+
+	request.RoomId = roomId
+	request.DisplayId = displayId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RestartDisplay(ctx, request.(RestartDisplayRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RestartDisplay")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RestartDisplayResponseObject); ok {
+		if err := validResponse.VisitRestartDisplayResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

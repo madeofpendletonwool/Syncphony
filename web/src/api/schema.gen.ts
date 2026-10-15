@@ -1981,6 +1981,62 @@ export interface paths {
         patch: operations["updateDisplay"];
         trace?: never;
     };
+    "/rooms/{roomId}/displays/{displayId}/reload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                displayId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reload a display's page
+         * @description Remote care from the Screens list (ADR 0016): the server tells that
+         *     display, and only that display, over its room socket, to reload. A
+         *     Syncphony box restarts its browser through its bridge; any other
+         *     screen reloads the page. `display_offline` if the display isn't
+         *     connected right now. The room's owner, whoever paired it, or an
+         *     admin.
+         */
+        post: operations["reloadDisplay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/displays/{displayId}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                displayId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart a Syncphony box
+         * @description Reboots a Syncphony box (ADR 0016): the server tells that display,
+         *     and only that display, over its room socket, and its page asks the
+         *     box's bridge to reboot. Only for a box that says it can
+         *     (`not_a_box` otherwise: a plain screen only reloads), and only
+         *     while it's connected (`display_offline`). The room's owner,
+         *     whoever paired it, or an admin.
+         */
+        post: operations["restartDisplay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/displays/pairing/{code}": {
         parameters: {
             query?: never;
@@ -5070,6 +5126,79 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             lastSeenAt: string;
+            /** @description Its room socket is connected right now. */
+            online: boolean;
+            box?: components["schemas"]["BoxStatus"];
+        };
+        /**
+         * @description What a Syncphony box last reported about itself on its room socket
+         *     (ADR 0016), from its bridge's `/v1/info`. Kept in the server's
+         *     memory only: a box reports again whenever it connects. Absent for
+         *     a screen that isn't a box, or a box that hasn't reported since the
+         *     server started.
+         */
+        BoxStatus: {
+            /** @description The box software's version, like `v1.3.0`. */
+            version: string;
+            /** @description What the box calls itself (its `syncphony.txt` name). */
+            name?: string;
+            /** @description What its bridge can do, like `reboot`, `reload`, `cec`. */
+            capabilities: string[];
+            /** Format: double */
+            temperatureC?: number;
+            /** @description The board is slowing itself down right now (heat or power). */
+            throttled?: boolean;
+            /** @description The power supply is too weak right now. */
+            underVoltage?: boolean;
+            /** @description It has throttled or been under-voltage since it booted. */
+            throttleOccurred?: boolean;
+            /** Format: int64 */
+            uptimeSeconds?: number;
+            update?: components["schemas"]["BoxUpdate"];
+            /**
+             * @description Its software is older than this server expects (the server's
+             *     minimum box version, in ADR 0016). Unknown versions (a dev
+             *     build) aren't outdated.
+             */
+            outdated: boolean;
+            /** Format: date-time */
+            reportedAt: string;
+        };
+        /** @description The box's last nightly update. */
+        BoxUpdate: {
+            /** Format: date-time */
+            at: string;
+            /** @enum {string} */
+            result: "updated" | "current" | "failed";
+            /** @description Why it failed, when it did. */
+            error?: string;
+        };
+        /**
+         * @description Sent by a paired display that is a Syncphony box, up its room
+         *     socket, as `{"type": "box.status", "data": BoxStatusReport}`: its
+         *     bridge's `/v1/info`, as is. Fields the server doesn't know are
+         *     ignored.
+         */
+        BoxStatusReport: {
+            version: string;
+            name?: string;
+            capabilities?: string[];
+            /** Format: double */
+            temperatureC?: number;
+            throttled?: boolean;
+            underVoltage?: boolean;
+            throttleOccurred?: boolean;
+            /** Format: int64 */
+            uptimeSeconds?: number;
+            update?: components["schemas"]["BoxUpdate"];
+        };
+        /** @description A command for one display, from someone caring for it remotely. */
+        DisplayCommand: {
+            /** @enum {string} */
+            action: "reload" | "restart";
+        };
+        DisplaysChanged: {
+            roomId: string;
         };
         PairDisplayRequest: {
             /** @description The code the display shows. Case, spaces and dashes don't matter. */
@@ -5374,8 +5503,8 @@ export interface components {
         };
         /**
          * @description A message on the room WebSocket, `GET /ws/rooms/{roomId}?since=<version>`.
-         *     The socket needs the session cookie and is server-push only: send
-         *     changes over the REST API.
+         *     The socket needs the session cookie and is server-push only (but for
+         *     a box's status, below): send changes over the REST API.
          *
          *     `data` by `type`:
          *     - `hello`: RoomHello. Always first.
@@ -5405,10 +5534,21 @@ export interface components {
          *       done. Sent after hello for each that's up.
          *     - `chat.message`: ChatMessage. Someone sent a message to the room.
          *     - `chat.deleted`: ChatMessageDeleted. A message was deleted.
+         *     - `displays.updated`: DisplaysChanged. One of the room's displays
+         *       connected, went away, or reported something new about its box:
+         *       fetch the displays again.
+         *     - `display.command`: DisplayCommand. To one paired display only:
+         *       reload, or (a box) restart. See reloadDisplay and restartDisplay.
          *
          *     A paired display connects with its display cookie instead, to its
          *     own room only. So does a signed-in user with `display=1`: either way
          *     the connection doesn't count as being in the room.
+         *
+         *     The one message a client may send: a paired display that is a
+         *     Syncphony box sends `{"type": "box.status", "data": BoxStatusReport}`
+         *     when it connects and whenever its status changes (ADR 0016). The
+         *     server keeps the latest per display, for the room's Screens list.
+         *     Anything else, and anything from other connections, is ignored.
          *
          *     Close code 1013 (try again later) means the client fell behind and
          *     missed events: reconnect with `since` set to the last version seen.
@@ -5420,7 +5560,7 @@ export interface components {
          */
         RoomEvent: {
             /** @enum {string} */
-            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "room.deleted" | "reaction.sent" | "hearts.updated" | "night.ended" | "guests.updated" | "members.updated" | "game.round" | "game.scores" | "game.queue" | "chat.message" | "chat.deleted";
+            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "room.deleted" | "reaction.sent" | "hearts.updated" | "night.ended" | "guests.updated" | "members.updated" | "game.round" | "game.scores" | "game.queue" | "chat.message" | "chat.deleted" | "displays.updated" | "display.command";
             /**
              * Format: int64
              * @description Queue version, on `queue.updated` only.
@@ -8916,6 +9056,50 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Display"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    reloadDisplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                displayId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sent to the display */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    restartDisplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                displayId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sent to the box */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };
