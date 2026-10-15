@@ -60,6 +60,14 @@ const RETRIES = 2
 const HANDOFF = 5_000
 // How long one report may take before the next one goes anyway.
 const REPORT_TIMEOUT = 10_000
+// A stream that says it's playing but hasn't moved for this long has
+// stalled, and is loaded again where it was.
+const STALL = 10_000
+const STALL_CHECK = 2_000
+// Starting the next song this close to the end of the room's is a gapless
+// handoff the server hasn't caught up with yet, not being on the wrong song.
+// Generous, because a file can run a few seconds off its listed length.
+const HANDOFF_GRACE = 10_000
 
 export const speakerState = createStore<SpeakerState>({ status: 'off', mode: 'speaker', keepAwake: readFlag(AWAKE_KEY, true) })
 
@@ -94,6 +102,18 @@ export function acceptedTypes(probe: (type: string) => string = (t) => new Audio
 export function targetPosition(p: Playback, now = serverNow()) {
   if (p.state !== 'playing') return p.positionMs
   return p.positionMs + Math.max(0, now - Date.parse(p.at))
+}
+
+/**
+ * Whether a device on songId is on another song than the room is playing.
+ * Being on the room's next song in its last moments is a gapless handoff,
+ * and fine; anywhere else (a stream that ended early, say) it's wrong, and
+ * no new revision may come along to fix it.
+ */
+export function offSong(p: Playback, songId: string | undefined, now = serverNow()) {
+  if (p.driver === 'remote' || !p.item || (p.state !== 'playing' && p.state !== 'loading') || songId === p.item.id) return false
+  if (songId !== undefined && songId === p.next?.id) return p.item.track.durationMs - targetPosition(p, now) > HANDOFF_GRACE
+  return true
 }
 
 /**
@@ -152,6 +172,16 @@ class Speaker {
   // The room plays on; this device stays quiet until it's played again.
   private localPause = false
   private resyncTimer?: ReturnType<typeof setInterval>
+  private stallTimer?: ReturnType<typeof setInterval>
+  // Where the current song last moved, and when, for spotting a stall.
+  private moved = { at: 0, ms: -1 }
+  // Stalls in a row, and where in the song the last one was.
+  private stalls = 0
+  private stalledMs = 0
+  // Tabs of one browser share its device ID, so the server can't tell them
+  // apart: the newest to play tells the others to go quiet.
+  private readonly instance = crypto.randomUUID()
+  private tabs?: BroadcastChannel
   private stopping?: ReturnType<typeof setTimeout>
   // Reports go one at a time, in order: a song's "ended" must land before
   // the next song's "playing", or the server drops the "playing" and waits.
@@ -280,7 +310,10 @@ class Speaker {
     }
     this.preload(np)
     this.mediaSession(np)
-    if (np.revision <= this.rev) {
+    // On another song than the room at the same revision (our stream ended
+    // early, say): nothing new is coming to fix it, so apply it again.
+    const wrongSong = np.revision === this.rev && offSong(np, this.curItem?.id)
+    if (np.revision <= this.rev && !wrongSong) {
       // Already applied. If the server is waiting for us to start a song
       // we started early (gapless handoff), say so now.
       if (np.state === 'loading' && np.item?.id === this.curItem?.id && !this.cur.paused) this.report('playing')
@@ -353,6 +386,8 @@ class Speaker {
       el.play().catch(() => {})
     }
     clearInterval(this.resyncTimer)
+    clearInterval(this.stallTimer)
+    this.stallTimer = setInterval(() => this.checkStall(), STALL_CHECK)
     this.roomId = roomId
     this.mode = mode
     this.name = name
@@ -361,6 +396,12 @@ class Speaker {
     this.localPause = false
     this.canSpeak = false
     this.rev = -1
+    // Both elements hold silence now, whatever they had: the song has to
+    // load again, and the next one preload again.
+    this.curItem = undefined
+    this.preItem = undefined
+    this.stalls = 0
+    this.tabs?.postMessage({ playing: this.instance, device })
     this.set({ status: 'waiting', mode, roomId })
     this.mediaHandlers()
     void this.keepAwake(speakerState.get().keepAwake)
@@ -381,6 +422,18 @@ class Speaker {
       this.els = [make(), make()]
       ;[this.cur, this.pre] = this.els
       window.addEventListener('online', () => this.active && this.cur.error && this.recover())
+      if (typeof BroadcastChannel !== 'undefined') {
+        this.tabs = new BroadcastChannel('syncphony-speaker')
+        this.tabs.onmessage = (e: MessageEvent<{ playing?: string; device?: string }>) => {
+          if (!this.active || !e.data.playing || e.data.playing === this.instance) return
+          // Another tab of this browser plays now. As the same device, it
+          // carries on from us, so just go quiet; as another (a paired
+          // screen's), let the room go properly.
+          if (e.data.device === this.device) this.halt()
+          else void this.stop()
+          toast({ message: 'Playing in another tab now.' })
+        }
+      }
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState !== 'visible' || !this.active) return
         void this.keepAwake(speakerState.get().keepAwake)
@@ -404,6 +457,7 @@ class Speaker {
 
   private load(item: QueueItem, positionMs: number) {
     this.retries = 0
+    this.stalls = 0
     if (this.preItem === item.id) {
       this.expectPause()
       this.cur.pause()
@@ -543,6 +597,7 @@ class Speaker {
     this.preItem = undefined
     this.curItem = item
     this.retries = 0
+    this.stalls = 0
     this.setSrc(this.cur, item)
     this.play()
   }
@@ -573,9 +628,38 @@ class Speaker {
     if (playing && !this.localPause) this.play()
   }
 
+  /**
+   * A stream can stop arriving without an error: the element still says
+   * it's playing, but nothing moves and nothing is heard. Load it again
+   * where it was; after RETRIES of those in a row, a speaker reports it.
+   */
+  private checkStall() {
+    const now = Date.now()
+    const ms = this.position()
+    const np = this.last
+    const watching =
+      !!this.curItem && !this.cur.paused && !this.localPause && np?.state === 'playing' && np.item?.id === this.curItem.id
+    if (!watching || ms !== this.moved.ms) {
+      this.moved = { at: now, ms }
+      // Played on well past the stall (not just reloaded to it): it was a blip.
+      if (ms > this.stalledMs + STALL) this.stalls = 0
+      return
+    }
+    if (now - this.moved.at < STALL) return
+    this.moved = { at: now, ms }
+    this.stalledMs = ms
+    if (this.stalls++ < RETRIES) {
+      this.recover()
+    } else if (this.mode === 'speaker') {
+      this.report('error', this.curItem, 'the stream stalled')
+    }
+  }
+
   private halt() {
     clearInterval(this.resyncTimer)
     this.resyncTimer = undefined
+    clearInterval(this.stallTimer)
+    this.stallTimer = undefined
     this.roomId = undefined
     this.curItem = undefined
     this.preItem = undefined

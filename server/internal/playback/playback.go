@@ -412,6 +412,7 @@ func (e *Engine) ClaimAndPlay(ctx context.Context, roomID, userID, deviceID, nam
 		return rooms.NowPlaying{}, err
 	}
 	r.np.Player = &rooms.Player{DeviceID: deviceID, UserID: userID, Name: name, LastSeen: now}
+	slog.Info("playback: speaker claimed", "room", r.id, "device", deviceID, "name", name, "user", userID, "again", same, "item", idOf(r.np.Item), "state", r.np.State)
 	if !same {
 		// A new speaker has to load the song.
 		r.np.Position, r.np.At = r.position(now), now
@@ -493,6 +494,9 @@ func (e *Engine) Drop(ctx context.Context, roomID, deviceID string) error {
 func (e *Engine) release(ctx context.Context, r *room) error {
 	if err := e.db.SetRoomPlayer(ctx, store.SetRoomPlayerParams{ID: r.id}); err != nil {
 		return err
+	}
+	if p := r.np.Player; p != nil {
+		slog.Info("playback: speaker released", "room", r.id, "device", p.DeviceID, "name", p.Name, "item", idOf(r.np.Item))
 	}
 	r.np.Player = nil
 	if r.np.State == StatePlaying || r.np.State == StateLoading {
@@ -592,6 +596,7 @@ func (e *Engine) Command(ctx context.Context, roomID, userID string, c Command) 
 	} else if !store.IsNotFound(err) {
 		return rooms.NowPlaying{}, err
 	}
+	slog.Info("playback: command", "room", r.id, "user", userID, "action", c.Action, "item", c.ItemID, "playing", idOf(r.np.Item), "state", r.np.State)
 	now := e.cfg.Now()
 	switch c.Action {
 	case ActionPlay:
@@ -999,7 +1004,14 @@ func (e *Engine) Report(ctx context.Context, roomID, userID string, rep Report) 
 	}
 	now := e.cfg.Now()
 	p.LastSeen = now
-	if r.np.Item == nil || r.np.Item.ID != rep.ItemID || r.np.Driver != string(provider.PlaybackStream) {
+	stale := r.np.Item == nil || r.np.Item.ID != rep.ItemID || r.np.Driver != string(provider.PlaybackStream)
+	// Progress is every few seconds; only a stale one says something's off
+	// (the speaker is on another song than the room).
+	if rep.Event != EventProgress || stale {
+		slog.Info("playback: report", "room", r.id, "device", rep.DeviceID, "event", rep.Event, "item", rep.ItemID,
+			"position", rep.Position.Round(time.Millisecond), "playing", idOf(r.np.Item), "state", r.np.State, "stale", stale, "err", rep.Error)
+	}
+	if stale {
 		return e.view(r), nil
 	}
 	r.heard = true
@@ -1065,6 +1077,7 @@ func (e *Engine) nextItem(ctx context.Context, r *room, reason, want string) err
 			return err
 		}
 		want = ""
+		slog.Info("playback: next song", "room", r.id, "reason", reason, "item", idOf(item))
 		now := e.cfg.Now()
 		r.votes = nil
 		// A request to go back is about the song that was playing.
