@@ -7,14 +7,28 @@
 
 const BOX_URL = 'http://127.0.0.1:8099'
 const HEARTBEAT_EVERY = 30_000
+// Once boxd answered, /v1/info is asked again this often (every other
+// heartbeat): the temperature and the last update change, and the room's
+// Screens list shows them (MAD-811).
+const INFO_EVERY_BEATS = 2
 
 export type BoxEvent = 'playing' | 'paused' | 'idle' | 'paired' | 'unpaired'
 
-/** What boxd says about the box, once it answered /v1/info. */
+/**
+ * What boxd says about the box, once it answered /v1/info. The page sends
+ * it, as is, up its room socket for the Screens list (BoxStatusReport in
+ * the API; fields past the first three may be absent).
+ */
 export type BoxInfo = {
   version: string
   name: string
   capabilities: string[]
+  temperatureC?: number
+  throttled?: boolean
+  underVoltage?: boolean
+  throttleOccurred?: boolean
+  uptimeSeconds?: number
+  update?: { at: string; result: 'updated' | 'current' | 'failed'; error?: string }
 }
 
 /** The box software's version, from ?box= — present means this page runs on a box. */
@@ -36,6 +50,8 @@ export function boxName(search = location.search) {
 
 class BoxBridge {
   private timer?: ReturnType<typeof setInterval>
+  private beats = 0
+  private listeners = new Set<(info: BoxInfo) => void>()
   // The last event sent, so repeats (re-renders, StrictMode) stay quiet.
   private last?: { type: BoxEvent; roomId?: string }
   /** What boxd said about itself, once it answered. */
@@ -46,8 +62,9 @@ class BoxBridge {
     if (this.timer) return
     this.timer = setInterval(() => {
       this.beat()
-      // boxd may come up after the page: keep asking until it answers.
-      if (!this.info) void this.probe()
+      // boxd may come up after the page: keep asking until it answers,
+      // then now and then for fresh status.
+      if (!this.info || ++this.beats % INFO_EVERY_BEATS === 0) void this.probe()
     }, HEARTBEAT_EVERY)
     void this.probe()
     this.beat()
@@ -58,6 +75,13 @@ class BoxBridge {
     this.timer = undefined
     this.info = undefined
     this.last = undefined
+    this.beats = 0
+  }
+
+  /** Calls back with boxd's info whenever it answers with something new. */
+  onInfo(cb: (info: BoxInfo) => void) {
+    this.listeners.add(cb)
+    return () => void this.listeners.delete(cb)
   }
 
   /** The room's playback changed: what the box uses for CEC and health. */
@@ -75,13 +99,13 @@ class BoxBridge {
     this.event('unpaired')
   }
 
-  /** Remote care (ADR 0016, stage 4): reboot the box, or reload its page. */
+  /** Remote care (ADR 0016, stage 4): reboot the box, or reload its page. Whether boxd took it. */
   async reboot() {
-    await this.post('/v1/reboot')
+    return this.post('/v1/reboot')
   }
 
   async reload() {
-    await this.post('/v1/reload')
+    return this.post('/v1/reload')
   }
 
   private event(type: BoxEvent, roomId?: string) {
@@ -99,7 +123,11 @@ class BoxBridge {
   private async probe() {
     try {
       const r = await fetch(BOX_URL + '/v1/info')
-      if (r.ok) this.info = (await r.json()) as BoxInfo
+      if (!r.ok) return
+      const info = (await r.json()) as BoxInfo
+      if (JSON.stringify(info) === JSON.stringify(this.info)) return
+      this.info = info
+      this.listeners.forEach((cb) => cb(info))
     } catch {
       // No boxd, or it's busy: a normal /tv.
     }
@@ -107,15 +135,34 @@ class BoxBridge {
 
   private async post(path: string, body?: object) {
     try {
-      await fetch(BOX_URL + path, {
+      const r = await fetch(BOX_URL + path, {
         method: 'POST',
         headers: body ? { 'Content-Type': 'application/json' } : undefined,
         body: body ? JSON.stringify(body) : undefined,
       })
+      return r.ok
     } catch {
       // boxd is allowed to be missing.
+      return false
     }
   }
 }
 
 export const box = new BoxBridge()
+
+export type DisplayCommand = { action: 'reload' | 'restart' }
+
+/**
+ * A command for this screen from the room's Screens list (MAD-811). A box
+ * reloads by restarting its browser through boxd (a clean slate), and
+ * restarts by rebooting; if boxd doesn't take a reload, or this isn't a
+ * box, the page reloads itself.
+ */
+export async function runDisplayCommand(cmd: DisplayCommand, reloadPage = () => location.reload()) {
+  if (cmd.action === 'restart') {
+    if (isBox()) await box.reboot()
+    return
+  }
+  if (isBox() && (await box.reload())) return
+  reloadPage()
+}

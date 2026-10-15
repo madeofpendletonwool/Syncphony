@@ -70,3 +70,37 @@ export function leaveDisplay() {
 export function formatPairingCode(code: string) {
   return code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code
 }
+
+/** Remote care (MAD-811): reloads a screen's page; a box restarts its browser. */
+export function reloadDisplay(roomId: string, displayId: string) {
+  return unwrap(api.POST('/rooms/{roomId}/displays/{displayId}/reload', { params: { path: { roomId, displayId } } }))
+}
+
+/** Reboots a Syncphony box. */
+export function restartDisplay(roomId: string, displayId: string) {
+  return unwrap(api.POST('/rooms/{roomId}/displays/{displayId}/restart', { params: { path: { roomId, displayId } } }))
+}
+
+export type BoxStatus = components['schemas']['BoxStatus']
+
+/** A box warms past this and the Screens list says it runs hot (the Pi's soft limit). */
+const HOT_C = 80
+
+/** What's worth warning about on a box, worst first. */
+export function boxWarnings(b: BoxStatus): string[] {
+  const out: string[] = []
+  if (b.throttled || b.underVoltage || (b.temperatureC ?? 0) >= HOT_C) {
+    out.push(b.underVoltage ? 'Power supply too weak' : 'Running hot / throttled')
+  }
+  if (b.update?.result === 'failed') out.push('Update failed')
+  if (b.outdated) out.push('Box software older than this server expects')
+  return out
+}
+
+/** "Syncphony Box 1.3 · online · 52 °C" */
+export function boxSummary(b: BoxStatus, online: boolean) {
+  const v = b.version.replace(/^v/, '').replace(/-.*$/, '').replace(/\.0$/, '')
+  const parts = [`Syncphony Box ${v}`, online ? 'online' : 'offline']
+  if (online && b.temperatureC !== undefined) parts.push(`${Math.round(b.temperatureC)} °C`)
+  return parts.join(' · ')
+}

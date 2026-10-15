@@ -119,6 +119,8 @@ type Server struct {
 
 	reactions userLimiter
 	chats     userLimiter
+	// boxes is what the displays connected right now say about themselves.
+	boxes     boxRegistry
 	playlists playlistCache
 }
 
@@ -437,6 +439,8 @@ var errorCodes = []struct {
 	{ErrGuestsOff, http.StatusForbidden, "guests_off"},
 	{ErrDisplayNoAudio, http.StatusForbidden, "forbidden"},
 	{ErrDisplayOrphan, http.StatusForbidden, "forbidden"},
+	{ErrDisplayOffline, http.StatusConflict, "display_offline"},
+	{ErrNotABox, http.StatusConflict, "not_a_box"},
 	{nights.ErrNotFound, http.StatusNotFound, "not_found"},
 	{nights.ErrForbidden, http.StatusForbidden, "forbidden"},
 	{nights.ErrNotHost, http.StatusForbidden, "forbidden"},
