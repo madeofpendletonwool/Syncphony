@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Playback } from './playback'
 import { newer } from './playback'
-import { acceptedTypes, canSeek, deviceId, streamUrl, targetPosition } from './speaker'
+import type { QueueItem } from './playback'
+import { acceptedTypes, canSeek, deviceId, offSong, streamUrl, targetPosition } from './speaker'
 
 const pb = (p: Partial<Playback>): Playback => ({
   roomId: 'r',
@@ -23,6 +24,31 @@ describe('targetPosition', () => {
   })
   it('never goes backwards for a clock behind the server', () => {
     expect(targetPosition(pb({}), at - 5_000)).toBe(10_000)
+  })
+})
+
+describe('offSong', () => {
+  const at = Date.parse('2026-10-05T12:00:00Z')
+  const song = (id: string) => ({ id, track: { durationMs: 200_000 } }) as QueueItem
+  const room = (positionMs: number) => pb({ item: song('helena'), next: song('feel-it-still'), positionMs, driver: 'stream' })
+  it('is fine on the room song', () => {
+    expect(offSong(room(60_000), 'helena', at)).toBe(false)
+  })
+  it('catches being on the next song with most of this one to go', () => {
+    expect(offSong(room(60_000), 'feel-it-still', at)).toBe(true)
+  })
+  it('allows starting the next song in the last moments (gapless handoff)', () => {
+    expect(offSong(room(195_000), 'feel-it-still', at)).toBe(false)
+    expect(offSong(room(205_000), 'feel-it-still', at)).toBe(false)
+  })
+  it('catches any other song, or none', () => {
+    expect(offSong(room(195_000), 'roxanne', at)).toBe(true)
+    expect(offSong(room(60_000), undefined, at)).toBe(true)
+  })
+  it('leaves paused, idle and remote rooms alone', () => {
+    expect(offSong({ ...room(60_000), state: 'paused' }, 'feel-it-still', at)).toBe(false)
+    expect(offSong({ ...room(60_000), item: undefined, state: 'idle' }, 'feel-it-still', at)).toBe(false)
+    expect(offSong({ ...room(60_000), driver: 'remote' }, 'feel-it-still', at)).toBe(false)
   })
 })
 
