@@ -66,7 +66,8 @@ export type TvKey = 'playPause' | 'skip' | 'nextLook' | 'previousLook' | 'visual
  * The big screen's keys: space (or K, even on a button) plays and pauses, → skips (or votes to),
  * ↑ and ↓ change the visuals, V turns them off and on. A remote's D-pad sends arrows too, so → is
  * left to move between buttons while one has focus; nothing sits above or
- * below them, so ↑ and ↓ are always free.
+ * below them, so ↑ and ↓ are always free. A Syncphony box's TV remote
+ * (HDMI-CEC) sends Enter, arrows, Escape and the media key for play/pause.
  */
 export function tvKeyOf(e: Key): TvKey | undefined {
   if (e.defaultPrevented || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return undefined
@@ -76,6 +77,7 @@ export function tvKeyOf(e: Key): TvKey | undefined {
       return e.repeat || onControl ? undefined : 'playPause'
     case 'k':
     case 'K':
+    case 'MediaPlayPause':
       return e.repeat ? undefined : 'playPause'
     case 'ArrowRight':
       return e.repeat || onControl ? undefined : 'skip'

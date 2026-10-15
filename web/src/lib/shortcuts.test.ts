@@ -67,6 +67,7 @@ describe('tvKeyOf', () => {
 
   it('maps the keys', () => {
     expect(tv(' ')).toBe('playPause')
+    expect(tv('MediaPlayPause')).toBe('playPause')
     expect(tv('ArrowRight')).toBe('skip')
     expect(tv('ArrowUp')).toBe('previousLook')
     expect(tv('ArrowDown')).toBe('nextLook')
@@ -85,6 +86,7 @@ describe('tvKeyOf', () => {
   it('stays out of combos, held skips, and typing', () => {
     expect(tv('ArrowRight', { repeat: true })).toBeUndefined()
     expect(tv('ArrowDown', { repeat: true })).toBe('nextLook')
+    expect(tv('MediaPlayPause', { repeat: true })).toBeUndefined()
     expect(tv('ArrowRight', { altKey: true })).toBeUndefined()
     expect(tv('ArrowDown', { target: el('<input>') })).toBeUndefined()
     expect(tv('k', { target: el('<input>') })).toBeUndefined()
