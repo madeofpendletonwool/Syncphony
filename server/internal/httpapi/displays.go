@@ -338,7 +338,7 @@ func (s *Server) manageableDisplay(ctx context.Context, roomID, displayID string
 	if d.RoomID != room.ID {
 		return store.Display{}, auth.ErrNotFound
 	}
-	if u.Role != store.RoleAdmin && room.OwnerID != u.ID && d.PairedBy.String != u.ID {
+	if !canManageDisplay(u, room, d) {
 		return store.Display{}, auth.ErrForbidden
 	}
 	return d, nil

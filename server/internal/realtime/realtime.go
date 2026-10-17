@@ -67,6 +67,12 @@ const (
 	// DisplayCommand carries a command for one display (reload, restart),
 	// on that display's own topic.
 	DisplayCommand = "display.command"
+	// DevicesUpdated says a browser opened a room or closed it. It
+	// carries the room's ID.
+	DevicesUpdated = "devices.updated"
+	// DeviceCommand carries a command for one device (speak, stop), on
+	// its display's topic or its user's.
+	DeviceCommand = "device.command"
 )
 
 // Event is something that happened. Data holds domain values (store rows,

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { AudioLines, Check, ChevronDown, Crown, Dices, History, LogOut, MonitorPlay, Play, Plus, QrCode, Settings2, Sparkles, Speaker, Swords, Users } from 'lucide-react'
+import { AudioLines, Check, ChevronDown, Crown, Dices, History, LogOut, MonitorPlay, MonitorSpeaker, Play, Plus, QrCode, Settings2, Sparkles, Speaker, Swords, Users } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { DropdownMenu } from 'radix-ui'
 import { useEffect, useState, type ReactNode } from 'react'
@@ -13,6 +13,7 @@ import { SaveToPlaylistButton } from '@/components/playlists/save-to-playlist'
 import { AutopilotBadge } from '@/components/room/autopilot-badge'
 import { QueueGameDialog } from '@/components/games/queue-game-dialog'
 import { BigScreenDialog } from '@/components/room/big-screen-dialog'
+import { DevicesDialog } from '@/components/room/devices-dialog'
 import { GuestsDialog } from '@/components/room/guests-dialog'
 import { HeartButton } from '@/components/room/heart-button'
 import { MembersDialog } from '@/components/room/members-dialog'
@@ -171,6 +172,7 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
   const { members, status } = useStore(live)
   const [settings, setSettings] = useState(false)
   const [bigScreen, setBigScreen] = useState(false)
+  const [devices, setDevices] = useState(false)
   const [guests, setGuests] = useState(false)
   const [membersOpen, setMembersOpen] = useState(false)
   const [queueGames, setQueueGames] = useState(false)
@@ -213,6 +215,12 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
             <DropdownMenu.Item onSelect={() => setBigScreen(true)} className={menuItem}>
               <MonitorPlay className="size-4 text-muted-foreground" />
               <span className="flex-1">Big screen</span>
+            </DropdownMenu.Item>
+          )}
+          {!guest && (
+            <DropdownMenu.Item onSelect={() => setDevices(true)} className={menuItem}>
+              <MonitorSpeaker className="size-4 text-muted-foreground" />
+              <span className="flex-1">Devices</span>
             </DropdownMenu.Item>
           )}
           {!guest && room.visibility !== 'open' && (
@@ -292,6 +300,7 @@ function RoomHeader({ room, rooms }: { room: RoomInfo; rooms: RoomInfo[] }) {
       />
       <MembersDialog room={room} open={membersOpen} onOpenChange={setMembersOpen} />
       <BigScreenDialog room={room} open={bigScreen} onOpenChange={setBigScreen} />
+      <DevicesDialog room={room} open={devices} onOpenChange={setDevices} />
       <QueueGameDialog room={room} open={queueGames} onOpenChange={setQueueGames} />
       <GuestsDialog room={room} open={guests} onOpenChange={setGuests} />
       <div className="min-w-0">

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { runDeviceCommand } from '@/lib/devices'
 import { playbackQuery, type Playback } from '@/lib/playback'
 import { TvAudio } from './tv-audio'
 
@@ -10,6 +11,7 @@ const speaker = vi.hoisted(() => ({
   active: false,
   keep: vi.fn(() => false),
   start: vi.fn(async () => undefined),
+  stop: vi.fn(async () => undefined),
   apply: vi.fn(),
   stopSoon: vi.fn(),
   onState: undefined as ((np: unknown) => void) | undefined,
@@ -42,6 +44,8 @@ function renderAudio(playback: Playback | undefined, props: Partial<Parameters<t
 beforeEach(() => {
   localStorage.clear()
   speaker.start.mockClear()
+  speaker.stop.mockClear()
+  speaker.active = false
 })
 
 afterEach(cleanup)
@@ -73,5 +77,22 @@ describe('TvAudio', () => {
     localStorage.setItem('syncphony-tv-audio', '1')
     renderAudio(np({ state: 'idle' }))
     expect(speaker.start).toHaveBeenCalledTimes(1)
+  })
+
+  it('takes the speaker when someone hands it over from their phone', () => {
+    renderAudio(np({ state: 'playing', player: { deviceId: 'bobs-phone', userId: 'bob', name: "Bob's phone", lastSeen: '2026-10-09T00:00:00Z' } }))
+    expect(speaker.start).not.toHaveBeenCalled()
+    runDeviceCommand({ action: 'speak', deviceId: 'tv-1', roomId: 'r1' })
+    expect(speaker.start).toHaveBeenCalledWith('r1', 'Living room TV', 'tv-1')
+    // And picks it up again after a reload.
+    expect(localStorage.getItem('syncphony-tv-audio')).toBe('1')
+  })
+
+  it('stops when stopped from another device, and stays stopped after a reload', () => {
+    speaker.active = true
+    renderAudio(np({ state: 'playing', player: { deviceId: 'tv-1', userId: 'bob', name: 'Living room TV', lastSeen: '2026-10-09T00:00:00Z' } }))
+    runDeviceCommand({ action: 'stop', deviceId: 'tv-1', roomId: 'r1' })
+    expect(speaker.stop).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem('syncphony-tv-audio')).toBe('0')
   })
 })
