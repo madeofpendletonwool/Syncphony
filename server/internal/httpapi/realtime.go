@@ -49,7 +49,8 @@ func (s *Server) RoomSocket() http.Handler {
 		if c, err := r.Cookie(SessionCookie); err == nil {
 			token = c.Value
 		}
-		rc := &roomConn{s: s, token: token, display: r.URL.Query().Get("display") == "1", device: r.URL.Query().Get("device")}
+		q := r.URL.Query()
+		rc := &roomConn{s: s, token: token, display: q.Get("display") == "1", device: q.Get("device"), kind: q.Get("kind"), name: q.Get("name")}
 		if sess, err := s.Auth.Authenticate(ctx, token); err == nil {
 			// A guest may watch their own room only.
 			if sess.Guest != nil && sess.Guest.RoomID != r.PathValue("id") {
@@ -132,6 +133,9 @@ type roomConn struct {
 	// a game round hides: its lock screen shows the song anyway.
 	device string
 	player *rooms.Player
+	// kind and name are what a signed-in browser says it is, for the
+	// room's devices (socketDevice).
+	kind, name string
 }
 
 // speaker reports whether the connection is the room's speaker.
@@ -171,6 +175,21 @@ func (rc *roomConn) serve(ctx context.Context) {
 		defer func() {
 			if s.boxes.disconnect(rc.displayID) {
 				s.displaysChanged(roomID)
+			}
+		}()
+	}
+
+	// A signed-in browser shows up in the room's devices, so someone can
+	// hand it the speaker from elsewhere. A paired display is a screen
+	// there already.
+	if !rc.paired && rc.device != "" {
+		kind, name := socketDevice(rc.display, rc.kind, rc.name)
+		if s.devices.connect(roomID, rc.user, rc.device, kind, name) {
+			s.devicesChanged(roomID)
+		}
+		defer func() {
+			if s.devices.disconnect(roomID, userID, rc.device) {
+				s.devicesChanged(roomID)
 			}
 		}()
 	}
@@ -390,6 +409,15 @@ func (rc *roomConn) send(ctx context.Context, e realtime.Event) error {
 	case DisplaysChanged:
 		data = d
 	case DisplayCommand:
+		data = d
+	case DevicesChanged:
+		data = d
+	case DeviceCommand:
+		// On the user's topic, every one of their sockets hears it: only
+		// the device it's for, in this room, gets it.
+		if d.RoomId != rc.room.ID || d.DeviceId != rc.device && d.DeviceId != rc.displayID {
+			return nil
+		}
 		data = d
 	default:
 		slog.Error("realtime: no API form for event", "type", e.Type, "data", e.Data)

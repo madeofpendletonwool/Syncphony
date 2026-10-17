@@ -2037,6 +2037,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Everything connected to the room
+         * @description The room's paired screens (online or not), and every signed-in
+         *     device with the room open right now: phones, computers, and big
+         *     screens opened while signed in. A browser's tabs share one device.
+         *     Each says whether you may make it the speaker (`canSpeak`) and stop
+         *     it being the speaker (`canStop`) from here. Lives in memory: a
+         *     device is listed while its room socket is open.
+         */
+        get: operations["listRoomDevices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/{roomId}/devices/{deviceId}/speaker": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Make another device the speaker
+         * @description Tells that device, over its room socket, to become the room's
+         *     speaker; it claims the room itself, as with `claimPlayer`. Needs
+         *     the room's `speaker` permission. A paired screen also needs its
+         *     audio on, and you must be able to manage it (the room's owner,
+         *     whoever paired it, or an admin). Any other device must be your
+         *     own, and not a phone: phones only start audio after a tap on
+         *     them (`device_is_phone`). `device_offline` if it isn't connected.
+         */
+        put: operations["makeDeviceSpeaker"];
+        post?: never;
+        /**
+         * Stop a device being the speaker
+         * @description Tells the device to stop, and lets go of it: the song pauses. A
+         *     paired screen: whoever may manage it. Anything else: its own user,
+         *     the room's owner, or an admin. `not_player` if it isn't the speaker.
+         */
+        delete: operations["stopDeviceSpeaker"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rooms/{roomId}/displays/pairing/{code}": {
         parameters: {
             query?: never;
@@ -5200,6 +5262,48 @@ export interface components {
         DisplaysChanged: {
             roomId: string;
         };
+        /**
+         * @description Something connected to a room: a paired screen, or someone's
+         *     browser. A browser is listed while it has the room open.
+         */
+        RoomDevice: {
+            /** @description The device ID it plays the room as (a paired screen's display ID). */
+            id: string;
+            /**
+             * @description `screen`: a paired display, or a big screen opened while signed
+             *     in. `phone` covers tablets too: anything that needs a tap on it
+             *     to play.
+             * @enum {string}
+             */
+            kind: "screen" | "computer" | "phone";
+            /** @description A screen's name, or what the browser says it is (Mac, iPhone). */
+            name: string;
+            online: boolean;
+            /** @description Whose device it is. Absent for a paired screen. */
+            userId?: string;
+            userName?: string;
+            /** @description Set for a paired screen. */
+            displayId?: string;
+            /** @description You may make it the speaker from here (makeDeviceSpeaker). */
+            canSpeak: boolean;
+            /** @description You may stop it being the speaker, when it is (stopDeviceSpeaker). */
+            canStop: boolean;
+        };
+        DevicesChanged: {
+            roomId: string;
+        };
+        /**
+         * @description For one device only, from someone in the room: become the speaker,
+         *     or stop being it. Sent to a paired screen's own connections, or to
+         *     its user's, and only the browser whose device ID is `deviceId`
+         *     acts on it.
+         */
+        DeviceCommand: {
+            /** @enum {string} */
+            action: "speak" | "stop";
+            deviceId: string;
+            roomId: string;
+        };
         PairDisplayRequest: {
             /** @description The code the display shows. Case, spaces and dashes don't matter. */
             code: string;
@@ -5539,6 +5643,15 @@ export interface components {
          *       fetch the displays again.
          *     - `display.command`: DisplayCommand. To one paired display only:
          *       reload, or (a box) restart. See reloadDisplay and restartDisplay.
+         *     - `devices.updated`: DevicesChanged. A browser opened the room or
+         *       closed it: fetch the devices again (listRoomDevices). Screens
+         *       coming and going say `displays.updated`.
+         *     - `device.command`: DeviceCommand. To one device: become the
+         *       speaker, or stop. See makeDeviceSpeaker.
+         *
+         *     A signed-in browser may say what it is with `kind` (`computer` or
+         *     `phone`) and `name` (like `Mac`, at most 40 characters), alongside
+         *     its `device`, for the room's device list.
          *
          *     A paired display connects with its display cookie instead, to its
          *     own room only. So does a signed-in user with `display=1`: either way
@@ -5560,7 +5673,7 @@ export interface components {
          */
         RoomEvent: {
             /** @enum {string} */
-            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "room.deleted" | "reaction.sent" | "hearts.updated" | "night.ended" | "guests.updated" | "members.updated" | "game.round" | "game.scores" | "game.queue" | "chat.message" | "chat.deleted" | "displays.updated" | "display.command";
+            type: "hello" | "queue.updated" | "nowplaying.updated" | "playback.notice" | "member.joined" | "member.left" | "link.status" | "room.updated" | "room.deleted" | "reaction.sent" | "hearts.updated" | "night.ended" | "guests.updated" | "members.updated" | "game.round" | "game.scores" | "game.queue" | "chat.message" | "chat.deleted" | "displays.updated" | "display.command" | "devices.updated" | "device.command";
             /**
              * Format: int64
              * @description Queue version, on `queue.updated` only.
@@ -9100,6 +9213,75 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listRoomDevices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paired screens first, then everyone's devices */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomDevice"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    makeDeviceSpeaker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sent to the device */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    stopDeviceSpeaker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: components["parameters"]["RoomId"];
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The playback state without a speaker */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NowPlaying"];
+                };
             };
             default: components["responses"]["Error"];
         };

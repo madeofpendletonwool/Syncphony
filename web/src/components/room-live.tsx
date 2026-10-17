@@ -3,11 +3,13 @@ import { useEffect } from 'react'
 import { useChatSync } from '@/hooks/use-chat'
 import { useRoomControls } from '@/hooks/use-room-controls'
 import { useMe } from '@/lib/auth'
+import { onDeviceCommand } from '@/lib/devices'
 import { player } from '@/lib/now-playing'
 import { newer, playbackQuery, toNowPlaying } from '@/lib/playback'
 import { useCurrentRoom } from '@/lib/room'
 import { useRoomSocket } from '@/lib/room-socket'
-import { speaker, speakerState } from '@/lib/speaker'
+import { speaker, speakerName, speakerState } from '@/lib/speaker'
+import { toast } from '@/lib/toast'
 import { usersQuery } from '@/lib/users'
 
 /**
@@ -34,6 +36,23 @@ export function RoomLive() {
   useEffect(() => {
     if (speaker.active && rooms.isSuccess && speakerRoom() !== room?.id) void speaker.stop()
   }, [room, rooms.isSuccess])
+  // Someone handed this computer the speaker from another device, or
+  // stopped it. Stopping goes quiet first, so it doesn't claim the room
+  // back when the server lets go of it.
+  useEffect(
+    () =>
+      onDeviceCommand((cmd) => {
+        if (cmd.action === 'stop') {
+          if (speaker.active && speakerRoom() === cmd.roomId) void speaker.stop()
+          return
+        }
+        if (me.guest) return
+        void speaker.start(cmd.roomId, speakerName(me.displayName)).then((np) => {
+          if (np) toast({ message: 'This device is the speaker now' })
+        })
+      }),
+    [me.guest, me.displayName],
+  )
   // Signing out stops the speaker. Going to the big screen hands it over
   // instead, and coming back keeps whatever it's playing.
   useEffect(() => () => speaker.stopSoon(), [])

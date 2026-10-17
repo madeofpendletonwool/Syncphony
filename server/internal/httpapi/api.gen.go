@@ -201,6 +201,24 @@ func (e BoxUpdateResult) Valid() bool {
 	}
 }
 
+// Defines values for DeviceCommandAction.
+const (
+	Speak DeviceCommandAction = "speak"
+	Stop  DeviceCommandAction = "stop"
+)
+
+// Valid indicates whether the value is a known member of the DeviceCommandAction enum.
+func (e DeviceCommandAction) Valid() bool {
+	switch e {
+	case Speak:
+		return true
+	case Stop:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DiscoveryFeedbackRequestKind.
 const (
 	DiscoveryFeedbackRequestKindDown DiscoveryFeedbackRequestKind = "down"
@@ -1146,10 +1164,33 @@ func (e RoomAutopilotAdventure) Valid() bool {
 	}
 }
 
+// Defines values for RoomDeviceKind.
+const (
+	RoomDeviceKindComputer RoomDeviceKind = "computer"
+	RoomDeviceKindPhone    RoomDeviceKind = "phone"
+	RoomDeviceKindScreen   RoomDeviceKind = "screen"
+)
+
+// Valid indicates whether the value is a known member of the RoomDeviceKind enum.
+func (e RoomDeviceKind) Valid() bool {
+	switch e {
+	case RoomDeviceKindComputer:
+		return true
+	case RoomDeviceKindPhone:
+		return true
+	case RoomDeviceKindScreen:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RoomEventType.
 const (
 	RoomEventTypeChatDeleted       RoomEventType = "chat.deleted"
 	RoomEventTypeChatMessage       RoomEventType = "chat.message"
+	RoomEventTypeDeviceCommand     RoomEventType = "device.command"
+	RoomEventTypeDevicesUpdated    RoomEventType = "devices.updated"
 	RoomEventTypeDisplayCommand    RoomEventType = "display.command"
 	RoomEventTypeDisplaysUpdated   RoomEventType = "displays.updated"
 	RoomEventTypeGameQueue         RoomEventType = "game.queue"
@@ -1177,6 +1218,10 @@ func (e RoomEventType) Valid() bool {
 	case RoomEventTypeChatDeleted:
 		return true
 	case RoomEventTypeChatMessage:
+		return true
+	case RoomEventTypeDeviceCommand:
+		return true
+	case RoomEventTypeDevicesUpdated:
 		return true
 	case RoomEventTypeDisplayCommand:
 		return true
@@ -2436,6 +2481,24 @@ type DeleteMeRequest struct {
 	// Credential The browser's `PublicKeyCredential.toJSON()`.
 	Credential *map[string]interface{} `json:"credential,omitempty"`
 	Password   *string                 `json:"password,omitempty"`
+}
+
+// DeviceCommand For one device only, from someone in the room: become the speaker,
+// or stop being it. Sent to a paired screen's own connections, or to
+// its user's, and only the browser whose device ID is `deviceId`
+// acts on it.
+type DeviceCommand struct {
+	Action   DeviceCommandAction `json:"action"`
+	DeviceId string              `json:"deviceId"`
+	RoomId   string              `json:"roomId"`
+}
+
+// DeviceCommandAction defines model for DeviceCommand.Action.
+type DeviceCommandAction string
+
+// DevicesChanged defines model for DevicesChanged.
+type DevicesChanged struct {
+	RoomId string `json:"roomId"`
 }
 
 // DiscoveryArtist defines model for DiscoveryArtist.
@@ -4372,6 +4435,40 @@ type RoomAutopilot struct {
 // half `explore` falls in (`discovery` from 50).
 type RoomAutopilotAdventure string
 
+// RoomDevice Something connected to a room: a paired screen, or someone's
+// browser. A browser is listed while it has the room open.
+type RoomDevice struct {
+	// CanSpeak You may make it the speaker from here (makeDeviceSpeaker).
+	CanSpeak bool `json:"canSpeak"`
+
+	// CanStop You may stop it being the speaker, when it is (stopDeviceSpeaker).
+	CanStop bool `json:"canStop"`
+
+	// DisplayId Set for a paired screen.
+	DisplayId *string `json:"displayId,omitempty"`
+
+	// Id The device ID it plays the room as (a paired screen's display ID).
+	Id string `json:"id"`
+
+	// Kind `screen`: a paired display, or a big screen opened while signed
+	// in. `phone` covers tablets too: anything that needs a tap on it
+	// to play.
+	Kind RoomDeviceKind `json:"kind"`
+
+	// Name A screen's name, or what the browser says it is (Mac, iPhone).
+	Name   string `json:"name"`
+	Online bool   `json:"online"`
+
+	// UserId Whose device it is. Absent for a paired screen.
+	UserId   *string `json:"userId,omitempty"`
+	UserName *string `json:"userName,omitempty"`
+}
+
+// RoomDeviceKind `screen`: a paired display, or a big screen opened while signed
+// in. `phone` covers tablets too: anything that needs a tap on it
+// to play.
+type RoomDeviceKind string
+
 // RoomEvent A message on the room WebSocket, `GET /ws/rooms/{roomId}?since=<version>`.
 // The socket needs the session cookie and is server-push only (but for
 // a box's status, below): send changes over the REST API.
@@ -4409,6 +4506,15 @@ type RoomAutopilotAdventure string
 //     fetch the displays again.
 //   - `display.command`: DisplayCommand. To one paired display only:
 //     reload, or (a box) restart. See reloadDisplay and restartDisplay.
+//   - `devices.updated`: DevicesChanged. A browser opened the room or
+//     closed it: fetch the devices again (listRoomDevices). Screens
+//     coming and going say `displays.updated`.
+//   - `device.command`: DeviceCommand. To one device: become the
+//     speaker, or stop. See makeDeviceSpeaker.
+//
+// A signed-in browser may say what it is with `kind` (`computer` or
+// `phone`) and `name` (like `Mac`, at most 40 characters), alongside
+// its `device`, for the room's device list.
 //
 // A paired display connects with its display cookie instead, to its
 // own room only. So does a signed-in user with `display=1`: either way
@@ -6239,6 +6345,15 @@ type ServerInterface interface {
 	// GetRoomArtistPlays An artist's songs the room played most
 	// (GET /rooms/{roomId}/artist-plays)
 	GetRoomArtistPlays(w http.ResponseWriter, r *http.Request, roomId RoomId, params GetRoomArtistPlaysParams)
+	// ListRoomDevices Everything connected to the room
+	// (GET /rooms/{roomId}/devices)
+	ListRoomDevices(w http.ResponseWriter, r *http.Request, roomId RoomId)
+	// StopDeviceSpeaker Stop a device being the speaker
+	// (DELETE /rooms/{roomId}/devices/{deviceId}/speaker)
+	StopDeviceSpeaker(w http.ResponseWriter, r *http.Request, roomId RoomId, deviceId string)
+	// MakeDeviceSpeaker Make another device the speaker
+	// (PUT /rooms/{roomId}/devices/{deviceId}/speaker)
+	MakeDeviceSpeaker(w http.ResponseWriter, r *http.Request, roomId RoomId, deviceId string)
 	// ListDisplays The room's paired displays
 	// (GET /rooms/{roomId}/displays)
 	ListDisplays(w http.ResponseWriter, r *http.Request, roomId RoomId)
@@ -9765,6 +9880,102 @@ func (siw *ServerInterfaceWrapper) GetRoomArtistPlays(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// ListRoomDevices operation middleware
+func (siw *ServerInterfaceWrapper) ListRoomDevices(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRoomDevices(w, r, roomId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StopDeviceSpeaker operation middleware
+func (siw *ServerInterfaceWrapper) StopDeviceSpeaker(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "deviceId" -------------
+	var deviceId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "deviceId", r.PathValue("deviceId"), &deviceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "deviceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StopDeviceSpeaker(w, r, roomId, deviceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MakeDeviceSpeaker operation middleware
+func (siw *ServerInterfaceWrapper) MakeDeviceSpeaker(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomId" -------------
+	var roomId RoomId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomId", r.PathValue("roomId"), &roomId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "deviceId" -------------
+	var deviceId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "deviceId", r.PathValue("deviceId"), &deviceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "deviceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MakeDeviceSpeaker(w, r, roomId, deviceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListDisplays operation middleware
 func (siw *ServerInterfaceWrapper) ListDisplays(w http.ResponseWriter, r *http.Request) {
 
@@ -12516,6 +12727,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/rooms/{roomId}/displays/{displayId}", wrapper.UpdateDisplay)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/displays/{displayId}/reload", wrapper.ReloadDisplay)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/rooms/{roomId}/displays/{displayId}/restart", wrapper.RestartDisplay)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/devices", wrapper.ListRoomDevices)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/rooms/{roomId}/devices/{deviceId}/speaker", wrapper.StopDeviceSpeaker)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/rooms/{roomId}/devices/{deviceId}/speaker", wrapper.MakeDeviceSpeaker)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/rooms/{roomId}/displays/pairing/{code}", wrapper.LookupDisplayPairing)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/display/pairing", wrapper.PollDisplayPairing)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/display/pairing", wrapper.BeginDisplayPairing)
@@ -17664,6 +17878,119 @@ func (response GetRoomArtistPlaysdefaultJSONResponse) VisitGetRoomArtistPlaysRes
 	return err
 }
 
+type ListRoomDevicesRequestObject struct {
+	RoomId RoomId `json:"roomId"`
+}
+
+type ListRoomDevicesResponseObject interface {
+	VisitListRoomDevicesResponse(w http.ResponseWriter) error
+}
+
+type ListRoomDevices200JSONResponse []RoomDevice
+
+func (response ListRoomDevices200JSONResponse) VisitListRoomDevicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRoomDevicesdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListRoomDevicesdefaultJSONResponse) VisitListRoomDevicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopDeviceSpeakerRequestObject struct {
+	RoomId   RoomId `json:"roomId"`
+	DeviceId string `json:"deviceId"`
+}
+
+type StopDeviceSpeakerResponseObject interface {
+	VisitStopDeviceSpeakerResponse(w http.ResponseWriter) error
+}
+
+type StopDeviceSpeaker200JSONResponse NowPlaying
+
+func (response StopDeviceSpeaker200JSONResponse) VisitStopDeviceSpeakerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StopDeviceSpeakerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response StopDeviceSpeakerdefaultJSONResponse) VisitStopDeviceSpeakerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MakeDeviceSpeakerRequestObject struct {
+	RoomId   RoomId `json:"roomId"`
+	DeviceId string `json:"deviceId"`
+}
+
+type MakeDeviceSpeakerResponseObject interface {
+	VisitMakeDeviceSpeakerResponse(w http.ResponseWriter) error
+}
+
+type MakeDeviceSpeaker202Response struct {
+}
+
+func (response MakeDeviceSpeaker202Response) VisitMakeDeviceSpeakerResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
+}
+
+type MakeDeviceSpeakerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response MakeDeviceSpeakerdefaultJSONResponse) VisitMakeDeviceSpeakerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListDisplaysRequestObject struct {
 	RoomId RoomId `json:"roomId"`
 }
@@ -21012,6 +21339,15 @@ type StrictServerInterface interface {
 	// GetRoomArtistPlays An artist's songs the room played most
 	// (GET /rooms/{roomId}/artist-plays)
 	GetRoomArtistPlays(ctx context.Context, request GetRoomArtistPlaysRequestObject) (GetRoomArtistPlaysResponseObject, error)
+	// ListRoomDevices Everything connected to the room
+	// (GET /rooms/{roomId}/devices)
+	ListRoomDevices(ctx context.Context, request ListRoomDevicesRequestObject) (ListRoomDevicesResponseObject, error)
+	// StopDeviceSpeaker Stop a device being the speaker
+	// (DELETE /rooms/{roomId}/devices/{deviceId}/speaker)
+	StopDeviceSpeaker(ctx context.Context, request StopDeviceSpeakerRequestObject) (StopDeviceSpeakerResponseObject, error)
+	// MakeDeviceSpeaker Make another device the speaker
+	// (PUT /rooms/{roomId}/devices/{deviceId}/speaker)
+	MakeDeviceSpeaker(ctx context.Context, request MakeDeviceSpeakerRequestObject) (MakeDeviceSpeakerResponseObject, error)
 	// ListDisplays The room's paired displays
 	// (GET /rooms/{roomId}/displays)
 	ListDisplays(ctx context.Context, request ListDisplaysRequestObject) (ListDisplaysResponseObject, error)
@@ -24833,6 +25169,86 @@ func (sh *strictHandler) GetRoomArtistPlays(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetRoomArtistPlaysResponseObject); ok {
 		if err := validResponse.VisitGetRoomArtistPlaysResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListRoomDevices operation middleware
+func (sh *strictHandler) ListRoomDevices(w http.ResponseWriter, r *http.Request, roomId RoomId) {
+	var request ListRoomDevicesRequestObject
+
+	request.RoomId = roomId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRoomDevices(ctx, request.(ListRoomDevicesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRoomDevices")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRoomDevicesResponseObject); ok {
+		if err := validResponse.VisitListRoomDevicesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StopDeviceSpeaker operation middleware
+func (sh *strictHandler) StopDeviceSpeaker(w http.ResponseWriter, r *http.Request, roomId RoomId, deviceId string) {
+	var request StopDeviceSpeakerRequestObject
+
+	request.RoomId = roomId
+	request.DeviceId = deviceId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StopDeviceSpeaker(ctx, request.(StopDeviceSpeakerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StopDeviceSpeaker")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StopDeviceSpeakerResponseObject); ok {
+		if err := validResponse.VisitStopDeviceSpeakerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MakeDeviceSpeaker operation middleware
+func (sh *strictHandler) MakeDeviceSpeaker(w http.ResponseWriter, r *http.Request, roomId RoomId, deviceId string) {
+	var request MakeDeviceSpeakerRequestObject
+
+	request.RoomId = roomId
+	request.DeviceId = deviceId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MakeDeviceSpeaker(ctx, request.(MakeDeviceSpeakerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MakeDeviceSpeaker")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MakeDeviceSpeakerResponseObject); ok {
+		if err := validResponse.VisitMakeDeviceSpeakerResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

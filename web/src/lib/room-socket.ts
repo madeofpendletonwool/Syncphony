@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import type { components } from '@/api/schema.gen'
 import { invitesQuery, membersQuery } from './access'
 import { box, isBox, runDisplayCommand, type BoxInfo, type DisplayCommand } from './box'
+import { deviceKind, devicesQuery, runDeviceCommand, type DeviceCommand } from './devices'
 import { chatQuery, dropChatMessage, putChatMessage, type ChatMessage } from './chat'
 import { meQuery } from './auth'
 import { syncServerClock } from './clock'
@@ -19,6 +20,7 @@ import { linksQuery, usableLinksQuery } from './services'
 import { deviceId, speaker } from './speaker'
 import { createStore } from './store'
 import { toast } from './toast'
+import { deviceName } from './webauthn'
 import { usersQuery } from './users'
 
 type User = components['schemas']['User']
@@ -77,6 +79,12 @@ export function useRoomSocket(roomId: string | undefined, { display = false, onS
       if (display) query.set('display', '1')
       // The speaker sees what a game round hides: its lock screen shows the song anyway.
       query.set('device', device ?? deviceId())
+      // What this browser is, for the room's devices. A big screen is a screen.
+      if (!display) {
+        query.set('kind', deviceKind())
+        const name = deviceName()
+        if (name !== 'Passkey') query.set('name', name)
+      }
       const qs = query.toString()
       const url = `${proto}://${location.host}/ws/rooms/${encodeURIComponent(roomId)}${qs ? `?${qs}` : ''}`
       const sock = new WebSocket(url)
@@ -256,7 +264,18 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
       // A screen came or went, or a box said something new: an open
       // Screens list refetches.
       void queryClient.invalidateQueries({ queryKey: displaysQuery(roomId).queryKey })
+      void queryClient.invalidateQueries({ queryKey: devicesQuery(roomId).queryKey })
       break
+    case 'devices.updated':
+      // A browser opened the room or closed it.
+      void queryClient.invalidateQueries({ queryKey: devicesQuery(roomId).queryKey })
+      break
+    case 'device.command': {
+      // The server only sends it to the device it's for: be the speaker, or stop.
+      const cmd = ev.data as DeviceCommand
+      if (cmd.roomId === roomId) runDeviceCommand(cmd)
+      break
+    }
     case 'display.command':
       // Only ever sent to this display: reload, or (a box) restart.
       void runDisplayCommand(ev.data as DisplayCommand)

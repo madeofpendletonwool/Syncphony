@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { Headphones, MonitorSmartphone, Speaker, Volume2 } from 'lucide-react'
+import { Headphones, MonitorSmartphone, MonitorSpeaker, Speaker, Volume2 } from 'lucide-react'
 import { useState } from 'react'
 import { Equalizer } from '@/components/equalizer'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
+import { DevicesDialog } from './devices-dialog'
 import { useMe } from '@/lib/auth'
 import { can, playbackQuery, sendCommand } from '@/lib/playback'
 import type { Room } from '@/lib/room'
@@ -18,6 +19,23 @@ import { deviceName } from '@/lib/webauthn'
  * on it from anywhere.
  */
 export function SpeakerPanel({ room, prominent }: { room: Room; prominent?: boolean }) {
+  const me = useMe()
+  const [devices, setDevices] = useState(false)
+  return (
+    <div className="flex flex-col gap-2">
+      <SpeakerControls room={room} prominent={prominent} />
+      {!me.guest && (
+        <Button size="sm" variant="ghost" onClick={() => setDevices(true)} className="self-center text-muted-foreground">
+          <MonitorSpeaker data-icon="inline-start" />
+          Devices in the room
+        </Button>
+      )}
+      <DevicesDialog room={room} open={devices} onOpenChange={setDevices} />
+    </div>
+  )
+}
+
+function SpeakerControls({ room, prominent }: { room: Room; prominent?: boolean }) {
   const me = useMe()
   const state = useStore(speakerState)
   const playback = useQuery({ ...playbackQuery(room.id), enabled: false })

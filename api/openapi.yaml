@@ -2612,6 +2612,75 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /rooms/{roomId}/devices:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+    get:
+      operationId: listRoomDevices
+      summary: Everything connected to the room
+      description: |
+        The room's paired screens (online or not), and every signed-in
+        device with the room open right now: phones, computers, and big
+        screens opened while signed in. A browser's tabs share one device.
+        Each says whether you may make it the speaker (`canSpeak`) and stop
+        it being the speaker (`canStop`) from here. Lives in memory: a
+        device is listed while its room socket is open.
+      tags: [devices]
+      responses:
+        "200":
+          description: Paired screens first, then everyone's devices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RoomDevice"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /rooms/{roomId}/devices/{deviceId}/speaker:
+    parameters:
+      - $ref: "#/components/parameters/RoomId"
+      - name: deviceId
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      operationId: makeDeviceSpeaker
+      summary: Make another device the speaker
+      description: |
+        Tells that device, over its room socket, to become the room's
+        speaker; it claims the room itself, as with `claimPlayer`. Needs
+        the room's `speaker` permission. A paired screen also needs its
+        audio on, and you must be able to manage it (the room's owner,
+        whoever paired it, or an admin). Any other device must be your
+        own, and not a phone: phones only start audio after a tap on
+        them (`device_is_phone`). `device_offline` if it isn't connected.
+      tags: [devices]
+      responses:
+        "202":
+          description: Sent to the device
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: stopDeviceSpeaker
+      summary: Stop a device being the speaker
+      description: |
+        Tells the device to stop, and lets go of it: the song pauses. A
+        paired screen: whoever may manage it. Anything else: its own user,
+        the room's owner, or an admin. `not_player` if it isn't the speaker.
+      tags: [devices]
+      responses:
+        "200":
+          description: The playback state without a speaker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NowPlaying"
+        default:
+          $ref: "#/components/responses/Error"
+
   /rooms/{roomId}/displays/pairing/{code}:
     parameters:
       - $ref: "#/components/parameters/RoomId"
@@ -7511,6 +7580,67 @@ components:
         roomId:
           type: string
 
+    RoomDevice:
+      type: object
+      description: |
+        Something connected to a room: a paired screen, or someone's
+        browser. A browser is listed while it has the room open.
+      required: [id, kind, name, online, canSpeak, canStop]
+      properties:
+        id:
+          type: string
+          description: The device ID it plays the room as (a paired screen's display ID).
+        kind:
+          type: string
+          enum: [screen, computer, phone]
+          description: |
+            `screen`: a paired display, or a big screen opened while signed
+            in. `phone` covers tablets too: anything that needs a tap on it
+            to play.
+        name:
+          type: string
+          description: A screen's name, or what the browser says it is (Mac, iPhone).
+        online:
+          type: boolean
+        userId:
+          type: string
+          description: Whose device it is. Absent for a paired screen.
+        userName:
+          type: string
+        displayId:
+          type: string
+          description: Set for a paired screen.
+        canSpeak:
+          type: boolean
+          description: You may make it the speaker from here (makeDeviceSpeaker).
+        canStop:
+          type: boolean
+          description: You may stop it being the speaker, when it is (stopDeviceSpeaker).
+
+    DevicesChanged:
+      type: object
+      required: [roomId]
+      properties:
+        roomId:
+          type: string
+
+    DeviceCommand:
+      type: object
+      description: |
+        For one device only, from someone in the room: become the speaker,
+        or stop being it. Sent to a paired screen's own connections, or to
+        its user's, and only the browser whose device ID is `deviceId`
+        acts on it.
+      required: [action, deviceId, roomId]
+      properties:
+        action:
+          type: string
+          enum: [speak, stop]
+        deviceId:
+          type: string
+        roomId:
+          type: string
+
     PairDisplayRequest:
       type: object
       required: [code]
@@ -8147,6 +8277,15 @@ components:
           fetch the displays again.
         - `display.command`: DisplayCommand. To one paired display only:
           reload, or (a box) restart. See reloadDisplay and restartDisplay.
+        - `devices.updated`: DevicesChanged. A browser opened the room or
+          closed it: fetch the devices again (listRoomDevices). Screens
+          coming and going say `displays.updated`.
+        - `device.command`: DeviceCommand. To one device: become the
+          speaker, or stop. See makeDeviceSpeaker.
+
+        A signed-in browser may say what it is with `kind` (`computer` or
+        `phone`) and `name` (like `Mac`, at most 40 characters), alongside
+        its `device`, for the room's device list.
 
         A paired display connects with its display cookie instead, to its
         own room only. So does a signed-in user with `display=1`: either way
@@ -8169,7 +8308,7 @@ components:
       properties:
         type:
           type: string
-          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated, room.deleted, reaction.sent, hearts.updated, night.ended, guests.updated, members.updated, game.round, game.scores, game.queue, chat.message, chat.deleted, displays.updated, display.command]
+          enum: [hello, queue.updated, nowplaying.updated, playback.notice, member.joined, member.left, link.status, room.updated, room.deleted, reaction.sent, hearts.updated, night.ended, guests.updated, members.updated, game.round, game.scores, game.queue, chat.message, chat.deleted, displays.updated, display.command, devices.updated, device.command]
         version:
           type: integer
           format: int64

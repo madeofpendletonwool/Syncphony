@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { errorMessage } from '@/api/errors'
 import { Equalizer } from '@/components/equalizer'
 import { Button } from '@/components/ui/button'
+import { onDeviceCommand } from '@/lib/devices'
 import { newer, playbackQuery, sendCommand, type PlaybackCommand } from '@/lib/playback'
 import { speaker, speakerState } from '@/lib/speaker'
 import { useStore } from '@/lib/store'
@@ -123,6 +124,21 @@ export function TvAudio({ roomId, device, name, onStopped, canPlayPause = true, 
     writeFlag(false)
     void speaker.stop()
   }
+  // Handed the speaker from someone's phone, or stopped from there: the
+  // same as pressing the buttons here. A box plays without the press; any
+  // other screen may still want OK pressed, and shows the button.
+  const remote = useRef({ start, stop })
+  useEffect(() => {
+    remote.current = { start, stop }
+  })
+  useEffect(
+    () =>
+      onDeviceCommand((cmd) => {
+        if (cmd.action === 'speak') remote.current.start()
+        else if (speaker.active) remote.current.stop()
+      }),
+    [],
+  )
 
   if (here && state.status === 'blocked') {
     return (

@@ -23,7 +23,8 @@ import {
   unpairDisplay,
 } from '@/lib/displays'
 import { easeOutExpo } from '@/lib/motion'
-import { can } from '@/lib/playback'
+import { makeSpeaker, stopSpeaker } from '@/lib/devices'
+import { can, newer, playbackQuery } from '@/lib/playback'
 import type { Room } from '@/lib/room'
 import { relativeTime } from '@/lib/time'
 import { toast } from '@/lib/toast'
@@ -98,6 +99,17 @@ export function BigScreenDialog({ room, open, onOpenChange }: { room: Room; open
       action === 'restart' ? restartDisplay(room.id, id) : reloadDisplay(room.id, id),
     onSuccess: (_, { name, action }) =>
       toast({ message: action === 'restart' ? `${name} is restarting. It'll be back in about a minute.` : `${name} is reloading` }),
+    onError: (e) => toast({ message: errorMessage(e), tone: 'error' }),
+  })
+  // Send the music to a screen from here, or stop it (the Devices list does the same).
+  const player = useQuery({ ...playbackQuery(room.id), enabled: false }).data?.player
+  const speakTo = useMutation({
+    mutationFn: ({ id, on }: { id: string; name: string; on: boolean }) =>
+      on ? makeSpeaker(room.id, id) : stopSpeaker(room.id, id),
+    onSuccess: (np, { name, on }) => {
+      if (np) queryClient.setQueryData(playbackQuery(room.id).queryKey, (old) => newer(old, np))
+      if (on) toast({ message: `Handing the speaker to ${name}` })
+    },
     onError: (e) => toast({ message: errorMessage(e), tone: 'error' }),
   })
   const submit = (e: FormEvent) => {
@@ -262,6 +274,17 @@ export function BigScreenDialog({ room, open, onOpenChange }: { room: Room; open
                             )}
                             {mayManage && d.online && (
                               <div className="flex flex-wrap gap-1 pl-5">
+                                {d.audio && maySpeak && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    disabled={speakTo.isPending}
+                                    onClick={() => speakTo.mutate({ id: d.id, name: d.name, on: player?.deviceId !== d.id })}
+                                  >
+                                    <Speaker data-icon="inline-start" />
+                                    {player?.deviceId === d.id ? 'Stop the speaker' : 'Make it the speaker'}
+                                  </Button>
+                                )}
                                 <Button
                                   size="sm"
                                   variant="ghost"
