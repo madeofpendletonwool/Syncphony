@@ -13,6 +13,7 @@ import { gameRoundQuery, gameScoresQuery, type GameRound, type GameScores } from
 import { guestPassQuery, guestsQuery } from './guests'
 import { crown, heartsQuery, nightsQuery, type Hearts, type Night } from './nights'
 import { newer, playbackQuery, type Playback } from './playback'
+import { checkForUpdate } from './pwa'
 import { putQueueGame, queueGamesQuery, type QueueGame } from './queue-games'
 import { addReaction, type Reaction } from './reactions'
 import { leaveRoom, queueQuery, roomsQuery, type QueueSnapshot, type Room } from './room'
@@ -68,6 +69,7 @@ export function useRoomSocket(roomId: string | undefined, { display = false, onS
     let retry: ReturnType<typeof setTimeout> | undefined
     let attempt = 0
     let closed = false
+    let opened = false
     live.set({ roomId, status: 'connecting', members: [] })
 
     const connect = () => {
@@ -93,6 +95,9 @@ export function useRoomSocket(roomId: string | undefined, { display = false, onS
       // as soon as it's connected, and whenever boxd says something new.
       sock.onopen = () => {
         if (reportBox && box.info) sendBoxStatus(sock, box.info)
+        // Back after a drop, maybe a deploy: there may be a new version.
+        if (opened) checkForUpdate()
+        opened = true
       }
       sock.onmessage = (e) => {
         attempt = 0
