@@ -47,6 +47,20 @@ export function registerServiceWorker() {
   })
 }
 
+/**
+ * Looks for a new version now. The room socket calls it when it connects
+ * again: a deploy restarts the server and drops every socket, so a box
+ * (which takes new versions by itself) is up to date within moments,
+ * not an hour later.
+ */
+export function checkForUpdate() {
+  if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return
+  void navigator.serviceWorker
+    .getRegistration()
+    .then((reg) => reg?.update())
+    .catch(() => {})
+}
+
 /** Chromium's install prompt event, which TypeScript's DOM types lack. */
 type InstallPromptEvent = Event & { prompt(): Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> }
 
