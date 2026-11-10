@@ -164,6 +164,11 @@ func (s *Server) GetHealth(context.Context, GetHealthRequestObject) (GetHealthRe
 	return GetHealth200JSONResponse{Status: HealthStatusOk, Version: s.Version}, nil
 }
 
+// GetServerTime tells a client the server's clock, to set its own by.
+func (s *Server) GetServerTime(context.Context, GetServerTimeRequestObject) (GetServerTimeResponseObject, error) {
+	return GetServerTime200JSONResponse{Ms: time.Now().UnixMilli()}, nil
+}
+
 // --- Request context ----------------------------------------------------------
 
 // publicOps can be called without a session. Everything else requires one.
@@ -171,6 +176,7 @@ func (s *Server) GetHealth(context.Context, GetHealthRequestObject) (GetHealthRe
 // TestPublicOpsMatchSpec keeps this in sync with `security: []` in the spec.
 var publicOps = map[string]bool{
 	"GetHealth":           true,
+	"GetServerTime":       true,
 	"GetInvite":           true,
 	"Signup":              true,
 	"BeginPasskeySignup":  true,

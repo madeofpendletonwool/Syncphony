@@ -82,7 +82,9 @@ type env struct {
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	e := &env{t: t, now: time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)}
+	// The fake clock starts at the real time: the client's cookie jar runs
+	// on the real clock, and drops a session cookie that expired by it.
+	e := &env{t: t, now: time.Now().UTC().Truncate(time.Hour)}
 	var h http.Handler
 	e.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { h.ServeHTTP(w, r) }))
 	t.Cleanup(e.srv.Close)

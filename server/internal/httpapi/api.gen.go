@@ -3925,6 +3925,11 @@ type Player struct {
 
 // PlayerReport defines model for PlayerReport.
 type PlayerReport struct {
+	// At When `positionMs` was read, in ms since the epoch on the server's
+	// clock (see `/time`). The server moves the position on by the time
+	// the report took to arrive; without it, the report counts as read
+	// on arrival.
+	At       *int64 `json:"at,omitempty"`
 	DeviceId string `json:"deviceId"`
 
 	// Error What went wrong, for `error`.
@@ -5033,6 +5038,12 @@ type ServerSettings struct {
 type ServerSettingsUpdate struct {
 	InstanceName      *string `json:"instanceName,omitempty"`
 	InviteExpiryHours *int    `json:"inviteExpiryHours,omitempty"`
+}
+
+// ServerTime defines model for ServerTime.
+type ServerTime struct {
+	// Ms The server's clock, in ms since the epoch.
+	Ms int64 `json:"ms"`
 }
 
 // ServiceLink defines model for ServiceLink.
@@ -6555,6 +6566,9 @@ type ServerInterface interface {
 	// UpdateServerSettings Change the server's settings (admin)
 	// (PATCH /server-settings)
 	UpdateServerSettings(w http.ResponseWriter, r *http.Request)
+	// GetServerTime The server's clock
+	// (GET /time)
+	GetServerTime(w http.ResponseWriter, r *http.Request)
 	// ListUserAudit Who changed whose account, and when (admin)
 	// (GET /user-audit)
 	ListUserAudit(w http.ResponseWriter, r *http.Request)
@@ -12340,6 +12354,20 @@ func (siw *ServerInterfaceWrapper) UpdateServerSettings(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// GetServerTime operation middleware
+func (siw *ServerInterfaceWrapper) GetServerTime(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetServerTime(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListUserAudit operation middleware
 func (siw *ServerInterfaceWrapper) ListUserAudit(w http.ResponseWriter, r *http.Request) {
 
@@ -12619,6 +12647,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/healthz", wrapper.GetHealth)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/time", wrapper.GetServerTime)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/invites/{code}", wrapper.DeleteInvite)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/invites/{code}", wrapper.GetInvite)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/auth/signup", wrapper.Signup)
@@ -20679,6 +20708,27 @@ func (response UpdateServerSettingsdefaultJSONResponse) VisitUpdateServerSetting
 	return err
 }
 
+type GetServerTimeRequestObject struct {
+}
+
+type GetServerTimeResponseObject interface {
+	VisitGetServerTimeResponse(w http.ResponseWriter) error
+}
+
+type GetServerTime200JSONResponse ServerTime
+
+func (response GetServerTime200JSONResponse) VisitGetServerTimeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListUserAuditRequestObject struct {
 }
 
@@ -21549,6 +21599,9 @@ type StrictServerInterface interface {
 	// UpdateServerSettings Change the server's settings (admin)
 	// (PATCH /server-settings)
 	UpdateServerSettings(ctx context.Context, request UpdateServerSettingsRequestObject) (UpdateServerSettingsResponseObject, error)
+	// GetServerTime The server's clock
+	// (GET /time)
+	GetServerTime(ctx context.Context, request GetServerTimeRequestObject) (GetServerTimeResponseObject, error)
 	// ListUserAudit Who changed whose account, and when (admin)
 	// (GET /user-audit)
 	ListUserAudit(ctx context.Context, request ListUserAuditRequestObject) (ListUserAuditResponseObject, error)
@@ -27165,6 +27218,30 @@ func (sh *strictHandler) UpdateServerSettings(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateServerSettingsResponseObject); ok {
 		if err := validResponse.VisitUpdateServerSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetServerTime operation middleware
+func (sh *strictHandler) GetServerTime(w http.ResponseWriter, r *http.Request) {
+	var request GetServerTimeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetServerTime(ctx, request.(GetServerTimeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetServerTime")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetServerTimeResponseObject); ok {
+		if err := validResponse.VisitGetServerTimeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

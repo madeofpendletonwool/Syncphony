@@ -3,7 +3,8 @@
 // the song without re-rendering anything.
 //
 // Where the beat comes from, first match wins:
-//   1. a grid tapped in the beat lab, for a song the analysis got wrong;
+//   1. a fix from the beat lab: the song's beats moved into place, or a
+//      grid of its own for a song whose tempo the analysis got wrong;
 //   2. the song's beat map from the server (lib/beat-map.ts);
 //   3. the default tempo, while the map loads or for songs without one:
 //      in time, but not in phase.
@@ -24,6 +25,7 @@
 import { beatAt, loudnessAt, sectionEnergy, spectrumAt, type BeatMap } from './beat-map'
 import { positionAt, type NowPlaying } from './now-playing'
 import { createStore } from './store'
+import { alignToMap, fitTaps, mod4 } from './tap-tempo'
 
 export type BeatLevel = 'off' | 'subtle'
 
@@ -135,8 +137,13 @@ export const beatSource = createStore<{ np: NowPlaying | null; map: BeatMap | nu
 /** A song's beat grid: its tempo and the position of one downbeat, in ms. */
 export type Grid = { bpm: number; anchorMs: number }
 
-/** Grids tapped in the beat lab, by song. They beat the song's map. */
-const tapped = new Map<string, Grid>()
+/**
+ * Fixes made in the beat lab, by song. A shift keeps the song's analysed
+ * beats and moves them (later by offsetMs, the bar starting barShift beats
+ * on); a grid replaces them.
+ */
+type Fix = { kind: 'shift'; offsetMs: number; barShift: number } | { kind: 'grid'; grid: Grid }
+const fixes = new Map<string, Fix>()
 export const gridVersion = createStore(0)
 
 function keyOf(np: NowPlaying) {
@@ -168,54 +175,66 @@ export type BeatOrigin = 'tapped' | 'analysed' | 'steady' | 'default'
 
 export function currentBeat(): Grid & { origin: BeatOrigin } {
   const c = clock()
-  const own = c && tapped.get(c.key)
-  if (own) return { ...own, origin: 'tapped' }
+  const fix = c && fixes.get(c.key)
+  if (fix?.kind === 'grid') return { ...fix.grid, origin: 'tapped' }
   const map = c && mapFor(c.key)
-  if (map && map.bpm > 0) return { bpm: map.bpm, anchorMs: map.beats[map.downbeat] ?? 0, origin: 'analysed' }
+  if (map && map.bpm > 0) {
+    const anchorMs = map.beats[map.downbeat] ?? 0
+    if (!fix) return { bpm: map.bpm, anchorMs, origin: 'analysed' }
+    return { bpm: map.bpm, anchorMs: anchorMs + fix.offsetMs + (fix.barShift * 60000) / map.bpm, origin: 'tapped' }
+  }
   if (map) return { bpm: 0, anchorMs: 0, origin: 'steady' }
   return { bpm: DEFAULT_BPM, anchorMs: 0, origin: 'default' }
 }
 
-function setGrid(g: Grid) {
+function setFix(fix: Fix) {
   const c = clock()
   if (!c) return
-  tapped.set(c.key, { bpm: Math.min(220, Math.max(50, g.bpm)), anchorMs: g.anchorMs })
+  fixes.set(
+    c.key,
+    fix.kind === 'grid' ? { kind: 'grid', grid: { bpm: Math.min(220, Math.max(50, fix.grid.bpm)), anchorMs: fix.grid.anchorMs } } : fix,
+  )
   gridVersion.set((v) => v + 1)
   wake()
 }
 
+/** The current song's fix, and whether its map can take a shift instead of a grid. */
+function fixable() {
+  const c = clock()
+  const fix = c ? fixes.get(c.key) : undefined
+  const map = c ? mapFor(c.key) : null
+  return { fix, shiftable: fix?.kind !== 'grid' && !!map && map.bpm > 0 }
+}
+
 // --- Tap tempo ---------------------------------------------------------------
 
-let taps: number[] = []
+/** Taps by performance.now(): a steady clock, unlike the room's position, which jumps as the server corrects it. */
+let taps: { key: string; at: number }[] = []
 
 /**
- * A tap on the beat. Start on a "one": a straight line through the taps
- * gives the tempo, and the first tap becomes a downbeat.
+ * A tap on the beat. Start on a "one". From the fourth tap, the taps fix
+ * the song's beat: at the analysed tempo they just move its beats into
+ * place; at another tempo they make a grid of their own. Returns how many
+ * taps so far.
  */
 export function tap() {
   const c = clock()
-  if (!c) return
+  if (!c?.playing) return
+  const now = performance.now()
   const last = taps.at(-1)
-  if (last === undefined || c.pos - last > 2000 || c.pos < last) taps = []
-  taps.push(c.pos)
-  taps = taps.slice(-12)
-  if (taps.length < 3) return taps.length
-  // Least squares: tap i lands at anchor + i·period.
-  const n = taps.length
-  const mi = (n - 1) / 2
-  const mt = taps.reduce((a, b) => a + b, 0) / n
-  let num = 0
-  let den = 0
-  taps.forEach((t, i) => {
-    num += (i - mi) * (t - mt)
-    den += (i - mi) ** 2
-  })
-  const period = num / den
-  // The first tap is beat 0; move the anchor to the bar of the last one.
-  const first = mt - mi * period
-  const bars = Math.floor((n - 1) / 4)
-  setGrid({ bpm: 60000 / period, anchorMs: first + bars * 4 * period })
-  return n
+  if (!last || last.key !== c.key || now - last.at > 2500) taps = []
+  taps.push({ key: c.key, at: now })
+  taps = taps.slice(-16)
+  if (taps.length < 4) return taps.length
+  // Every tap's song position from this one reading of the clock.
+  const times = taps.map((t) => c.pos - (now - t.at))
+  const fit = fitTaps(times)
+  if (!fit) return taps.length
+  const map = mapFor(c.key)
+  const shift = map ? alignToMap(map, times, fit.period) : null
+  if (shift) setFix({ kind: 'shift', ...shift })
+  else setFix({ kind: 'grid', grid: { bpm: 60000 / fit.period, anchorMs: fit.firstMs } })
+  return taps.length
 }
 
 /** The current beat as a grid to adjust: tapped, analysed, or the default. */
@@ -225,33 +244,45 @@ function adjustable(): Grid {
 }
 
 export function nudge(ms: number) {
+  const { fix, shiftable } = fixable()
+  if (shiftable) {
+    const s = fix?.kind === 'shift' ? fix : { offsetMs: 0, barShift: 0 }
+    setFix({ kind: 'shift', offsetMs: s.offsetMs + ms, barShift: s.barShift })
+    return
+  }
   const g = adjustable()
-  setGrid({ ...g, anchorMs: g.anchorMs + ms })
+  setFix({ kind: 'grid', grid: { ...g, anchorMs: g.anchorMs + ms } })
 }
 
 export function scaleTempo(factor: number) {
   const g = adjustable()
-  setGrid({ ...g, bpm: g.bpm * factor })
+  setFix({ kind: 'grid', grid: { ...g, bpm: g.bpm * factor } })
 }
 
 /** Moves the "one" along by a beat, for a grid that starts its bars in the wrong place. */
 export function shiftDownbeat() {
+  const { fix, shiftable } = fixable()
+  if (shiftable) {
+    const s = fix?.kind === 'shift' ? fix : { offsetMs: 0, barShift: 0 }
+    setFix({ kind: 'shift', offsetMs: s.offsetMs, barShift: mod4(s.barShift + 1) })
+    return
+  }
   const g = adjustable()
-  setGrid({ ...g, anchorMs: g.anchorMs + 60000 / g.bpm })
+  setFix({ kind: 'grid', grid: { ...g, anchorMs: g.anchorMs + 60000 / g.bpm } })
 }
 
-/** Forgets the song's tapped grid, back to its beat map. */
+/** Forgets the song's fix, back to its beat map. */
 export function resetGrid() {
   const c = clock()
   if (!c) return
-  tapped.delete(c.key)
+  fixes.delete(c.key)
   taps = []
   gridVersion.set((v) => v + 1)
 }
 
 // --- Delay calibration -------------------------------------------------------
 
-let heard: number[] = []
+let heard: { key: string; at: number }[] = []
 
 /**
  * A tap on the beat as it's heard here, to work out how late this
@@ -265,12 +296,14 @@ export function calibrateTap(): number | null {
   const map = np && !np.paused ? mapFor(keyOf(np)) : null
   if (!np || !map || map.bpm <= 0) return null
   const pos = positionAt(np, Date.now())
+  const now = performance.now()
+  const key = keyOf(np)
   const last = heard.at(-1)
-  if (last === undefined || pos - last > 2000 || pos < last) heard = []
-  heard.push(pos)
+  if (!last || last.key !== key || now - last.at > 2500) heard = []
+  heard.push({ key, at: now })
   heard = heard.slice(-16)
   const lags = heard
-    .map((t) => beatAt(map, t))
+    .map((t) => beatAt(map, pos - (now - t.at)))
     .filter((p) => p !== null)
     .map((p) => (p.into > p.period / 2 ? p.into - p.period : p.into))
     .sort((a, b) => a - b)
@@ -374,12 +407,17 @@ function wake() {
 
 /** Where pos falls in the song's beat, from whichever source applies. */
 function place(key: string, pos: number): { index: number; into: number; period: number; bar: number } | null {
-  const own = tapped.get(key)
+  const fix = fixes.get(key)
   const map = mapFor(key)
-  if (!own && map) return map.bpm > 0 ? beatAt(map, pos) : null
+  if (fix?.kind !== 'grid' && map) {
+    if (map.bpm <= 0) return null
+    if (!fix) return beatAt(map, pos)
+    const p = beatAt(map, pos - fix.offsetMs)
+    return p && { ...p, bar: mod4(p.bar - fix.barShift) }
+  }
   // No guessing while the map is on its way: the guess would jump when it lands.
-  if (!own && mapPending(key)) return null
-  const { bpm, anchorMs } = own ?? { bpm: DEFAULT_BPM, anchorMs: 0 }
+  if (!fix && mapPending(key)) return null
+  const { bpm, anchorMs } = fix?.kind === 'grid' ? fix.grid : { bpm: DEFAULT_BPM, anchorMs: 0 }
   const period = 60000 / bpm
   const since = pos - anchorMs
   const n = Math.floor(since / period)

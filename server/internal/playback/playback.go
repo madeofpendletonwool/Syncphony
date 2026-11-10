@@ -67,6 +67,9 @@ const (
 	StatePaused  = "paused"
 )
 
+// maxReportAge bounds how far a speaker's report is moved on for its trip.
+const maxReportAge = 2 * time.Second
+
 // Sessions opens provider sessions for links. It's links.Service in
 // production. Songs play through the link of whoever queued them.
 type Sessions interface {
@@ -985,6 +988,9 @@ type Report struct {
 	ItemID   string
 	Event    string
 	Position time.Duration
+	// At is when Position was read, on the server's clock; zero if the
+	// speaker didn't say. The position is moved on by the report's trip.
+	At time.Time
 	// Error describes an EventError, for the notice.
 	Error string
 }
@@ -1004,6 +1010,12 @@ func (e *Engine) Report(ctx context.Context, roomID, userID string, rep Report) 
 	}
 	now := e.cfg.Now()
 	p.LastSeen = now
+	// A report takes a moment to arrive, longer when the one before it is
+	// slow: left as it is, everyone's beat would lag the speaker's by that.
+	// Bounded, in case the speaker's clock is off after all.
+	if !rep.At.IsZero() && rep.Event != EventPaused {
+		rep.Position += min(max(now.Sub(rep.At), 0), maxReportAge)
+	}
 	stale := r.np.Item == nil || r.np.Item.ID != rep.ItemID || r.np.Driver != string(provider.PlaybackStream)
 	// Progress is every few seconds; only a stale one says something's off
 	// (the speaker is on another song than the room).
