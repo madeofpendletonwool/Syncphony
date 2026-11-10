@@ -8485,6 +8485,12 @@ components:
         song, on the same clock as the playback position.
       required: [durationMs, bpm, confidence, beats, downbeat, sections, frameRate, bandCount, bands, loudness, features]
       properties:
+        lufs:
+          type: number
+          description: |
+            The song's integrated loudness (ITU-R BS.1770), in LUFS. A speaker
+            turns loud songs down by it, so the room's volume stays even.
+            Absent for a silent song.
         durationMs:
           type: integer
           format: int64
