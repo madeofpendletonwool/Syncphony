@@ -24,7 +24,7 @@ const (
 	// SampleRate is the rate songs are decoded to for analysis.
 	SampleRate = 22050
 	// Version changes whenever an older map should be worked out again.
-	Version = 1
+	Version = 2
 	// Bands is how many spectrum bands the map's envelope has.
 	Bands = 12
 
@@ -67,6 +67,8 @@ type Map struct {
 	// Loudness is each frame's overall level, 0–255, scaled to the song.
 	Loudness []byte   `json:"loudness"`
 	Features Features `json:"features"`
+	// LUFS is the song's integrated loudness (BS.1770), nil for silence.
+	LUFS *float64 `json:"lufs,omitempty"`
 }
 
 // Section is a part of the song: an intro, a verse, a drop.
@@ -111,6 +113,7 @@ func Analyze(pcm io.Reader) (Map, error) {
 // analyzer takes samples as they're decoded and keeps a few numbers per window.
 type analyzer struct {
 	fft     *fft
+	meter   *meter
 	hann    []float64
 	pending []float64
 	samples int64
@@ -130,6 +133,7 @@ type analyzer struct {
 func newAnalyzer() *analyzer {
 	a := &analyzer{
 		fft:     newFFT(window),
+		meter:   newMeter(),
 		hann:    make([]float64, window),
 		spec:    make([]complex128, window),
 		prevLog: make([]float64, window/2+1),
@@ -160,7 +164,9 @@ func binHz(k int) float64 { return float64(k) * SampleRate / window }
 func (a *analyzer) write(b []byte) {
 	for i := 0; i+4 <= len(b); i += 4 {
 		bits := uint32(b[i]) | uint32(b[i+1])<<8 | uint32(b[i+2])<<16 | uint32(b[i+3])<<24
-		a.pending = append(a.pending, float64(math.Float32frombits(bits)))
+		x := float64(math.Float32frombits(bits))
+		a.pending = append(a.pending, x)
+		a.meter.add(x)
 	}
 	a.samples += int64(len(b) / 4)
 	start := 0
@@ -260,6 +266,10 @@ func (a *analyzer) finish() Map {
 
 	m.BandsEnv, m.Loudness = envelopes(a.bandDB, a.rmsDB)
 	m.Features = features(a.rmsDB, a.centroid, loud)
+	if l, ok := a.meter.lufs(); ok {
+		l = math.Round(l*10) / 10
+		m.LUFS = &l
+	}
 	return m
 }
 

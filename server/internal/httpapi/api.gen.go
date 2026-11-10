@@ -2193,6 +2193,11 @@ type BeatMap struct {
 	// Loudness Base64: each frame's overall level, a byte (0–255) each, scaled to the song.
 	Loudness []byte `json:"loudness"`
 
+	// Lufs The song's integrated loudness (ITU-R BS.1770), in LUFS. A speaker
+	// turns loud songs down by it, so the room's volume stays even.
+	// Absent for a silent song.
+	Lufs *float32 `json:"lufs,omitempty"`
+
 	// Sections The song's parts (intro, verse, drop), in order; the first starts at 0.
 	Sections []BeatMapSection `json:"sections"`
 }

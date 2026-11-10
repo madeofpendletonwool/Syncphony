@@ -1,6 +1,8 @@
 import { api } from '@/api/client'
 import { ApiError, errorMessage, unwrap } from '@/api/errors'
+import { loadBeatMap } from './beat-map'
 import { serverNow } from './clock'
+import { rampVolume, volumeFor } from './loudness'
 import { BACK_WITHIN_MS, newer, queueArtworkUrl, sendCommand, type Playback, type QueueItem } from './playback'
 import { createStore } from './store'
 import { toast } from './toast'
@@ -137,6 +139,9 @@ export function streamUrl(roomId: string, itemId: string, accept: string[], star
 
 class Speaker {
   private els: [HTMLAudioElement, HTMLAudioElement] | undefined
+  /** Each element's song, for its volume, and the volume ramp under way. */
+  private songOf = new WeakMap<HTMLAudioElement, string>()
+  private ramps = new WeakMap<HTMLAudioElement, () => void>()
   private cur!: HTMLAudioElement
   private pre!: HTMLAudioElement
   // Where each element's stream begins in its song, in ms: 0 unless it was
@@ -453,6 +458,25 @@ class Speaker {
   private setSrc(el: HTMLAudioElement, item: QueueItem, startMs = 0) {
     el.src = streamUrl(this.roomId!, item.id, acceptedTypes(), startMs)
     this.offsets.set(el, startMs)
+    this.level(el, item)
+  }
+
+  /**
+   * Turns el down for a loud song, so songs sit at about the same volume.
+   * The loudness is in the song's beat map, usually worked out before it
+   * plays; one that comes late is eased in.
+   */
+  private level(el: HTMLAudioElement, item: QueueItem) {
+    const roomId = this.roomId
+    if (this.songOf.get(el) === item.id || !roomId) return
+    this.songOf.set(el, item.id)
+    this.ramps.get(el)?.()
+    // Until it's known, full volume, as before.
+    el.volume = 1
+    void loadBeatMap(roomId, item.id).then((map) => {
+      if (this.songOf.get(el) !== item.id) return
+      this.ramps.set(el, rampVolume(el, volumeFor(map?.lufs)))
+    })
   }
 
   private load(item: QueueItem, positionMs: number) {

@@ -391,6 +391,10 @@ func toBeatMap(m analysis.Map) BeatMap {
 		Features: BeatMapFeatures{Energy: float32(m.Features.Energy), Brightness: float32(m.Features.Brightness), Dynamics: float32(m.Features.Dynamics)},
 		Sections: make([]BeatMapSection, len(m.Sections)),
 	}
+	if m.LUFS != nil {
+		l := float32(*m.LUFS)
+		out.Lufs = &l
+	}
 	for i, sec := range m.Sections {
 		out.Sections[i] = BeatMapSection{StartMs: sec.StartMs, Energy: float32(sec.Energy)}
 	}

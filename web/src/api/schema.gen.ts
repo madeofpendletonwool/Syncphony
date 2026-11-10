@@ -5806,6 +5806,12 @@ export interface components {
          *     song, on the same clock as the playback position.
          */
         BeatMap: {
+            /**
+             * @description The song's integrated loudness (ITU-R BS.1770), in LUFS. A speaker
+             *     turns loud songs down by it, so the room's volume stays even.
+             *     Absent for a silent song.
+             */
+            lufs?: number;
             /** Format: int64 */
             durationMs: number;
             /** @description The tempo; 0 if the song has no steady beat, and then `beats` is empty. */
