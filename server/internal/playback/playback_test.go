@@ -268,6 +268,27 @@ func TestStreamPlayback(t *testing.T) {
 	if np = e.report(e.alice, "phone", playback.EventProgress, 3500*time.Millisecond); np.Position != 3500*time.Millisecond {
 		t.Errorf("after progress report: %v", np.Position)
 	}
+	// A report read 80 ms before it arrived counts from when it was read…
+	read := func(pos, ago time.Duration) rooms.NowPlaying {
+		t.Helper()
+		np, err := e.p.Report(ctx, e.room.ID, e.alice.ID, playback.Report{
+			DeviceID: "phone", ItemID: e.np().Item.ID, Event: playback.EventProgress, Position: pos, At: e.clock().Add(-ago),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return np
+	}
+	if np = read(3500*time.Millisecond, 80*time.Millisecond); np.Position != 3580*time.Millisecond {
+		t.Errorf("report read 80ms ago: %v", np.Position)
+	}
+	// …but a speaker clock that's way off moves it by 2 s at most, and never back.
+	if np = read(3500*time.Millisecond, time.Minute); np.Position != 5500*time.Millisecond {
+		t.Errorf("report read a minute ago: %v", np.Position)
+	}
+	if np = read(3500*time.Millisecond, -time.Second); np.Position != 3500*time.Millisecond {
+		t.Errorf("report from the future: %v", np.Position)
+	}
 
 	// Pause, seek and play each bump the revision for the speaker.
 	if np, _ = e.command(e.bob, playback.Command{Action: playback.ActionPause}); np.State != playback.StatePaused || np.Revision != rev+1 {

@@ -279,7 +279,7 @@ function Beat() {
             setTaps(tap() ?? 0)
           }}
         >
-          Tap on the beat {taps > 0 && taps < 3 ? `(${taps})` : ''}
+          Tap on the beat {taps > 0 && taps < 4 ? `(${taps})` : ''}
         </Button>
         <p className="text-caption text-muted-foreground">
           Start on a &ldquo;one&rdquo; and tap at least 4 times. Fixes this song on this device.

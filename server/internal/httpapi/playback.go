@@ -104,6 +104,9 @@ func (s *Server) ReportPlayback(ctx context.Context, req ReportPlaybackRequestOb
 	if req.Body.Error != nil {
 		rep.Error = *req.Body.Error
 	}
+	if req.Body.At != nil {
+		rep.At = time.UnixMilli(*req.Body.At)
+	}
 	np, err := s.Playback.Report(ctx, req.RoomId, userID, rep)
 	if err != nil {
 		return nil, err

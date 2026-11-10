@@ -21,6 +21,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/time": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The server's clock
+         * @description For clients to measure how far their clock is from the server's: a
+         *     few requests, keeping the quickest round trip. Playback positions
+         *     are stamped with server time, so every screen in a room keeps the
+         *     same beat only if they agree on it.
+         */
+        get: operations["getServerTime"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/invites/{code}": {
         parameters: {
             query?: never;
@@ -3824,6 +3847,13 @@ export interface components {
             /** @example 0.1.0 */
             version: string;
         };
+        ServerTime: {
+            /**
+             * Format: int64
+             * @description The server's clock, in ms since the epoch.
+             */
+            ms: number;
+        };
         Error: {
             /**
              * @description Stable, machine-readable error code.
@@ -6062,6 +6092,14 @@ export interface components {
             event: "playing" | "progress" | "paused" | "ended" | "error";
             /** Format: int64 */
             positionMs: number;
+            /**
+             * Format: int64
+             * @description When `positionMs` was read, in ms since the epoch on the server's
+             *     clock (see `/time`). The server moves the position on by the time
+             *     the report took to arrive; without it, the report counts as read
+             *     on arrival.
+             */
+            at?: number;
             /** @description What went wrong, for `error`. */
             error?: string;
         };
@@ -6710,6 +6748,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
+    getServerTime: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The time as the server answered */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerTime"];
                 };
             };
         };

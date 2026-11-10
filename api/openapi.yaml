@@ -28,6 +28,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/Health"
 
+  /time:
+    get:
+      operationId: getServerTime
+      summary: The server's clock
+      description: |
+        For clients to measure how far their clock is from the server's: a
+        few requests, keeping the quickest round trip. Playback positions
+        are stamped with server time, so every screen in a room keeps the
+        same beat only if they agree on it.
+      tags: [system]
+      security: []
+      responses:
+        "200":
+          description: The time as the server answered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerTime"
+
   # --- Signup and sign-in ---------------------------------------------------
 
   /invites/{code}:
@@ -5108,6 +5127,15 @@ components:
           type: string
           example: 0.1.0
 
+    ServerTime:
+      type: object
+      required: [ms]
+      properties:
+        ms:
+          type: integer
+          format: int64
+          description: The server's clock, in ms since the epoch.
+
     Error:
       type: object
       required: [code, message]
@@ -8900,6 +8928,14 @@ components:
           type: integer
           format: int64
           minimum: 0
+        at:
+          type: integer
+          format: int64
+          description: |
+            When `positionMs` was read, in ms since the epoch on the server's
+            clock (see `/time`). The server moves the position on by the time
+            the report took to arrive; without it, the report counts as read
+            on arrival.
         error:
           type: string
           maxLength: 500

@@ -753,7 +753,8 @@ class Speaker {
     const roomId = this.roomId
     if (!roomId || !item || this.mode !== 'speaker') return
     const positionMs = Math.round(item === this.curItem ? this.position() : 0)
-    const body = { deviceId: this.device, itemId: item.id, event, positionMs, error }
+    // When it was read: the report may wait behind the last one, and takes a moment to arrive.
+    const body = { deviceId: this.device, itemId: item.id, event, positionMs, at: Math.round(serverNow()), error }
     this.reports = this.reports
       .then(() =>
         api.POST('/rooms/{roomId}/player/report', { params: { path: { roomId } }, body, signal: AbortSignal.timeout(REPORT_TIMEOUT) }),

@@ -6,7 +6,7 @@ import { box, isBox, runDisplayCommand, type BoxInfo, type DisplayCommand } from
 import { deviceKind, devicesQuery, runDeviceCommand, type DeviceCommand } from './devices'
 import { chatQuery, dropChatMessage, putChatMessage, type ChatMessage } from './chat'
 import { meQuery } from './auth'
-import { syncServerClock } from './clock'
+import { measureServerClock, syncServerClock } from './clock'
 import { displayMeQuery, displaysQuery } from './displays'
 import { playRoundClips } from './game-clips'
 import { gameRoundQuery, gameScoresQuery, type GameRound, type GameScores } from './games'
@@ -160,6 +160,7 @@ function handle(queryClient: QueryClient, roomId: string, ev: RoomEvent) {
     case 'hello': {
       const hello = ev.data as components['schemas']['RoomHello']
       syncServerClock(hello.serverTime)
+      void measureServerClock()
       live.set({ roomId, status: 'live', members: hello.members })
       // The games still up follow, one event each.
       queryClient.setQueryData(queueGamesQuery(roomId).queryKey, [])
