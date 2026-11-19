@@ -46,7 +46,7 @@ import { TvKeys } from './tv-keys'
 
 type RoomScreens = Room['screens']
 
-const UP_NEXT_SHOWN = 5
+const UP_NEXT_SHOWN = 4
 
 /**
  * The room on a TV: huge artwork and the song's colors, lyrics front and
@@ -462,14 +462,17 @@ function UpNext({
                 transition={spring}
                 style={laneStyle(u?.color)}
                 className={cn(
-                  'glass flex w-[15vw] min-w-0 items-center gap-[0.8vw] rounded-[2vh] p-[1vh] pr-[1vw]',
+                  'glass flex w-[19vw] min-w-0 items-center gap-[1vw] rounded-[2.2vh] p-[1.4vh] pr-[1.2vw]',
                   i === 0 && 'ring-2 ring-(--lane)/70',
                 )}
               >
-                <Artwork src={queueArtworkUrl(roomId, item, 160)} className="size-[6.5vh] rounded-[1.2vh]" />
+                <Artwork src={queueArtworkUrl(roomId, item, 300)} className="size-[9.5vh] shrink-0 rounded-[1.4vh]" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[clamp(0.85rem,1.15vw,1.2rem)] font-semibold">{item.track.title}</p>
-                  <p className="flex items-center gap-1.5 truncate text-[clamp(0.75rem,0.95vw,1rem)] text-muted-foreground">
+                  <p className="line-clamp-2 text-[clamp(0.95rem,1.3vw,1.4rem)] leading-snug font-semibold">{item.track.title}</p>
+                  <p className="mt-[0.3vh] truncate text-[clamp(0.8rem,1.05vw,1.1rem)] text-muted-foreground">
+                    {item.track.artists.join(', ')}
+                  </p>
+                  <p className="mt-[0.3vh] flex items-center gap-1.5 truncate text-[clamp(0.75rem,0.95vw,1rem)] text-muted-foreground">
                     <span className={cn('size-2 shrink-0 rounded-full bg-(--lane)', item.autopilot && 'bg-primary')} />
                     {item.autopilot ? 'Autopilot' : (u?.displayName ?? 'Someone')}
                   </p>
@@ -484,7 +487,7 @@ function UpNext({
           })}
         </AnimatePresence>
         {more > 0 && (
-          <li className="flex items-center px-[0.5vw] text-[clamp(0.85rem,1.15vw,1.2rem)] text-muted-foreground">+{more} more</li>
+          <li className="flex items-center px-[0.5vw] text-[clamp(0.95rem,1.3vw,1.4rem)] text-muted-foreground">+{more} more</li>
         )}
       </ol>
     </section>
