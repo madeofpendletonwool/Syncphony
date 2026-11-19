@@ -277,11 +277,14 @@ function bandAt(spec: ArrayLike<number>, x: number) {
  * a ring is cast in the shape of the spectrum at that moment and flies at
  * you, so the tunnel walls are the song's recent past. Bars' first beats
  * cast a bright ring; each bar the walls take the palette's next color,
- * so the color runs down the tunnel as it flies; the whole thing turns
- * faster when the song is loud.
+ * so the color runs down the tunnel as it flies; each ring's color burns
+ * as bright as the song was loud where it was cast — the bass of the
+ * moment over the song's energy — so kicks send waves of light down the
+ * walls and a drop lights the whole tunnel; the whole thing turns faster
+ * when the song is loud.
  */
 function tunnel(): Painter {
-  type Ring = { z: number; shape: Float32Array; bright: boolean; color: keyof Colors }
+  type Ring = { z: number; shape: Float32Array; bright: boolean; color: keyof Colors; glow: number }
   const POINTS = 96
   const roles: (keyof Colors)[] = ['vibrant', 'dominant', 'muted', 'light']
   let rings: Ring[] = []
@@ -308,7 +311,7 @@ function tunnel(): Painter {
         const a = i / POINTS
         shape[i] = bandAt(f.spectrum, 1 - Math.abs(Math.cos(a * Math.PI * 2)))
       }
-      rings.push({ z: 1, shape, bright: downbeat, color: roles[role] })
+      rings.push({ z: 1, shape, bright: downbeat, color: roles[role], glow: Math.min(1, f.energy * 0.45 + f.bands[0] * 0.75) })
     }
     spin += (f.dt / 1000) * (0.05 + f.energy * 0.25) + f.beat * 0.002
     wander += f.dt / 1000
@@ -323,8 +326,8 @@ function tunnel(): Painter {
       const radius = (m * 0.045) / r.z
       if (radius > Math.hypot(w, h)) continue
       const near = 1 - r.z
-      ctx.globalAlpha = f.presence * Math.min(1, near * 1.8) * (r.bright ? 1 : 0.32) * Math.min(1, r.z * 5)
-      ctx.strokeStyle = r.bright ? c.light : c[r.color]
+      ctx.globalAlpha = f.presence * Math.min(1, near * 1.8) * (r.bright ? 1 : 0.14 + 0.5 * r.glow) * Math.min(1, r.z * 5)
+      ctx.strokeStyle = r.bright ? c.light : lit(c[r.color], 0.45 + 0.7 * r.glow)
       ctx.lineWidth = Math.max(0.75, (r.bright ? 3 : 1) * near * near * 3.5)
       ctx.beginPath()
       for (let i = 0; i <= POINTS; i++) {
@@ -476,6 +479,24 @@ function glow(color: string) {
     glows.set(color, s)
   }
   return s
+}
+
+// Colors lit to a brightness, in steps fine enough a step never shows:
+// the tunnel asks for a hundred of them every frame.
+const lits = new Map<string, string>()
+
+/** A palette color (an oklch string) with its lightness scaled by `by`, dimmed below 1. */
+function lit(color: string, by: number) {
+  const k = Math.round(Math.max(0, by) * 32) / 32
+  const key = `${color}|${k}`
+  let out = lits.get(key)
+  if (out === undefined) {
+    const m = /^oklch\(([\d.]+) ([\d.]+) ([\d.]+)\)$/.exec(color)
+    out = m ? `oklch(${Math.min(0.98, +m[1] * k).toFixed(3)} ${m[2]} ${m[3]})` : color
+    if (lits.size > 96) lits.clear()
+    lits.set(key, out)
+  }
+  return out
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
