@@ -275,40 +275,60 @@ function bandAt(spec: ArrayLike<number>, x: number) {
 /**
  * A tunnel of the song's own spectrum: every few hundredths of a second
  * a ring is cast in the shape of the spectrum at that moment and flies at
- * you, so the tunnel walls are the song's recent past. Bars' first beats
- * cast a bright ring; each bar the walls take the palette's next color,
- * so the color runs down the tunnel as it flies; the whole thing turns
- * faster when the song is loud.
+ * you, so the tunnel walls are the song's recent past. A ring's flight is
+ * the beat's, not the wall clock's: each crosses eight beats (two bars)
+ * of tunnel on its way in, so the bright ring and the new color a bar
+ * casts sweep past you exactly on a later bar's one — the colors' peaks
+ * arrive on the beat. The whole thing still turns faster when the song
+ * is loud.
  */
 function tunnel(): Painter {
-  type Ring = { z: number; shape: Float32Array; bright: boolean; color: keyof Colors }
+  type Ring = { born: number; shape: Float32Array; bright: boolean; color: keyof Colors }
   const POINTS = 96
+  // A whole number of bars, so a ring cast on a one reaches the viewer on a one.
+  const SPAN = 8
   const roles: (keyof Colors)[] = ['vibrant', 'dominant', 'muted', 'light']
   let rings: Ring[] = []
   let castAt = 0
-  let lastBar = Number.NaN
+  let lastIndex = Number.NaN
   let role = 0
   let spin = 0
   let wander = 0
-  return (ctx, w, h, f, c) => {
-    const travel = (f.dt / 1000) * (0.32 + f.energy * 0.55 + f.swell * 0.2)
-    for (const r of rings) r.z -= travel
-    rings = rings.filter((r) => r.z > 0.02)
-    const bar = Math.floor(f.beatIndex / 4)
-    const downbeat = f.downbeat > 0.5 && bar !== lastBar
-    if (downbeat) {
-      lastBar = bar
-      role = (role + 1) % roles.length
+  // The tunnel runs on beat time, in beats since the song's first. The
+  // room's position jumps when the server corrects it: rebase, never teleport.
+  let beats = 0
+  const cast = (f: BeatFrame, born: number, bright: boolean) => {
+    const shape = new Float32Array(POINTS)
+    for (let i = 0; i < POINTS; i++) {
+      // Mirrored around the ring: bass on two opposite sides, treble between.
+      const a = i / POINTS
+      shape[i] = bandAt(f.spectrum, 1 - Math.abs(Math.cos(a * Math.PI * 2)))
     }
-    if (f.now - castAt > 30 || downbeat) {
-      castAt = f.now
-      const shape = new Float32Array(POINTS)
-      for (let i = 0; i < POINTS; i++) {
-        // Mirrored around the ring: bass on two opposite sides, treble between.
-        const a = i / POINTS
-        shape[i] = bandAt(f.spectrum, 1 - Math.abs(Math.cos(a * Math.PI * 2)))
+    rings.push({ born, shape, bright, color: roles[role] })
+  }
+  return (ctx, w, h, f, c) => {
+    if (Number.isFinite(f.intoMs)) {
+      const now = f.beatIndex + Math.min(1, Math.max(0, f.intoMs / f.periodMs))
+      const jump = now - beats
+      if (jump > 4 || jump < -1) for (const r of rings) r.born += jump
+      beats = now
+    } else {
+      // No beat to fly by yet: the wall clock stands in until one lands.
+      beats += f.dt / f.periodMs
+    }
+    rings = rings.filter((r) => beats - r.born < SPAN)
+    if (f.beatIndex !== lastIndex) {
+      if (f.bar === 0) role = (role + 1) % roles.length
+      if (f.bar === 0 && !Number.isNaN(lastIndex)) {
+        // Born exactly on the beat, whenever this frame happened to run.
+        cast(f, f.beatIndex, true)
+        castAt = f.now
       }
-      rings.push({ z: 1, shape, bright: downbeat, color: roles[role] })
+      lastIndex = f.beatIndex
+    }
+    if (f.now - castAt > Math.max(32, (SPAN * f.periodMs) / 72)) {
+      castAt = f.now
+      cast(f, beats, false)
     }
     spin += (f.dt / 1000) * (0.05 + f.energy * 0.25) + f.beat * 0.002
     wander += f.dt / 1000
@@ -320,15 +340,17 @@ function tunnel(): Painter {
     // Far to near, so the near rings draw over.
     for (let j = 0; j < rings.length; j++) {
       const r = rings[j]
-      const radius = (m * 0.045) / r.z
+      const z = 1 - (beats - r.born) / SPAN
+      if (z <= 0.02 || z > 1) continue
+      const radius = (m * 0.045) / z
       if (radius > Math.hypot(w, h)) continue
-      const near = 1 - r.z
-      ctx.globalAlpha = f.presence * Math.min(1, near * 1.8) * (r.bright ? 1 : 0.32) * Math.min(1, r.z * 5)
+      const near = 1 - z
+      ctx.globalAlpha = f.presence * Math.min(1, near * 1.8) * (r.bright ? 1 : 0.32) * Math.min(1, z * 5)
       ctx.strokeStyle = r.bright ? c.light : c[r.color]
       ctx.lineWidth = Math.max(0.75, (r.bright ? 3 : 1) * near * near * 3.5)
       ctx.beginPath()
       for (let i = 0; i <= POINTS; i++) {
-        const a = (i / POINTS) * Math.PI * 2 + spin + r.z * 0.8
+        const a = (i / POINTS) * Math.PI * 2 + spin + z * 0.8
         const k = 1 + r.shape[i % POINTS] * 0.3
         const x = cx + Math.cos(a) * radius * k
         const y = cy + Math.sin(a) * radius * k

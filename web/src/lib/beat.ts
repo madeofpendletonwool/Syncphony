@@ -375,6 +375,8 @@ export type BeatFrame = {
   /** Where the beat falls in its bar, 0 (the one) – 3. */
   bar: number
   periodMs: number
+  /** How far into the current beat we are, ms; NaN while the position is unknown. */
+  intoMs: number
   /** Frame time (performance.now) and time since the last frame. */
   now: number
   dt: number
@@ -456,6 +458,7 @@ function tick(now: number) {
   let beatIndex = 0
   let bar = 0
   let periodMs = 500
+  let intoMs = Number.NaN
   let breath = 0
   const p = c && presence > 0.001 ? place(c.key, c.pos) : null
   // Louder songs hit harder, but even a quiet one keeps a faint pulse.
@@ -464,6 +467,7 @@ function tick(now: number) {
     beatIndex = p.index
     bar = p.bar
     periodMs = p.period
+    intoMs = p.into
     // Never more than three flashes a second: at very fast tempos, every other beat.
     const flash = p.period >= 333 || p.index % 2 === 0
     vars.beat = flash ? gain * pulse(p.into, Math.min(240, p.period * 0.4)) : 0
@@ -525,6 +529,7 @@ function tick(now: number) {
       beatIndex,
       bar,
       periodMs,
+      intoMs,
       now,
       dt,
     }
