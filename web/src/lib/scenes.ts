@@ -276,14 +276,18 @@ function bandAt(spec: ArrayLike<number>, x: number) {
  * A tunnel of the song's own spectrum: every few hundredths of a second
  * a ring is cast in the shape of the spectrum at that moment and flies at
  * you, so the tunnel walls are the song's recent past. Bars' first beats
- * cast a bright ring; the whole thing turns faster when the song is loud.
+ * cast a bright ring; each bar the walls take the palette's next color,
+ * so the color runs down the tunnel as it flies; the whole thing turns
+ * faster when the song is loud.
  */
 function tunnel(): Painter {
-  type Ring = { z: number; shape: Float32Array; bright: boolean; hue: number }
+  type Ring = { z: number; shape: Float32Array; bright: boolean; color: keyof Colors }
   const POINTS = 96
+  const roles: (keyof Colors)[] = ['vibrant', 'dominant', 'muted', 'light']
   let rings: Ring[] = []
   let castAt = 0
   let lastBar = Number.NaN
+  let role = 0
   let spin = 0
   let wander = 0
   return (ctx, w, h, f, c) => {
@@ -292,7 +296,10 @@ function tunnel(): Painter {
     rings = rings.filter((r) => r.z > 0.02)
     const bar = Math.floor(f.beatIndex / 4)
     const downbeat = f.downbeat > 0.5 && bar !== lastBar
-    if (downbeat) lastBar = bar
+    if (downbeat) {
+      lastBar = bar
+      role = (role + 1) % roles.length
+    }
     if (f.now - castAt > 30 || downbeat) {
       castAt = f.now
       const shape = new Float32Array(POINTS)
@@ -301,7 +308,7 @@ function tunnel(): Painter {
         const a = i / POINTS
         shape[i] = bandAt(f.spectrum, 1 - Math.abs(Math.cos(a * Math.PI * 2)))
       }
-      rings.push({ z: 1, shape, bright: downbeat, hue: rings.length })
+      rings.push({ z: 1, shape, bright: downbeat, color: roles[role] })
     }
     spin += (f.dt / 1000) * (0.05 + f.energy * 0.25) + f.beat * 0.002
     wander += f.dt / 1000
@@ -317,7 +324,7 @@ function tunnel(): Painter {
       if (radius > Math.hypot(w, h)) continue
       const near = 1 - r.z
       ctx.globalAlpha = f.presence * Math.min(1, near * 1.8) * (r.bright ? 1 : 0.32) * Math.min(1, r.z * 5)
-      ctx.strokeStyle = r.bright ? c.light : near > 0.45 ? c.vibrant : c.dominant
+      ctx.strokeStyle = r.bright ? c.light : c[r.color]
       ctx.lineWidth = Math.max(0.75, (r.bright ? 3 : 1) * near * near * 3.5)
       ctx.beginPath()
       for (let i = 0; i <= POINTS; i++) {
